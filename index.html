@@ -242,9 +242,9 @@ select option{background:var(--bg3);}
     </div>
     <div class="field"><label class="lbl">Type</label>
       <select id="m-type">
-        <option value="food">🍔 Food</option><option value="water">💧 Water</option>
-        <option value="sleep">😴 Sleep stop</option><option value="rest">🪑 Rest stop</option><option value="town">🏘️ Town</option>
-        <option value="shop">🛒 Shop</option>
+        <option value="sleep">😴 Sleep</option><option value="rest">🪑 Rest</option>
+        <option value="water">💧 Water</option><option value="food">🍔 Food</option>
+        <option value="shop">🛒 Shop</option><option value="town">🏘️ Town</option>
       </select>
     </div>
     <div class="field"><label class="lbl">Name (optional)</label><input type="text" id="m-name" placeholder="e.g. Village supermarket"></div>
@@ -1583,7 +1583,7 @@ function openModal(km){
   const inp=document.getElementById('m-dist');
   inp.min=0;inp.max=r.totalDist;inp.value=v;
   document.getElementById('m-name').value='';
-  document.getElementById('m-type').value='food';
+  document.getElementById('m-type').value='sleep';
   updateModalFields();
   document.getElementById('stop-modal').style.display='flex';
 }
@@ -2442,11 +2442,11 @@ function tRoutes(r){
       <div class="sbox"><div class="sval">${r.totalDist.toFixed(0)}</div><div class="slbl">km</div></div>
       <div class="sbox"><div class="sval">${elevGain(r.points).toLocaleString()}</div><div class="slbl">m gain</div></div>
       <div class="sbox"><div class="sval" id="rt-avgspd">${avgSpd||'—'}</div><div class="slbl">km/h avg</div></div>
-      <div class="sbox"><div class="sval" id="rt-riding" style="font-size:18px;">${adjDur?fmtHM(adjDur):'—'}</div><div class="slbl">riding</div></div>
+      <div class="sbox">${r.totalDist>0?(()=>{const g=elevGain(r.points)/r.totalDist/10;const col=g<1?'#60a5fa':g<2?'#fbbf24':'#f87171';const desc=g<1?'flat':g<2?'moderate':'steep';return`<div class="sval" style="color:${col};">${g.toFixed(1)}%</div><div class="slbl" style="color:${col};">avg · ${desc}</div>`;})():'<div class="sval">—</div><div class="slbl">avg gradient</div>'}</div>
     </div>
     <div class="srow" style="grid-template-columns:1fr 1fr;margin-top:7px;">
-      <div class="sbox">${r.totalDist>0?(()=>{const g=elevGain(r.points)/r.totalDist/10;const desc=g<1?'Fairly flat':g<2?'Moderate':'Steep';return`<div class="sval">${g.toFixed(1)}%</div><div class="slbl">avg gradient · ${desc}</div>`;})():'<div class="sval">—</div><div class="slbl">avg gradient</div>'}</div>
-      <div class="sbox">${(()=>{const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):null;const sleepH=r.stops.filter(s=>s.type==='sleep').reduce((a,s)=>a+(s.sleepH||10),0);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl">sleep/night</div>';})()}</div>
+      <div class="sbox"><div class="sval" id="rt-riding" style="font-size:18px;color:#60a5fa;">${adjDur?fmtHM(adjDur):'—'}</div><div class="slbl" style="color:#60a5fa;">riding</div></div>
+      <div class="sbox">${(()=>{const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):null;const sleepH=r.stops.filter(s=>s.type==='sleep').reduce((a,s)=>a+(s.sleepH||10),0);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl" style="color:#b39ddb;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl" style="color:#b39ddb;">sleep/night</div>';})()}</div>
     </div>
     <div id="rt-sleeprow" style="margin-top:8px;display:flex;gap:12px;font-size:16px;color:var(--text3);font-family:var(--font);"${totalSleepH>0?'':' hidden'}>
       <span>😴 +${totalSleepH.toFixed(1)}h sleep</span>
@@ -2460,7 +2460,6 @@ function tRoutes(r){
   </div>
   <div class="card">
     <div class="ctitle">Speed Factor</div>
-    <p style="font-size:17px;color:var(--text2);margin-bottom:10px;">Adjust if you expect to ride slower or faster than the GPX pace.</p>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
       <button class="btn btn-sm" id="tf-faster" style="flex:1;justify-content:center;">⬅ Faster</button>
       <div style="text-align:center;min-width:70px;">
@@ -2469,6 +2468,7 @@ function tRoutes(r){
       </div>
       <button class="btn btn-sm" id="tf-slower" style="flex:1;justify-content:center;">Slower ➡</button>
     </div>
+    <p style="font-size:15px;color:var(--text3);margin-top:4px;">Adjust if you expect to ride slower or faster than the estimates. This is especially important if the upload has no times and you are relying on estimates from this app.</p>
 
   </div>
   <div class="card">
@@ -2968,7 +2968,7 @@ function patchSpeedFactor(r){
     const adj=r.estDuration*r.timeFactor;
     const spd=(r.totalDist/adj).toFixed(1);
     const vs=document.getElementById('rt-avgspd'),vr=document.getElementById('rt-riding');
-    if(vs)vs.textContent=spd;if(vr)vr.textContent=fmtHM(adj);
+    if(vs)vs.textContent=spd;if(vr){vr.textContent=fmtHM(adj);vr.style.color='#60a5fa';}
     const sleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest').reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:4)),0);
     const vt=document.getElementById('rt-total'),sr=document.getElementById('rt-sleeprow');
     if(sleepH>0){
