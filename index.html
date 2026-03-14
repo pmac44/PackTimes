@@ -308,7 +308,7 @@ const newRoute=name=>({
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set()};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -569,7 +569,12 @@ async function fetchOverpass(){
         const lon=el.lon!==undefined?el.lon:el.center?.lon;
         const tags=el.tags||{};
         if(!lat||!lon)return;
-        const snap=snapTo(r,lat,lon);if(!snap||snap.off>0.4)return;
+        const snap=snapTo(r,lat,lon);if(!snap)return;
+        // Type-based radius: towns/huts get full radius, water/food get 75%, toilets get 50%
+        const baseR=UI.searchRadiusKm||0.4;
+        const typeR=tags.place||(tags.tourism&&tags.tourism.includes('hut'))||tags.shelter_type||tags.amenity==='hut'?baseR*2:
+                    tags.amenity==='toilets'?baseR*0.75:baseR;
+        if(snap.off>typeR)return;
         const dist=snap.dist,name=(tags.name||tags['name:en']||'').trim();
         const ohRaw=tags.opening_hours||null,ohRules=ohRaw?parseOH(ohRaw):null;
         const offM=Math.round(snap.off*1000);
@@ -1736,10 +1741,11 @@ function tStopsShell(r){
           <button class="btn btn-sm btn-p" id="btn-overpass" ${UI.opStatus==='loading'?'disabled':''}>
             ${UI.opStatus==='loading'?'<div class="spin"></div> Searching…':'🔍 Search OSM'}</button>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        <p style="font-size:13px;color:var(--text3);margin:-4px 0 8px;">Radius: ${(UI.searchRadiusKm*1000).toFixed(0)}m · <span style="text-decoration:underline;cursor:pointer;" onclick="document.getElementById('tabs').querySelectorAll('[data-tab]').forEach(b=>{if(b.dataset.tab==='settings'){b.click();}})">adjust in Settings</span></p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
           ${[['towns','🏘️ Towns',true],['water','💧 Water',false],['food','🍔 Food',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['hotels','🏨 Accom',false],['toilets','🚻 Toilets',false],['huts','🏔 Huts',false]].map(([k,lbl,def])=>{
             const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
-            return '<label style="display:flex;align-items:center;gap:5px;font-size:18px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span>'+lbl+'</span></label>';
+            return '<label style="display:flex;align-items:center;gap:6px;font-size:15px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span>'+lbl+'</span></label>';
           }).join('')}
         </div>
         ${UI.opStatus==='loading'?`<div class="ld"><div class="spin"></div>${UI.opMsg}</div>`:''}
@@ -2045,24 +2051,17 @@ function tSettings(r){
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>500m</span><span>1km</span><span>2km</span><span>3km</span></div>
     </div>
     <p style="font-size:16px;color:var(--text3);margin-top:4px;">Speed factor is on the Route tab.</p>
-  </div>`:''}
-  <div class="card">
-    <div class="ctitle">GPS Status</div>
-    <p style="font-size:17px;color:var(--text2);margin-bottom:8px;">Start GPS tracking from the Live tab.</p>
-    <div id="gps-info-patch">${UI.gpsPos?`<div class="banner ok"><span>📍</span><span>${UI.gpsPos.lat.toFixed(5)}, ${UI.gpsPos.lon.toFixed(5)} · ±${Math.round(UI.gpsPos.acc)}m${UI.gpsDistKm!==null?' · '+UI.gpsDistKm.toFixed(1)+'km along route':''}</span></div>`:'<div style="font-size:16px;color:var(--text3);">Not active</div>'}</div>
   </div>
   <div class="card">
-    <div class="ctitle">OSM Auto-detect Options</div>
-    <p style="font-size:12px;color:var(--text2);margin-bottom:10px;">Choose what to search for when using OSM auto-detect on the Stops tab.</p>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;">
-      ${[['towns','🏘️ Towns',true],['food','🍔 Food/Cafés',true],['water','💧 Water',true],['shops','🛒 Shops',true],['pubs','🍺 Pubs/Bars',false],['hotels','🏨 Hotels/Accommodation',false]].map(([k,lbl,def])=>{
-        const on=(UI.osmOpts?UI.osmOpts[k]:def)!==false&&(UI.osmOpts?UI.osmOpts[k]!==false:true)&&((!UI.osmOpts&&def)||( UI.osmOpts&&UI.osmOpts[k]!==false&&(UI.osmOpts[k]||def)));
-        // Simpler: read from UI.osmOpts with fallback
-        const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
-        return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;min-width:40%;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span>'+lbl+'</span></label>';
-      }).join('')}
+    <div class="ctitle">OSM Search Radius</div>
+    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:10px;">How far off-route to search for stops. Towns &amp; huts use 2× this distance.</p>
+    <div class="field">
+      <label class="lbl">Base radius — <span id="search-radius-val">${(UI.searchRadiusKm*1000).toFixed(0)}m</span></label>
+      <input type="range" id="search-radius-sl" min="0.1" max="3" step="0.1" value="${UI.searchRadiusKm}" style="width:100%;accent-color:var(--accent);">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>100m</span><span>500m</span><span>1km</span><span>2km</span><span>3km</span></div>
     </div>
-  </div>
+    <p style="font-size:14px;color:var(--text3);margin-top:4px;">Default 400m. Increase for remote areas where stops are further off-route.</p>
+  </div>`:''}
   <div class="card">
     <div class="ctitle">Offline Storage</div>
     <p style="font-size:17px;color:var(--text2);line-height:1.6;">Routes saved in IndexedDB — persists offline between sessions.</p>
@@ -2593,10 +2592,10 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     const v=document.getElementById('alert-km-val');
     if(v)v.textContent=UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):((UI.alertKm*1000).toFixed(0)+'m');
     return;}
-  if(e.target.id==='alert-sl'){
-    UI.alertKm=+e.target.value;
-    const v=document.getElementById('alert-km-val');
-    if(v)v.textContent=UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):((UI.alertKm*1000).toFixed(0)+'m');
+  if(e.target.id==='search-radius-sl'){
+    UI.searchRadiusKm=+e.target.value;
+    const v=document.getElementById('search-radius-val');
+    if(v)v.textContent=(UI.searchRadiusKm*1000).toFixed(0)+'m';
     return;}
   if(e.target.id==='sim-sl'){
     UI.gpsDistKm=+e.target.value;UI.gpsPos={lat:0,lon:0,acc:5,ts:Date.now()};
