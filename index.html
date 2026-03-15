@@ -2370,7 +2370,7 @@ function tLiveShell(r){
         const orBadge=s.offRouteM?' <span style="font-size:16px;color:var(--text3);">('+( s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km')+' off route)</span>':'';
         const st=shopSt(s,r);
         const hasSt=s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='hut';
-        const tileBg=s.type==='sleep'?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
+        const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
           hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':''):'';
         const ohHint=s.ohRaw?' · <span style="color:var(--text3);font-size:16px;">'+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
@@ -2707,7 +2707,7 @@ function stopRow(s,r,sdt){
   const departDay=depart&&sdt?dayOff(depart,sdt):'';
   // Tile background
   const hasSt=s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='hut';
-  const tileBg=s.type==='sleep'?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
+  const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
     hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
   return`<div class="si tap-stop" data-sid="${s.id}" style="${tileBg}">
     <div class="sdot d-${s.type}"></div>
