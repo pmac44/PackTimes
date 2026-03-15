@@ -2792,9 +2792,7 @@ function stopChip(s,r){
   const stOpen=s.ohRules?shopSt(s,r):'';
   const openDot=stOpen==='open'?'<span style="color:var(--accent)">●</span>':stOpen==='closed'?'<span style="color:var(--red)">●</span>':'';
   const sleepTag=s.type==='sleep'?' 😴'+(s.sleepH||10)+'h':s.sleepAt?' 😴'+(s.sleepH||10)+'h':'';
-  const sleepBtn=s.type!=='sleep'&&s.type!=='rest'?
-    '<button class="sleep-at-stop" data-sid="'+s.id+'" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;" title="Sleep here">'+(s.sleepAt?'😴':'💤')+'</button>':'';
-  return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+openDot+sleepTag+sleepBtn+'</span>';
+  return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+openDot+sleepTag+'</span>';
 }
 
 // ─── Sunrise/sunset cache and fetch ───
@@ -3034,6 +3032,7 @@ function tPlan(r){
               +daydiv
               +departDiv
             +'</div>'
+            +(node.cluster?'<button class="sleep-at-stop" data-sid="'+(node.cluster.stops[0]?node.cluster.stops[0].id:'')+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'😴':'💤')+'</button>':'')
           +'</div>')
         +'</div>'
         +(isSleep?sleepDiv:chipsDiv)
