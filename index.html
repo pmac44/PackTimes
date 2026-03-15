@@ -923,7 +923,7 @@ const _ms={};
 function ms(id){if(!_ms[id])_ms[id]={zoom:1,cx:null,cy:null};return _ms[id];}
 
 // Tile overlay mode (shared across all maps)
-let _tileMode=0; // 0=off 1=OSM 2=SAT
+let _tileMode=1; // 0=off 1=OSM 2=SAT
 const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'];
 // Tile cache: key = 'mode/z/x/y'
 const _tileCache={};
@@ -3440,11 +3440,71 @@ function applyGPX(txt,suggestedName){
   const isTCX=txt.includes('<TrainingCenterDatabase')||txt.includes('<Trackpoint>');
   const result=isTCX?parseTCX(txt):parseGPX(txt);
   if(!result){alert('Could not parse file. Please use a GPX or TCX file.');return;}
-  const r=newRoute(result.name||suggestedName||'New Route');
-  ROUTES.push(r);CUR=ROUTES.length-1;
+  const routeName=(result.name||suggestedName||'New Route').trim();
+  // Check if a route with the same name already exists and has stops
+  const existingIdx=ROUTES.findIndex(r=>r.name.trim().toLowerCase()===routeName.toLowerCase());
+  const existing=existingIdx>=0?ROUTES[existingIdx]:null;
+  if(existing&&existing.stops.length>0){
+    const choice=confirm(`"${routeName}" already exists with ${existing.stops.length} stop${existing.stops.length!==1?'s':''}.\n\nOK = Copy existing stops across to updated route\nCancel = Show more options`);
+    if(choice){
+      // Copy stops across — snap each to nearest point on new route
+      _applyGPXWithStops(result,routeName,existingIdx,existing.stops);
+      return;
+    } else {
+      const fresh=confirm(`Fresh start — clear all stops?\n\nOK = Fresh start (no stops)\nCancel = Keep as a new separate route`);
+      if(fresh){
+        _applyGPXRoute(result,routeName,existingIdx,[]);
+        return;
+      }
+      // Fall through — create new route
+    }
+  } else if(existing){
+    // Same name, no stops — just replace
+    _applyGPXRoute(result,routeName,existingIdx,[]);
+    return;
+  }
+  // New route
+  _applyGPXRoute(result,routeName,-1,[]);
+}
+
+function _snapStopsToRoute(stops,newPts,newTotalDist){
+  return stops.filter(s=>s.dist<=newTotalDist+1).map(s=>{
+    const snap=s.lat&&s.lon?
+      // Has real coords — snap geographically
+      newPts.reduce((best,p,i)=>{
+        const d=Math.sqrt((p.lat-s.lat)**2+(p.lon-s.lon)**2);
+        return d<best.d?{d,dist:p.dist,idx:i}:best;
+      },{d:Infinity,dist:0,idx:0}):
+      // No real coords — keep same km position (clamped to new length)
+      {dist:Math.min(s.dist,newTotalDist),idx:0};
+    return{...s,dist:snap.dist,snapIdx:snap.idx};
+  });
+}
+
+function _applyGPXWithStops(result,name,existingIdx,oldStops){
+  const newPts=result.pts;
+  const newTotalDist=newPts[newPts.length-1].dist;
+  const snappedStops=_snapStopsToRoute(oldStops,newPts,newTotalDist);
+  _applyGPXRoute(result,name,existingIdx,snappedStops);
+  const kept=snappedStops.length,removed=oldStops.length-kept;
+  if(removed>0)alert(`${kept} stops copied across. ${removed} stop${removed!==1?'s':''} removed (beyond new route end).`);
+}
+
+function _applyGPXRoute(result,name,existingIdx,stops){
+  let r;
+  if(existingIdx>=0){
+    // Replace existing route in place
+    r=ROUTES[existingIdx];
+    r.name=name;
+    CUR=existingIdx;
+  } else {
+    r=newRoute(name);
+    ROUTES.push(r);CUR=ROUTES.length-1;
+  }
   r.points=result.pts;r.hasTS=result.hasTS;r.totalDist=result.pts[result.pts.length-1].dist;
   r.estDuration=result.hasTS?durationFromTS(result.pts):naismith(result.pts,r.totalDist);
   r.cumRiding=buildCumRiding(result.pts,r.paceSegs||[]);
+  r.stops=stops;
   UI.tab='routes';UI.opStatus='idle';
   delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
   saveAll();render();
