@@ -933,6 +933,7 @@ function startGPS(){
 function stopGPS(){
   if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;UI.gpsWatchId=null;UI.gpsHeading=null;
+  _offRouteStart=null;_offRouteAlerted=false;
   updateGPSPill();if(UI.tab==='live'||UI.tab==='settings')render();
 }
 function updateGPSPill(){
@@ -947,14 +948,53 @@ function updateGPSPill(){
 // Alert distance is now stored in UI
 UI.alertKm=UI.alertKm||0.5;
 let _wakeLock=null;
+let _offRouteStart=null;
+let _offRouteAlerted=false;
+const OFF_ROUTE_M=150; // metres from route before warning
+const OFF_ROUTE_SECS=8; // seconds before alerting
+
 function checkAlerts(){
-  const r=cur();if(!r||UI.gpsDistKm===null)return;
+  const r=cur();if(!r||UI.gpsDistKm===null||!UI.gpsPos)return;
+  // Stop proximity alerts
   for(const s of r.stops){
     const rem=s.dist-UI.gpsDistKm;
     if(rem>0&&rem<=UI.alertKm&&!UI.alertedStops.has(s.id)){
       UI.alertedStops.add(s.id);showAlert(s,rem,r);break;
     }
   }
+  // Off-route detection
+  const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);
+  if(!snap)return;
+  const offM=snap.off*1000;
+  if(offM>(UI.offRouteM||150)){
+    // Check if we're near an intentional off-route stop
+    const nearOffRoute=r.stops.some(s=>{
+      if(!s.lat||!s.lon)return false;
+      const d=hav(UI.gpsPos,{lat:s.lat,lon:s.lon})*1000;
+      return d<300;
+    });
+    if(!nearOffRoute){
+      if(!_offRouteStart)_offRouteStart=Date.now();
+      const secsOff=(Date.now()-_offRouteStart)/1000;
+      if(secsOff>=(UI.offRouteSecs||8)&&!_offRouteAlerted){
+        _offRouteAlerted=true;
+        showOffRouteAlert(Math.round(offM));
+      }
+    } else {
+      _offRouteStart=null;_offRouteAlerted=false;
+    }
+  } else {
+    // Back on route
+    _offRouteStart=null;_offRouteAlerted=false;
+  }
+}
+
+function showOffRouteAlert(distM){
+  document.getElementById('alert-ico').textContent='⚠️';
+  document.getElementById('alert-title').textContent='Off Route';
+  document.getElementById('alert-msg').innerHTML=`You are <strong>${distM}m</strong> from the route.<br>Check your navigation.`;
+  document.getElementById('alert-overlay').style.display='flex';
+  if(navigator.vibrate)navigator.vibrate([300,100,300,100,300,100,300]);
 }
 function showAlert(s,remKm,r){
   const eta=etaAt(s.dist,r),st=shopSt(s,r);
@@ -2748,9 +2788,19 @@ function tSettings(r){
     <div class="ctitle">Proximity Alerts</div>
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Full-screen alert and vibration when a stop is within range.</p>
     <div class="field">
-      <label class="lbl">Alert distance — <span id="alert-km-val">${(UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):(UI.alertKm*1000).toFixed(0)+'m')}</span></label>
+      <label class="lbl">Stop alert distance — <span id="alert-km-val">${(UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):(UI.alertKm*1000).toFixed(0)+'m')}</span></label>
       <input type="range" id="alert-sl" min="0.05" max="3" step="0.05" value="${UI.alertKm}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>500m</span><span>1km</span><span>2km</span><span>3km</span></div>
+    </div>
+    <div class="field" style="margin-top:10px;">
+      <label class="lbl">Off-route alert distance — <span id="offroute-m-val">${UI.offRouteM||150}m</span></label>
+      <input type="range" id="offroute-sl" min="50" max="500" step="25" value="${UI.offRouteM||150}" style="width:100%;accent-color:var(--accent);">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>150m</span><span>300m</span><span>400m</span><span>500m</span></div>
+    </div>
+    <div class="field" style="margin-top:10px;">
+      <label class="lbl">Off-route alert delay — <span id="offroute-s-val">${UI.offRouteSecs||8}s</span></label>
+      <input type="range" id="offroute-delay-sl" min="2" max="30" step="1" value="${UI.offRouteSecs||8}" style="width:100%;accent-color:var(--accent);">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>2s</span><span>8s</span><span>15s</span><span>20s</span><span>30s</span></div>
     </div>
     <p style="font-size:16px;color:var(--text3);margin-top:4px;">Speed factor is on the Route tab.</p>
   </div>
@@ -3606,6 +3656,16 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     UI.alertKm=+e.target.value;
     const v=document.getElementById('alert-km-val');
     if(v)v.textContent=UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):((UI.alertKm*1000).toFixed(0)+'m');
+    return;}
+  if(e.target.id==='offroute-sl'){
+    UI.offRouteM=+e.target.value;
+    const v=document.getElementById('offroute-m-val');
+    if(v)v.textContent=UI.offRouteM+'m';
+    return;}
+  if(e.target.id==='offroute-delay-sl'){
+    UI.offRouteSecs=+e.target.value;
+    const v=document.getElementById('offroute-s-val');
+    if(v)v.textContent=UI.offRouteSecs+'s';
     return;}
   if(e.target.id==='search-radius-sl'){
     UI.searchRadiusKm=+e.target.value;
