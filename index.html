@@ -918,8 +918,10 @@ function toggleGPS(){UI.gpsActive?stopGPS():startGPS();}
 function startGPS(){
   if(!navigator.geolocation){alert('Geolocation not supported.');return;}
   UI.gpsActive=true;
+  const liveState=ms('live-map');
+  liveState._userZoomed=false;liveState._autoZoomed=false;
   UI.gpsWatchId=navigator.geolocation.watchPosition(pos=>{
-    UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,ts:pos.timestamp};
+    UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,speed:pos.coords.speed,ts:pos.timestamp};
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
     const r=cur();
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap)UI.gpsDistKm=snap.dist;}
@@ -1362,6 +1364,7 @@ function drawMap(cvs,r,opts){
 function zoomMap(id,factor){
   const state=ms(id);
   state.zoom=Math.max(0.4,Math.min(800,state.zoom*factor));
+  if(id==='live-map')state._userZoomed=true;
   redrawMap(id);
 }
 
@@ -3336,7 +3339,16 @@ function updateLive(){
   // Redraw map canvas, following GPS — but not during a peek
   if(!_livePeekTimer){
     const mc=document.getElementById('live-map');
-    if(mc)drawMap(mc,r,{showGPS:true,followGPS:true,anchor:0.5,rotate:true});
+    if(mc){
+      // Auto-zoom to riding level when motion detected (speed > 1 km/h)
+      const state=ms('live-map');
+      if(UI.gpsPos&&UI.gpsPos.speed!=null&&UI.gpsPos.speed>0.3&&!state._userZoomed){
+        // ~0.3km wide = close riding view, ~150m each side
+        state.zoom=zoomForKmWidth('live-map',0.3);
+        state._autoZoomed=true;
+      }
+      drawMap(mc,r,{showGPS:true,followGPS:true,anchor:0.5,rotate:true});
+    }
   }
 }
 
