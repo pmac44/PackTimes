@@ -3524,17 +3524,10 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Delete stop — preserve scroll position
   const ds=e.target.closest('.del-stop');
   if(ds&&r){
-    const scroller=document.querySelector('.stops-scroll');
-    const scrollY=scroller?scroller.scrollTop:0;
-    delStop(r,ds.dataset.sid);saveAll();
-    render();
-    // Restore scroll after render
-    if(scroller){
-      requestAnimationFrame(()=>{
-        const s2=document.querySelector('.stops-scroll');
-        if(s2)s2.scrollTop=scrollY;
-      });
-    }
+    const tile=ds.closest('.tap-stop');
+    delStop(r,ds.dataset.sid);
+    saveAll();
+    if(tile)tile.remove();
     return;
   }
   // Tap live stop tile → peek map for 5s
