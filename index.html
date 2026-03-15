@@ -57,6 +57,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 .live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
 .live-summary{position:absolute;bottom:0;left:0;right:0;padding:6px 8px 8px;display:flex;flex-direction:column;gap:5px;z-index:10;}
+.turn-popup{position:absolute;top:10px;left:10px;right:10px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;}
+.turn-arrow{font-size:42px;line-height:1;flex-shrink:0;}
+.turn-info{flex:1;min-width:0;}
+.turn-dist{font-size:22px;font-weight:700;color:var(--accent);font-family:var(--font);}
+.turn-label{font-size:16px;color:var(--text2);margin-top:2px;}
+.turn-auto{font-size:12px;color:var(--text3);margin-top:2px;}
 .live-progress-bar{position:absolute;top:0;left:0;right:0;padding:6px 8px;z-index:10;}
 /* Stops tab: fixed map + scrollable below */
 .stops-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;}
@@ -369,10 +375,10 @@ let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
   id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
   name:name||'New Route',points:[],hasTS:false,totalDist:0,estDuration:null,
-  startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],
+  startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set()};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -459,12 +465,61 @@ function parseTCX(txt){
   // Extract course name
   const nameEl=doc.querySelector('Course > n, Course > Name');
   const name=nameEl?.textContent?.trim()||null;
-  return{pts,hasTS,name};
+  // Extract CoursePoints (turns)
+  const turns=[];
+  doc.querySelectorAll('CoursePoint').forEach(cp=>{
+    const pos=cp.querySelector('Position');
+    if(!pos)return;
+    const lat=+pos.querySelector('LatitudeDegrees')?.textContent;
+    const lon=+pos.querySelector('LongitudeDegrees')?.textContent;
+    if(isNaN(lat)||isNaN(lon))return;
+    const type=(cp.querySelector('PointType')?.textContent||'Generic').trim();
+    const n=(cp.querySelector('n')?.textContent||cp.querySelector('Name')?.textContent||'').trim();
+    const notes=(cp.querySelector('Notes')?.textContent||'').trim();
+    if(type==='Generic'&&!notes)return; // skip unmarked generics
+    // Snap to nearest route point to get dist
+    let best={d:Infinity,dist:0};
+    pts.forEach(p=>{
+      const d=Math.sqrt((p.lat-lat)**2+(p.lon-lon)**2);
+      if(d<best.d){best={d,dist:p.dist,lat:p.lat,lon:p.lon};}
+    });
+    turns.push({lat,lon,dist:best.dist,type,name:n,notes,auto:false});
+  });
+  return{pts,hasTS,name,turns};
 }
 function hav(a,b){
   const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLon=(b.lon-a.lon)*Math.PI/180;
   const s=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
   return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+function bearing(a,b){
+  const dLon=(b.lon-a.lon)*Math.PI/180;
+  const lat1=a.lat*Math.PI/180,lat2=b.lat*Math.PI/180;
+  const y=Math.sin(dLon)*Math.cos(lat2);
+  const x=Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
+  return(Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+function angleDiff(a,b){let d=((b-a)+540)%360-180;return d;}
+function autoDetectTurns(pts,thresholdDeg=45,minDistKm=0.1){
+  const turns=[];
+  const smooth=20; // average over N points for stable bearing
+  let lastTurnDist=-1;
+  for(let i=smooth;i<pts.length-smooth;i++){
+    if(pts[i].dist-lastTurnDist<minDistKm)continue;
+    const b1=bearing(pts[i-smooth],pts[i]);
+    const b2=bearing(pts[i],pts[i+smooth]);
+    const diff=angleDiff(b1,b2);
+    if(Math.abs(diff)>=thresholdDeg){
+      const type=diff<-thresholdDeg*0.6?'Left':diff>thresholdDeg*0.6?'Right':'Straight';
+      const sharpness=Math.abs(diff)>100?'Sharp ':Math.abs(diff)>60?'':'Slight ';
+      turns.push({
+        lat:pts[i].lat,lon:pts[i].lon,dist:pts[i].dist,
+        type,name:'',notes:sharpness+'turn '+type.toLowerCase(),auto:true
+      });
+      lastTurnDist=pts[i].dist;
+    }
+  }
+  return turns;
 }
 function elevGain(pts){let g=0;for(let i=1;i<pts.length;i++){const d=pts[i].ele-pts[i-1].ele;if(d>0)g+=d;}return Math.round(g);}
 function durationFromTS(pts){
@@ -1154,7 +1209,28 @@ function drawMap(cvs,r,opts){
     }
   });
 
-  // S/F flags
+  // Turn markers
+  if(r.turns&&r.turns.length){
+    const liveDist=UI.gpsDistKm||0;
+    r.turns.forEach(t=>{
+      if(t.dist<liveDist)return; // skip passed turns
+      const tx=px(t.lon),ty=py(t.lat);
+      // Small triangle marker
+      ctx.save();
+      ctx.translate(tx,ty);
+      const size=6;
+      ctx.beginPath();
+      if(t.type==='Left'){ctx.moveTo(0,-size);ctx.lineTo(-size,size);ctx.lineTo(size,size);}
+      else if(t.type==='Right'){ctx.moveTo(0,-size);ctx.lineTo(size,size);ctx.lineTo(-size,size);}
+      else{ctx.moveTo(0,-size);ctx.lineTo(size,size*0.6);ctx.lineTo(-size,size*0.6);}
+      ctx.closePath();
+      ctx.fillStyle=t.auto?'rgba(251,191,36,0.8)':'rgba(74,222,128,0.8)';
+      ctx.fill();
+      ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1;ctx.stroke();
+      ctx.restore();
+    });
+  }
+
   const flag=(i,col,lbl)=>{const p=pts[i];
     ctx.beginPath();ctx.arc(px(p.lon),py(p.lat),7,0,Math.PI*2);
     ctx.fillStyle=col;ctx.fill();ctx.fillStyle='#fff';
@@ -2445,6 +2521,26 @@ function tLiveShell(r){
         <canvas id="live-map"></canvas>
         ${mapCtrlHTML('live-map',true)}
         ${progressOverlay}
+        ${(()=>{
+          // Turn popup — show when within alertDistKm of next turn
+          const alertDistKm=0.5;
+          const turns=r.turns||[];
+          // Reset dismissed flag for turns we've passed
+          turns.forEach(t=>{if(t.dist<=liveDist)t._dismissed=false;});
+          const nextTurn=turns.find(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm&&!t._dismissed);
+          if(!nextTurn)return '';
+          const distM=Math.round((nextTurn.dist-liveDist)*1000);
+          const arrow=nextTurn.type==='Left'?'↰':nextTurn.type==='Right'?'↱':'↑';
+          const label=nextTurn.notes||nextTurn.name||(nextTurn.type+' turn');
+          return`<div class="turn-popup" id="turn-popup">
+            <div class="turn-arrow">${arrow}</div>
+            <div class="turn-info">
+              <div class="turn-dist">${distM<1000?distM+'m':(distM/1000).toFixed(1)+'km'}</div>
+              <div class="turn-label">${label}</div>
+              ${nextTurn.auto?'<div class="turn-auto">⚠️ Auto-detected — verify on map</div>':''}
+            </div>
+          </div>`;
+        })()}
         <div class="live-summary" id="live-summary">
           <div style="display:flex;gap:5px;">
             ${summaryCard('Next stop',next,'next')}
@@ -2501,11 +2597,19 @@ function tRoutes(r){
       <div class="rli ${i===CUR?'active':''}" data-ridx="${i}">
         <div class="ri-inf">
           <div class="ri-name">${rt.name}</div>
-          <div class="ri-meta">${rt.totalDist?rt.totalDist.toFixed(0)+'km · ':''} ${rt.startDate||'no date'} · ${rt.stops.length} stops</div>
+          <div class="ri-meta">${rt.totalDist?rt.totalDist.toFixed(0)+'km · ':''} ${rt.startDate||'no date'} · ${rt.stops.length} stops${rt.turns&&rt.turns.length?` · ${rt.turns.length} turns`:''}</div>
         </div>
         <button class="btn btn-sm btn-r del-route" data-ridx="${i}">✕</button>
       </div>`).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX above to get started.</p>`}
   </div>
+  ${UI.turnStatus?`<div class="banner ${UI.turnStatus.type==='ok'?'ok':'warn'}">
+    <span>${UI.turnStatus.type==='ok'?'↩':'⚠️'}</span>
+    <div style="flex:1;">
+      <div>${UI.turnStatus.msg}</div>
+      ${UI.turnStatus.type==='warn'&&r?`<button class="btn btn-sm" id="btn-auto-turns" style="margin-top:6px;">⚙ Auto-detect turns (basic — review carefully)</button>`:''}
+    </div>
+    <button class="btn btn-sm" id="btn-dismiss-turns">✕</button>
+  </div>`:''}
   <input type="file" accept=".gpx,.tcx" id="gpx-input" style="display:none;">
   <button class="btn btn-sm btn-full" id="btn-demo">▶ Load demo route</button>`;
   if(!r)return routeList;
@@ -3083,7 +3187,7 @@ function tPlan(r){
   return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;">⭐ Showing starred stops only · ${unstarredCount} unstarred stop${unstarredCount!==1?'s':''} hidden</div>`:'')
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
     +'<div class="card" style="padding:14px 12px;">'
-      +'<div class="ctitle">Resupply Plan — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
+      +'<div class="ctitle">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
       +rows
     +'</div>'
     +(summaryParts.length?'<div class="card"><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:17px;color:var(--text3);">'+summaryParts.join('')+'</div></div>':'');
@@ -3398,7 +3502,21 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     patchSpeedFactor(r);saveAll();return;
   }
 
-  if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
+  if(e.target.closest('#turn-popup')){
+    // Dismiss turn popup until next turn
+    const r=cur();if(r&&r.turns){
+      const liveDist=UI.gpsDistKm||0;
+      const t=r.turns.find(t=>t.dist>liveDist&&t.dist-liveDist<=0.5);
+      if(t)t._dismissed=true;
+      render();
+    }
+    return;
+  }
+  if(e.target.closest('#btn-auto-turns')&&r){
+    r.turns=autoDetectTurns(r.points);
+    UI.turnStatus={type:'ok',msg:`Auto-detected ${r.turns.length} turn${r.turns.length!==1?'s':''}. ⚠️ These are estimated from route shape — review carefully before relying on them.`};
+    saveAll();render();return;
+  }
   if(e.target.closest('#btn-toggle-starred')){
     UI.stopsShowStarred=!UI.stopsShowStarred;render();return;
   }
@@ -3574,7 +3692,6 @@ function _applyGPXWithStops(result,name,existingIdx,oldStops){
 function _applyGPXRoute(result,name,existingIdx,stops){
   let r;
   if(existingIdx>=0){
-    // Replace existing route in place
     r=ROUTES[existingIdx];
     r.name=name;
     CUR=existingIdx;
@@ -3586,8 +3703,15 @@ function _applyGPXRoute(result,name,existingIdx,stops){
   r.estDuration=result.hasTS?durationFromTS(result.pts):naismith(result.pts,r.totalDist);
   r.cumRiding=buildCumRiding(result.pts,r.paceSegs||[]);
   r.stops=stops;
+  r.turns=result.turns||[];
   UI.tab='routes';UI.opStatus='idle';
   delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
+  // Show turn info status
+  if(r.turns.length>0){
+    UI.turnStatus={type:'ok',msg:`${r.turns.length} turn${r.turns.length!==1?'s':''} imported from file.`};
+  } else {
+    UI.turnStatus={type:'warn',msg:'No turn information found in this file. Turn-by-turn navigation will not be available. Try re-exporting with turn instructions enabled.'};
+  }
   saveAll();render();
 }
 
