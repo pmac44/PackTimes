@@ -2212,8 +2212,9 @@ function tStopsShell(r){
     </div>
     <div style="height:6px;flex-shrink:0;background:var(--bg);"></div>
     <div class="stops-scroll">
-      <div style="padding:6px 4px 2px;display:flex;align-items:center;gap:6px;color:var(--text3);font-size:16px;">
-        <span>👆</span><span>Tap on the map to add a stop, or search below</span>
+      <div style="padding:6px 4px 2px;display:flex;flex-direction:column;gap:2px;color:var(--text3);font-size:16px;">
+        <div style="display:flex;align-items:center;gap:6px;"><span>👆</span><span>Tap on the map to add a stop</span></div>
+        <div style="display:flex;align-items:center;gap:6px;"><span>👇</span><span>or search below</span></div>
       </div>
       <div class="card">
         <div class="secrow" style="cursor:pointer;" id="osm-card-hdr">
@@ -3021,7 +3022,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">😴 Sleep stop</div>'):'')
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span>'+(node.sleepStop&&node.sleepStop.sleepAt?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:none;border:1px solid rgba(179,157,219,0.4);border-radius:6px;cursor:pointer;font-size:15px;padding:1px 6px;color:#b39ddb;" title="Remove sleep">✕ unsleep</button>':'')+'</div>'):'')
         +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +'<div style="font-size:17px;font-weight:600;color:var(--text);">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
