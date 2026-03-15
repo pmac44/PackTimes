@@ -3502,6 +3502,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     patchSpeedFactor(r);saveAll();return;
   }
 
+  if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
+  if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
   if(e.target.closest('#turn-popup')){
     // Dismiss turn popup until next turn
     const r=cur();if(r&&r.turns){
