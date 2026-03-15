@@ -143,7 +143,7 @@ select option{background:var(--bg3);}
 .spin{width:13px;height:13px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0;}
 @keyframes spin{to{transform:rotate(360deg);}}
 .secrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
-.secrow .ctitle{margin-bottom:0;}
+.secrow .ctitle{margin-bottom:0;line-height:1;}
 .startbar{background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px;margin-top:9px;}
 .startbar-lbl{font-size:18px;color:var(--text3);font-family:var(--font);}
 .startbar-val{font-family:var(--font);font-size:18px;color:var(--accent);font-weight:500;}
@@ -2333,8 +2333,8 @@ function tStopsShell(r){
       <div class="card">
         <div class="secrow" style="cursor:pointer;" id="osm-card-hdr">
           <div style="display:flex;align-items:center;gap:8px;">
-            <span id="osm-arrow" style="font-size:22px;color:var(--text3);user-select:none;line-height:1;">${UI.osmExpanded?'▼':'▶'}</span>
-            <div class="ctitle">Search</div>
+            <span id="osm-arrow" style="font-size:22px;color:var(--text3);user-select:none;line-height:1;display:flex;align-items:center;">${UI.osmExpanded?'▼':'▶'}</span>
+            <div class="ctitle" style="line-height:1;">Search</div>
           </div>
           <button class="btn btn-sm btn-p" id="btn-overpass" ${UI.opStatus==='loading'?'disabled':''} style="${UI.osmExpanded?'':'display:none'}">
             ${UI.opStatus==='loading'?'<div class="spin"></div> Searching…':'🔍 Search OSM'}</button>
