@@ -3257,7 +3257,13 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(s){
       if(s.sleepAt){
         s.sleepAt=false;
-        saveAll();render();
+        // Update tile in place — remove purple bg, update button
+        const tile=sa.closest('.tap-stop');
+        if(tile){
+          tile.style.background='';tile.style.borderColor='';
+        }
+        sa.textContent='💤';sa.style.color='';sa.style.borderColor='';
+        saveAll();
       } else {
         const raw=prompt('Sleep duration (hours):',UI.lastSleepH||10);
         if(raw===null)return;
@@ -3265,12 +3271,20 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         if(isNaN(v)||v<=0||v>24){alert('Enter hours between 0 and 24');return;}
         UI.lastSleepH=v;
         s.sleepAt=true;s.sleepH=v;s.starred=true;
+        // Update tile in place — purple bg, update buttons
+        const tile=sa.closest('.tap-stop');
+        if(tile){
+          tile.style.background='rgba(60,40,120,0.55)';tile.style.borderColor='rgba(130,100,220,0.6)';
+        }
+        sa.textContent='😴';
+        const starBtn=tile&&tile.querySelector('.star-stop');
+        if(starBtn)starBtn.textContent='⭐';
         const toRemove=r.stops.filter(x=>!((x.type==='sleep'||x.sleepAt)&&x.id!==s.id&&Math.abs(x.dist-s.dist)<=5));
         const removed=r.stops.length-toRemove.length;
         r.stops=toRemove;
         if(removed>0)console.log(`Removed ${removed} nearby sleep stop(s)`);
         else console.log(`No nearby sleep stops found. Stops within 10km:`, r.stops.filter(x=>Math.abs(x.dist-s.dist)<=10).map(x=>({name:x.name,type:x.type,dist:x.dist,diff:Math.abs(x.dist-s.dist)})));
-        saveAll();render();
+        saveAll();
       }
     }
     return;
