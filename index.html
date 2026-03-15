@@ -670,7 +670,7 @@ function etaAt(distKm,r){
   return new Date(base.getTime()+hrs*3600000);
 }
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
-function fmtDT(d){if(!d)return'—';return d.toLocaleString('en-GB',{weekday:'short',hour:'2-digit',minute:'2-digit'});}
+function fmtDT(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
 function fmtHM(h){if(!h)return'—';const hh=Math.floor(h),mm=Math.round((h-hh)*60);return hh+'h'+(mm>0?' '+mm+'m':'');}
 function dayOff(d,b){if(!d||!b)return'';const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];return ' '+days[d.getDay()];}
 
@@ -2625,23 +2625,29 @@ function tRoutes(r){
   ${(()=>{
     const hasTurns=r.turns&&r.turns.length>0;
     const autoTurns=hasTurns&&r.turns.every(t=>t.auto);
-    if(!r.hasTS){
-      return`<div class="banner warn"><span>⚠️</span><span>Route has no timestamps — speed will be estimated from elevation and needs careful adjustment with the speed factor below. Try re-exporting as a TCX with timestamps if possible.${hasTurns?(autoTurns?' Auto-detected turns included — review carefully.':`  ${r.turns.length} turns imported.`):' No turn information found.'}</span></div>`;
-    }
-    const parts=['Route has timestamps — ETAs anchored to planned pace.'];
-    if(hasTurns)parts.push(autoTurns?`Auto-detected turns (${r.turns.length}) — review carefully.`:`${r.turns.length} turn${r.turns.length!==1?'s':''} imported.`);
-    else parts.push('No turn information — re-export with turn instructions for navigation.');
-    return`<div class="banner ok"><span>✓</span><span>${parts.join(' ')}</span></div>`;
+    const tsBanner=r.hasTS
+      ?`<div class="banner ok"><span>✓</span><span>Route has timestamps — ETAs anchored to planned pace.</span></div>`
+      :`<div class="banner warn"><span>⚠️</span><span>No timestamps — speed estimated from elevation. Adjust with speed factor below. Try re-exporting as TCX if possible.</span></div>`;
+    const turnBanner=hasTurns
+      ?(autoTurns
+        ?`<div class="banner warn"><span>⚠️</span><span>Auto-detected turns (${r.turns.length}) — estimated from route shape, review carefully before relying on them.</span></div>`
+        :`<div class="banner ok"><span>↩</span><span>${r.turns.length} turn${r.turns.length!==1?'s':''} imported — turn navigation available on Ride tab.</span></div>`)
+      :`<div class="banner warn"><span>⚠️</span><div style="flex:1;"><span>No turn information — re-export with turn instructions for navigation.</span><div style="margin-top:6px;"><button class="btn btn-sm" id="btn-auto-turns">⚙ Auto-detect turns (basic — review carefully)</button></div></div></div>`;
+    return tsBanner+turnBanner;
   })()}
   <div class="card">
-    <div class="row2" style="margin-bottom:9px;">
-      <div class="field" style="margin-bottom:0;"><label class="lbl">Start date</label>
-        <input type="date" value="${r.startDate}" id="inp-date"></div>
-      <div class="field" style="margin-bottom:0;"><label class="lbl">Start time</label>
-        <input type="time" value="${r.startTime}" id="inp-time"></div>
+    <div class="startbar" style="margin-top:0;">
+      <div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;">
+        <span class="startbar-lbl">🚦</span>
+        <span class="startbar-lbl">Start</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex:1;">
+        ${sdt?`<span style="font-family:var(--font);font-size:18px;color:var(--accent);font-weight:500;">${sdt.toLocaleDateString('en-GB',{weekday:'short'})}</span>`:''}
+        <input type="date" value="${r.startDate}" id="inp-date" style="background:none;border:none;color:var(--accent);font-family:var(--font);font-size:18px;font-weight:500;padding:0;outline:none;">
+        <input type="time" value="${r.startTime}" id="inp-time" style="background:none;border:none;color:var(--accent);font-family:var(--font);font-size:18px;font-weight:500;padding:0;outline:none;">
+      </div>
     </div>
-    ${sdt?`<div class="startbar"><span class="startbar-lbl">🚦 Start:</span><span class="startbar-val">${fmtDT(sdt)}</span></div>
-    ${adjDur?`<div class="startbar" style="margin-top:5px;"><span class="startbar-lbl">🏁 Finish:</span><span class="startbar-val" id="rt-finish">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000))}</span></div>`:''}`:''}
+    ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="margin-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000))}</span></div>`:''}
   </div>
   <div class="card">
     <div class="ctitle">Route Summary</div>
@@ -3525,7 +3531,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   if(e.target.closest('#btn-auto-turns')&&r){
     r.turns=autoDetectTurns(r.points);
-    UI.turnStatus={type:'ok',msg:`Auto-detected ${r.turns.length} turn${r.turns.length!==1?'s':''}. ⚠️ These are estimated from route shape — review carefully before relying on them.`};
+    UI.turnStatus=null;
     saveAll();render();return;
   }
   if(e.target.closest('#btn-toggle-starred')){
