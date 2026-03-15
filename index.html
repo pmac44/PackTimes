@@ -3263,8 +3263,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(s){
       if(s.sleepAt){
         s.sleepAt=false;
-        sa.textContent='💤';sa.style.color='';sa.style.borderColor='';
-        saveAll();
+        saveAll();render();
       } else {
         const raw=prompt('Sleep duration (hours):',UI.lastSleepH||10);
         if(raw===null)return;
