@@ -1455,9 +1455,8 @@ function hitTest(cvs,cx,cy,cb){
     if(r&&r.stops.length){
       let bestStop=null,bestStopD=Infinity;
       r.stops.forEach(s=>{
-        const rp=pts[s.snapIdx!=null?s.snapIdx:cidx(r,s.dist)];
-        const dotLon=(s.lat&&s.lon)?s.lon:rp.lon;
-        const dotLat=(s.lat&&s.lon)?s.lat:rp.lat;
+        const dotLon=(s.lat&&s.lon)?s.lon:pts[cidx(r,s.dist)].lon;
+        const dotLat=(s.lat&&s.lon)?s.lat:pts[cidx(r,s.dist)].lat;
         const dx=px(dotLon)-mx,dy=py(dotLat)-my,d=dx*dx+dy*dy;
         if(d<bestStopD){bestStopD=d;bestStop=s;}
       });
@@ -1473,9 +1472,8 @@ function hitTest(cvs,cx,cy,cb){
           // Also highlight on map
           _highlightStopId=bestStop.id;
           const state=_ms['stops-map']||(_ms['stops-map']={zoom:1,cx:null,cy:null});
-          const p=pts[bestStop.snapIdx!=null?bestStop.snapIdx:cidx(r,bestStop.dist)];
-          const panLon=(bestStop.lat&&bestStop.lon)?bestStop.lon:p.lon;
-          const panLat=(bestStop.lat&&bestStop.lon)?bestStop.lat:p.lat;
+          const panLon=(bestStop.lat&&bestStop.lon)?bestStop.lon:pts[cidx(r,bestStop.dist)].lon;
+          const panLat=(bestStop.lat&&bestStop.lon)?bestStop.lat:pts[cidx(r,bestStop.dist)].lat;
           state.cx=panLon;state.cy=panLat;
           const offKm=(bestStop.offRouteM||0)/1000;
           state.zoom=zoomForKmWidth('stops-map',offKm>0.5?Math.max(1.5,offKm*3):1.5);
@@ -1840,7 +1838,7 @@ document.getElementById('em-dist').addEventListener('input',function(){
         const cvs=document.getElementById('stops-map');
         if(cvs){
           const state=_ms['stops-map']||(_ms['stops-map']={zoom:1,cx:null,cy:null});
-          const p=r.points[s.snapIdx!=null?s.snapIdx:cidx(r,v)];
+          const p=r.points[cidx(r,v)];
           state.cx=p.lon;state.cy=p.lat;
           drawMap(cvs,r,{anchor:0.5,highlightId:s.id});
         }
@@ -2211,7 +2209,7 @@ function tStopsShell(r){
     </div>
     <div style="height:6px;flex-shrink:0;background:var(--bg);"></div>
     <div class="stops-scroll">
-      <div style="padding:6px 4px 2px;display:flex;flex-direction:column;gap:2px;color:var(--text3);font-size:16px;">
+      <div style="padding:6px 4px 2px;display:flex;flex-direction:column;gap:6px;color:var(--text3);font-size:16px;">
         <div style="display:flex;align-items:center;gap:6px;"><span>👆</span><span>Tap on the map to add a stop</span></div>
         <div style="display:flex;align-items:center;gap:6px;"><span>👇</span><span>or search for stops below</span></div>
       </div>
@@ -3359,7 +3357,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const s=r.stops.find(s=>s.id===ts.dataset.sid);
     if(s){
       _highlightStopId=s.id;
-      const p=r.points[s.snapIdx!=null?s.snapIdx:cidx(r,s.dist)];
+      const p=r.points[cidx(r,s.dist)];
       const panLon=s.lon||p.lon, panLat=s.lat||p.lat;
       const state=_ms['stops-map']||(_ms['stops-map']={zoom:1,cx:null,cy:null});
       state.cx=panLon;state.cy=panLat;
