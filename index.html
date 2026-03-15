@@ -2793,7 +2793,7 @@ function stopChip(s,r){
   const openDot=stOpen==='open'?'<span style="color:var(--accent)">●</span>':stOpen==='closed'?'<span style="color:var(--red)">●</span>':'';
   const sleepTag=s.type==='sleep'?' 😴'+(s.sleepH||10)+'h':s.sleepAt?' 😴'+(s.sleepH||10)+'h':'';
   const sleepBtn=s.type!=='sleep'&&s.type!=='rest'?
-    '<button class="sleep-at-stop" data-sid="'+s.id+'" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;opacity:'+(s.sleepAt?'1':'0.4')+'" title="Sleep here">'+(s.sleepAt?'😴':'💤')+'</button>':'';
+    '<button class="sleep-at-stop" data-sid="'+s.id+'" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;" title="Sleep here">'+(s.sleepAt?'😴':'💤')+'</button>':'';
   return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+openDot+sleepTag+sleepBtn+'</span>';
 }
 
@@ -3034,7 +3034,7 @@ function tPlan(r){
               +daydiv
               +departDiv
             +'</div>'
-            +(node.cluster&&node.cluster.stops.length===1?'<button class="sleep-at-stop" data-sid="'+node.cluster.stops[0].id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;opacity:'+(node.cluster.stops[0].sleepAt?'1':'0.5')+'" title="Sleep here">'+(node.cluster.stops[0].sleepAt?'😴':'💤')+'</button>':
+            +(node.cluster&&node.cluster.stops.length===1?'<button class="sleep-at-stop" data-sid="'+node.cluster.stops[0].id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;" title="Sleep here">'+(node.cluster.stops[0].sleepAt?'😴':'💤')+'</button>':
              node.cluster?'':'')
           +'</div>')
         +'</div>'
