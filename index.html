@@ -1040,8 +1040,8 @@ function drawMap(cvs,r,opts){
   let cLon=state.cx!==null?state.cx:(maxLon+minLon)/2;
   let cLat=state.cy!==null?state.cy:(maxLat+minLat)/2;
   if(opts.followGPS&&UI.gpsDistKm!==null){
-    const gp=pts[cidx(r,UI.gpsDistKm)];
-    cLon=gp.lon;cLat=gp.lat;
+    cLon=UI.gpsPos&&UI.gpsPos.lon?UI.gpsPos.lon:pts[cidx(r,UI.gpsDistKm)].lon;
+    cLat=UI.gpsPos&&UI.gpsPos.lat?UI.gpsPos.lat:pts[cidx(r,UI.gpsDistKm)].lat;
     state.cx=cLon;state.cy=cLat;
   }
   const cpx=W/2,cpy=H*anchor;
@@ -1201,10 +1201,19 @@ function drawMap(cvs,r,opts){
 
   // GPS dot
   if(opts.showGPS&&UI.gpsDistKm!==null){
-    const p=pts[cidx(r,UI.gpsDistKm)];
-    ctx.beginPath();ctx.arc(px(p.lon),py(p.lat),10,0,Math.PI*2);
+    // Use actual GPS coordinates if available, not snapped route point
+    const gpsLon=UI.gpsPos&&UI.gpsPos.lon?UI.gpsPos.lon:pts[cidx(r,UI.gpsDistKm)].lon;
+    const gpsLat=UI.gpsPos&&UI.gpsPos.lat?UI.gpsPos.lat:pts[cidx(r,UI.gpsDistKm)].lat;
+    // Accuracy circle if known
+    if(UI.gpsPos&&UI.gpsPos.acc&&UI.gpsPos.acc<500){
+      const accR=UI.gpsPos.acc/1000*kx*scale; // metres to pixels
+      ctx.beginPath();ctx.arc(px(gpsLon),py(gpsLat),Math.max(8,accR),0,Math.PI*2);
+      ctx.fillStyle='rgba(248,113,113,.12)';ctx.fill();
+      ctx.strokeStyle='rgba(248,113,113,.3)';ctx.lineWidth=1;ctx.stroke();
+    }
+    ctx.beginPath();ctx.arc(px(gpsLon),py(gpsLat),10,0,Math.PI*2);
     ctx.fillStyle='rgba(248,113,113,.25)';ctx.fill();
-    ctx.beginPath();ctx.arc(px(p.lon),py(p.lat),5,0,Math.PI*2);
+    ctx.beginPath();ctx.arc(px(gpsLon),py(gpsLat),5,0,Math.PI*2);
     ctx.fillStyle='#f87171';ctx.fill();
   }
 
@@ -2123,29 +2132,10 @@ let _rf=false;
 function scrollTileToTop(tile){
   const scroller=document.querySelector('.stops-scroll');
   if(!scroller||!tile)return;
-  _stopsScrollLocked=true;
-  _stopsMapExpanded=true;
-  resetMapScroll(true); // slide map back down to full position
   const scrollerRect=scroller.getBoundingClientRect();
   const tileRect=tile.getBoundingClientRect();
-  const currentMapH=document.getElementById('stops-map-panel')?.offsetHeight||0;
-  const targetMapH=_stopsMapH(0.65);
-  const growth=Math.max(0,targetMapH-currentMapH);
-  scroller.scrollTo({top:scroller.scrollTop+tileRect.top-scrollerRect.top+growth,behavior:'smooth'});
-  // Expand map simultaneously
-  setStopsMapHeight(0.65,true);
-  // Fine-correct position after map settles — stay locked the whole time
-  setTimeout(()=>{
-    const sr2=scroller.getBoundingClientRect();
-    const tr2=tile.getBoundingClientRect();
-    const err=tr2.top-sr2.top;
-    if(Math.abs(err)>8)scroller.scrollBy({top:err,behavior:'smooth'});
-    setTimeout(()=>{
-      _lastStopsScrollTop=scroller.scrollTop;
-      _stopsUpStart=null;
-      _stopsScrollLocked=false;
-    },300);
-  },250);
+  const offset=tileRect.top-scrollerRect.top;
+  scroller.scrollTo({top:scroller.scrollTop+offset,behavior:'smooth'});
 }
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
 
@@ -2283,13 +2273,6 @@ function setStopsMapHeight(fraction,animate,skipRedraw){
   const cvs=document.getElementById('stops-map');
   if(!panel||!wrap||!cvs)return;
   const h=_stopsMapH(fraction);
-  if(animate){
-    panel.style.transition='height 0.2s ease-out';
-    wrap.style.transition='height 0.2s ease-out';
-  } else {
-    panel.style.transition='none';
-    wrap.style.transition='none';
-  }
   panel.style.height=h+'px';
   wrap.style.height=h+'px';
   cvs.style.height=h+'px';
@@ -2297,38 +2280,17 @@ function setStopsMapHeight(fraction,animate,skipRedraw){
   if(!skipRedraw)redrawMap('stops-map');
 }
 
-function scrollMapUp(px){
-  // Slide map panel up by px using negative margin-top, clamped to map height
-  const panel=document.getElementById('stops-map-panel');
-  if(!panel)return;
-  const maxH=_stopsMapH(0.65);
-  const minH=_stopsMapH(0.20);
-  const margin=Math.min(px,maxH-minH);
-  panel.style.transition='none';
-  panel.style.marginTop=-margin+'px';
-}
-
-function resetMapScroll(animate){
-  const panel=document.getElementById('stops-map-panel');
-  if(!panel)return;
-  if(animate)panel.style.transition='margin-top 0.2s ease-out';
-  else panel.style.transition='none';
-  panel.style.marginTop='0px';
-}
-
+function scrollMapUp(px){ /* no-op */ }
+function resetMapScroll(animate){ /* no-op */ }
 let _stopsRedrawTimer=null;
 function scheduleStopsRedraw(){
   if(_stopsRedrawTimer)clearTimeout(_stopsRedrawTimer);
-  _stopsRedrawTimer=setTimeout(()=>{
-    _stopsRedrawTimer=null;
-    redrawMap('stops-map');
-  },120);
+  _stopsRedrawTimer=setTimeout(()=>{_stopsRedrawTimer=null;redrawMap('stops-map');},120);
 }
 
 function initStopsMap(r){
   const cvs=document.getElementById('stops-map');if(!cvs)return;
-  // Set default height ~55% of available screen
-  setStopsMapHeight(0.65,false);
+  setStopsMapHeight(0.60,false);
   drawMap(cvs,r,{anchor:0.5,highlightId:_highlightStopId});
   attachMap(cvs,km=>openModal(km));
 }
@@ -2347,27 +2309,7 @@ let _stopsTileSelected=false;
 let _stopsScrollBaseline=0;
 let _stopsUpStart=null;
 function handleStopsScroll(e){
-  const scroller=e.target;
-  if(!scroller||!scroller.classList||!scroller.classList.contains('stops-scroll'))return;
-  if(_stopsScrollLocked)return;
-  const st=scroller.scrollTop;
-  const dir=st<_lastStopsScrollTop?'up':'down';
-  _lastStopsScrollTop=st;
-  const maxSlide=_stopsMapH(0.65)-_stopsMapH(0.20);
-  if(dir==='down'){
-    if(_stopsUpStart===null)_stopsUpStart=st;
-    const margin=Math.min(st-_stopsUpStart,maxSlide);
-    scrollMapUp(Math.max(0,margin));
-    scheduleStopsRedraw();
-  } else {
-    // Scrolling up — restore map and reset
-    if(_stopsUpStart!==null){
-      _stopsUpStart=null;
-      resetMapScroll(true);
-      _stopsMapExpanded=true;
-      scheduleStopsRedraw();
-    }
-  }
+  // No dynamic resizing — map stays fixed
 }
 
 // ─── Live tab shell (split layout) ───
@@ -2716,8 +2658,7 @@ function tSettings(r){
 // Render stops list grouped by cluster for the Stops tab
 function clusteredStopRows(r,sdt){
   if(!r.stops.length)return'';
-  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest');
-  const clusters=clusterStops(planStops);
+  const clusters=clusterStops(r.stops);
   let html='';
   clusters.forEach(cl=>{
     if(cl.stops.length>1){
@@ -2752,15 +2693,19 @@ function stopRow(s,r,sdt){
   return`<div class="si tap-stop" data-sid="${s.id}" style="${tileBg}">
     <div class="sdot d-${s.type}"></div>
     <div class="si-inf">
-      <div class="si-name">${s.name}${orBadge}${autoBadge}</div>
-      <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.crossing?'crossing':s.type}">${s.crossing?'waterway':s.type}</span>${ohHint}</div>
-      ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
-      <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom')&&s.ohRules?stEl:''}</div>
-    </div>
-    <div class="si-rt">
-      <div class="si-time">${day?day.trim()+' ':''}${fmtT(eta)}</div>
-      ${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}
-      <div style="display:flex;gap:4px;margin-top:4px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">
+        <div style="flex:1;min-width:0;">
+          <div class="si-name">${s.name}${orBadge}${autoBadge}</div>
+          <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.crossing?'crossing':s.type}">${s.crossing?'waterway':s.type}</span>${ohHint}</div>
+          ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
+          <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom')&&s.ohRules?stEl:''}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div class="si-time">${day?day.trim()+' ':''}${fmtT(eta)}</div>
+          ${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}
+        </div>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="font-size:16px;">${s.starred!==false?'⭐':'☆'}</button>
         <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename">✏️</button>
         ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit position" style="font-size:15px;">📍</button>`:''}
@@ -3274,7 +3219,16 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   // Rename / edit stop → open edit modal
   const ss=e.target.closest('.star-stop');
-  if(ss&&r){const sid=ss.dataset.sid;const s=r.stops.find(x=>x.id===sid);if(s){s.starred=s.starred===false?true:false;saveAll();render();}return;}
+  if(ss&&r){
+    const sid=ss.dataset.sid;
+    const s=r.stops.find(x=>x.id===sid);
+    if(s){
+      s.starred=s.starred===false?true:false;
+      ss.textContent=s.starred!==false?'⭐':'☆';
+      saveAll();
+    }
+    return;
+  }
   const rn=e.target.closest('.rename-stop');
   if(rn&&r){
     const s=r.stops.find(s=>s.id===rn.dataset.sid);
