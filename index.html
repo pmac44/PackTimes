@@ -2315,9 +2315,10 @@ function handleStopsScroll(e){
 // ─── Live tab shell (split layout) ───
 function tLiveShell(r){
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
-  const next=r.stops.find(s=>s.dist>liveDist);
-  const nextFood=r.stops.find(s=>s.dist>liveDist&&(s.type==='food'||s.type==='shop'));
-  const nextWaterOnly=r.stops.find(s=>s.dist>liveDist&&s.type==='water');
+  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest';
+  const next=r.stops.find(s=>s.dist>liveDist&&starred(s));
+  const nextFood=r.stops.find(s=>s.dist>liveDist&&starred(s)&&(s.type==='food'||s.type==='shop'));
+  const nextWaterOnly=r.stops.find(s=>s.dist>liveDist&&starred(s)&&s.type==='water');
   // Food/shop/town/hut stops imply water is available — use whichever comes first
   const nextWater=(!nextWaterOnly||(nextFood&&nextFood.dist<=nextWaterOnly.dist))?nextFood:nextWaterOnly;
   const dtn=next?next.dist-liveDist:null,etaN=next?etaAt(next.dist,r):null;
@@ -2348,6 +2349,7 @@ function tLiveShell(r){
       cl.stops.forEach(s=>{
         const eta=etaAt(s.dist,r),passed=liveDist>s.dist;
         if(passed)return;
+        if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest')return;
         const day=sdt&&eta?dayOff(eta,sdt):'';
         const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
         const depart=s.type==='sleep'&&eta?new Date(eta.getTime()+(s.sleepH||10)*3600000):null;
@@ -3099,9 +3101,10 @@ function updateLive(){
   const r=cur();if(!r)return;
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const prog=liveDist/Math.max(1,r.totalDist);
-  const next=r.stops.find(s=>s.dist>liveDist);
-  const nextFood=r.stops.find(s=>s.dist>liveDist&&(s.type==='food'||s.type==='shop'));
-  const nextWaterOnly=r.stops.find(s=>s.dist>liveDist&&s.type==='water');
+  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest';
+  const next=r.stops.find(s=>s.dist>liveDist&&starred(s));
+  const nextFood=r.stops.find(s=>s.dist>liveDist&&starred(s)&&(s.type==='food'||s.type==='shop'));
+  const nextWaterOnly=r.stops.find(s=>s.dist>liveDist&&starred(s)&&s.type==='water');
   const nextWater=(!nextWaterOnly||(nextFood&&nextFood.dist<=nextWaterOnly.dist))?nextFood:nextWaterOnly;
   const setText=(id,val)=>{const el=document.getElementById(id);if(el&&el.textContent!==String(val))el.textContent=String(val);};
 
