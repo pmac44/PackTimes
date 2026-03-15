@@ -3029,13 +3029,13 @@ function tPlan(r){
             +'<div style="font-size:15px;color:var(--text3);font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
           +'</div>'
           +(isSleep?'':
-          '<div style="display:flex;align-items:center;gap:6px;">'
+          '<div style="display:flex;align-items:flex-start;gap:6px;">'
             +'<div style="text-align:right;">'
               +'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:var(--accent);">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>'
               +daydiv
               +departDiv
             +'</div>'
-            +(node.cluster&&node.cluster.stops.length===1?'<button class="sleep-at-stop" data-sid="'+node.cluster.stops[0].id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;" title="Sleep here">'+(node.cluster.stops[0].sleepAt?'😴':'💤')+'</button>':
+            +(node.cluster&&node.cluster.stops.length===1?'<button class="sleep-at-stop" data-sid="'+node.cluster.stops[0].id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Sleep here">'+(node.cluster.stops[0].sleepAt?'😴':'💤')+'</button>':
              node.cluster?'':'')
           +'</div>')
         +'</div>'
