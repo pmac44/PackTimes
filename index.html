@@ -372,7 +372,7 @@ const newRoute=name=>({
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set()};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -610,7 +610,7 @@ function etaAt(distKm,r){
     }
   }
   // Add sleep stop durations for sleep stops strictly before this point (arrival time, not departure)
-  r.stops.forEach(s=>{if((s.type==='sleep'||s.type==='rest')&&s.dist<distKm)hrs+=(s.sleepH||(s.type==='rest'?1:4));});
+  r.stops.forEach(s=>{if((s.type==='sleep'||s.type==='rest'||s.sleepAt)&&s.dist<distKm)hrs+=(s.sleepH||(s.type==='rest'?1:10));});
   return new Date(base.getTime()+hrs*3600000);
 }
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
@@ -627,9 +627,10 @@ function addStop(r,dist,type,name,opts){
     sleepH:opts.sleepH||10,ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
     icon:{food:'🍔',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[type]||'📍',
     auto:opts.auto||false,
-    starred:opts.starred!==undefined?opts.starred:(!opts.auto),
+    starred:opts.starred!==undefined?opts.starred:(type==='town'?true:!opts.auto),
     crossing:opts.crossing||false,
     stockwater:opts.stockwater||false,
+    sleepAt:opts.sleepAt||false,
     lat:opts.lat||null,lon:opts.lon||null,
     offRouteM:opts.offRouteM||null,
     snapIdx:opts.snapIdx!==undefined?opts.snapIdx:null});
@@ -1562,7 +1563,7 @@ function drawElev(cvs,r){
   for(let i=1;i<pts.length;i++)ctx.lineTo(x(i),y(i));
   ctx.strokeStyle='#a855f7';ctx.lineWidth=1.5;ctx.stroke();
   // Sleep stop markers
-  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='rest');
+  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt);
   sleepStops.forEach(s=>{
     const sx=xd(s.dist);
     const pi=pts.reduce((bi,p,i)=>Math.abs(p.dist-s.dist)<Math.abs(pts[bi].dist-s.dist)?i:bi,0);
@@ -2212,14 +2213,19 @@ function tStopsShell(r){
     <div style="height:6px;flex-shrink:0;background:var(--bg);"></div>
     <div class="stops-scroll">
       <div style="padding:6px 4px 2px;display:flex;align-items:center;gap:6px;color:var(--text3);font-size:16px;">
-        <span>👆</span><span>Tap on the map to add a stop</span>
+        <span>👆</span><span>Tap on the map to add a stop, or search below</span>
       </div>
       <div class="card">
-        <div class="secrow"><div class="ctitle" style="font-size:14px;">OSM Search</div>
-          <button class="btn btn-sm btn-p" id="btn-overpass" ${UI.opStatus==='loading'?'disabled':''}>
+        <div class="secrow" style="cursor:pointer;" id="osm-card-hdr">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span id="osm-arrow" style="font-size:22px;color:var(--text3);user-select:none;line-height:1;">${UI.osmExpanded?'▼':'▶'}</span>
+            <div class="ctitle">Search</div>
+          </div>
+          <button class="btn btn-sm btn-p" id="btn-overpass" ${UI.opStatus==='loading'?'disabled':''} style="${UI.osmExpanded?'':'display:none'}">
             ${UI.opStatus==='loading'?'<div class="spin"></div> Searching…':'🔍 Search OSM'}</button>
         </div>
-        <p style="font-size:13px;color:var(--text3);margin:-4px 0 8px;">Radius: ${(UI.searchRadiusKm*1000).toFixed(0)}m · <span style="text-decoration:underline;cursor:pointer;" onclick="document.getElementById('tabs').querySelectorAll('[data-tab]').forEach(b=>{if(b.dataset.tab==='settings'){b.click();}})">adjust in Settings</span></p>
+        <div id="osm-body" style="${UI.osmExpanded?'':'display:none'}">
+        <p style="font-size:13px;color:var(--text3);margin:4px 0 8px;">Radius: ${(UI.searchRadiusKm*1000).toFixed(0)}m · <span style="text-decoration:underline;cursor:pointer;" onclick="document.getElementById('tabs').querySelectorAll('[data-tab]').forEach(b=>{if(b.dataset.tab==='settings'){b.click();}})">adjust in Settings</span></p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
           ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['stockwater','🐄 Stock water',false],['food','🍔 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['hotels','🏨 Accom',false],['toilets','🚻 Toilets',false],['huts','🏔 Huts',false],['camp','🏕️ Campgrounds',true],['peaks','🏔️ Peaks/Saddles',false],['crossings','🏞 Waterways',false]].map(([k,lbl,def])=>{
             const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
@@ -2230,19 +2236,9 @@ function tStopsShell(r){
         ${UI.opStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.opMsg}</span></div>`:''}
         ${UI.opStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.opMsg}</span></div>`:''}
         ${UI.opStatus==='idle'?`<p style="font-size:17px;color:var(--text3);">Searches OpenStreetMap for stops near your route.</p>`:''}
-        ${auto.length?`
-          <div id="clearauto-wrap" style="margin-top:8px;">
-            <button class="btn btn-r btn-sm btn-full" id="btn-clearauto">✕ Remove all auto stops</button>
-            <div id="clearauto-confirm" style="display:none;display:none;gap:8px;align-items:center;">
-              <span style="font-size:16px;color:var(--text2);flex:1;">Remove ${auto.length} auto stop${auto.length!==1?'s':''}?</span>
-              <button class="btn btn-r btn-sm" id="btn-clearauto-yes">Yes</button>
-              <button class="btn btn-sm" id="btn-clearauto-no">No</button>
-            </div>
-          </div>`:''}
-      </div>
-      <div class="card">
-        <div class="secrow"><div class="ctitle" style="font-size:14px;">Search Specific Town</div></div>
-        <p style="font-size:17px;color:var(--text3);margin-bottom:8px;">Find stops inside a specific town, even if it's off your route. Uses the stop types checked above.</p>
+        <div style="height:1px;background:var(--border);margin:10px 0;"></div>
+        <div class="ctitle" style="font-size:14px;margin-bottom:6px;">Search Specific Town</div>
+        <p style="font-size:15px;color:var(--text3);margin-bottom:8px;">Find stops inside a specific town, even if it's off your route. Uses the stop types checked above.</p>
         <div style="display:flex;gap:6px;">
           <input id="ts-input" type="text" class="inp" placeholder="e.g. Braidwood NSW" style="flex:1;" value="${UI.tsQuery||''}">
           <button class="btn btn-p" id="btn-townsearch" ${UI.tsStatus==='loading'?'disabled':''}>${UI.tsStatus==='loading'?'<div class="spin"></div>':'🔍'}</button>
@@ -2250,9 +2246,26 @@ function tStopsShell(r){
         ${UI.tsStatus==='loading'?`<div class="ld" style="margin-top:6px;"><div class="spin"></div>${UI.tsMsg}</div>`:''}
         ${UI.tsStatus==='done'?`<div class="banner ok" style="margin-top:6px;"><span>✓</span><span>${UI.tsMsg}</span></div>`:''}
         ${UI.tsStatus==='error'?`<div class="banner err" style="margin-top:6px;"><span>✗</span><span>${UI.tsMsg}</span></div>`:''}
+        ${auto.length?`
+          <div id="clearauto-wrap" style="margin-top:8px;">
+            <button class="btn btn-r btn-sm btn-full" id="btn-clearauto">✕ Remove all auto stops</button>
+            <div id="clearauto-confirm" style="display:none;gap:8px;align-items:center;">
+              <span style="font-size:16px;color:var(--text2);flex:1;">Remove ${auto.length} auto stop${auto.length!==1?'s':''}?</span>
+              <button class="btn btn-r btn-sm" id="btn-clearauto-yes">Yes</button>
+              <button class="btn btn-sm" id="btn-clearauto-no">No</button>
+            </div>
+          </div>`:''}
+        </div>
+        ${UI.opStatus==='done'?`<div class="banner ok" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✓</span><span>${UI.opMsg}</span></div>`:''}
+        ${UI.opStatus==='error'?`<div class="banner err" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✗</span><span>${UI.opMsg}</span></div>`:''}
+        ${UI.tsStatus==='done'?`<div class="banner ok" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✓</span><span>${UI.tsMsg}</span></div>`:''}
+        ${UI.tsStatus==='error'?`<div class="banner err" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✗</span><span>${UI.tsMsg}</span></div>`:''}
       </div>
       ${r.stops.length?`<div class="card">
-        <div class="ctitle">All Stops (${r.stops.length})</div>
+        <div class="secrow">
+          <div class="ctitle">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt).length:r.stops.length})</div>
+          <button class="btn btn-sm${UI.stopsShowStarred?' btn-p':''}" id="btn-toggle-starred" style="font-size:15px;">${UI.stopsShowStarred?'⭐ Starred':'☆ All'}</button>
+        </div>
         ${clusteredStopRows(r,sdt)}
       </div>`:''}
       ${!sdt?`<div class="banner warn"><span>⚠️</span><span>Set start date & time on the Route tab to see ETAs.</span></div>`:''}
@@ -2315,7 +2328,7 @@ function handleStopsScroll(e){
 // ─── Live tab shell (split layout) ───
 function tLiveShell(r){
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
-  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest';
+  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt;
   const next=r.stops.find(s=>s.dist>liveDist&&starred(s));
   const nextFood=r.stops.find(s=>s.dist>liveDist&&starred(s)&&(s.type==='food'||s.type==='shop'));
   const nextWaterOnly=r.stops.find(s=>s.dist>liveDist&&starred(s)&&s.type==='water');
@@ -2328,7 +2341,7 @@ function tLiveShell(r){
   // Build stop list (upcoming + passed faded, exclude those shown in summary)
   const stopListHtml=(()=>{
     if(!r.stops.length)return'';
-    const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest');
+    const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
   const clusters=clusterStops(planStops);
     let html='';
     // GPS toggle button — single line, clear state
@@ -2437,6 +2450,7 @@ function tLiveShell(r){
         <div class="live-summary" id="live-summary">
           <div style="display:flex;gap:5px;">
             ${summaryCard('Next stop',next,'next')}
+            ${summaryCard('Next sleep',r.stops.find(s=>s.dist>liveDist&&(s.type==='sleep'||s.sleepAt)),'sleep')}
           </div>
           <div style="display:flex;gap:5px;">
             ${summaryCard('Next water',nextWater,'water')}
@@ -2500,7 +2514,7 @@ function tRoutes(r){
   const sdt=startDT(r);
   const adjDur=r.estDuration?r.estDuration*r.timeFactor:null;
   const avgSpd=adjDur&&r.totalDist?(r.totalDist/adjDur).toFixed(1):null;
-  const totalSleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest').reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:4)),0);
+  const totalSleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0);
   const totalH=adjDur?adjDur+totalSleepH:null;
   const finEta=sdt&&adjDur?new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000):null;
   return routeList+`
@@ -2528,7 +2542,7 @@ function tRoutes(r){
     </div>
     <div class="srow" style="grid-template-columns:1fr 1fr;margin-top:7px;">
       <div class="sbox"><div class="sval" id="rt-riding" style="font-size:18px;color:#60a5fa;">${adjDur?fmtHM(adjDur):'—'}</div><div class="slbl" style="color:#60a5fa;">riding</div></div>
-      <div class="sbox">${(()=>{const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):null;const sleepH=r.stops.filter(s=>s.type==='sleep').reduce((a,s)=>a+(s.sleepH||10),0);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl" style="color:#b39ddb;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl" style="color:#b39ddb;">sleep/night</div>';})()}</div>
+      <div class="sbox">${(()=>{const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):null;const sleepH=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||10),0);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl" style="color:#b39ddb;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl" style="color:#b39ddb;">sleep/night</div>';})()}</div>
     </div>
     <div id="rt-sleeprow" style="margin-top:8px;display:flex;gap:12px;font-size:16px;color:var(--text3);font-family:var(--font);"${totalSleepH>0?'':' hidden'}>
       <span>😴 +${totalSleepH.toFixed(1)}h sleep</span>
@@ -2536,7 +2550,7 @@ function tRoutes(r){
     </div>
     ${(()=>{
       const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):0;
-      const sleepStops=r.stops.filter(s=>s.type==='sleep').length;
+      const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;
       if(nights>0&&sleepStops<nights){
         const missing=nights-sleepStops;
         return `<div style="margin-top:6px;font-size:14px;color:rgba(179,157,219,0.7);font-family:var(--font);">😴 ${sleepStops} of ${nights} nights have a sleep stop planned — ${missing} all nighter${missing!==1?'s':''}..? How's the caffeine..?</div>`;
@@ -2552,12 +2566,16 @@ function tRoutes(r){
   <div class="card">
     <div class="ctitle">Speed Factor</div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <button class="btn btn-sm" id="tf-faster" style="flex:1;justify-content:center;">⬅ Faster</button>
+      <button class="btn btn-sm" id="tf-slower" style="flex:1;justify-content:center;flex-direction:column;gap:1px;padding:6px 4px;">
+        <span style="font-size:22px;">⬅</span><span style="font-size:16px;">Slower</span>
+      </button>
       <div style="text-align:center;min-width:70px;">
         <div class="sval" id="tf-val">${r.timeFactor.toFixed(2)}×${r.estDuration&&r.totalDist?` <span style="font-size:16px;color:var(--text3);">(${(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1)} km/h avg)</span>`:''}</div>
         <div style="font-size:15px;color:var(--text3);margin-top:2px;" id="tf-desc">${factorDesc(r.timeFactor)}</div>
       </div>
-      <button class="btn btn-sm" id="tf-slower" style="flex:1;justify-content:center;">Slower ➡</button>
+      <button class="btn btn-sm" id="tf-faster" style="flex:1;justify-content:center;flex-direction:column;gap:1px;padding:6px 4px;">
+        <span style="font-size:22px;">➡</span><span style="font-size:16px;">Faster</span>
+      </button>
     </div>
     <p style="font-size:15px;color:var(--text3);margin-top:4px;">Adjust if you expect to ride slower or faster than the estimates. This is especially important if the upload has no times and you are relying on estimates from this app.</p>
 
@@ -2660,7 +2678,8 @@ function tSettings(r){
 // Render stops list grouped by cluster for the Stops tab
 function clusteredStopRows(r,sdt){
   if(!r.stops.length)return'';
-  const clusters=clusterStops(r.stops);
+  const stops=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt):r.stops;
+  const clusters=clusterStops(stops);
   let html='';
   clusters.forEach(cl=>{
     if(cl.stops.length>1){
@@ -2709,6 +2728,7 @@ function stopRow(s,r,sdt){
       </div>
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="font-size:16px;">${s.starred!==false?'⭐':'☆'}</button>
+        ${s.type!=='sleep'&&s.type!=='rest'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="font-size:15px;${s.sleepAt?'color:var(--accent);border-color:var(--accent3);':''}">${s.sleepAt?'😴':'💤'}</button>`:''}
         <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename">✏️</button>
         ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit position" style="font-size:15px;">📍</button>`:''}
         ${s.type==='sleep'?`<button class="btn btn-sm edit-sleep" data-sid="${s.id}" title="Edit sleep duration" style="font-size:15px;">😴</button>`:''}
@@ -2771,8 +2791,10 @@ function typeIcons(types){
 function stopChip(s,r){
   const stOpen=s.ohRules?shopSt(s,r):'';
   const openDot=stOpen==='open'?'<span style="color:var(--accent)">●</span>':stOpen==='closed'?'<span style="color:var(--red)">●</span>':'';
-  const sleepTag=s.type==='sleep'?' 😴'+(s.sleepH||10)+'h':'';
-  return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);">'+s.icon+' '+s.name+openDot+sleepTag+'</span>';
+  const sleepTag=s.type==='sleep'?' 😴'+(s.sleepH||10)+'h':s.sleepAt?' 😴'+(s.sleepH||10)+'h':'';
+  const sleepBtn=s.type!=='sleep'&&s.type!=='rest'?
+    '<button class="sleep-at-stop" data-sid="'+s.id+'" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;opacity:'+(s.sleepAt?'1':'0.4')+'" title="Sleep here">'+(s.sleepAt?'😴':'💤')+'</button>':'';
+  return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+openDot+sleepTag+sleepBtn+'</span>';
 }
 
 // ─── Sunrise/sunset cache and fetch ───
@@ -2903,22 +2925,30 @@ function tPlan(r){
     }
   }
 
-  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest');
+  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
   const clusters=clusterStops(planStops);
-  // Build nodes: sleep stops get their own timeline entry, pulled out of clusters
+  // Build nodes: sleep/sleepAt stops get their own timeline entry
   const nodeList=[];
   clusters.forEach(cl=>{
-    const sleepStops=cl.stops.filter(s=>s.type==='sleep'||s.type==='rest');
-    const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep');
-    // If cluster has non-sleep stops, add as normal cluster (without sleep)
-    if(nonSleepStops.length){
+    const sleepStops=cl.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt);
+    const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt);
+    if(sleepStops.length){
+      // Use first sleepAt/sleep stop as the cluster head
+      const head=sleepStops[0];
+      const isRest=head.type==='rest';
+      // Chips = other stops in cluster (non-sleep ones)
+      const chipStops=nonSleepStops;
+      const chipCluster=chipStops.length?{...cl,stops:chipStops}:null;
+      nodeList.push({
+        name:head.sleepAt?'Sleep at '+head.name:head.name,
+        dist:head.dist,distEnd:head.dist,
+        cluster:chipCluster, // show non-sleep stops as chips inside
+        isStart:false,isSleep:true,sleepStop:head
+      });
+    } else if(nonSleepStops.length){
       const cl2={...cl,stops:nonSleepStops};
-      nodeList.push({name:cl2.stops.length>0?makeCluster(nonSleepStops).name:cl.name,dist:cl.dist,distEnd:cl.distEnd,cluster:cl2,isStart:false});
+      nodeList.push({name:makeCluster(nonSleepStops).name,dist:cl.dist,distEnd:cl.distEnd,cluster:cl2,isStart:false});
     }
-    // Each sleep stop gets its own node
-    sleepStops.forEach(s=>{
-      nodeList.push({name:s.name,dist:s.dist,distEnd:s.dist,cluster:null,isStart:false,isSleep:true,sleepStop:s});
-    });
   });
   // Re-sort by dist
   nodeList.sort((a,b)=>a.dist-b.dist);
@@ -2928,7 +2958,7 @@ function tPlan(r){
     {name:'Finish 🏁',dist:r.totalDist,distEnd:r.totalDist,isFinish:true,cluster:null},
   ];
 
-  const totalSleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest').reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:4)),0);
+  const totalSleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0);
   const adjDur=r.estDuration?(r.estDuration*r.timeFactor):null;
   const finEta=etaAt(r.totalDist,r);
 
@@ -2980,7 +3010,7 @@ function tPlan(r){
         +'</div>';
     }
     // Cluster sleep departure
-    const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest').reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:4)),0):0;
+    const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0):0;
     const depart=clusterSleepH>0&&eta?new Date(eta.getTime()+clusterSleepH*3600000):null;
     const departDay=depart&&sdt?dayOff(depart,sdt):'';
     const departDiv=depart?'<div style="font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;">▶ '+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</div>':'';
@@ -2998,10 +3028,14 @@ function tPlan(r){
             +'<div style="font-size:15px;color:var(--text3);font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
           +'</div>'
           +(isSleep?'':
-          '<div style="text-align:right;">'
-            +'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:var(--accent);">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>'
-            +daydiv
-            +departDiv
+          '<div style="display:flex;align-items:center;gap:6px;">'
+            +'<div style="text-align:right;">'
+              +'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:var(--accent);">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>'
+              +daydiv
+              +departDiv
+            +'</div>'
+            +(node.cluster&&node.cluster.stops.length===1?'<button class="sleep-at-stop" data-sid="'+node.cluster.stops[0].id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;opacity:'+(node.cluster.stops[0].sleepAt?'1':'0.5')+'" title="Sleep here">'+(node.cluster.stops[0].sleepAt?'😴':'💤')+'</button>':
+             node.cluster?'':'')
           +'</div>')
         +'</div>'
         +(isSleep?sleepDiv:chipsDiv)
@@ -3013,7 +3047,7 @@ function tPlan(r){
       const segDist=next.dist-node.dist;
       const segEtaFrom=node.isStart?sdt:eta;
       const segEtaTo=next.isFinish?finEta:etaAt(next.dist,r);
-      const nodeSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest').reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:4)),0):0;
+      const nodeSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0):0;
       let segRideMs=0;
       if(segEtaFrom&&segEtaTo) segRideMs=Math.max(0,(segEtaTo-segEtaFrom)-(nodeSleepH*3600000));
       const segRideH=segRideMs/3600000;
@@ -3069,7 +3103,7 @@ function patchSpeedFactor(r){
     const spd=(r.totalDist/adj).toFixed(1);
     const vs=document.getElementById('rt-avgspd'),vr=document.getElementById('rt-riding');
     if(vs)vs.textContent=spd;if(vr){vr.textContent=fmtHM(adj);vr.style.color='#60a5fa';}
-    const sleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest').reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:4)),0);
+    const sleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0);
     const vt=document.getElementById('rt-total'),sr=document.getElementById('rt-sleeprow');
     if(sleepH>0){
       if(sr)sr.removeAttribute('hidden');
@@ -3101,7 +3135,7 @@ function updateLive(){
   const r=cur();if(!r)return;
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const prog=liveDist/Math.max(1,r.totalDist);
-  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest';
+  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt;
   const next=r.stops.find(s=>s.dist>liveDist&&starred(s));
   const nextFood=r.stops.find(s=>s.dist>liveDist&&starred(s)&&(s.type==='food'||s.type==='shop'));
   const nextWaterOnly=r.stops.find(s=>s.dist>liveDist&&starred(s)&&s.type==='water');
@@ -3220,7 +3254,34 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
-  // Rename / edit stop → open edit modal
+  // Sleep-at toggle
+  const sa=e.target.closest('.sleep-at-stop');
+  if(sa&&r){
+    const sid=sa.dataset.sid;
+    const s=r.stops.find(x=>x.id===sid);
+    if(s){
+      if(s.sleepAt){
+        s.sleepAt=false;
+        sa.textContent='💤';sa.style.color='';sa.style.borderColor='';
+        saveAll();
+      } else {
+        const raw=prompt('Sleep duration (hours):',UI.lastSleepH||10);
+        if(raw===null)return;
+        const v=parseFloat(raw);
+        if(isNaN(v)||v<=0||v>24){alert('Enter hours between 0 and 24');return;}
+        UI.lastSleepH=v;
+        s.sleepAt=true;s.sleepH=v;s.starred=true;
+        const toRemove=r.stops.filter(x=>!((x.type==='sleep'||x.sleepAt)&&x.id!==s.id&&Math.abs(x.dist-s.dist)<=5));
+        const removed=r.stops.length-toRemove.length;
+        r.stops=toRemove;
+        if(removed>0)console.log(`Removed ${removed} nearby sleep stop(s)`);
+        else console.log(`No nearby sleep stops found. Stops within 10km:`, r.stops.filter(x=>Math.abs(x.dist-s.dist)<=10).map(x=>({name:x.name,type:x.type,dist:x.dist,diff:Math.abs(x.dist-s.dist)})));
+        saveAll();render();
+      }
+    }
+    return;
+  }
+  // Star toggle
   const ss=e.target.closest('.star-stop');
   if(ss&&r){
     const sid=ss.dataset.sid;
@@ -3298,7 +3359,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   // Tap stop → zoom map to it (stops page only)
   const ts=e.target.closest('.tap-stop');
-  if(ts&&!e.target.closest('.del-stop')&&!e.target.closest('.rename-stop')&&!e.target.closest('.star-stop')&&!e.target.closest('.edit-dist')&&!e.target.closest('.edit-sleep')&&!e.target.closest('#em-save')&&!e.target.closest('#edit-modal-x')&&UI.tab==='stops'&&r){
+  if(ts&&!e.target.closest('.del-stop')&&!e.target.closest('.rename-stop')&&!e.target.closest('.star-stop')&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.edit-dist')&&!e.target.closest('.edit-sleep')&&!e.target.closest('#em-save')&&!e.target.closest('#edit-modal-x')&&UI.tab==='stops'&&r){
     const s=r.stops.find(s=>s.id===ts.dataset.sid);
     if(s){
       _highlightStopId=s.id;
@@ -3330,7 +3391,19 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
 
   if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
-  if(e.target.closest('#btn-add-pace')){openPaceModal();return;}
+  if(e.target.closest('#btn-toggle-starred')){
+    UI.stopsShowStarred=!UI.stopsShowStarred;render();return;
+  }
+  if(e.target.closest('#osm-card-hdr')&&!e.target.closest('#btn-overpass')){
+    UI.osmExpanded=!UI.osmExpanded;
+    const body=document.getElementById('osm-body');
+    const arrow=document.getElementById('osm-arrow');
+    const btn=document.getElementById('btn-overpass');
+    if(body)body.style.display=UI.osmExpanded?'':'none';
+    if(arrow)arrow.textContent=UI.osmExpanded?'▼':'▶';
+    if(btn)btn.style.display=UI.osmExpanded?'':'none';
+    return;
+  }
   if(e.target.closest('.edit-pace')&&r){
     const idx=+e.target.closest('.edit-pace').dataset.idx;
     openPaceModal(idx);return;}
