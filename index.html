@@ -627,6 +627,7 @@ function addStop(r,dist,type,name,opts){
     sleepH:opts.sleepH||10,ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
     icon:{food:'🍔',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[type]||'📍',
     auto:opts.auto||false,
+    starred:opts.starred!==undefined?opts.starred:(!opts.auto),
     crossing:opts.crossing||false,
     stockwater:opts.stockwater||false,
     lat:opts.lat||null,lon:opts.lon||null,
@@ -2224,7 +2225,7 @@ function tStopsShell(r){
         <span>👆</span><span>Tap on the map to add a stop</span>
       </div>
       <div class="card">
-        <div class="secrow"><div class="ctitle" style="font-size:14px;">OSM Auto-detect</div>
+        <div class="secrow"><div class="ctitle" style="font-size:14px;">OSM Search</div>
           <button class="btn btn-sm btn-p" id="btn-overpass" ${UI.opStatus==='loading'?'disabled':''}>
             ${UI.opStatus==='loading'?'<div class="spin"></div> Searching…':'🔍 Search OSM'}</button>
         </div>
@@ -2384,7 +2385,8 @@ function tLiveShell(r){
   // Build stop list (upcoming + passed faded, exclude those shown in summary)
   const stopListHtml=(()=>{
     if(!r.stops.length)return'';
-    const clusters=clusterStops(r.stops);
+    const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest');
+  const clusters=clusterStops(planStops);
     let html='';
     // GPS toggle button — single line, clear state
     html+=`<button class="btn btn-full" id="btn-live-gps" style="justify-content:center;${UI.gpsActive?'border-color:rgba(248,113,113,.4);color:var(--red);background:rgba(248,113,113,.08);':'border-color:rgba(74,222,128,.4);color:var(--accent);background:rgba(74,222,128,.08);'}">
@@ -2588,6 +2590,15 @@ function tRoutes(r){
       <span>😴 +${totalSleepH.toFixed(1)}h sleep</span>
       ${totalH?`<span id="rt-total" style="color:#b39ddb;">≈ ${Math.round(totalH)}h total</span>`:'<span id="rt-total"></span>'}
     </div>
+    ${(()=>{
+      const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):0;
+      const sleepStops=r.stops.filter(s=>s.type==='sleep').length;
+      if(nights>0&&sleepStops<nights){
+        const missing=nights-sleepStops;
+        return `<div style="margin-top:6px;font-size:14px;color:rgba(179,157,219,0.7);font-family:var(--font);">😴 ${sleepStops} of ${nights} nights have a sleep stop planned — ${missing} unplanned</div>`;
+      }
+      return '';
+    })()}
     <div style="margin-top:10px;">
       <canvas id="elev-cvs" style="height:56px;border-radius:5px;background:#0d1a0d;"></canvas>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-top:2px;">
@@ -2705,7 +2716,8 @@ function tSettings(r){
 // Render stops list grouped by cluster for the Stops tab
 function clusteredStopRows(r,sdt){
   if(!r.stops.length)return'';
-  const clusters=clusterStops(r.stops);
+  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest');
+  const clusters=clusterStops(planStops);
   let html='';
   clusters.forEach(cl=>{
     if(cl.stops.length>1){
@@ -2749,6 +2761,7 @@ function stopRow(s,r,sdt){
       <div class="si-time">${day?day.trim()+' ':''}${fmtT(eta)}</div>
       ${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}
       <div style="display:flex;gap:4px;margin-top:4px;">
+        <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="font-size:16px;">${s.starred!==false?'⭐':'☆'}</button>
         <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename">✏️</button>
         ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit position" style="font-size:15px;">📍</button>`:''}
         ${s.type==='sleep'?`<button class="btn btn-sm edit-sleep" data-sid="${s.id}" title="Edit sleep duration" style="font-size:15px;">😴</button>`:''}
@@ -2921,6 +2934,7 @@ function tPlan(r){
     <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>`;
   if(!r.stops.length) return header+'<div class="banner info"><span>📊</span><span>Add stops on the Stops tab to see your plan.</span></div>';
+  const unstarredCount=r.stops.filter(s=>s.starred===false&&s.type!=='sleep'&&s.type!=='rest').length;
 
   // Fetch sun times for route midpoint if not cached — re-render when done
   if(sdt&&r.points.length){
@@ -2942,7 +2956,8 @@ function tPlan(r){
     }
   }
 
-  const clusters=clusterStops(r.stops);
+  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest');
+  const clusters=clusterStops(planStops);
   // Build nodes: sleep stops get their own timeline entry, pulled out of clusters
   const nodeList=[];
   clusters.forEach(cl=>{
@@ -3089,7 +3104,8 @@ function tPlan(r){
   if(totalSleepH)summaryParts.push('<span>😴 '+totalSleepH.toFixed(1)+'h sleep</span>');
   if(finEta&&sdt)summaryParts.push('<span style="color:var(--accent)">Finish '+fmtT(finEta)+dayOff(finEta,sdt)+'</span>');
 
-  return header+(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
+  return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;">⭐ Showing starred stops only · ${unstarredCount} unstarred stop${unstarredCount!==1?'s':''} hidden</div>`:'')
+  +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
     +'<div class="card" style="padding:14px 12px;">'
       +'<div class="ctitle">Resupply Plan — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
       +rows
@@ -3257,6 +3273,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Rename / edit stop → open edit modal
+  const ss=e.target.closest('.star-stop');
+  if(ss&&r){const sid=ss.dataset.sid;const s=r.stops.find(x=>x.id===sid);if(s){s.starred=s.starred===false?true:false;saveAll();render();}return;}
   const rn=e.target.closest('.rename-stop');
   if(rn&&r){
     const s=r.stops.find(s=>s.id===rn.dataset.sid);
@@ -3323,7 +3341,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   // Tap stop → zoom map to it (stops page only)
   const ts=e.target.closest('.tap-stop');
-  if(ts&&!e.target.closest('.del-stop')&&!e.target.closest('.rename-stop')&&!e.target.closest('.edit-dist')&&!e.target.closest('.edit-sleep')&&!e.target.closest('#em-save')&&!e.target.closest('#edit-modal-x')&&UI.tab==='stops'&&r){
+  if(ts&&!e.target.closest('.del-stop')&&!e.target.closest('.rename-stop')&&!e.target.closest('.star-stop')&&!e.target.closest('.edit-dist')&&!e.target.closest('.edit-sleep')&&!e.target.closest('#em-save')&&!e.target.closest('#edit-modal-x')&&UI.tab==='stops'&&r){
     const s=r.stops.find(s=>s.id===ts.dataset.sid);
     if(s){
       _highlightStopId=s.id;
