@@ -265,7 +265,10 @@ select option{background:var(--bg3);}
     </div>
     <div id="m-hours-row" class="field" style="display:none;">
       <label class="lbl">Opening hours (optional)</label>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
+      <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:15px;cursor:pointer;">
+        <input type="checkbox" id="m-oh-none" checked> No set hours (unknown)
+      </label>
+      <div id="m-oh-times" style="display:none;display:flex;gap:8px;align-items:flex-end;">
         <div style="flex:1;"><label class="lbl" style="font-size:13px;">Opens</label><input type="time" id="m-open" value="08:00" class="time-compact"></div>
         <div style="flex:1;"><label class="lbl" style="font-size:13px;">Closes</label><input type="time" id="m-close" value="20:00" class="time-compact"></div>
       </div>
@@ -646,7 +649,7 @@ async function fetchOverpass(){
   const r=cur();if(!r||!r.points.length)return;
   UI.opStatus='loading';UI.opMsg='Searching OSM…';render();
   const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
-  const bb=`${(Math.min(...lats)-.04).toFixed(5)},${(Math.min(...lons)-.04).toFixed(5)},${(Math.max(...lats)+.04).toFixed(5)},${(Math.max(...lons)+.04).toFixed(5)}`;
+  const bb=`${(lats.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lons.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lats.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)},${(lons.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)}`;
   // Build query based on UI.osmOpts flags
   const opts=UI.osmOpts||{towns:true,water:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,hotels:false,toilets:false,huts:false,camp:true,peaks:false,crossings:false};
   const parts=[];
@@ -750,7 +753,7 @@ async function fetchTownSearch(query){
     const hits=await res.json();
     // Prefer a result near the route bounding box
     const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
-    const rMinLat=Math.min(...lats),rMaxLat=Math.max(...lats),rMinLon=Math.min(...lons),rMaxLon=Math.max(...lons);
+    const rMinLat=lats.reduce((a,b)=>a<b?a:b,Infinity),rMaxLat=lats.reduce((a,b)=>a>b?a:b,-Infinity),rMinLon=lons.reduce((a,b)=>a<b?a:b,Infinity),rMaxLon=lons.reduce((a,b)=>a>b?a:b,-Infinity);
     const rCLat=(rMinLat+rMaxLat)/2,rCLon=(rMinLon+rMaxLon)/2;
     if(!hits.length)throw new Error('Place not found');
     // Score by distance from route centre
@@ -975,10 +978,10 @@ function drawTiles(ctx,W,H,cLon,cLat,scale,kx,ky,anchor,cvsId){
     lon:cLon+(p.x-cpx)/(kx*scale),
     lat:cLat+(cpy-p.y)/(ky*scale)
   }));
-  const minLon=Math.min(...corners.map(p=>p.lon));
-  const maxLon=Math.max(...corners.map(p=>p.lon));
-  const minLat=Math.min(...corners.map(p=>p.lat));
-  const maxLat=Math.max(...corners.map(p=>p.lat));
+  const minLon=corners.map(p=>p.lon).reduce((a,b)=>a<b?a:b,Infinity);
+  const maxLon=corners.map(p=>p.lon).reduce((a,b)=>a>b?a:b,-Infinity);
+  const minLat=corners.map(p=>p.lat).reduce((a,b)=>a<b?a:b,Infinity);
+  const maxLat=corners.map(p=>p.lat).reduce((a,b)=>a>b?a:b,-Infinity);
   const t0=lonLatToTile(minLon,maxLat,tileZ); // top-left tile
   const t1=lonLatToTile(maxLon,minLat,tileZ); // bottom-right tile
   for(let tx=t0.x-1;tx<=t1.x+1;tx++){
@@ -1024,8 +1027,8 @@ function drawMap(cvs,r,opts){
   const mapFontSm=Math.max(11,Math.round(W*0.032));
   const mapFontXs=Math.max(10,Math.round(W*0.026));
   const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
-  const minLat=Math.min(...lats),maxLat=Math.max(...lats);
-  const minLon=Math.min(...lons),maxLon=Math.max(...lons);
+  const minLat=lats.reduce((a,b)=>a<b?a:b,Infinity),maxLat=lats.reduce((a,b)=>a>b?a:b,-Infinity);
+  const minLon=lons.reduce((a,b)=>a<b?a:b,Infinity),maxLon=lons.reduce((a,b)=>a>b?a:b,-Infinity);
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=18;
@@ -1242,8 +1245,8 @@ function zoomForKmWidth(canvasId, kmWidth, forcedH){
   const H=forcedH||cvs.offsetHeight||240;
   const pts=r.points;
   const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
-  const minLat=Math.min(...lats),maxLat=Math.max(...lats);
-  const minLon=Math.min(...lons),maxLon=Math.max(...lons);
+  const minLat=lats.reduce((a,b)=>a<b?a:b,Infinity),maxLat=lats.reduce((a,b)=>a>b?a:b,-Infinity);
+  const minLon=lons.reduce((a,b)=>a<b?a:b,Infinity),maxLon=lons.reduce((a,b)=>a>b?a:b,-Infinity);
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=18;
@@ -1538,7 +1541,7 @@ function drawElev(cvs,r){
   cvs.width=cvs.offsetWidth*dpr;cvs.height=56*dpr;
   const ctx=cvs.getContext('2d');ctx.scale(dpr,dpr);
   const W=cvs.offsetWidth,H=56;
-  const eles=pts.map(p=>p.ele),mn=Math.min(...eles),mx=Math.max(...eles),rng=mx-mn||1;
+  const eles=pts.map(p=>p.ele),mn=eles.reduce((a,b)=>a<b?a:b,Infinity),mx=eles.reduce((a,b)=>a>b?a:b,-Infinity),rng=mx-mn||1;
   const x=i=>(pts[i].dist/r.totalDist)*W,y=i=>H-5-((pts[i].ele-mn)/rng)*(H-10);
   const xd=d=>(d/r.totalDist)*W;
   ctx.beginPath();ctx.moveTo(x(0),y(0));
@@ -1584,6 +1587,8 @@ function openModal(km){
   inp.min=0;inp.max=r.totalDist;inp.value=v;
   document.getElementById('m-name').value='';
   document.getElementById('m-type').value='sleep';
+  const noneChk=document.getElementById('m-oh-none');
+  if(noneChk){noneChk.checked=true;document.getElementById('m-oh-times').style.display='none';}
   updateModalFields();
   document.getElementById('stop-modal').style.display='flex';
 }
@@ -1637,8 +1642,8 @@ function openPaceModal(editIdx){
       const cvs2=document.getElementById('pace-map');
       if(cvs2&&r.points.length){
         const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
-        const minLat=Math.min(...lats),maxLat=Math.max(...lats);
-        const minLon=Math.min(...lons),maxLon=Math.max(...lons);
+        const minLat=lats.reduce((a,b)=>a<b?a:b,Infinity),maxLat=lats.reduce((a,b)=>a>b?a:b,-Infinity);
+        const minLon=lons.reduce((a,b)=>a<b?a:b,Infinity),maxLon=lons.reduce((a,b)=>a>b?a:b,-Infinity);
         state.cx=(minLon+maxLon)/2;state.cy=(minLat+maxLat)/2;
         const W=cvs2.offsetWidth||300;
         const kx=111.32*Math.cos(state.cy*Math.PI/180);
@@ -1889,15 +1894,21 @@ document.getElementById('em-save').addEventListener('click',()=>{
   }
   closeEditModal();
 });
+document.getElementById('m-oh-none').addEventListener('change',function(){
+  document.getElementById('m-oh-times').style.display=this.checked?'none':'flex';
+});
 document.getElementById('modal-ok').addEventListener('click',()=>{
   const r=cur();if(!r)return;
   const t=document.getElementById('m-type').value;
   const name=document.getElementById('m-name').value.trim();
   const dist=parseFloat(document.getElementById('m-dist').value);
   const sleepH=parseFloat(document.getElementById('m-sleep').value||10);
-  const openT=document.getElementById('m-open').value,closeT=document.getElementById('m-close').value;
+  const noHours=document.getElementById('m-oh-none').checked;
   let ohRaw=null,ohRules=null;
-  if((t==='food'||t==='shop'||t==='town')&&openT&&closeT){ohRaw=openT+'-'+closeT;ohRules=parseOH(ohRaw);}
+  if(!noHours&&(t==='food'||t==='shop'||t==='town')){
+    const openT=document.getElementById('m-open').value,closeT=document.getElementById('m-close').value;
+    if(openT&&closeT){ohRaw=openT+'-'+closeT;ohRules=parseOH(ohRaw);}
+  }
   addStop(r,dist,t,name||(t+' at '+dist.toFixed(1)+'km'),{sleepH,ohRaw,ohRules});
   saveAll();closeModal();render();
 });
@@ -2111,15 +2122,34 @@ let _rf=false;
 function scrollTileToTop(tile){
   const scroller=document.querySelector('.stops-scroll');
   if(!scroller||!tile)return;
+  _stopsScrollLocked=true;
+  _stopsMapExpanded=true;
+  resetMapScroll(true); // slide map back down to full position
   const scrollerRect=scroller.getBoundingClientRect();
   const tileRect=tile.getBoundingClientRect();
-  // tileRect.top - scrollerRect.top = current visual offset of tile from scroller top
-  const offset=tileRect.top - scrollerRect.top;
-  scroller.scrollTo({top:scroller.scrollTop + offset, behavior:'smooth'});
+  const currentMapH=document.getElementById('stops-map-panel')?.offsetHeight||0;
+  const targetMapH=_stopsMapH(0.65);
+  const growth=Math.max(0,targetMapH-currentMapH);
+  scroller.scrollTo({top:scroller.scrollTop+tileRect.top-scrollerRect.top+growth,behavior:'smooth'});
+  // Expand map simultaneously
+  setStopsMapHeight(0.65,true);
+  // Fine-correct position after map settles — stay locked the whole time
+  setTimeout(()=>{
+    const sr2=scroller.getBoundingClientRect();
+    const tr2=tile.getBoundingClientRect();
+    const err=tr2.top-sr2.top;
+    if(Math.abs(err)>8)scroller.scrollBy({top:err,behavior:'smooth'});
+    setTimeout(()=>{
+      _lastStopsScrollTop=scroller.scrollTop;
+      _stopsUpStart=null;
+      _stopsScrollLocked=false;
+    },300);
+  },250);
 }
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
 
 function _render(){
+  initDesktop(); // ensure content-wrap is in the right container
   // Tabs
   document.getElementById('tabs').innerHTML=TABS.map(t=>
     `<button class="tab ${UI.tab===t.id?'active':''}" data-tab="${t.id}">
@@ -2137,7 +2167,19 @@ function _render(){
   } else if(UI.tab==='stops'&&r){
     // Stops: fixed map panel + scrollable section below
     wrap.innerHTML=tStopsShell(r);
-    setTimeout(()=>initStopsMap(r),30);
+    _lastStopsScrollTop=0;
+    _stopsMapExpanded=true;
+    _stopsScrollLocked=false;
+    _stopsTileSelected=false;
+    _stopsScrollBaseline=0;
+    _stopsUpStart=null;
+    setTimeout(()=>{resetMapScroll(false);},50);
+    setTimeout(()=>{
+      initStopsMap(r);
+      const sc=document.querySelector('.stops-scroll');
+      if(sc)sc.scrollTop=0;
+    },30);
+    ensureStopsScrollListener();
   } else {
     // All other tabs: normal scrolling content
     let html='';
@@ -2169,9 +2211,9 @@ function tStopsShell(r){
   const auto=r.stops.filter(s=>s.auto);
   return`
   <div class="stops-outer">
-    <div class="stops-map-panel">
-      <div class="map-wrap" style="height:320px;">
-        <canvas id="stops-map" style="height:320px;"></canvas>
+    <div class="stops-map-panel" id="stops-map-panel">
+      <div class="map-wrap" id="stops-map-wrap">
+        <canvas id="stops-map"></canvas>
         <div class="mhint">tap route to add · drag to pan</div>
         ${mapCtrlHTML('stops-map',false)}
       </div>
@@ -2227,10 +2269,104 @@ function tStopsShell(r){
   </div>`;
 }
 
+function _stopsMapH(fraction){
+  const tabsH=document.getElementById('tabs').offsetHeight;
+  const headerH=document.querySelector('.header')?.offsetHeight||48;
+  const viewH=window.visualViewport?window.visualViewport.height:window.innerHeight;
+  return Math.round((viewH-tabsH-headerH)*fraction);
+}
+
+function setStopsMapHeight(fraction,animate,skipRedraw){
+  const panel=document.getElementById('stops-map-panel');
+  const wrap=document.getElementById('stops-map-wrap');
+  const cvs=document.getElementById('stops-map');
+  if(!panel||!wrap||!cvs)return;
+  const h=_stopsMapH(fraction);
+  if(animate){
+    panel.style.transition='height 0.2s ease-out';
+    wrap.style.transition='height 0.2s ease-out';
+  } else {
+    panel.style.transition='none';
+    wrap.style.transition='none';
+  }
+  panel.style.height=h+'px';
+  wrap.style.height=h+'px';
+  cvs.style.height=h+'px';
+  cvs._forcedH=h;
+  if(!skipRedraw)redrawMap('stops-map');
+}
+
+function scrollMapUp(px){
+  // Slide map panel up by px using negative margin-top, clamped to map height
+  const panel=document.getElementById('stops-map-panel');
+  if(!panel)return;
+  const maxH=_stopsMapH(0.65);
+  const minH=_stopsMapH(0.20);
+  const margin=Math.min(px,maxH-minH);
+  panel.style.transition='none';
+  panel.style.marginTop=-margin+'px';
+}
+
+function resetMapScroll(animate){
+  const panel=document.getElementById('stops-map-panel');
+  if(!panel)return;
+  if(animate)panel.style.transition='margin-top 0.2s ease-out';
+  else panel.style.transition='none';
+  panel.style.marginTop='0px';
+}
+
+let _stopsRedrawTimer=null;
+function scheduleStopsRedraw(){
+  if(_stopsRedrawTimer)clearTimeout(_stopsRedrawTimer);
+  _stopsRedrawTimer=setTimeout(()=>{
+    _stopsRedrawTimer=null;
+    redrawMap('stops-map');
+  },120);
+}
+
 function initStopsMap(r){
   const cvs=document.getElementById('stops-map');if(!cvs)return;
+  // Set default height ~55% of available screen
+  setStopsMapHeight(0.65,false);
   drawMap(cvs,r,{anchor:0.5,highlightId:_highlightStopId});
   attachMap(cvs,km=>openModal(km));
+}
+
+// Stops scroll listener — attached to document so it survives re-renders
+let _stopsScrollBound=false;
+function ensureStopsScrollListener(){
+  if(_stopsScrollBound)return;
+  _stopsScrollBound=true;
+  document.addEventListener('scroll',handleStopsScroll,{passive:true,capture:true});
+}
+let _lastStopsScrollTop=0;
+let _stopsMapExpanded=true;
+let _stopsScrollLocked=false;
+let _stopsTileSelected=false;
+let _stopsScrollBaseline=0;
+let _stopsUpStart=null;
+function handleStopsScroll(e){
+  const scroller=e.target;
+  if(!scroller||!scroller.classList||!scroller.classList.contains('stops-scroll'))return;
+  if(_stopsScrollLocked)return;
+  const st=scroller.scrollTop;
+  const dir=st<_lastStopsScrollTop?'up':'down';
+  _lastStopsScrollTop=st;
+  const maxSlide=_stopsMapH(0.65)-_stopsMapH(0.20);
+  if(dir==='down'){
+    if(_stopsUpStart===null)_stopsUpStart=st;
+    const margin=Math.min(st-_stopsUpStart,maxSlide);
+    scrollMapUp(Math.max(0,margin));
+    scheduleStopsRedraw();
+  } else {
+    // Scrolling up — restore map and reset
+    if(_stopsUpStart!==null){
+      _stopsUpStart=null;
+      resetMapScroll(true);
+      _stopsMapExpanded=true;
+      scheduleStopsRedraw();
+    }
+  }
 }
 
 // ─── Live tab shell (split layout) ───
@@ -2616,6 +2752,7 @@ function stopRow(s,r,sdt){
         <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename">✏️</button>
         ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit position" style="font-size:15px;">📍</button>`:''}
         ${s.type==='sleep'?`<button class="btn btn-sm edit-sleep" data-sid="${s.id}" title="Edit sleep duration" style="font-size:15px;">😴</button>`:''}
+        ${(()=>{const lat=s.lat||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lat;const lon=s.lon||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lon;return lat&&lon?`<a href="https://maps.google.com/?q=${lat.toFixed(5)},${lon.toFixed(5)}" target="_blank" class="btn btn-sm" title="Open in Google Maps" style="text-decoration:none;font-size:13px;font-family:var(--font);font-weight:600;padding:0 8px;">MAP</a>`:'';})()}
         ${isTown?'':`<button class="btn btn-r btn-sm del-stop" data-sid="${s.id}">✕</button>`}
       </div>
     </div>
@@ -2788,8 +2925,8 @@ function tPlan(r){
   // Fetch sun times for route midpoint if not cached — re-render when done
   if(sdt&&r.points.length){
     const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
-    const midLat=(Math.min(...lats)+Math.max(...lats))/2;
-    const midLon=(Math.min(...lons)+Math.max(...lons))/2;
+    const midLat=(lats.reduce((a,b)=>a<b?a:b,Infinity)+lats.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+    const midLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
     const finEtaTmp=etaAt(r.totalDist,r);
     const days=finEtaTmp?Math.ceil((finEtaTmp-sdt)/86400000)+1:3;
     const missingDays=[];
@@ -2835,8 +2972,8 @@ function tPlan(r){
 
   // Sun data for day/night colours
   const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
-  const midLat=(Math.min(...lats)+Math.max(...lats))/2;
-  const midLon=(Math.min(...lons)+Math.max(...lons))/2;
+  const midLat=(lats.reduce((a,b)=>a<b?a:b,Infinity)+lats.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+  const midLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
   const getSun=(dt)=>{
     if(!dt)return null;
     // Use local date string (not UTC) so we get the right day's sun times
@@ -3368,7 +3505,7 @@ function loadDemo(){
 // ═══════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════
-loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>render());
+loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{initDesktop();render();});
 </script>
 <script>
 // Inject PWA manifest with hardcoded PNG icon
