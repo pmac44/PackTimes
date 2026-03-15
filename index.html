@@ -1994,7 +1994,7 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
     const openT=document.getElementById('m-open').value,closeT=document.getElementById('m-close').value;
     if(openT&&closeT){ohRaw=openT+'-'+closeT;ohRules=parseOH(ohRaw);}
   }
-  addStop(r,dist,t,name||(t+' at '+dist.toFixed(1)+'km'),{sleepH,ohRaw,ohRules});
+  addStop(r,dist,t,name||(t.charAt(0).toUpperCase()+t.slice(1)+' at '+dist.toFixed(1)+'km'),{sleepH,ohRaw,ohRules});
   saveAll();closeModal();render();
 });
 
@@ -2641,13 +2641,18 @@ function tRoutes(r){
         <span class="startbar-lbl">🚦</span>
         <span class="startbar-lbl">Start</span>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex:1;">
-        ${sdt?`<span style="font-family:var(--font);font-size:18px;color:var(--accent);font-weight:500;">${sdt.toLocaleDateString('en-GB',{weekday:'short'})}</span>`:''}
-        <input type="date" value="${r.startDate}" id="inp-date" style="background:none;border:none;color:var(--accent);font-family:var(--font);font-size:18px;font-weight:500;padding:0;outline:none;">
-        <input type="time" value="${r.startTime}" id="inp-time" style="background:none;border:none;color:var(--accent);font-family:var(--font);font-size:18px;font-weight:500;padding:0;outline:none;">
+      <div style="display:flex;gap:8px;align-items:center;flex:1;position:relative;">
+        <span style="font-family:var(--font);font-size:18px;color:#67e8f9;font-weight:500;pointer-events:none;">
+          ${sdt?sdt.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'2-digit'}):'Pick date'}
+        </span>
+        <input type="date" value="${r.startDate}" id="inp-date" style="position:absolute;left:0;top:0;width:50%;height:100%;opacity:0;cursor:pointer;">
+        <span style="font-family:var(--font);font-size:18px;color:#67e8f9;font-weight:500;pointer-events:none;">
+          ${r.startTime||'--:--'}
+        </span>
+        <input type="time" value="${r.startTime}" id="inp-time" style="position:absolute;right:0;top:0;width:40%;height:100%;opacity:0;cursor:pointer;">
       </div>
     </div>
-    ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="margin-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000))}</span></div>`:''}
+    ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="padding-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000))}</span></div>`:''}
   </div>
   <div class="card">
     <div class="ctitle">Route Summary</div>
