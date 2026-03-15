@@ -2522,7 +2522,7 @@ function tLiveShell(r){
         ${mapCtrlHTML('live-map',true)}
         ${progressOverlay}
         ${(()=>{
-          // Turn popup — show when within alertDistKm of next turn
+          if(!UI.gpsActive)return '';
           const alertDistKm=0.5;
           const turns=r.turns||[];
           // Reset dismissed flag for turns we've passed
