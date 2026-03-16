@@ -3631,9 +3631,9 @@ function dayNightBg(dt,sun){
   // Interpolate between key colours
   const lerp=(a,b,f)=>Math.round(a+(b-a)*f);
   const rgb=(r,g,b,a)=>`rgba(${r},${g},${b},${a})`;
-  // Key colours: night=navy, twilight=deep orange, golden hour=amber, midday=bright yellow
-  const night=[8,18,45],twi=[140,80,25],gold=[160,130,30],day=[180,160,40];
-  const nightA=0.82,twilA=0.72,goldA=0.55,dayA=0.45;
+  // Key colours: night=navy, twilight=warm purple, golden hour=soft blue-pink, midday=sky blue
+  const night=[8,18,45],twi=[60,55,100],gold=[40,80,140],day=[20,70,160];
+  const nightA=0.82,twilA=0.72,goldA=0.5,dayA=0.4;
   if(t<=dawn){return rgb(...night,nightA);}
   if(t>=dusk){return rgb(...night,nightA);}
   if(t<=sunrise){
