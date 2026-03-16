@@ -2186,8 +2186,11 @@ function renderDesktopMap(){
   if(tb)tb.textContent=['OSM','SAT','off'][_tileMode];
   // Size canvas to its container
   const pane=document.getElementById('desktop-map-pane');
-  cvs.style.width=pane.offsetWidth+'px';
-  cvs.style.height=pane.offsetHeight+'px';
+  const pw=pane.offsetWidth,ph=pane.offsetHeight;
+  if(!pw||!ph)return;
+  cvs.style.width=pw+'px';
+  cvs.style.height=ph+'px';
+  cvs._forcedH=ph;
   const isLive=UI.tab==='live';
   drawMap(cvs,r,{
     showGPS:isLive,
