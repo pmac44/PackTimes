@@ -1344,8 +1344,13 @@ function drawMap(cvs,r,opts){
     ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
     // Highlight selected stop
     if(opts.highlightId&&opts.highlightId===s.id){
-      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),11,0,Math.PI*2);
-      ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+      const isDesktop=cvs.id==='desktop-map';
+      // Outer glow ring
+      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),isDesktop?22:14,0,Math.PI*2);
+      ctx.fillStyle=isDesktop?'rgba(239,68,68,0.25)':'rgba(239,68,68,0.2)';ctx.fill();
+      // Inner solid ring
+      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),isDesktop?14:10,0,Math.PI*2);
+      ctx.strokeStyle='#ef4444';ctx.lineWidth=isDesktop?3:2;ctx.stroke();
     }
   });
 
@@ -1693,20 +1698,30 @@ function hitTest(cvs,cx,cy,cb){
           const offKm=(bestStop.offRouteM||0)/1000;
           state.zoom=zoomForKmWidth(cvs.id,offKm>0.5?Math.max(1.5,offKm*3):1.5);
           redrawMap(cvs.id);
-        } else {
-          // Desktop map — just highlight, no zoom/pan
-          redrawMap(cvs.id);
         }
-        // Scroll sidebar to the stop tile
-        if(cvs.id==='desktop-map'&&UI.tab!=='stops'){UI.tab='stops';render();}
-        setTimeout(()=>{
-          const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
-          if(tile){
-            document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
-            tile.classList.add('hi');
-            scrollTileToTop(tile);
-          }
-        },cvs.id==='desktop-map'?80:0);
+        // Scroll sidebar to stop tile FIRST, then redraw desktop map after
+        if(cvs.id==='desktop-map'){
+          if(UI.tab!=='stops'){UI.tab='stops';render();}
+          setTimeout(()=>{
+            const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
+            if(tile){
+              document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
+              tile.classList.add('hi');
+              scrollTileToTop(tile);
+            }
+            // Redraw after scroll is complete
+            redrawMap('desktop-map');
+          },50);
+        } else {
+          setTimeout(()=>{
+            const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
+            if(tile){
+              document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
+              tile.classList.add('hi');
+              scrollTileToTop(tile);
+            }
+          },0);
+        }
         return;
       }
     }
