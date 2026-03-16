@@ -1220,8 +1220,9 @@ function drawMap(cvs,r,opts){
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
+  const padBottom=id==='desktop-map'?110:pad; // extra bottom clearance for elevation profile
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
-  const baseScale=Math.min((W-pad*2)/lonKm,(H-pad*2)/latKm);
+  const baseScale=Math.min((W-pad*2)/lonKm,(H-pad-padBottom)/latKm);
   const scale=baseScale*state.zoom;
   let cLon=state.cx!==null?state.cx:(maxLon+minLon)/2;
   let cLat=state.cy!==null?state.cy:(maxLat+minLat)/2;
@@ -1655,9 +1656,10 @@ function attachMap(cvs,tapCb){
 function hitTest(cvs,cx,cy,cb){
   const rect=cvs.getBoundingClientRect();
   const mx=cx-rect.left,my=cy-rect.top;
+  cvs._lastTapX=mx;cvs._lastTapY=my;
   const{_px:px,_py:py,_pts:pts}=cvs;
-  // First check if tap is near a stop dot
-  if(cvs.id==='stops-map'){
+  // Handle stop dot taps for stops-map and desktop-map
+  if(cvs.id==='stops-map'||cvs.id==='desktop-map'){
     const r=cur();
     if(r&&r.stops.length){
       let bestStop=null,bestStopD=Infinity;
@@ -1668,28 +1670,33 @@ function hitTest(cvs,cx,cy,cb){
         if(d<bestStopD){bestStopD=d;bestStop=s;}
       });
       if(Math.sqrt(bestStopD)<28){
-        // Scroll stop list to this tile
-        const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
-        if(tile){
-          document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
-          tile.classList.add('hi');
-          // Scroll tile to just below map
-          const scroller=document.querySelector('.stops-scroll');
-          scrollTileToTop(tile);
+        _highlightStopId=bestStop.id;
+        const state=ms(cvs.id);
+        const p=pts[cidx(r,bestStop.dist)];
+        const panLon=(bestStop.lat&&bestStop.lon)?bestStop.lon:p.lon;
+        const panLat=(bestStop.lat&&bestStop.lon)?bestStop.lat:p.lat;
+        state.cx=panLon;state.cy=panLat;
+        const offKm=(bestStop.offRouteM||0)/1000;
+        state.zoom=zoomForKmWidth(cvs.id,offKm>0.5?Math.max(1.5,offKm*3):1.5);
+        redrawMap(cvs.id);
+        // Scroll sidebar to the stop tile
+        if(cvs.id==='desktop-map'&&UI.tab!=='stops'){UI.tab='stops';render();}
+        setTimeout(()=>{
+          const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
+          if(tile){
+            document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
+            tile.classList.add('hi');
+            scrollTileToTop(tile);
+          }
+        },cvs.id==='desktop-map'?80:0);
+        return;
+      }
+    }
+  }
           // Also highlight on map
           _highlightStopId=bestStop.id;
           const state=_ms['stops-map']||(_ms['stops-map']={zoom:1,cx:null,cy:null});
           const panLon=(bestStop.lat&&bestStop.lon)?bestStop.lon:pts[cidx(r,bestStop.dist)].lon;
-          const panLat=(bestStop.lat&&bestStop.lon)?bestStop.lat:pts[cidx(r,bestStop.dist)].lat;
-          state.cx=panLon;state.cy=panLat;
-          const offKm=(bestStop.offRouteM||0)/1000;
-          state.zoom=zoomForKmWidth('stops-map',offKm>0.5?Math.max(1.5,offKm*3):1.5);
-          redrawMap('stops-map');
-        }
-        return; // don't open add-stop modal
-      }
-    }
-  }
   // Normal route tap — find nearest route point
   let best=0,bd=Infinity;
   pts.forEach((p,i)=>{const dx=px(p.lon)-mx,dy=py(p.lat)-my,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i;}});
@@ -2178,7 +2185,8 @@ function renderDesktopMap(){
     anchor:isLive?0.75:0.5,
     highlightId:_highlightStopId
   });
-  attachMap(cvs,null);
+  // Tap callback: stop dots handled by hitTest, route tap opens add-stop modal
+  attachMap(cvs,km=>openModal(km));
   // Draw elevation profile
   const ec=document.getElementById('desktop-elev');
   const ew=document.getElementById('desktop-elev-wrap');
@@ -2210,9 +2218,13 @@ function renderDesktopMap(){
     r.stops.forEach(s=>{
       if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
       const x=ex(s.dist);
+      // Find nearest elevation point
+      const nearPt=epts.reduce((best,p)=>Math.abs(p.dist-s.dist)<Math.abs(best.dist-s.dist)?p:best,epts[0]);
+      const y=ey(nearPt.ele);
       const isSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
-      ctx.beginPath();ctx.arc(x,72,3,0,Math.PI*2);
+      ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
       ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=0.5;ctx.stroke();
     });
   }
 }
