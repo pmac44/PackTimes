@@ -992,11 +992,19 @@ function simStart(){
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
     const r=cur();
     if(r){const snap=snapTo(r,p.lat,p.lon);if(snap)UI.gpsDistKm=snap.dist;}
+    // Auto-dismiss stop alert check
+    if(UI._alertStopDist!=null&&UI.gpsDistKm>UI._alertStopDist+0.1){
+      document.getElementById('alert-overlay').style.display='none';
+      UI._alertStopDist=null;
+    }
     checkAlerts();
     if(UI.tab==='live')updateLive();
     else updateGPSPill();
     const status=document.getElementById('sim-status');
-    if(status)status.textContent=`Point ${_simIdx+1}/${_simPts.length} · ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`;
+    if(status){
+      const distKm=UI.gpsDistKm?UI.gpsDistKm.toFixed(1)+'km':'—';
+      status.textContent=`Point ${_simIdx+1}/${_simPts.length} · ${distKm} along route`;
+    }
     _simIdx++;
     // Calculate delay from real timestamps
     let delay=100;
@@ -1038,12 +1046,19 @@ const OFF_ROUTE_SECS=8; // seconds before alerting
 
 function checkAlerts(){
   const r=cur();if(!r||UI.gpsDistKm===null||!UI.gpsPos)return;
+  // Auto-dismiss stop alert when 100m past the stop
+  if(UI._alertStopDist!==null&&UI._alertStopDist!==undefined){
+    if(UI.gpsDistKm>UI._alertStopDist+0.1){
+      document.getElementById('alert-overlay').style.display='none';
+      UI._alertStopDist=null;
+    }
+  }
   // Stop proximity alerts
   for(const s of r.stops){
     if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)continue;
     const rem=s.dist-UI.gpsDistKm;
     if(rem>0&&rem<=UI.alertKm&&!UI.alertedStops.has(s.id)){
-      UI.alertedStops.add(s.id);showAlert(s,rem,r);break;
+      UI.alertedStops.add(s.id);UI._alertStopDist=s.dist;showAlert(s,rem,r);break;
     }
   }
   // Off-route detection
@@ -1093,6 +1108,7 @@ function showAlert(s,remKm,r){
 }
 document.getElementById('alert-ok').addEventListener('click',()=>{
   document.getElementById('alert-overlay').style.display='none';
+  UI._alertStopDist=null;
   if(_wakeLock){_wakeLock.release();_wakeLock=null;}
 });
 document.getElementById('gpspill').addEventListener('click',toggleGPS);
@@ -2650,7 +2666,7 @@ function tLiveShell(r){
         ${progressOverlay}
         ${(()=>{
           if(!UI.gpsActive)return '';
-          const alertDistKm=(UI.turnAlertM||30)/1000;
+          const alertDistKm=UI.simRunning?(UI.turnAlertM||30)*20/1000:(UI.turnAlertM||30)/1000;
           const turns=r.turns||[];
           // Reset dismissed flag for turns we've passed
           turns.forEach(t=>{if(t.dist<=liveDist)t._dismissed=false;});
