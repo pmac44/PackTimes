@@ -1605,10 +1605,13 @@ function attachMap(cvs,tapCb){
     if(wasTap&&tapCb&&cvs._px)hitTest(cvs,x,y,tapCb);
   };
 
-  // Mouse drag
-  cvs.addEventListener('mousedown',e=>{dragStart(e.clientX,e.clientY);});
-  window.addEventListener('mousemove',e=>{if(_drag)dragMove(e.clientX,e.clientY);});
-  window.addEventListener('mouseup',e=>{if(_drag)dragEnd(e.clientX,e.clientY,tapCb);});
+  // Mouse drag — scoped to this canvas to avoid cross-canvas interference
+  cvs.addEventListener('mousedown',e=>{e.preventDefault();dragStart(e.clientX,e.clientY);
+    const _mm=ev=>{if(_drag)dragMove(ev.clientX,ev.clientY);};
+    const _mu=ev=>{if(_drag){dragEnd(ev.clientX,ev.clientY,tapCb);}document.removeEventListener('mousemove',_mm);document.removeEventListener('mouseup',_mu);};
+    document.addEventListener('mousemove',_mm);
+    document.addEventListener('mouseup',_mu);
+  });
 
   if(!tapCb){
     // Touch drag for display-only maps
@@ -2824,7 +2827,7 @@ function initLiveMap(r){
   } else {
     window.addEventListener('resize',sizeLiveMap);
   }
-  attachMap(cvs,null);
+  attachMap(cvs,km=>openModal(km));
 }
 
 // ─── Combined Route tab (routes list + route detail) ───
