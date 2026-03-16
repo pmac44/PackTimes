@@ -3997,10 +3997,17 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(s){
       const raw=prompt('Sleep duration (hours):',s.sleepH||10);
       if(raw===null)return;
-      const v=parseFloat(raw);
-      if(!isNaN(v)&&v>0&&v<=24){s.sleepH=v;saveAll();render();}
+      const v=parseFloat(raw);      if(!isNaN(v)&&v>0&&v<=24){s.sleepH=v;saveAll();render();}
       else alert('Enter hours between 0 and 24');
     }
+    return;
+  }
+  // Direct unsleep from mission tile header — must be before sleep-at-stop handler
+  const ud=e.target.closest('.unsleep-direct');
+  if(ud){
+    const sid=ud.dataset.sid;
+    const s=r?r.stops.find(x=>String(x.id)===String(sid)):null;
+    if(s){s.sleepAt=false;s.sleepH=null;saveAll();render();}
     return;
   }
   // Sleep-at toggle
@@ -4174,15 +4181,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     saveAll();render();return;
   }
   if(e.target.closest('#btn-print-mission')){printMission();return;}
-  // Direct unsleep from mission tile header
-  const ud=e.target.closest('.unsleep-direct');
-  if(ud&&cur()){
-    e.stopPropagation();
-    const sid=ud.dataset.sid;
-    const s=cur().stops.find(x=>String(x.id)===String(sid));
-    if(s){s.sleepAt=false;s.sleepH=null;saveAll();render();}
-    return;
-  }
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
   if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.unsleep-direct')){
