@@ -1263,10 +1263,10 @@ function drawMap(cvs,r,opts){
   for(let i=1;i<pts.length;i++)ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
   if(_tileMode>0){
     ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=5;ctx.stroke();
-    ctx.strokeStyle='#a855f7';ctx.lineWidth=3.5;ctx.stroke();
+    ctx.strokeStyle='#22d3ee';ctx.lineWidth=3.5;ctx.stroke();
   } else {
     ctx.strokeStyle='#1a2d1a';ctx.lineWidth=4;ctx.stroke();
-    ctx.strokeStyle='#a855f7';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.strokeStyle='#22d3ee';ctx.lineWidth=2.5;ctx.stroke();
   }
 
   // Pace segment overlays — orange highlight over route line
@@ -2333,16 +2333,17 @@ function renderDesktopMap(){
       _elevScrubId=requestAnimationFrame(()=>{
         const cvs=document.getElementById('desktop-map');
         if(cvs&&cvs._px&&hoverPt){
-          const px=cvs._px,py=cvs._py;
-          const ctx=cvs.getContext('2d');
-          // Redraw map then overlay scrubber dot
+          const px2=cvs._px,py2=cvs._py;
+          const ctx2=cvs.getContext('2d');
+          // Redraw map first, then overlay scrubber in screen coords (no extra DPR scale)
           renderDesktopMap();
           const dpr=devicePixelRatio||1;
-          ctx.save();ctx.scale(dpr,dpr);
-          ctx.beginPath();ctx.arc(px(hoverPt.lon),py(hoverPt.lat),8,0,Math.PI*2);
-          ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fill();
-          ctx.strokeStyle='#0a0f0a';ctx.lineWidth=2;ctx.stroke();
-          ctx.restore();
+          const sx=px2(hoverPt.lon)*dpr,sy=py2(hoverPt.lat)*dpr;
+          ctx2.save();
+          ctx2.beginPath();ctx2.arc(sx,sy,8*dpr,0,Math.PI*2);
+          ctx2.fillStyle='rgba(255,255,255,0.95)';ctx2.fill();
+          ctx2.strokeStyle='#333';ctx2.lineWidth=2*dpr;ctx2.stroke();
+          ctx2.restore();
         }
       });
       // Tooltip for nearby stops
