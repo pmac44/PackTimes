@@ -253,9 +253,13 @@ select option{background:var(--bg3);}
     </div>
     <div class="field"><label class="lbl">Type</label>
       <select id="m-type">
-        <option value="sleep">😴 Sleep</option><option value="rest">🪑 Rest</option>
-        <option value="water">💧 Water</option><option value="food">🍔 Food</option>
-        <option value="shop">🛒 Shop</option><option value="town">🏘️ Town</option>
+        <option value="sleep">😴 Sleep</option>
+        <option value="rest">🪑 Rest</option>
+        <option value="water">💧 Water</option>
+        <option value="food">🍔 Food</option>
+        <option value="shop">🛒 Shop</option>
+        <option value="town">🏘️ Town</option>
+        <option value="hike">🥾 Hike-a-bike section</option>
       </select>
     </div>
     <div class="field"><label class="lbl">Name (optional)</label><input type="text" id="m-name" placeholder="e.g. Village supermarket"></div>
@@ -274,12 +278,19 @@ select option{background:var(--bg3);}
       <label class="lbl" id="m-sleep-lbl">Sleep duration (hours)</label>
       <input type="number" id="m-sleep" value="10" min="0.5" max="24" step="0.5">
     </div>
+    <div id="m-hike-row" style="display:none;" class="field">
+      <label class="lbl">Hike-a-bike</label>
+      <p style="font-size:13px;color:var(--text3);margin-bottom:6px;">This will be added as a pace segment. Set start and end positions using the position slider.</p>
+      <label class="lbl" style="font-size:13px;">End position — <span id="m-hike-end-lbl">0 km</span></label>
+      <input type="range" id="m-hike-end" min="0" max="100" step="0.05" value="0" style="width:100%;accent-color:var(--accent);">
+      <label class="lbl" style="font-size:13px;margin-top:6px;">Speed factor (walking)</label>
+      <input type="number" id="m-hike-factor" value="0.25" min="0.05" max="1" step="0.05" style="width:80px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:15px;">
+    </div>
     <div id="m-hours-row" class="field" style="display:none;">
-      <label class="lbl">Opening hours (optional)</label>
       <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:15px;cursor:pointer;">
-        <input type="checkbox" id="m-oh-none" checked> No set hours (unknown)
+        <input type="checkbox" id="m-has-hours"> Has opening hours
       </label>
-      <div id="m-oh-times" style="display:none;display:flex;gap:8px;align-items:flex-end;">
+      <div id="m-oh-times" style="display:none;gap:8px;align-items:flex-end;">
         <div style="flex:1;"><label class="lbl" style="font-size:13px;">Opens</label><input type="time" id="m-open" value="08:00" class="time-compact"></div>
         <div style="flex:1;"><label class="lbl" style="font-size:13px;">Closes</label><input type="time" id="m-close" value="20:00" class="time-compact"></div>
       </div>
@@ -1884,8 +1895,6 @@ function openModal(km){
   inp.min=0;inp.max=r.totalDist;inp.value=v;
   document.getElementById('m-name').value='';
   document.getElementById('m-type').value='sleep';
-  const noneChk=document.getElementById('m-oh-none');
-  if(noneChk){noneChk.checked=true;document.getElementById('m-oh-times').style.display='none';}
   updateModalFields();
   document.getElementById('stop-modal').style.display='flex';
 }
@@ -1896,7 +1905,7 @@ function closeModal(){document.getElementById('stop-modal').style.display='none'
 // ═══════════════════════════════════════════
 const _pace={from:null,to:null,hours:1,step:'from',editIdx:-1};
 
-function openPaceModal(editIdx){
+function openPaceModal(editIdx,startDist){
   const r=cur();if(!r||!r.points.length)return;
   _pace.editIdx=editIdx!==undefined?editIdx:-1;
   if(_pace.editIdx>=0){
@@ -1904,7 +1913,10 @@ function openPaceModal(editIdx){
     _pace.from=seg.from;_pace.to=seg.to;_pace.hours=seg.hours;_pace.step='to';
     const ni=document.getElementById('pace-name');if(ni)ni.value=seg.name||'';
   } else {
-    _pace.from=null;_pace.to=null;_pace.hours=1;_pace.step='from';
+    _pace.from=startDist!=null?startDist:null;
+    _pace.to=startDist!=null?Math.min(startDist+5,r.totalDist):null;
+    _pace.hours=1;
+    _pace.step=startDist!=null?'to':'from';
     const ni=document.getElementById('pace-name');if(ni)ni.value='';
   }
   _updatePaceDisplay();
@@ -2055,16 +2067,45 @@ document.getElementById('pace-save').addEventListener('click',()=>{
   saveAll();render();
   closePaceModal();
 });
+const OH_TYPES=new Set(['food','shop','town','fuel','accom','camp','caravan','pub','church','school','hall','fire','police']);
+
 function updateModalFields(){
   const t=document.getElementById('m-type').value;
-  document.getElementById('m-sleep-row').style.display=(t==='sleep'||t==='rest')?'block':'none';
-  document.getElementById('m-hours-row').style.display=(t==='food'||t==='shop'||t==='town')?'block':'none';
+  const isHike=t==='hike';
+  const isSleep=t==='sleep'||t==='rest';
+  const hasOH=OH_TYPES.has(t);
+  document.getElementById('m-sleep-row').style.display=isSleep?'block':'none';
+  document.getElementById('m-hike-row').style.display='none'; // hike opens pace modal directly
+  document.getElementById('m-hours-row').style.display=(!isSleep&&!isHike)?'block':'none';
+  // Set default hours checkbox state based on type
+  const hasHoursChk=document.getElementById('m-has-hours');
+  if(hasHoursChk){
+    hasHoursChk.checked=hasOH;
+    const timesDiv=document.getElementById('m-oh-times');
+    if(timesDiv)timesDiv.style.display=hasOH?'flex':'none';
+  }
+  // Update hike end slider max
+  const r=cur();
+  if(isHike&&r){
+    const sl=document.getElementById('m-hike-end');
+    const dist=parseFloat(document.getElementById('m-dist').value)||0;
+    if(sl){sl.min=dist;sl.max=r.totalDist;sl.value=Math.min(dist+5,r.totalDist);
+      document.getElementById('m-hike-end-lbl').textContent=sl.value+' km';}
+  }
 }
 document.getElementById('m-type').addEventListener('change',()=>{
   updateModalFields();
   const t=document.getElementById('m-type').value;
   const lbl=document.getElementById('m-sleep-lbl');
   if(lbl)lbl.textContent=t==='rest'?'Rest duration (hours)':'Sleep duration (hours)';
+});
+document.getElementById('m-has-hours').addEventListener('change',function(){
+  const timesDiv=document.getElementById('m-oh-times');
+  if(timesDiv)timesDiv.style.display=this.checked?'flex':'none';
+});
+document.getElementById('m-hike-end').addEventListener('input',function(){
+  const lbl=document.getElementById('m-hike-end-lbl');
+  if(lbl)lbl.textContent=parseFloat(this.value).toFixed(1)+' km';
 });
 document.getElementById('m-dist').addEventListener('input',function(){
   const v=parseFloat(this.value).toFixed(2);
@@ -2191,18 +2232,22 @@ document.getElementById('em-save').addEventListener('click',()=>{
   }
   closeEditModal();
 });
-document.getElementById('m-oh-none').addEventListener('change',function(){
-  document.getElementById('m-oh-times').style.display=this.checked?'none':'flex';
-});
 document.getElementById('modal-ok').addEventListener('click',()=>{
   const r=cur();if(!r)return;
   const t=document.getElementById('m-type').value;
   const name=document.getElementById('m-name').value.trim();
   const dist=parseFloat(document.getElementById('m-dist').value);
   const sleepH=parseFloat(document.getElementById('m-sleep').value||10);
-  const noHours=document.getElementById('m-oh-none').checked;
+  // Hike-a-bike section — open pace modal directly
+  if(t==='hike'){
+    const dist=parseFloat(document.getElementById('m-dist').value);
+    closeModal();
+    openPaceModal(-1,dist);
+    return;
+  }
+  const hasHours=document.getElementById('m-has-hours').checked;
   let ohRaw=null,ohRules=null;
-  if(!noHours&&(t==='food'||t==='shop'||t==='town')){
+  if(hasHours){
     const openT=document.getElementById('m-open').value,closeT=document.getElementById('m-close').value;
     if(openT&&closeT){ohRaw=openT+'-'+closeT;ohRules=parseOH(ohRaw);}
   }
