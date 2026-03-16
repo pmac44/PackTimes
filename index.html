@@ -388,6 +388,8 @@ function packRoute(r){return{...r,
     Math.round(p.lat*1e5)/1e5,Math.round(p.lon*1e5)/1e5,
     Math.round(p.ele),Math.round(p.dist*10)/10,p.time?p.time.getTime():0]),
   cumRiding:r.cumRiding?r.cumRiding.map(h=>Math.round(h*10000)/10000):null};}
+function makeStopId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+
 function unpackRoute(r){
   const out={...r,points:(r.points||[]).map(a=>
     Array.isArray(a)?{lat:a[0],lon:a[1],ele:a[2],dist:a[3],time:a[4]?new Date(a[4]):null}:a)};
@@ -395,14 +397,25 @@ function unpackRoute(r){
   if(!out.paceSegs)out.paceSegs=[];
   if(!out.cumRiding&&out.points.length>1)out.cumRiding=buildCumRiding(out.points,out.paceSegs||[]);
   // Restore ohRules Sets (lost in JSON.stringify)
+  // Also migrate any stops with short/numeric IDs to proper alphanumeric IDs
+  let needsSave=false;
+  const idSeen=new Set();
   out.stops=(out.stops||[]).map(s=>{
     if(s.ohRaw&&(!s.ohRules||Array.isArray(s.ohRules))){
       try{s={...s,ohRules:parseOH(s.ohRaw)};}catch(e){}
     } else if(s.ohRules&&Array.isArray(s.ohRules)){
       s={...s,ohRules:s.ohRules.map(rr=>({...rr,days:new Set(rr.days||[])}))};
     }
+    // Migrate numeric or short IDs to proper string IDs
+    const idStr=String(s.id||'');
+    if(!s.id||typeof s.id==='number'||idStr.length<6||idSeen.has(idStr)){
+      s={...s,id:makeStopId()};
+      needsSave=true;
+    }
+    idSeen.add(String(s.id));
     return s;
   });
+  if(needsSave)setTimeout(()=>saveAll(),100);
   return out;
 }
 async function saveAll(){
@@ -696,7 +709,7 @@ function addStop(r,dist,type,name,opts){
     snapIdx:opts.snapIdx!==undefined?opts.snapIdx:null});
   r.stops.sort((a,b)=>a.dist-b.dist);
 }
-function delStop(r,id){r.stops=r.stops.filter(s=>s.id!==id);}
+function delStop(r,id){r.stops=r.stops.filter(s=>String(s.id)!==String(id));}
 function shopSt(s,r){
   if(!s.ohRules)return'unknown';
   const eta=etaAt(s.dist,r);if(!eta)return'unknown';
@@ -1351,7 +1364,7 @@ function drawMap(cvs,r,opts){
       ctx.strokeStyle=isSleepStop?'#b39ddb':'#ffe632';ctx.lineWidth=3;ctx.stroke();
     }
     // Highlight selected stop
-    if(opts.highlightId&&opts.highlightId===s.id){
+    if(opts.highlightId&&String(opts.highlightId)===String(s.id)){
       const isDesktop=cvs.id==='desktop-map';
       // Outer glow ring
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),isDesktop?22:14,0,Math.PI*2);
@@ -2085,7 +2098,7 @@ document.getElementById('em-dist').addEventListener('input',function(){
     // Live preview: temporarily move stop and redraw map
     const modal=document.getElementById('edit-modal');
     if(modal&&r){
-      const s=r.stops.find(s=>s.id===modal.dataset.sid);
+      const s=r.stops.find(s=>String(s.id)===String(modal.dataset.sid));
       if(s){
         s._previewDist=v;
         const oldDist=s.dist;s.dist=v;
@@ -2132,7 +2145,7 @@ document.getElementById('edit-modal').addEventListener('click',e=>{if(e.target==
 document.getElementById('em-save').addEventListener('click',()=>{
   const r=cur();if(!r)return;
   const modal=document.getElementById('edit-modal');
-  const s=r.stops.find(s=>s.id===modal.dataset.sid);
+  const s=r.stops.find(s=>String(s.id)===String(modal.dataset.sid));
   if(s){
     const nm=document.getElementById('em-name').value.trim();
     if(nm)s.name=nm;
@@ -3947,7 +3960,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Edit stop position — redirect to edit modal (same as rename)
   const ed=e.target.closest('.edit-dist');
   if(ed&&r){
-    const s=r.stops.find(s=>s.id===ed.dataset.sid);
+    const s=r.stops.find(s=>String(s.id)===String(ed.dataset.sid));
     if(s){
       const nm=document.getElementById('em-name');if(nm)nm.value=s.name;
       const distSl=document.getElementById('em-dist');
@@ -3980,7 +3993,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Edit sleep duration
   const es=e.target.closest('.edit-sleep');
   if(es&&r){
-    const s=r.stops.find(s=>s.id===es.dataset.sid);
+    const s=r.stops.find(s=>String(s.id)===String(es.dataset.sid));
     if(s){
       const raw=prompt('Sleep duration (hours):',s.sleepH||10);
       if(raw===null)return;
@@ -4043,7 +4056,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   const rn=e.target.closest('.rename-stop');
   if(rn&&r){
-    const s=r.stops.find(s=>s.id===rn.dataset.sid);
+    const s=r.stops.find(s=>String(s.id)===String(rn.dataset.sid));
     if(s){
       const nm=document.getElementById('em-name');if(nm)nm.value=s.name;
       // Distance slider
@@ -4087,21 +4100,21 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Tap live stop tile → peek map for 5s
   const ls=e.target.closest('.live-stop');
   if(ls&&UI.tab==='live'&&r){
-    const s=r.stops.find(s=>s.id===ls.dataset.sid);
+    const s=r.stops.find(s=>String(s.id)===String(ls.dataset.sid));
     if(s)peekLiveStop(s,r);
     return;
   }
   // Tap summary card (next stop/water/food) → peek map for 5s
   const sc=e.target.closest('.live-summary-card');
   if(sc&&UI.tab==='live'&&r){
-    const s=r.stops.find(s=>s.id===sc.dataset.sid);
+    const s=r.stops.find(s=>String(s.id)===String(sc.dataset.sid));
     if(s)peekLiveStop(s,r);
     return;
   }
   // Tap stop → zoom map to it (stops page only)
   const ts=e.target.closest('.tap-stop');
   if(ts&&!e.target.closest('.del-stop')&&!e.target.closest('.rename-stop')&&!e.target.closest('.star-stop')&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.edit-dist')&&!e.target.closest('.edit-sleep')&&!e.target.closest('#em-save')&&!e.target.closest('#edit-modal-x')&&UI.tab==='stops'&&r){
-    const s=r.stops.find(s=>s.id===ts.dataset.sid);
+    const s=r.stops.find(s=>String(s.id)===String(ts.dataset.sid));
     if(s){
       _highlightStopId=s.id;
       const p=r.points[cidx(r,s.dist)];
