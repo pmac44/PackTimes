@@ -1361,7 +1361,7 @@ function drawMap(cvs,r,opts){
   // Stop dots (with off-route connectors for auto-stops with real coords)
   const dc={food:'#fbbf24',water:'#60a5fa',sleep:'#f87171',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
   r.stops.forEach(s=>{
-    if(cvs.id==='desktop-map'&&UI.hiddenMapTypes.has(s.type))return;
+    if(IS_DESKTOP()&&UI.hiddenMapTypes.has(s.type)&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))return;
     const rp=pts[s.snapIdx!==null&&s.snapIdx!==undefined?s.snapIdx:cidx(r,s.dist)];
     const hasReal=s.lat&&s.lon;
     const dotLon=hasReal?s.lon:rp.lon;
@@ -1398,7 +1398,7 @@ function drawMap(cvs,r,opts){
   });
 
   // Turn markers
-  if(r.turns&&r.turns.length&&!(cvs.id==='desktop-map'&&UI.hiddenMapTypes.has('turns'))){
+  if(r.turns&&r.turns.length&&!(IS_DESKTOP()&&UI.hiddenMapTypes.has('turns')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))){
     const liveDist=UI.gpsDistKm||0;
     r.turns.forEach(t=>{
       if(t.dist<liveDist)return; // skip passed turns
