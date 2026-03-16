@@ -4012,21 +4012,19 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         ${s.sleepAt?`<button class="btn btn-sm btn-r sleep-dur-unsleep" style="padding:2px 8px;margin-left:4px;">💤 Remove sleep</button>`:''}`;
       container.appendChild(picker);
       picker.querySelector('input').focus();
-      picker.querySelector('.sleep-dur-ok').addEventListener('click',()=>{
+      picker.querySelector('.sleep-dur-ok').addEventListener('click',ev=>{
+        ev.stopPropagation();
         const v=parseFloat(picker.querySelector('input').value);
         if(isNaN(v)||v<=0||v>24){alert('Enter hours between 0 and 24');return;}
         UI.lastSleepH=v;
         s.sleepAt=true;s.sleepH=v;s.starred=true;
-        if(!s.sleepAt){
-          const toRemove=r.stops.filter(x=>!((x.type==='sleep'||x.sleepAt)&&x.id!==s.id&&Math.abs(x.dist-s.dist)<=5));
-          r.stops=toRemove;
-        }
         saveAll();render();
       });
-      picker.querySelector('.sleep-dur-cancel').addEventListener('click',()=>picker.remove());
+      picker.querySelector('.sleep-dur-cancel').addEventListener('click',ev=>{ev.stopPropagation();picker.remove();});
       const unsleepBtn=picker.querySelector('.sleep-dur-unsleep');
-      if(unsleepBtn)unsleepBtn.addEventListener('click',()=>{
-        s.sleepAt=false;picker.remove();saveAll();render();
+      if(unsleepBtn)unsleepBtn.addEventListener('click',ev=>{
+        ev.stopPropagation();
+        s.sleepAt=false;s.sleepH=null;picker.remove();saveAll();render();
       });
     }
     return;
@@ -4166,6 +4164,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Direct unsleep from mission tile header
   const ud=e.target.closest('.unsleep-direct');
   if(ud&&cur()){
+    e.stopPropagation();
     const sid=ud.dataset.sid;
     const s=cur().stops.find(x=>String(x.id)===String(sid));
     if(s){s.sleepAt=false;s.sleepH=null;saveAll();render();}
