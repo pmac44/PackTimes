@@ -3106,17 +3106,15 @@ function tPlan(r){
     const sleepStops=cl.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt);
     const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt);
     if(sleepStops.length){
-      // Use first sleepAt/sleep stop as the cluster head
-      const head=sleepStops[0];
-      const isRest=head.type==='rest';
-      // Chips = other stops in cluster (non-sleep ones)
       const chipStops=nonSleepStops;
       const chipCluster=chipStops.length?{...cl,stops:chipStops}:null;
-      nodeList.push({
-        name:head.sleepAt?'Sleep at '+head.name:head.name,
-        dist:head.dist,distEnd:head.dist,
-        cluster:chipCluster, // show non-sleep stops as chips inside
-        isStart:false,isSleep:true,sleepStop:head
+      sleepStops.forEach((head,i)=>{
+        nodeList.push({
+          name:head.sleepAt?'Sleep at '+head.name:head.name,
+          dist:head.dist,distEnd:head.dist,
+          cluster:i===0?chipCluster:null, // chips only on first sleep node
+          isStart:false,isSleep:true,sleepStop:head
+        });
       });
     } else if(nonSleepStops.length){
       const cl2={...cl,stops:nonSleepStops};
@@ -3207,10 +3205,10 @@ function tPlan(r){
               +daydiv
               +departDiv
             +'</div>'
-            +(node.cluster?'<button class="sleep-at-stop" data-sid="'+(node.cluster.stops[0]?node.cluster.stops[0].id:'')+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'😴':'💤')+'</button>':'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'😴':'💤')+'</button>':''})():'')
           +'</div>')
         +'</div>'
-        +(isSleep?sleepDiv:chipsDiv)
+        +(isSleep?sleepDiv+chipsDiv:chipsDiv)
       +'</div>'
     +'</div>';
 
