@@ -33,7 +33,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   .desktop-layout{display:flex!important;}
   .desktop-sidebar{width:400px;min-width:340px;max-width:440px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;}
   .desktop-map-pane{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;}
-  .desktop-map-pane canvas{width:100%!important;height:100%!important;}
+  .desktop-map-pane #desktop-map{width:100%!important;height:100%!important;}
   .tabs{font-size:18px;}
   .tab{padding:8px 10px;}
 }
@@ -173,7 +173,9 @@ select option{background:var(--bg3);}
     </div>
     <div class="desktop-map-pane" id="desktop-map-pane">
       <canvas id="desktop-map" style="width:100%;height:100%;display:block;"></canvas>
-      <canvas id="desktop-elev" style="position:absolute;bottom:16px;left:16px;height:80px;pointer-events:none;border-radius:8px;" width="100" height="80"></canvas>
+      <div id="desktop-elev-wrap" style="position:absolute;bottom:16px;left:16px;right:16px;height:80px;pointer-events:none;border-radius:8px;overflow:hidden;">
+        <canvas id="desktop-elev" style="display:block;" width="100" height="80"></canvas>
+      </div>
       <div class="map-ctrl" id="desktop-map-ctrl">
         <div class="map-ctrl-row">
           <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
@@ -2180,8 +2182,9 @@ function renderDesktopMap(){
   attachMap(cvs,null);
   // Draw elevation profile
   const ec=document.getElementById('desktop-elev');
-  if(ec&&r.points.length>1){
-    const W=pane.offsetWidth-32;
+  const ew=document.getElementById('desktop-elev-wrap');
+  if(ec&&ew&&r.points.length>1){
+    const W=ew.offsetWidth||pane.offsetWidth-32;
     ec.width=W;ec.height=80;ec.style.width=W+'px';ec.style.height='80px';
     const ctx=ec.getContext('2d');
     ctx.clearRect(0,0,W,80);
