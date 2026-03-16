@@ -3670,7 +3670,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span>'+(node.sleepStop&&node.sleepStop.sleepAt?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤 unsleep</button>':'')+'</div>'):'')
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span>'+(node.sleepStop&&node.sleepStop.sleepAt?'<button class="unsleep-direct" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤 unsleep</button>':'')+'</div>'):'')
         +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +'<div style="font-size:17px;font-weight:600;color:var(--text);">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
@@ -3736,10 +3736,72 @@ function tPlan(r){
   return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;">⭐ Showing starred stops only · ${unstarredCount} unstarred stop${unstarredCount!==1?'s':''} hidden</div>`:'')
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
     +'<div class="card" style="padding:14px 12px;">'
-      +'<div class="ctitle">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+        +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
+        +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;">🖨️ Print</button>'
+      +'</div>'
       +rows
     +'</div>'
     +(summaryParts.length?'<div class="card"><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:17px;color:var(--text3);">'+summaryParts.join('')+'</div></div>':'');
+}
+
+function printMission(){
+  const r=cur();if(!r)return;
+  const sdt=startDT(r);
+  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
+  const clusters=clusterStops(planStops);
+  const finEta=etaAt(r.totalDist,r);
+  const totalSleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0);
+
+  let rows='';
+  clusters.forEach(cl=>{
+    const sleepStops=cl.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt);
+    const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt);
+    const stops=sleepStops.length?sleepStops:[...nonSleepStops];
+    stops.forEach(s=>{
+      const eta=sdt?etaAt(s.dist,r):null;
+      const isSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+      const chips=nonSleepStops.length&&isSleep?nonSleepStops.map(x=>`<span style="display:inline-block;background:#f0f0f0;border-radius:4px;padding:1px 6px;font-size:11px;margin:1px;">${x.icon||'📍'} ${x.name}</span>`).join(' '):'';
+      rows+=`<tr style="border-bottom:1px solid #ddd;${isSleep?'background:#f3f0ff;':''}">
+        <td style="padding:6px 8px;font-size:13px;color:#666;">${s.dist.toFixed(1)}</td>
+        <td style="padding:6px 8px;font-size:14px;font-weight:${isSleep?'600':'400'};">${s.icon||'📍'} ${s.name}${chips?'<br><span style="font-size:11px;color:#888;">'+chips+'</span>':''}</td>
+        <td style="padding:6px 8px;font-size:13px;">${eta?fmtDT(eta):''}</td>
+        <td style="padding:6px 8px;font-size:13px;color:#666;">${isSleep?(s.sleepH||10)+'h sleep':''}</td>
+      </tr>`;
+    });
+  });
+
+  const summaryRow=`<tr style="background:#f9f9f9;font-weight:600;">
+    <td colspan="2" style="padding:8px;">Total: ${r.totalDist.toFixed(1)} km</td>
+    <td style="padding:8px;">${finEta&&sdt?fmtDT(finEta):''}</td>
+    <td style="padding:8px;">${totalSleepH>0?totalSleepH.toFixed(1)+'h sleep':''}</td>
+  </tr>`;
+
+  const html=`<!DOCTYPE html><html><head><title>PackTimes Mission — ${r.name}</title>
+  <meta charset="utf-8">
+  <style>
+    body{font-family:system-ui,sans-serif;margin:24px;color:#111;}
+    h1{font-size:20px;margin-bottom:2px;}
+    h2{font-size:14px;font-weight:400;color:#666;margin-bottom:16px;}
+    table{width:100%;border-collapse:collapse;}
+    th{background:#222;color:#fff;padding:7px 8px;font-size:12px;text-align:left;}
+    tr:nth-child(even){background:#fafafa;}
+    @media print{body{margin:12px;}}
+  </style></head><body>
+  <h1>⏱ PackTimes — ${r.name}</h1>
+  <h2>${sdt?'Start: '+fmtDT(sdt):''} · ${r.totalDist.toFixed(1)} km · ${totalSleepH>0?totalSleepH.toFixed(1)+'h sleep planned':''}</h2>
+  <table>
+    <thead><tr>
+      <th>km</th><th>Stop</th><th>ETA</th><th>Notes</th>
+    </tr></thead>
+    <tbody>${rows}${summaryRow}</tbody>
+  </table>
+  <p style="font-size:11px;color:#999;margin-top:16px;">Generated by PackTimes · pmac44.github.io/PackTimes</p>
+  <script>window.onload=()=>window.print();<\/script>
+  </body></html>`;
+
+  const w=window.open('','_blank');
+  if(w){w.document.write(html);w.document.close();}
 }
 
 function patchSpeedFactor(r){
@@ -4100,6 +4162,14 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     r.turns=autoDetectTurns(r.points);
     UI.turnStatus=null;
     saveAll();render();return;
+  }
+  if(e.target.closest('#btn-print-mission')){printMission();return;}
+  // Direct unsleep from mission tile header
+  const ud=e.target.closest('.unsleep-direct');
+  if(ud&&cur()){
+    const s=cur().stops.find(x=>x.id===ud.dataset.sid);
+    if(s){s.sleepAt=false;saveAll();render();}
+    return;
   }
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
