@@ -1342,12 +1342,13 @@ function drawMap(cvs,r,opts){
     ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),7,0,Math.PI*2);
     ctx.fillStyle=dc[s.type]||'#fff';ctx.fill();
     ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
-    // Yellow ring for mission/starred stops on desktop
+    // Coloured ring for mission/starred stops on desktop — purple for sleep, yellow for others
     if(cvs.id==='desktop-map'&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt)){
+      const isSleepStop=s.type==='sleep'||s.type==='rest'||s.sleepAt;
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),22,0,Math.PI*2);
-      ctx.fillStyle='rgba(255,230,50,0.2)';ctx.fill();
+      ctx.fillStyle=isSleepStop?'rgba(139,111,212,0.25)':'rgba(255,230,50,0.2)';ctx.fill();
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),14,0,Math.PI*2);
-      ctx.strokeStyle='#ffe632';ctx.lineWidth=3;ctx.stroke();
+      ctx.strokeStyle=isSleepStop?'#b39ddb':'#ffe632';ctx.lineWidth=3;ctx.stroke();
     }
     // Highlight selected stop
     if(opts.highlightId&&opts.highlightId===s.id){
@@ -2313,43 +2314,67 @@ function renderDesktopMap(){
   // Attach elevation tooltip — outside route check so it always attaches when canvas exists
   if(ec&&!ec._tooltipAttached){
     ec._tooltipAttached=true;
+    let _elevScrubId=null; // rAF id for scrubber
     ec.addEventListener('mousemove',e=>{
       const r2=cur();
       const tt=document.getElementById('desktop-tooltip');
-      if(!r2||!tt||!r2.points.length)return;
+      if(!r2||!r2.points.length)return;
       const rect=ec.getBoundingClientRect();
       const mx=e.clientX-rect.left;
       const W2=ec.offsetWidth||rect.width;
       const totalDist2=r2.points[r2.points.length-1].dist;
       const pad2=8;
       const ex2=d=>pad2+(d/totalDist2)*(W2-pad2*2);
-      let bestStop=null,bestDx=Infinity;
-      r2.stops.forEach(s=>{
-        if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
-        const dx=Math.abs(ex2(s.dist)-mx);
-        if(dx<bestDx){bestDx=dx;bestStop=s;}
+      // Find route point at this x position
+      const hoverDist=Math.max(0,Math.min(totalDist2,(mx-pad2)/(W2-pad2*2)*totalDist2));
+      const hoverPt=r2.points[cidx(r2,hoverDist)];
+      // Draw scrubber on desktop map
+      if(_elevScrubId)cancelAnimationFrame(_elevScrubId);
+      _elevScrubId=requestAnimationFrame(()=>{
+        const cvs=document.getElementById('desktop-map');
+        if(cvs&&cvs._px&&hoverPt){
+          const px=cvs._px,py=cvs._py;
+          const ctx=cvs.getContext('2d');
+          // Redraw map then overlay scrubber dot
+          renderDesktopMap();
+          const dpr=devicePixelRatio||1;
+          ctx.save();ctx.scale(dpr,dpr);
+          ctx.beginPath();ctx.arc(px(hoverPt.lon),py(hoverPt.lat),8,0,Math.PI*2);
+          ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fill();
+          ctx.strokeStyle='#0a0f0a';ctx.lineWidth=2;ctx.stroke();
+          ctx.restore();
+        }
       });
-      if(bestStop&&bestDx<12){
-        const sdt=startDT(r2);
-        const eta=etaAt(bestStop.dist,r2);
-        const etaStr=sdt&&eta?fmtDT(eta):'';
-        tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${bestStop.dist.toFixed(1)}km${etaStr?' · '+etaStr:''}</span>`;
-        const pr=document.getElementById('desktop-map-pane').getBoundingClientRect();
-        let tx=e.clientX-pr.left+14,ty=e.clientY-pr.top-44;
-        if(tx+230>pr.width)tx=e.clientX-pr.left-230;
-        if(ty<0)ty=e.clientY-pr.top+14;
-        tt.style.left=tx+'px';tt.style.top=ty+'px';
-        tt.style.display='block';
-        ec.style.cursor='pointer';
-      } else {
-        tt.style.display='none';
-        ec.style.cursor='';
+      // Tooltip for nearby stops
+      if(tt){
+        let bestStop=null,bestDx=Infinity;
+        r2.stops.forEach(s=>{
+          if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
+          const dx=Math.abs(ex2(s.dist)-mx);
+          if(dx<bestDx){bestDx=dx;bestStop=s;}
+        });
+        if(bestStop&&bestDx<12){
+          const sdt=startDT(r2);
+          const eta=etaAt(bestStop.dist,r2);
+          const etaStr=sdt&&eta?fmtDT(eta):'';
+          tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${bestStop.dist.toFixed(1)}km${etaStr?' · '+etaStr:''}</span>`;
+          const pr=document.getElementById('desktop-map-pane').getBoundingClientRect();
+          let tx=e.clientX-pr.left+14,ty=e.clientY-pr.top-44;
+          if(tx+230>pr.width)tx=e.clientX-pr.left-230;
+          if(ty<0)ty=e.clientY-pr.top+14;
+          tt.style.left=tx+'px';tt.style.top=ty+'px';
+          tt.style.display='block';
+        } else {
+          tt.style.display='none';
+        }
       }
     });
     ec.addEventListener('mouseleave',()=>{
       const tt=document.getElementById('desktop-tooltip');
       if(tt)tt.style.display='none';
       ec.style.cursor='';
+      // Redraw map without scrubber dot
+      renderDesktopMap();
     });
   }
 }
