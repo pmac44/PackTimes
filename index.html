@@ -376,7 +376,7 @@ const newRoute=name=>({
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxSavedAt:null,
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set()};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -2331,33 +2331,56 @@ let _dbxSaveTimer=null;
 
 function dbxAuthURL(){
   const state=Math.random().toString(36).slice(2);
+  // Generate PKCE code verifier and challenge
+  const verifier=Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
   sessionStorage.setItem('dbx_state',state);
+  sessionStorage.setItem('dbx_verifier',verifier);
   const params=new URLSearchParams({
     client_id:DBX_APP_KEY,
     redirect_uri:DBX_REDIRECT,
-    response_type:'token',
+    response_type:'code',
     state,
+    code_challenge_method:'plain',
+    code_challenge:verifier,
     token_access_type:'offline'
   });
   return'https://www.dropbox.com/oauth2/authorize?'+params;
 }
 
-function dbxHandleRedirect(){
-  const hash=window.location.hash;
-  if(!hash.includes('access_token'))return;
-  const params=new URLSearchParams(hash.slice(1));
-  const token=params.get('access_token');
-  const state=params.get('state');
-  if(token&&state===sessionStorage.getItem('dbx_state')){
-    UI.dbxToken=token;
-    sessionStorage.removeItem('dbx_state');
-    history.replaceState(null,'',window.location.pathname);
-    saveAll();
-    dbxSetStatus('✓ Connected to Dropbox');
-    if(UI.tab==='settings')render();
-    // Auto-save after connect
-    dbxScheduleSave();
-  }
+async function dbxHandleRedirect(){
+  // Handle PKCE code redirect
+  const urlParams=new URLSearchParams(window.location.search);
+  const code=urlParams.get('code');
+  const state=urlParams.get('state');
+  if(!code||state!==sessionStorage.getItem('dbx_state'))return;
+  const verifier=sessionStorage.getItem('dbx_verifier');
+  sessionStorage.removeItem('dbx_state');
+  sessionStorage.removeItem('dbx_verifier');
+  history.replaceState(null,'',window.location.pathname);
+  try{
+    const res=await fetch('https://api.dropboxapi.com/oauth2/token',{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({
+        code,
+        grant_type:'authorization_code',
+        client_id:DBX_APP_KEY,
+        redirect_uri:DBX_REDIRECT,
+        code_verifier:verifier
+      })
+    });
+    const data=await res.json();
+    if(data.access_token){
+      UI.dbxToken=data.access_token;
+      if(data.refresh_token)UI.dbxRefreshToken=data.refresh_token;
+      await saveAll();
+      dbxSetStatus('✓ Connected to Dropbox');
+      if(UI.tab==='settings')render();
+      dbxScheduleSave();
+    } else {
+      dbxSetStatus('Auth failed: '+(data.error_description||data.error),'err');
+    }
+  }catch(e){dbxSetStatus('Auth error: '+e.message,'err');}
 }
 
 function dbxSetStatus(msg,isErr){
@@ -2443,7 +2466,7 @@ async function dbxAutoLoad(){
 
 // Check for OAuth redirect on page load
 window.addEventListener('DOMContentLoaded',()=>{
-  if(window.location.hash.includes('access_token'))dbxHandleRedirect();
+  if(new URLSearchParams(window.location.search).get('code'))dbxHandleRedirect();
 });
 
 
