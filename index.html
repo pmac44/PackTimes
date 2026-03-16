@@ -1810,9 +1810,17 @@ document.addEventListener('click',e=>{
   const rc=e.target.closest('[data-recenter]');
   if(rc){
     const id=rc.dataset.recenter;
-    const state=ms(id);state.cx=null;state.cy=null;
-    if(id==='live-map'&&UI.gpsDistKm!==null){
-      const r=cur();if(r){const gp=r.points[cidx(r,UI.gpsDistKm)];state.cx=gp.lon;state.cy=gp.lat;}
+    const state=ms(id);
+    const r=cur();
+    if(UI.gpsDistKm!==null&&r){
+      // GPS active — centre on current position
+      const gp=r.points[cidx(r,UI.gpsDistKm)];
+      state.cx=gp.lon;state.cy=gp.lat;
+    } else if(r&&r.points.length){
+      // No GPS — snap to start point
+      state.cx=r.points[0].lon;state.cy=r.points[0].lat;
+    } else {
+      state.cx=null;state.cy=null;
     }
     _highlightStopId=null;
     document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
