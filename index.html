@@ -2300,48 +2300,48 @@ function renderDesktopMap(){
       ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
       ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=0.5;ctx.stroke();
     });
-    // Tooltip on elevation dots — attach once
-    if(!ec._tooltipAttached){
-      ec._tooltipAttached=true;
-      ec.addEventListener('mousemove',e=>{
-        const r2=cur();
-        const tt=document.getElementById('desktop-tooltip');
-        if(!r2||!tt||!r2.points.length)return;
-        const rect=ec.getBoundingClientRect();
-        const mx=e.clientX-rect.left;
-        const W2=ec.offsetWidth||rect.width;
-        const totalDist2=r2.points[r2.points.length-1].dist;
-        const pad2=8;
-        const ex2=d=>pad2+(d/totalDist2)*(W2-pad2*2);
-        let bestStop=null,bestDx=Infinity;
-        r2.stops.forEach(s=>{
-          if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
-          const dx=Math.abs(ex2(s.dist)-mx);
-          if(dx<bestDx){bestDx=dx;bestStop=s;}
-        });
-        if(bestStop&&bestDx<12){
-          const sdt=startDT(r2);
-          const eta=etaAt(bestStop.dist,r2);
-          const etaStr=sdt&&eta?fmtDT(eta):'';
-          tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${bestStop.dist.toFixed(1)}km${etaStr?' · '+etaStr:''}</span>`;
-          const pr=document.getElementById('desktop-map-pane').getBoundingClientRect();
-          let tx=e.clientX-pr.left+14,ty=e.clientY-pr.top-44;
-          if(tx+230>pr.width)tx=e.clientX-pr.left-230;
-          if(ty<0)ty=e.clientY-pr.top+14;
-          tt.style.left=tx+'px';tt.style.top=ty+'px';
-          tt.style.display='block';
-          ec.style.cursor='pointer';
-        } else {
-          tt.style.display='none';
-          ec.style.cursor='';
-        }
+  }
+  // Attach elevation tooltip — outside route check so it always attaches when canvas exists
+  if(ec&&!ec._tooltipAttached){
+    ec._tooltipAttached=true;
+    ec.addEventListener('mousemove',e=>{
+      const r2=cur();
+      const tt=document.getElementById('desktop-tooltip');
+      if(!r2||!tt||!r2.points.length)return;
+      const rect=ec.getBoundingClientRect();
+      const mx=e.clientX-rect.left;
+      const W2=ec.offsetWidth||rect.width;
+      const totalDist2=r2.points[r2.points.length-1].dist;
+      const pad2=8;
+      const ex2=d=>pad2+(d/totalDist2)*(W2-pad2*2);
+      let bestStop=null,bestDx=Infinity;
+      r2.stops.forEach(s=>{
+        if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
+        const dx=Math.abs(ex2(s.dist)-mx);
+        if(dx<bestDx){bestDx=dx;bestStop=s;}
       });
-      ec.addEventListener('mouseleave',()=>{
-        const tt=document.getElementById('desktop-tooltip');
-        if(tt)tt.style.display='none';
+      if(bestStop&&bestDx<12){
+        const sdt=startDT(r2);
+        const eta=etaAt(bestStop.dist,r2);
+        const etaStr=sdt&&eta?fmtDT(eta):'';
+        tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${bestStop.dist.toFixed(1)}km${etaStr?' · '+etaStr:''}</span>`;
+        const pr=document.getElementById('desktop-map-pane').getBoundingClientRect();
+        let tx=e.clientX-pr.left+14,ty=e.clientY-pr.top-44;
+        if(tx+230>pr.width)tx=e.clientX-pr.left-230;
+        if(ty<0)ty=e.clientY-pr.top+14;
+        tt.style.left=tx+'px';tt.style.top=ty+'px';
+        tt.style.display='block';
+        ec.style.cursor='pointer';
+      } else {
+        tt.style.display='none';
         ec.style.cursor='';
-      });
-    }
+      }
+    });
+    ec.addEventListener('mouseleave',()=>{
+      const tt=document.getElementById('desktop-tooltip');
+      if(tt)tt.style.display='none';
+      ec.style.cursor='';
+    });
   }
 }
 
@@ -3907,7 +3907,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       if(existing){existing.remove();return;}
       const picker=document.createElement('div');
       picker.className='sleep-dur-picker';
-      picker.style.cssText='display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 8px;background:rgba(60,40,120,0.3);border-radius:6px;border:1px solid rgba(130,100,220,0.4);flex-wrap:wrap;';
+      picker.style.cssText='display:flex;align-items:center;gap:6px;margin-top:6px;padding:8px 10px;background:var(--card);border-radius:8px;border:1px solid rgba(130,100,220,0.6);flex-wrap:wrap;box-shadow:0 4px 16px rgba(0,0,0,0.5);';
       const currentH=s.sleepH||UI.lastSleepH||10;
       picker.innerHTML=`<span style="font-size:14px;color:#b39ddb;">😴 Sleep hours:</span>
         <input type="number" min="1" max="24" step="0.5" value="${currentH}" style="width:52px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);">
