@@ -408,6 +408,8 @@ function unpackRoute(r){
 async function saveAll(){
   for(const r of ROUTES)await DB.put(packRoute(r)).catch(()=>{});
   await DB.setKV('cur',CUR>=0?ROUTES[CUR].id:null).catch(()=>{});
+  await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
+  await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -416,6 +418,8 @@ async function loadAll(){
     const cid=await DB.getKV('cur');
     CUR=cid?ROUTES.findIndex(r=>r.id===cid):(ROUTES.length?0:-1);
     if(CUR<0&&ROUTES.length)CUR=0;
+    UI.dbxToken=await DB.getKV('dbxToken')||null;
+    UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
   }catch(e){ROUTES=[];CUR=-1;}
 }
 
