@@ -2334,16 +2334,15 @@ function renderDesktopMap(){
         const cvs=document.getElementById('desktop-map');
         if(cvs&&cvs._px&&hoverPt){
           const px2=cvs._px,py2=cvs._py;
-          const ctx2=cvs.getContext('2d');
-          // Redraw map first, then overlay scrubber in screen coords (no extra DPR scale)
           renderDesktopMap();
-          const dpr=devicePixelRatio||1;
-          const sx=px2(hoverPt.lon)*dpr,sy=py2(hoverPt.lat)*dpr;
-          ctx2.save();
-          ctx2.beginPath();ctx2.arc(sx,sy,8*dpr,0,Math.PI*2);
+          // drawMap leaves ctx with dpr scale active, _px/_py return CSS coords
+          // so draw directly at CSS coords — the scale handles physical pixels
+          const ctx2=cvs.getContext('2d');
+          const x=px2(hoverPt.lon);
+          const y=py2(hoverPt.lat);
+          ctx2.beginPath();ctx2.arc(x,y,8,0,Math.PI*2);
           ctx2.fillStyle='rgba(255,255,255,0.95)';ctx2.fill();
-          ctx2.strokeStyle='#333';ctx2.lineWidth=2*dpr;ctx2.stroke();
-          ctx2.restore();
+          ctx2.strokeStyle='#333';ctx2.lineWidth=2;ctx2.stroke();
         }
       });
       // Tooltip for nearby stops
@@ -4173,7 +4172,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
-  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')){
+  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.unsleep-direct')){
     const sid=mn.dataset.sid;
     if(sid){
       _highlightStopId=sid;
