@@ -130,7 +130,7 @@ select option{background:var(--bg3);}
 .si-st{font-size:18px;margin-top:1px;}.s-op{color:var(--accent);}.s-cl{color:var(--red);}.s-uk{color:var(--text3);}
 .tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:18px;font-family:var(--font);text-transform:uppercase;}
 .t-food{background:rgba(251,191,36,.15);color:var(--amber);}.t-water{background:rgba(96,165,250,.15);color:var(--blue);}
-.t-sleep{background:rgba(130,100,220,.2);color:#b39ddb;}.t-accom{background:rgba(192,132,252,.15);color:var(--purple);}.t-wc{background:rgba(45,212,191,.15);color:#2dd4bf;}.t-town{background:rgba(74,222,128,.15);color:var(--accent);}.t-shop{background:rgba(192,132,252,.15);color:var(--purple);}.t-hut{background:rgba(200,169,110,.15);color:#c8a96e;}.t-fuel{background:rgba(249,115,22,.15);color:#f97316;}.t-peak{background:rgba(148,163,184,.15);color:#94a3b8;}.t-camp{background:rgba(74,124,89,.2);color:#4a7c59;}.t-rest{background:rgba(148,133,106,.2);color:#94856a;}.t-crossing{background:rgba(100,140,160,.2);color:#6b9eb0;}
+.t-sleep{background:rgba(130,100,220,.2);color:#b39ddb;}.t-accom{background:rgba(192,132,252,.15);color:var(--purple);}.t-wc{background:rgba(45,212,191,.15);color:#2dd4bf;}.t-town{background:rgba(74,222,128,.15);color:var(--accent);}.t-shop{background:rgba(192,132,252,.15);color:var(--purple);}.t-hut{background:rgba(200,169,110,.15);color:#c8a96e;}.t-fuel{background:rgba(249,115,22,.15);color:#f97316;}.t-peak{background:rgba(148,163,184,.15);color:#94a3b8;}.t-camp{background:rgba(74,124,89,.2);color:#4a7c59;}.t-rest{background:rgba(148,133,106,.2);color:#94856a;}.t-crossing{background:rgba(100,140,160,.2);color:#6b9eb0;}.t-church{background:rgba(232,196,240,.15);color:#e8c4f0;}.t-school{background:rgba(147,197,253,.15);color:#93c5fd;}.t-hall{background:rgba(212,163,115,.15);color:#d4a373;}.t-fire{background:rgba(239,68,68,.15);color:#ef4444;}.t-police{background:rgba(59,130,246,.15);color:#3b82f6;}.t-caravan{background:rgba(132,204,22,.15);color:#84cc16;}
 .slr{display:flex;align-items:center;gap:8px;}.slv{font-family:var(--font);font-size:18px;color:var(--accent);min-width:52px;text-align:right;}
 .next-card{background:var(--card2);border:1px solid var(--accent3);border-radius:10px;padding:12px 14px;}
 .nlbl{font-size:18px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--font);margin-bottom:2px;}
@@ -697,7 +697,7 @@ function addStop(r,dist,type,name,opts){
   opts=opts||{};
   r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:name||(type+' stop'),
     sleepH:opts.sleepH||10,ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
-    icon:{food:'🍔',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[type]||'📍',
+    icon:{food:'🍔',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
     auto:opts.auto||false,
     starred:opts.starred!==undefined?opts.starred:(type==='town'?true:!opts.auto),
     crossing:opts.crossing||false,
@@ -725,7 +725,7 @@ async function fetchOverpass(){
   const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
   const bb=`${(lats.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lons.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lats.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)},${(lons.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)}`;
   // Build query based on UI.osmOpts flags
-  const opts=UI.osmOpts||{towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,camp:false,huts:false,hotels:false,toilets:false,peaks:false};
+  const opts=UI.osmOpts||{towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,camp:false,huts:false,hotels:false,toilets:false,peaks:false,churches:false,schools:false,halls:false,fire:false,caravan:false,police:false};
   const parts=[];
   if(opts.towns) parts.push(`node["place"~"^(town|village|city)$"](${bb})`);
   if(opts.water){parts.push(`node["amenity"="drinking_water"](${bb})`);parts.push(`node["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`node["man_made"="water_tap"](${bb})`);}
@@ -739,6 +739,12 @@ async function fetchOverpass(){
   if(opts.camp)parts.push(`node["tourism"~"^(camp_site|caravan_site|caravan_park)$"](${bb})`);
   if(opts.peaks){parts.push(`node["natural"="peak"](${bb})`);parts.push(`node["natural"="saddle"](${bb})`);}
   if(opts.crossings)parts.push(`way["waterway"~"^(river|stream|creek)$"](${bb})`);
+  if(opts.churches)parts.push(`node["amenity"="place_of_worship"](${bb})`);
+  if(opts.schools)parts.push(`node["amenity"="school"](${bb})`);
+  if(opts.halls)parts.push(`node["amenity"~"^(community_centre|village_hall|social_facility)$"](${bb})`);
+  if(opts.fire)parts.push(`node["amenity"="fire_station"](${bb})`);
+  if(opts.caravan)parts.push(`node["tourism"~"^(caravan_site|caravan_park)$"](${bb})`);
+  if(opts.police)parts.push(`node["amenity"="police"](${bb})`);
   const q=`[out:json][timeout:30];(${parts.join(';')};);out center tags;`;
   let lastErr='';
   for(const mirror of MIRRORS){
@@ -794,6 +800,11 @@ async function fetchOverpass(){
           else if(tags.tourism==='camp_site'||tags.tourism==='caravan_site'||tags.tourism==='caravan_park')type='camp';
           else if(tags.tourism)type='accom';
           else if(tags.amenity==='fuel')type='fuel';
+          else if(tags.amenity==='place_of_worship')type='church';
+          else if(tags.amenity==='school')type='school';
+          else if(tags.amenity==='community_centre'||tags.amenity==='village_hall'||tags.amenity==='social_facility')type='hall';
+          else if(tags.amenity==='fire_station')type='fire';
+          else if(tags.amenity==='police')type='police';
           else if(tags.natural==='peak'||tags.natural==='saddle')type='peak';
           if(tags.amenity==='watering_place'||tags.man_made==='water_well'){
             addStop(r,dist,'water',name||(tags.amenity==='watering_place'?'Stock water':'Water well'),{auto:true,...offOpts,stockwater:true});return;}
@@ -862,6 +873,12 @@ async function fetchTownSearch(query){
   if(opts.camp)parts.push(`nwr["tourism"~"^(camp_site|caravan_site|caravan_park)$"](${bb})`);
   if(opts.peaks){parts.push(`node["natural"="peak"](${bb})`);parts.push(`node["natural"="saddle"](${bb})`);}
   if(opts.crossings)parts.push(`way["waterway"~"^(river|stream|creek)$"](${bb})`);
+  if(opts.churches)parts.push(`node["amenity"="place_of_worship"](${bb})`);
+  if(opts.schools)parts.push(`node["amenity"="school"](${bb})`);
+  if(opts.halls)parts.push(`node["amenity"~"^(community_centre|village_hall|social_facility)$"](${bb})`);
+  if(opts.fire)parts.push(`node["amenity"="fire_station"](${bb})`);
+  if(opts.caravan)parts.push(`node["tourism"~"^(caravan_site|caravan_park)$"](${bb})`);
+  if(opts.police)parts.push(`node["amenity"="police"](${bb})`);
   // Always add the town place node itself
   parts.push(`node["place"~"^(town|village|city|suburb|hamlet)$"]["name"](${bb})`);
   const q=`[out:json][timeout:30];(${parts.join(';')};);out center tags;`;
@@ -904,6 +921,11 @@ async function fetchTownSearch(query){
           else if(tags.tourism==='camp_site'||tags.tourism==='caravan_site'||tags.tourism==='caravan_park')type='camp';
           else if(tags.tourism)type='accom';
           else if(tags.amenity==='fuel')type='fuel';
+          else if(tags.amenity==='place_of_worship')type='church';
+          else if(tags.amenity==='school')type='school';
+          else if(tags.amenity==='community_centre'||tags.amenity==='village_hall'||tags.amenity==='social_facility')type='hall';
+          else if(tags.amenity==='fire_station')type='fire';
+          else if(tags.amenity==='police')type='police';
           else if(tags.natural==='peak'||tags.natural==='saddle')type='peak';
           if(tags.amenity==='watering_place'||tags.man_made==='water_well'){
             addStop(r,dist,'water',name||(tags.amenity==='watering_place'?'Stock water':'Water well'),{auto:true,...offOpts,stockwater:true});return;}
@@ -1337,7 +1359,7 @@ function drawMap(cvs,r,opts){
   }
 
   // Stop dots (with off-route connectors for auto-stops with real coords)
-  const dc={food:'#fbbf24',water:'#60a5fa',sleep:'#f87171',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59'};
+  const dc={food:'#fbbf24',water:'#60a5fa',sleep:'#f87171',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
   r.stops.forEach(s=>{
     if(cvs.id==='desktop-map'&&UI.hiddenMapTypes.has(s.type))return;
     const rp=pts[s.snapIdx!==null&&s.snapIdx!==undefined?s.snapIdx:cidx(r,s.dist)];
@@ -2259,6 +2281,12 @@ function renderDesktopMap(){
       {type:'accom',col:'#c084fc',label:'Accom'},
       {type:'peak',col:'#94a3b8',label:'Peaks'},
       {type:'sleep',col:'#f87171',label:'Sleep'},
+      {type:'church',col:'#e8c4f0',label:'Churches'},
+      {type:'school',col:'#93c5fd',label:'Schools'},
+      {type:'hall',col:'#d4a373',label:'Halls'},
+      {type:'fire',col:'#ef4444',label:'Fire stn'},
+      {type:'police',col:'#3b82f6',label:'Police'},
+      {type:'caravan',col:'#84cc16',label:'Caravan'},
       {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
     ];
     // Only show types that exist on this route
@@ -2824,7 +2852,7 @@ function tStopsShell(r){
         <div id="osm-body" style="${UI.osmExpanded?'':'display:none'}">
         <p style="font-size:13px;color:var(--text3);margin:4px 0 8px;">Radius: ${(UI.searchRadiusKm*1000).toFixed(0)}m · <span style="text-decoration:underline;cursor:pointer;" onclick="document.getElementById('tabs').querySelectorAll('[data-tab]').forEach(b=>{if(b.dataset.tab==='settings'){b.click();}})">adjust in Settings</span></p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
-          ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍔 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
+          ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍔 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['caravan','🚐 Caravan parks',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['halls','🏛️ Community halls',false],['churches','⛪ Churches',false],['schools','🏫 Schools',false],['fire','🚒 Fire stations',false],['police','🚔 Police',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
             const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
             return '<label style="display:flex;align-items:center;gap:6px;font-size:15px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span>'+lbl+'</span></label>';
           }).join('')}
@@ -3315,7 +3343,7 @@ function tSettings(r){
     <div class="ctitle">OSM Search Defaults</div>
     <p style="font-size:15px;color:var(--text2);margin-bottom:10px;">Choose which stop types to search for by default. Changes apply immediately on the Stops tab.</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-      ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍔 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
+      ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍔 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['caravan','🚐 Caravan parks',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['halls','🏛️ Community halls',false],['churches','⛪ Churches',false],['schools','🏫 Schools',false],['fire','🚒 Fire stations',false],['police','🚔 Police',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
         const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
         return '<label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span>'+lbl+'</span></label>';
       }).join('')}
@@ -4351,7 +4379,7 @@ document.getElementById('content-wrap').addEventListener('keydown',e=>{
 
 document.getElementById('content-wrap').addEventListener('change',e=>{
   if(e.target.classList.contains('osm-opt')){
-    if(!UI.osmOpts)UI.osmOpts={towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,camp:false,huts:false,hotels:false,toilets:false,peaks:false};
+    if(!UI.osmOpts)UI.osmOpts={towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,camp:false,caravan:false,huts:false,hotels:false,halls:false,churches:false,schools:false,fire:false,police:false,peaks:false};
     UI.osmOpts[e.target.dataset.key]=e.target.checked;
     return;}
   if(e.target.id==='gpx-input'){
