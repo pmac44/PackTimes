@@ -3634,7 +3634,7 @@ function tPlan(r){
         +'<div style="width:12px;height:12px;border-radius:50%;background:'+dotCol+';flex-shrink:0;"></div>'
         +spine
       +'</div>'
-      +'<div class="sleep-dur-anchor" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;">'
+      +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
         +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span>'+(node.sleepStop&&node.sleepStop.sleepAt?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤 unsleep</button>':'')+'</div>'):'')
         +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
@@ -4065,6 +4065,16 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     r.turns=autoDetectTurns(r.points);
     UI.turnStatus=null;
     saveAll();render();return;
+  }
+  // Mission tile click — highlight stop on desktop map
+  const mn=e.target.closest('.mission-node');
+  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')){
+    const sid=mn.dataset.sid;
+    if(sid){
+      _highlightStopId=sid;
+      renderDesktopMap();
+    }
+    return;
   }
   if(e.target.closest('#btn-toggle-starred')){
     UI.stopsShowStarred=!UI.stopsShowStarred;
