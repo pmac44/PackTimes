@@ -1219,11 +1219,10 @@ function drawMap(cvs,r,opts){
   const minLon=lons.reduce((a,b)=>a<b?a:b,Infinity),maxLon=lons.reduce((a,b)=>a>b?a:b,-Infinity);
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
-  const pad=18;
+  const pad=id==='desktop-map'?60:18;
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
   const baseScale=Math.min((W-pad*2)/lonKm,(H-pad*2)/latKm);
   const scale=baseScale*state.zoom;
-  // Centre lon/lat: GPS position if live+tracking, else pan position, else route centre
   let cLon=state.cx!==null?state.cx:(maxLon+minLon)/2;
   let cLat=state.cy!==null?state.cy:(maxLat+minLat)/2;
   if(opts.followGPS&&UI.gpsDistKm!==null){
@@ -2191,23 +2190,28 @@ function renderDesktopMap(){
     ctx.fillStyle='rgba(10,15,10,0.72)';
     if(ctx.roundRect)ctx.roundRect(0,0,W,80,8);else ctx.rect(0,0,W,80);
     ctx.fill();
+    const epts=r.points;
+    const eles=epts.map(p=>p.ele);
+    const minE=Math.min(...eles),maxE=Math.max(...eles);
+    const eRange=maxE-minE||1;
+    const totalDist=epts[epts.length-1].dist;
     const pad=8;
     const ex=d=>pad+(d/totalDist)*(W-pad*2);
-    const ey=e=>70-pad-(e-minE)/eRange*(70-pad*2);
+    const ey=e=>70-(e-minE)/eRange*(70-pad*2)-pad;
     ctx.beginPath();
-    ctx.moveTo(ex(pts[0].dist),70);
-    pts.forEach(p=>ctx.lineTo(ex(p.dist),ey(p.ele)));
-    ctx.lineTo(ex(pts[pts.length-1].dist),70);
+    ctx.moveTo(ex(epts[0].dist),72);
+    epts.forEach(p=>ctx.lineTo(ex(p.dist),ey(p.ele)));
+    ctx.lineTo(ex(epts[epts.length-1].dist),72);
     ctx.closePath();
     ctx.fillStyle='rgba(139,111,212,0.25)';ctx.fill();
     ctx.beginPath();
-    pts.forEach((p,i)=>i===0?ctx.moveTo(ex(p.dist),ey(p.ele)):ctx.lineTo(ex(p.dist),ey(p.ele)));
+    epts.forEach((p,i)=>i===0?ctx.moveTo(ex(p.dist),ey(p.ele)):ctx.lineTo(ex(p.dist),ey(p.ele)));
     ctx.strokeStyle='rgba(139,111,212,0.8)';ctx.lineWidth=1.5;ctx.stroke();
     r.stops.forEach(s=>{
       if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
       const x=ex(s.dist);
       const isSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
-      ctx.beginPath();ctx.arc(x,70-4,3,0,Math.PI*2);
+      ctx.beginPath();ctx.arc(x,72,3,0,Math.PI*2);
       ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
     });
   }
