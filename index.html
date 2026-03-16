@@ -1672,14 +1672,20 @@ function hitTest(cvs,cx,cy,cb){
       });
       if(Math.sqrt(bestStopD)<28){
         _highlightStopId=bestStop.id;
-        const state=ms(cvs.id);
-        const p=pts[cidx(r,bestStop.dist)];
-        const panLon=(bestStop.lat&&bestStop.lon)?bestStop.lon:p.lon;
-        const panLat=(bestStop.lat&&bestStop.lon)?bestStop.lat:p.lat;
-        state.cx=panLon;state.cy=panLat;
-        const offKm=(bestStop.offRouteM||0)/1000;
-        state.zoom=zoomForKmWidth(cvs.id,offKm>0.5?Math.max(1.5,offKm*3):1.5);
-        redrawMap(cvs.id);
+        if(cvs.id==='stops-map'){
+          // Stops map — pan and zoom to stop
+          const state=ms(cvs.id);
+          const p=pts[cidx(r,bestStop.dist)];
+          const panLon=(bestStop.lat&&bestStop.lon)?bestStop.lon:p.lon;
+          const panLat=(bestStop.lat&&bestStop.lon)?bestStop.lat:p.lat;
+          state.cx=panLon;state.cy=panLat;
+          const offKm=(bestStop.offRouteM||0)/1000;
+          state.zoom=zoomForKmWidth(cvs.id,offKm>0.5?Math.max(1.5,offKm*3):1.5);
+          redrawMap(cvs.id);
+        } else {
+          // Desktop map — just highlight, no zoom/pan
+          redrawMap(cvs.id);
+        }
         // Scroll sidebar to the stop tile
         if(cvs.id==='desktop-map'&&UI.tab!=='stops'){UI.tab='stops';render();}
         setTimeout(()=>{
@@ -2186,44 +2192,47 @@ function renderDesktopMap(){
     anchor:isLive?0.75:0.5,
     highlightId:_highlightStopId
   });
-  // Tooltip on hover
-  cvs.addEventListener('mousemove',e=>{
-    const r2=cur();
-    const tt=document.getElementById('desktop-tooltip');
-    if(!r2||!cvs._px||!tt)return;
-    const rect=cvs.getBoundingClientRect();
-    const mx=e.clientX-rect.left,my=e.clientY-rect.top;
-    const{_px:px,_py:py,_pts:pts}=cvs;
-    let bestStop=null,bestD=Infinity;
-    r2.stops.forEach(s=>{
-      const dotLon=(s.lat&&s.lon)?s.lon:pts[cidx(r2,s.dist)].lon;
-      const dotLat=(s.lat&&s.lon)?s.lat:pts[cidx(r2,s.dist)].lat;
-      const dx=px(dotLon)-mx,dy=py(dotLat)-my,d=dx*dx+dy*dy;
-      if(d<bestD){bestD=d;bestStop=s;}
+  // Tooltip on hover — attach once only
+  if(!cvs._tooltipAttached){
+    cvs._tooltipAttached=true;
+    cvs.addEventListener('mousemove',e=>{
+      const r2=cur();
+      const tt=document.getElementById('desktop-tooltip');
+      if(!r2||!cvs._px||!tt)return;
+      const rect=cvs.getBoundingClientRect();
+      const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+      const{_px:px,_py:py,_pts:pts}=cvs;
+      let bestStop=null,bestD=Infinity;
+      r2.stops.forEach(s=>{
+        const dotLon=(s.lat&&s.lon)?s.lon:pts[cidx(r2,s.dist)].lon;
+        const dotLat=(s.lat&&s.lon)?s.lat:pts[cidx(r2,s.dist)].lat;
+        const dx=px(dotLon)-mx,dy=py(dotLat)-my,d=dx*dx+dy*dy;
+        if(d<bestD){bestD=d;bestStop=s;}
+      });
+      if(bestStop&&Math.sqrt(bestD)<28){
+        const sdt=startDT(r2);
+        const eta=etaAt(bestStop.dist,r2);
+        const etaStr=sdt&&eta?fmtDT(eta):'';
+        const distStr=bestStop.dist.toFixed(1)+'km';
+        tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${distStr}${etaStr?' · '+etaStr:''}</span>`;
+        const paneW=rect.width;
+        let tx=mx+14,ty=my-36;
+        if(tx+230>paneW)tx=mx-230;
+        if(ty<0)ty=my+14;
+        tt.style.left=tx+'px';tt.style.top=ty+'px';
+        tt.style.display='block';
+        cvs.style.cursor='pointer';
+      } else {
+        tt.style.display='none';
+        cvs.style.cursor='';
+      }
     });
-    if(bestStop&&Math.sqrt(bestD)<28){
-      const sdt=startDT(r2);
-      const eta=etaAt(bestStop.dist,r2);
-      const etaStr=sdt&&eta?fmtDT(eta):'';
-      const distStr=bestStop.dist.toFixed(1)+'km';
-      tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${distStr}${etaStr?' · '+etaStr:''}</span>`;
-      // Position tooltip near cursor but keep inside pane
-      const paneW=rect.width,paneH=rect.height;
-      let tx=e.clientX-rect.left+14,ty=e.clientY-rect.top-36;
-      if(tx+230>paneW)tx=mx-230;
-      if(ty<0)ty=my+14;
-      tt.style.left=tx+'px';tt.style.top=ty+'px';
-      tt.style.display='block';
-      cvs.style.cursor='pointer';
-    } else {
-      tt.style.display='none';
+    cvs.addEventListener('mouseleave',()=>{
+      const tt=document.getElementById('desktop-tooltip');
+      if(tt)tt.style.display='none';
       cvs.style.cursor='';
-    }
-  });
-  cvs.addEventListener('mouseleave',()=>{
-    const tt=document.getElementById('desktop-tooltip');
-    if(tt)tt.style.display='none';
-  });
+    });
+  }
   // Draw elevation profile
   const ec=document.getElementById('desktop-elev');
   const ew=document.getElementById('desktop-elev-wrap');
