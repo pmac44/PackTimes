@@ -176,7 +176,7 @@ select option{background:var(--bg3);}
       <canvas id="desktop-map" style="width:100%;height:100%;display:block;"></canvas>
       <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;font-size:14px;color:var(--text);font-family:var(--font);white-space:nowrap;z-index:30;max-width:220px;"></div>
       <div id="desktop-elev-wrap" style="position:absolute;bottom:16px;left:16px;right:16px;height:80px;pointer-events:none;border-radius:8px;overflow:hidden;">
-        <canvas id="desktop-elev" style="display:block;" width="100" height="80"></canvas>
+        <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
       <div class="map-ctrl" id="desktop-map-ctrl">
         <div class="map-ctrl-row">
@@ -1229,7 +1229,7 @@ function drawMap(cvs,r,opts){
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
-  const padBottom=id==='desktop-map'?130:pad; // extra bottom clearance for elevation profile
+  const padBottom=id==='desktop-map'?160:pad; // extra bottom clearance for elevation profile
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
   const baseScale=Math.min((W-pad*2)/lonKm,(H-pad-padBottom)/latKm);
   const scale=baseScale*state.zoom;
@@ -1345,9 +1345,9 @@ function drawMap(cvs,r,opts){
     // Yellow ring for mission/starred stops on desktop
     if(cvs.id==='desktop-map'&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt)){
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),22,0,Math.PI*2);
-      ctx.fillStyle='rgba(250,204,21,0.25)';ctx.fill();
+      ctx.fillStyle='rgba(255,230,50,0.2)';ctx.fill();
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),14,0,Math.PI*2);
-      ctx.strokeStyle='#facc15';ctx.lineWidth=3;ctx.stroke();
+      ctx.strokeStyle='#ffe632';ctx.lineWidth=3;ctx.stroke();
     }
     // Highlight selected stop
     if(opts.highlightId&&opts.highlightId===s.id){
@@ -1413,17 +1413,19 @@ function drawMap(cvs,r,opts){
       ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);
       ctx.fillStyle='rgba(0,0,0,0.75)';ctx.fill();
       ctx.strokeStyle='#e8f5e8';ctx.lineWidth=1.2;ctx.stroke();
-      // Label with white pill
+      // Label — dark semi-transparent pill on desktop, white on mobile
       const lbl=km+'km';
-      ctx.font=`${mapFontSm}px DM Mono, monospace`;ctx.textAlign='center';ctx.textBaseline='bottom';
+      const isDesktopMap=id==='desktop-map';
+      const fSize=isDesktopMap?10:mapFontSm;
+      ctx.font=`${fSize}px DM Mono, monospace`;ctx.textAlign='center';ctx.textBaseline='bottom';
       const tw=ctx.measureText(lbl).width;
-      const pillH=mapFontSm+4,pillY=my-pillH-4;
-      ctx.fillStyle='rgba(255,255,255,0.92)';
+      const pillH=fSize+4,pillY=my-pillH-4;
+      ctx.fillStyle=isDesktopMap?'rgba(10,15,10,0.72)':'rgba(255,255,255,0.92)';
       ctx.beginPath();
       if(ctx.roundRect){ctx.roundRect(mx-tw/2-3,pillY,tw+6,pillH,3);}
       else{ctx.rect(mx-tw/2-3,pillY,tw+6,pillH);}
       ctx.fill();
-      ctx.fillStyle='#111';
+      ctx.fillStyle=isDesktopMap?'rgba(200,230,200,0.9)':'#111';
       ctx.fillText(lbl,mx,pillY+pillH-1);
     }
   }
