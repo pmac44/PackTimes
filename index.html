@@ -173,7 +173,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="desktop-map-pane" id="desktop-map-pane">
       <canvas id="desktop-map" style="width:100%;height:100%;display:block;"></canvas>
-      <canvas id="desktop-elev" style="position:absolute;bottom:16px;left:16px;right:16px;height:100px;pointer-events:none;border-radius:8px;"></canvas>
+      <canvas id="desktop-elev" style="position:absolute;bottom:16px;left:16px;height:80px;pointer-events:none;border-radius:8px;" width="100" height="80"></canvas>
       <div class="map-ctrl" id="desktop-map-ctrl">
         <div class="map-ctrl-row">
           <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
@@ -2181,40 +2181,30 @@ function renderDesktopMap(){
   // Draw elevation profile
   const ec=document.getElementById('desktop-elev');
   if(ec&&r.points.length>1){
-    const W=pane.offsetWidth-32; // 16px each side
-    ec.width=W;ec.height=100;ec.style.width=W+'px';
+    const W=pane.offsetWidth-32;
+    ec.width=W;ec.height=80;ec.style.width=W+'px';ec.style.height='80px';
     const ctx=ec.getContext('2d');
-    ctx.clearRect(0,0,W,100);
-    // Semi-transparent background
+    ctx.clearRect(0,0,W,80);
     ctx.fillStyle='rgba(10,15,10,0.72)';
-    if(ctx.roundRect)ctx.roundRect(0,0,W,100,8);else ctx.rect(0,0,W,100);
+    if(ctx.roundRect)ctx.roundRect(0,0,W,80,8);else ctx.rect(0,0,W,80);
     ctx.fill();
-    // Elevation line
-    const pts=r.points;
-    const eles=pts.map(p=>p.ele);
-    const minE=Math.min(...eles),maxE=Math.max(...eles);
-    const eRange=maxE-minE||1;
-    const totalDist=pts[pts.length-1].dist;
     const pad=8;
     const ex=d=>pad+(d/totalDist)*(W-pad*2);
-    const ey=e=>90-pad-(e-minE)/eRange*(90-pad*2);
-    // Fill
+    const ey=e=>70-pad-(e-minE)/eRange*(70-pad*2);
     ctx.beginPath();
-    ctx.moveTo(ex(pts[0].dist),90);
+    ctx.moveTo(ex(pts[0].dist),70);
     pts.forEach(p=>ctx.lineTo(ex(p.dist),ey(p.ele)));
-    ctx.lineTo(ex(pts[pts.length-1].dist),90);
+    ctx.lineTo(ex(pts[pts.length-1].dist),70);
     ctx.closePath();
     ctx.fillStyle='rgba(139,111,212,0.25)';ctx.fill();
-    // Line
     ctx.beginPath();
     pts.forEach((p,i)=>i===0?ctx.moveTo(ex(p.dist),ey(p.ele)):ctx.lineTo(ex(p.dist),ey(p.ele)));
     ctx.strokeStyle='rgba(139,111,212,0.8)';ctx.lineWidth=1.5;ctx.stroke();
-    // Sleep/starred stop markers
     r.stops.forEach(s=>{
       if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
       const x=ex(s.dist);
       const isSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
-      ctx.beginPath();ctx.arc(x,90-4,3,0,Math.PI*2);
+      ctx.beginPath();ctx.arc(x,70-4,3,0,Math.PI*2);
       ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
     });
   }
