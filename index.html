@@ -3994,7 +3994,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   const sa=e.target.closest('.sleep-at-stop');
   if(sa&&r){
     const sid=sa.dataset.sid;
-    const s=r.stops.find(x=>x.id===sid);
+    const s=r.stops.find(x=>String(x.id)===String(sid));
     if(s){
       // Always show picker — pre-filled if already set, with unsleep option
       const container=sa.closest('.tap-stop')||sa.closest('.sleep-dur-anchor')||sa.parentElement;
@@ -4035,7 +4035,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   const ss=e.target.closest('.star-stop');
   if(ss&&r){
     const sid=ss.dataset.sid;
-    const s=r.stops.find(x=>x.id===sid);
+    const s=r.stops.find(x=>String(x.id)===String(sid));
     if(s){
       s.starred=s.starred===false?true:false;
       ss.textContent=s.starred!==false?'⭐':'☆';
@@ -4166,9 +4166,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Direct unsleep from mission tile header
   const ud=e.target.closest('.unsleep-direct');
   if(ud&&cur()){
-    console.log('unsleep-direct clicked, sid=',ud.dataset.sid);
-    const s=cur().stops.find(x=>x.id===ud.dataset.sid);
-    console.log('found stop:', s?.name, 'sleepAt:', s?.sleepAt);
+    const sid=ud.dataset.sid;
+    const s=cur().stops.find(x=>String(x.id)===String(sid));
     if(s){s.sleepAt=false;s.sleepH=null;saveAll();render();}
     return;
   }
