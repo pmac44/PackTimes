@@ -259,7 +259,6 @@ select option{background:var(--bg3);}
         <option value="food">🍔 Food</option>
         <option value="shop">🛒 Shop</option>
         <option value="town">🏘️ Town</option>
-        <option value="hike">🥾 Hike-a-bike section</option>
       </select>
     </div>
     <div class="field"><label class="lbl">Name (optional)</label><input type="text" id="m-name" placeholder="e.g. Village supermarket"></div>
@@ -2238,13 +2237,6 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
   const name=document.getElementById('m-name').value.trim();
   const dist=parseFloat(document.getElementById('m-dist').value);
   const sleepH=parseFloat(document.getElementById('m-sleep').value||10);
-  // Hike-a-bike section — open pace modal directly
-  if(t==='hike'){
-    const dist=parseFloat(document.getElementById('m-dist').value);
-    closeModal();
-    openPaceModal(-1,dist);
-    return;
-  }
   const hasHours=document.getElementById('m-has-hours').checked;
   let ohRaw=null,ohRules=null;
   if(hasHours){
