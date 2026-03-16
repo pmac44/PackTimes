@@ -58,7 +58,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 .live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
 .live-summary{position:absolute;bottom:0;left:0;right:0;padding:6px 8px 8px;display:flex;flex-direction:column;gap:5px;z-index:10;}
-.turn-popup{position:absolute;top:10px;left:10px;right:10px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;}
+.turn-popup{position:absolute;top:64px;left:8px;right:8px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;}
 .turn-arrow{font-size:42px;line-height:1;flex-shrink:0;}
 .turn-info{flex:1;min-width:0;}
 .turn-dist{font-size:22px;font-weight:700;color:var(--accent);font-family:var(--font);}
@@ -152,11 +152,11 @@ select option{background:var(--bg3);}
 .rli.active .ri-name{color:var(--accent);}
 .ri-inf{flex:1;min-width:0;}.ri-name{font-weight:500;font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ri-meta{font-size:18px;color:var(--text3);font-family:var(--font);margin-top:2px;}
-#alert-overlay{display:none;position:fixed;top:10px;left:10px;right:10px;z-index:9999;align-items:flex-start;justify-content:center;}
-#alert-box{background:rgba(10,15,10,0.95);border:1px solid var(--accent3);border-radius:10px;padding:10px 14px;width:100%;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
-#alert-ico{font-size:28px;flex-shrink:0;}
-#alert-title{font-size:17px;font-weight:600;margin-bottom:2px;}
-#alert-msg{font-size:15px;color:var(--text2);line-height:1.4;}
+#alert-overlay{display:none;position:absolute;top:0;left:0;right:0;z-index:9999;padding:6px 8px 0;pointer-events:none;}
+#alert-box{background:rgba(10,15,10,0.95);border:1px solid var(--accent3);border-radius:7px;padding:6px 10px;width:100%;display:flex;align-items:center;gap:10px;pointer-events:all;}
+#alert-ico{font-size:22px;flex-shrink:0;}
+#alert-title{font-size:15px;font-weight:600;margin-bottom:1px;}
+#alert-msg{font-size:13px;color:var(--text2);line-height:1.3;}
 </style>
 </head>
 <body>
@@ -173,10 +173,11 @@ select option{background:var(--bg3);}
     </div>
     <div class="desktop-map-pane" id="desktop-map-pane">
       <canvas id="desktop-map" style="width:100%;height:100%;display:block;"></canvas>
+      <canvas id="desktop-elev" style="position:absolute;bottom:16px;left:16px;right:16px;height:100px;pointer-events:none;border-radius:8px;"></canvas>
       <div class="map-ctrl" id="desktop-map-ctrl">
         <div class="map-ctrl-row">
           <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
-          <button class="zbtn tile-tog" data-tilemap="desktop-map" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">${["OSM","SAT","off"][_tileMode]}</button>
+          <button class="zbtn tile-tog" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
         </div>
       </div>
     </div>
@@ -331,17 +332,6 @@ select option{background:var(--bg3);}
     <button class="btn btn-p btn-full" id="pace-save">Save Segment</button>
   </div>
 </div>
-<div id="alert-overlay">
-  <div id="alert-box">
-    <div id="alert-ico">📍</div>
-    <div style="flex:1;min-width:0;">
-      <div id="alert-title"></div>
-      <div id="alert-msg"></div>
-    </div>
-    <button class="btn btn-sm" id="alert-ok" style="flex-shrink:0;">OK</button>
-  </div>
-</div>
-
 <script>
 'use strict';
 // ═══════════════════════════════════════════
@@ -1026,6 +1016,7 @@ function simStart(){
 }
 
 function simStop(){
+  if(!UI.simRunning&&!_simTimer)return;
   if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
   UI.simRunning=false;
   stopGPS();
@@ -1106,11 +1097,7 @@ function showAlert(s,remKm,r){
   if(navigator.vibrate)navigator.vibrate([200,100,200,100,200]);
   if('wakeLock' in navigator)navigator.wakeLock.request('screen').then(wl=>{_wakeLock=wl;}).catch(()=>{});
 }
-document.getElementById('alert-ok').addEventListener('click',()=>{
-  document.getElementById('alert-overlay').style.display='none';
-  UI._alertStopDist=null;
-  if(_wakeLock){_wakeLock.release();_wakeLock=null;}
-});
+// alert-ok handled via event delegation above
 document.getElementById('gpspill').addEventListener('click',toggleGPS);
 
 // ═══════════════════════════════════════════
@@ -1223,7 +1210,7 @@ function drawMap(cvs,r,opts){
   const anchor=opts.anchor||0.5;
 
   // Responsive font size based on canvas width
-  const mapFontSm=Math.max(11,Math.round(W*0.032));
+  const mapFontSm=Math.min(13,Math.max(11,Math.round(W*0.032)));
   const mapFontXs=Math.max(10,Math.round(W*0.026));
   const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
   const minLat=lats.reduce((a,b)=>a<b?a:b,Infinity),maxLat=lats.reduce((a,b)=>a>b?a:b,-Infinity);
@@ -2176,6 +2163,9 @@ function renderDesktopMap(){
   if(!IS_DESKTOP())return;
   const r=cur();if(!r||!r.points.length)return;
   const cvs=document.getElementById('desktop-map');if(!cvs)return;
+  // Update tile button text
+  const tb=document.getElementById('desktop-tile-btn');
+  if(tb)tb.textContent=['OSM','SAT','off'][_tileMode];
   // Size canvas to its container
   const pane=document.getElementById('desktop-map-pane');
   cvs.style.width=pane.offsetWidth+'px';
@@ -2188,6 +2178,46 @@ function renderDesktopMap(){
     highlightId:_highlightStopId
   });
   attachMap(cvs,null);
+  // Draw elevation profile
+  const ec=document.getElementById('desktop-elev');
+  if(ec&&r.points.length>1){
+    const W=pane.offsetWidth-32; // 16px each side
+    ec.width=W;ec.height=100;ec.style.width=W+'px';
+    const ctx=ec.getContext('2d');
+    ctx.clearRect(0,0,W,100);
+    // Semi-transparent background
+    ctx.fillStyle='rgba(10,15,10,0.72)';
+    if(ctx.roundRect)ctx.roundRect(0,0,W,100,8);else ctx.rect(0,0,W,100);
+    ctx.fill();
+    // Elevation line
+    const pts=r.points;
+    const eles=pts.map(p=>p.ele);
+    const minE=Math.min(...eles),maxE=Math.max(...eles);
+    const eRange=maxE-minE||1;
+    const totalDist=pts[pts.length-1].dist;
+    const pad=8;
+    const ex=d=>pad+(d/totalDist)*(W-pad*2);
+    const ey=e=>90-pad-(e-minE)/eRange*(90-pad*2);
+    // Fill
+    ctx.beginPath();
+    ctx.moveTo(ex(pts[0].dist),90);
+    pts.forEach(p=>ctx.lineTo(ex(p.dist),ey(p.ele)));
+    ctx.lineTo(ex(pts[pts.length-1].dist),90);
+    ctx.closePath();
+    ctx.fillStyle='rgba(139,111,212,0.25)';ctx.fill();
+    // Line
+    ctx.beginPath();
+    pts.forEach((p,i)=>i===0?ctx.moveTo(ex(p.dist),ey(p.ele)):ctx.lineTo(ex(p.dist),ey(p.ele)));
+    ctx.strokeStyle='rgba(139,111,212,0.8)';ctx.lineWidth=1.5;ctx.stroke();
+    // Sleep/starred stop markers
+    r.stops.forEach(s=>{
+      if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
+      const x=ex(s.dist);
+      const isSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+      ctx.beginPath();ctx.arc(x,90-4,3,0,Math.PI*2);
+      ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
+    });
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -2520,7 +2550,14 @@ function scheduleStopsRedraw(){
 
 function initStopsMap(r){
   const cvs=document.getElementById('stops-map');if(!cvs)return;
-  setStopsMapHeight(0.60,false);
+  if(IS_DESKTOP()){
+    setStopsMapHeight(0,false); // will be overridden below
+    const panel=document.getElementById('stops-map-panel');
+    const wrap=document.getElementById('stops-map-wrap');
+    if(panel&&wrap){panel.style.height='250px';wrap.style.height='250px';cvs.style.height='250px';cvs._forcedH=250;}
+  } else {
+    setStopsMapHeight(0.60,false);
+  }
   drawMap(cvs,r,{anchor:0.5,highlightId:_highlightStopId});
   attachMap(cvs,km=>openModal(km));
 }
@@ -2664,6 +2701,16 @@ function tLiveShell(r){
         <canvas id="live-map"></canvas>
         ${mapCtrlHTML('live-map',true)}
         ${progressOverlay}
+        <div id="alert-overlay">
+          <div id="alert-box">
+            <div id="alert-ico">📍</div>
+            <div style="flex:1;min-width:0;">
+              <div id="alert-title"></div>
+              <div id="alert-msg"></div>
+            </div>
+            <button class="btn btn-sm" id="alert-ok" style="flex-shrink:0;">OK</button>
+          </div>
+        </div>
         ${(()=>{
           if(!UI.gpsActive)return '';
           const alertDistKm=UI.simRunning?(UI.turnAlertM||30)*20/1000:(UI.turnAlertM||30)/1000;
@@ -2866,13 +2913,16 @@ function tRoutes(r){
         </div>`;
       }).join('')}
   </div>
-  <div class="card">
+  <div class="card" ${IS_DESKTOP()?'style="display:none;"':''}>
     <div class="ctitle">Route Map</div>
     <div class="map-wrap" style="height:400px;">
       <canvas id="map-cvs" style="height:400px;"></canvas>
       ${zoomBtnsHTML('map-cvs')}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;margin-top:8px;">
+  </div>
+  <div class="card" id="map-legend-card">
+    <div class="ctitle" style="font-size:13px;margin-bottom:6px;">Map Legend</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;">
       ${[['var(--accent)','Town'],['var(--amber)','Food'],['#f97316','Fuel'],['var(--blue)','Water'],['var(--purple)','Shop'],['#c084fc','Accom'],['#4a7c59','Camp'],['var(--red)','Sleep'],['#94856a','Rest'],['#2dd4bf','Toilets'],['#c8a96e','Hut'],['#94a3b8','Peak/Saddle'],['#6b9eb0','Waterway'],['#f97316','Hike-a-bike']].map(([c,l])=>
         `<span style="font-size:15px;color:var(--text3);display:flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:${c};flex-shrink:0;display:inline-block;"></span>${l}</span>`).join('')}
     </div>
@@ -3715,7 +3765,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     patchSpeedFactor(r);saveAll();return;
   }
 
-  if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
+  if(e.target.closest('#alert-ok')){
+    document.getElementById('alert-overlay').style.display='none';
+    UI._alertStopDist=null;
+    if(_wakeLock){_wakeLock.release();_wakeLock=null;}
+    return;
+  }
   if(e.target.closest('#btn-sim-start')){simStart();return;}
   if(e.target.closest('#btn-sim-stop')){simStop();return;}
   if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
