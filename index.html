@@ -376,7 +376,7 @@ const newRoute=name=>({
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxSavedAt:null,
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set()};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -409,6 +409,7 @@ async function saveAll(){
   for(const r of ROUTES)await DB.put(packRoute(r)).catch(()=>{});
   await DB.setKV('cur',CUR>=0?ROUTES[CUR].id:null).catch(()=>{});
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
+  await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   dbxScheduleSave();
 }
@@ -419,6 +420,7 @@ async function loadAll(){
     CUR=cid?ROUTES.findIndex(r=>r.id===cid):(ROUTES.length?0:-1);
     if(CUR<0&&ROUTES.length)CUR=0;
     UI.dbxToken=await DB.getKV('dbxToken')||null;
+    UI.dbxRefreshToken=await DB.getKV('dbxRefreshToken')||null;
     UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
   }catch(e){ROUTES=[];CUR=-1;}
 }
@@ -2325,21 +2327,138 @@ function renderDesktopMap(){
   }
 }
 
+
 // ═══════════════════════════════════════════
 //  DROPBOX SYNC
 // ═══════════════════════════════════════════
+const DBX_APP_KEY='5uh7f72xfyv171g';
+const DBX_REDIRECT='https://pmac44.github.io/PackTimes/';
 const DBX_FILE='/plan.json';
 let _dbxSaveTimer=null;
 
-function dbxConnectWithToken(token){
-  if(!token||!token.trim()){dbxSetStatus('Please paste a valid token','err');return;}
-  UI.dbxToken=token.trim();
-  saveAll();
-  dbxSetStatus('✓ Connected');
-  if(UI.tab==='settings')render();
-  dbxScheduleSave();
+function dbxAuthURL(){
+  const verifier=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  sessionStorage.setItem('dbx_verifier',verifier);
+  const state=Math.random().toString(36).slice(2);
+  sessionStorage.setItem('dbx_state',state);
+  return'https://www.dropbox.com/oauth2/authorize?'+new URLSearchParams({
+    client_id:DBX_APP_KEY,
+    redirect_uri:DBX_REDIRECT,
+    response_type:'code',
+    state,
+    code_challenge_method:'plain',
+    code_challenge:verifier,
+    token_access_type:'offline'
+  });
 }
 
+async function dbxHandleRedirect(){
+  const params=new URLSearchParams(window.location.search);
+  const code=params.get('code');
+  const state=params.get('state');
+  if(!code)return;
+  history.replaceState(null,'',window.location.pathname);
+  if(state!==sessionStorage.getItem('dbx_state')){dbxSetStatus('Auth state mismatch','err');return;}
+  const verifier=sessionStorage.getItem('dbx_verifier');
+  sessionStorage.removeItem('dbx_state');sessionStorage.removeItem('dbx_verifier');
+  try{
+    const res=await fetch('https://api.dropboxapi.com/oauth2/token',{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({code,grant_type:'authorization_code',client_id:DBX_APP_KEY,redirect_uri:DBX_REDIRECT,code_verifier:verifier})
+    });
+    const data=await res.json();
+    if(data.access_token){
+      UI.dbxToken=data.access_token;
+      if(data.refresh_token)UI.dbxRefreshToken=data.refresh_token;
+      await saveAll();
+      dbxSetStatus('✓ Connected to Dropbox');
+      if(UI.tab==='settings')render();
+      dbxSave(true);
+    } else {
+      dbxSetStatus('Auth failed: '+(data.error_description||data.error||JSON.stringify(data)),'err');
+    }
+  }catch(e){dbxSetStatus('Auth error: '+e.message,'err');}
+}
+
+function dbxSetStatus(msg,isErr){
+  const el=document.getElementById('dbx-status');
+  if(el){el.textContent=msg;el.style.color=isErr?'var(--red)':'var(--text3)';}
+}
+
+function dbxScheduleSave(){
+  if(!UI.dbxToken)return;
+  if(_dbxSaveTimer)clearTimeout(_dbxSaveTimer);
+  _dbxSaveTimer=setTimeout(()=>{_dbxSaveTimer=null;dbxSave(true);},5000);
+}
+
+async function dbxSave(auto){
+  if(!UI.dbxToken)return;
+  if(!auto)dbxSetStatus('Saving…');
+  try{
+    const now=Date.now();
+    const data={_v:2,savedAt:now,cur:CUR>=0?ROUTES[CUR].id:null,routes:ROUTES.map(packRoute)};
+    const res=await fetch('https://content.dropboxapi.com/2/files/upload',{
+      method:'POST',
+      headers:{
+        'Authorization':'Bearer '+UI.dbxToken,
+        'Dropbox-API-Arg':JSON.stringify({path:DBX_FILE,mode:'overwrite',autorename:false}),
+        'Content-Type':'application/octet-stream'
+      },
+      body:JSON.stringify(data)
+    });
+    if(res.ok){
+      UI.dbxSavedAt=now;
+      await DB.setKV('dbxSavedAt',now).catch(()=>{});
+      dbxSetStatus('☁️ Synced — '+(new Date(now).toLocaleTimeString()));
+    } else if(res.status===401){
+      UI.dbxToken=null;await saveAll();
+      dbxSetStatus('Session expired — reconnect Dropbox','err');
+      if(UI.tab==='settings')render();
+    } else {
+      dbxSetStatus('Sync failed: '+res.status,'err');
+    }
+  }catch(e){dbxSetStatus('Sync error: '+e.message,'err');}
+}
+
+async function dbxLoad(force){
+  if(!UI.dbxToken)return;
+  if(!force)dbxSetStatus('Checking Dropbox…');
+  try{
+    const res=await fetch('https://content.dropboxapi.com/2/files/download',{
+      method:'POST',
+      headers:{
+        'Authorization':'Bearer '+UI.dbxToken,
+        'Dropbox-API-Arg':JSON.stringify({path:DBX_FILE})
+      }
+    });
+    if(res.status===409){dbxSetStatus('☁️ Connected — no cloud data yet');return;}
+    if(res.status===401){UI.dbxToken=null;await saveAll();dbxSetStatus('Session expired — reconnect','err');if(UI.tab==='settings')render();return;}
+    if(!res.ok){dbxSetStatus('Load failed: '+res.status,'err');return;}
+    const data=await res.json();
+    if(!data.routes){dbxSetStatus('Invalid data in Dropbox.','err');return;}
+    const cloudTime=data.savedAt||0;
+    const localTime=UI.dbxSavedAt||0;
+    if(!force&&cloudTime<=localTime&&localTime>0){
+      dbxSetStatus('☁️ Synced — local is up to date');return;
+    }
+    ROUTES=data.routes.map(unpackRoute);
+    const idx=data.cur?ROUTES.findIndex(r=>r.id===data.cur):-1;
+    CUR=idx>=0?idx:(ROUTES.length?0:-1);
+    UI.dbxSavedAt=cloudTime;
+    await saveAll();
+    dbxSetStatus('✓ Loaded from Dropbox — '+(new Date(cloudTime).toLocaleTimeString()));
+    render();
+  }catch(e){dbxSetStatus('Load error: '+e.message,'err');}
+}
+
+async function dbxAutoLoad(){
+  if(!UI.dbxToken)return;
+  await dbxLoad(false);
+}
+
+// Handle OAuth redirect on page load
+if(new URLSearchParams(window.location.search).get('code'))dbxHandleRedirect();
 
 
 // Tiny QR encoder — uses qrcodejs via CDN
@@ -3102,21 +3221,17 @@ function tSettings(r){
   </div>`:''}
   <div class="card">
     <div class="ctitle">Dropbox Sync</div>
-    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Auto-syncs to Dropbox. Saves 5 seconds after any change, loads on startup if cloud is newer.</p>
+    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Auto-syncs routes and stops to Dropbox. Saves 5 seconds after any change, loads on startup if cloud is newer.</p>
     <div id="dbx-status" style="font-size:14px;color:var(--text3);margin-bottom:8px;font-family:var(--font);">${UI.dbxToken?(UI.dbxSavedAt?'☁️ Last synced '+new Date(UI.dbxSavedAt).toLocaleTimeString():'☁️ Connected'):'Not connected'}</div>
-    ${UI.dbxToken?`
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${UI.dbxToken?`
         <button class="btn btn-sm btn-p" id="btn-dbx-save">☁️ Save now</button>
         <button class="btn btn-sm btn-p" id="btn-dbx-load">⬇️ Force load</button>
         <button class="btn btn-sm" id="btn-dbx-disconnect">Disconnect</button>
-      </div>
-    `:`
-      <p style="font-size:13px;color:var(--text3);margin-bottom:6px;">Generate an access token at <a href="https://www.dropbox.com/developers/apps" target="_blank" style="color:var(--accent);">dropbox.com/developers/apps</a> → PackTimes → Generate token, then paste it below.</p>
-      <div style="display:flex;gap:6px;">
-        <input id="dbx-token-input" type="password" placeholder="Paste access token…" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-size:14px;font-family:var(--font);">
-        <button class="btn btn-sm btn-p" id="btn-dbx-connect">Connect</button>
-      </div>
-    `}
+      `:`
+        <button class="btn btn-sm btn-p" id="btn-dbx-connect">🔗 Connect Dropbox</button>
+      `}
+    </div>
   </div>
   <div class="card">
     <div class="ctitle">Offline Storage</div>
@@ -3908,9 +4023,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(_wakeLock){_wakeLock.release();_wakeLock=null;}
     return;
   }
-  if(e.target.closest('#btn-dbx-connect')){
-    const inp=document.getElementById('dbx-token-input');
-    dbxConnectWithToken(inp?inp.value:'');return;}
+  if(e.target.closest('#btn-dbx-connect')){window.location.href=dbxAuthURL();return;}
   if(e.target.closest('#btn-dbx-save')){dbxSave(false);return;}
   if(e.target.closest('#btn-dbx-load')){dbxLoad(true);return;}
   if(e.target.closest('#btn-dbx-disconnect')){UI.dbxToken=null;UI.dbxSavedAt=null;saveAll();render();return;}
