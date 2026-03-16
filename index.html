@@ -1222,7 +1222,7 @@ function drawMap(cvs,r,opts){
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
-  const padBottom=id==='desktop-map'?110:pad; // extra bottom clearance for elevation profile
+  const padBottom=id==='desktop-map'?130:pad; // extra bottom clearance for elevation profile
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
   const baseScale=Math.min((W-pad*2)/lonKm,(H-pad-padBottom)/latKm);
   const scale=baseScale*state.zoom;
@@ -2281,6 +2281,45 @@ function renderDesktopMap(){
       ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
       ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=0.5;ctx.stroke();
     });
+    // Tooltip on elevation dots — attach once
+    if(!ec._tooltipAttached){
+      ec._tooltipAttached=true;
+      ec.addEventListener('mousemove',e=>{
+        const r2=cur();
+        const tt=document.getElementById('desktop-tooltip');
+        if(!r2||!tt)return;
+        const rect=ec.getBoundingClientRect();
+        const mx=e.clientX-rect.left;
+        let bestStop=null,bestDx=Infinity;
+        r2.stops.forEach(s=>{
+          if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
+          const sx=ex(s.dist);
+          const dx=Math.abs(sx-mx);
+          if(dx<bestDx){bestDx=dx;bestStop=s;}
+        });
+        if(bestStop&&bestDx<12){
+          const sdt=startDT(r2);
+          const eta=etaAt(bestStop.dist,r2);
+          const etaStr=sdt&&eta?fmtDT(eta):'';
+          tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${bestStop.dist.toFixed(1)}km${etaStr?' · '+etaStr:''}</span>`;
+          const pr=document.getElementById('desktop-map-pane').getBoundingClientRect();
+          let tx=e.clientX-pr.left+14,ty=e.clientY-pr.top-44;
+          if(tx+230>pr.width)tx=e.clientX-pr.left-230;
+          if(ty<0)ty=e.clientY-pr.top+14;
+          tt.style.left=tx+'px';tt.style.top=ty+'px';
+          tt.style.display='block';
+          ec.style.cursor='pointer';
+        } else {
+          tt.style.display='none';
+          ec.style.cursor='';
+        }
+      });
+      ec.addEventListener('mouseleave',()=>{
+        const tt=document.getElementById('desktop-tooltip');
+        if(tt)tt.style.display='none';
+        ec.style.cursor='';
+      });
+    }
   }
 }
 
