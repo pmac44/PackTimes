@@ -3193,7 +3193,7 @@ function tPlan(r){
         +'<div style="width:12px;height:12px;border-radius:50%;background:'+dotCol+';flex-shrink:0;"></div>'
         +spine
       +'</div>'
-      +'<div style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;">'
+      +'<div class="sleep-dur-anchor" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;">'
         +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span>'+(node.sleepStop&&node.sleepStop.sleepAt?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤 unsleep</button>':'')+'</div>'):'')
         +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
@@ -3456,36 +3456,36 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         sa.textContent='💤';sa.style.color='';sa.style.borderColor='';
         saveAll();
       } else {
-        // Show inline duration picker on the tile instead of prompt() which fails on iOS PWA
-        const tile=sa.closest('.tap-stop');
-        if(!tile)return;
-        // Remove any existing picker
-        const existing=tile.querySelector('.sleep-dur-picker');
+        // Show inline duration picker — works on both Stops tab tiles and Mission tab chips
+        const container=sa.closest('.tap-stop')||sa.closest('.sleep-dur-anchor')||sa.parentElement;
+        if(!container)return;
+        const existing=container.querySelector('.sleep-dur-picker');
         if(existing){existing.remove();return;}
         const picker=document.createElement('div');
         picker.className='sleep-dur-picker';
-        picker.style.cssText='display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 8px;background:rgba(60,40,120,0.3);border-radius:6px;border:1px solid rgba(130,100,220,0.4);';
+        picker.style.cssText='display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 8px;background:rgba(60,40,120,0.3);border-radius:6px;border:1px solid rgba(130,100,220,0.4);flex-wrap:wrap;';
         picker.innerHTML=`<span style="font-size:14px;color:#b39ddb;">😴 Sleep hours:</span>
           <input type="number" min="1" max="24" step="0.5" value="${UI.lastSleepH||10}" style="width:52px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);">
           <button class="btn btn-sm btn-p sleep-dur-ok" style="padding:2px 8px;">✓</button>
           <button class="btn btn-sm sleep-dur-cancel" style="padding:2px 8px;">✕</button>`;
-        tile.appendChild(picker);
+        container.appendChild(picker);
         picker.querySelector('input').focus();
         picker.querySelector('.sleep-dur-ok').addEventListener('click',()=>{
           const v=parseFloat(picker.querySelector('input').value);
           if(isNaN(v)||v<=0||v>24){alert('Enter hours between 0 and 24');return;}
           UI.lastSleepH=v;
           s.sleepAt=true;s.sleepH=v;s.starred=true;
-          tile.style.background='rgba(60,40,120,0.55)';tile.style.borderColor='rgba(130,100,220,0.6)';
-          sa.textContent='😴';
-          const starBtn=tile.querySelector('.star-stop');
-          if(starBtn)starBtn.textContent='⭐';
+          const tile=sa.closest('.tap-stop');
+          if(tile){
+            tile.style.background='rgba(60,40,120,0.55)';tile.style.borderColor='rgba(130,100,220,0.6)';
+            sa.textContent='😴';
+            const starBtn=tile.querySelector('.star-stop');
+            if(starBtn)starBtn.textContent='⭐';
+          }
           picker.remove();
           const toRemove=r.stops.filter(x=>!((x.type==='sleep'||x.sleepAt)&&x.id!==s.id&&Math.abs(x.dist-s.dist)<=5));
-          const removed=r.stops.length-toRemove.length;
           r.stops=toRemove;
-          if(removed>0)console.log(`Removed ${removed} nearby sleep stop(s)`);
-          saveAll();
+          saveAll();render();
         });
         picker.querySelector('.sleep-dur-cancel').addEventListener('click',()=>picker.remove());
         return;
