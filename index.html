@@ -3871,6 +3871,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(_wakeLock){_wakeLock.release();_wakeLock=null;}
     return;
   }
+  if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
   if(e.target.closest('#btn-sim-start')){simStart();return;}
   if(e.target.closest('#btn-sim-stop')){simStop();return;}
   if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
