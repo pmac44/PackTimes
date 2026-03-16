@@ -174,7 +174,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="desktop-map-pane" id="desktop-map-pane">
       <canvas id="desktop-map" style="width:100%;height:100%;display:block;"></canvas>
-      <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:6px 12px;font-size:15px;font-weight:600;color:var(--text);font-family:var(--font);white-space:nowrap;z-index:30;max-width:240px;box-shadow:0 4px 16px rgba(0,0,0,0.5);"></div>
+      <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:6px 12px;font-size:15px;font-weight:600;color:var(--text);font-family:var(--font);white-space:nowrap;z-index:30;max-width:240px;box-shadow:0 4px 16px rgba(0,0,0,0.5);transform:translateZ(0);-webkit-font-smoothing:antialiased;"></div>
       <div id="desktop-elev-wrap" style="position:absolute;bottom:16px;left:16px;right:16px;height:80px;pointer-events:none;border-radius:8px;overflow:hidden;">
         <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
@@ -2345,7 +2345,7 @@ function renderDesktopMap(){
         let tx=mx+14,ty=my-36;
         if(tx+230>paneW)tx=mx-230;
         if(ty<0)ty=my+14;
-        tt.style.left=tx+'px';tt.style.top=ty+'px';
+        tt.style.left=Math.round(tx)+'px';tt.style.top=Math.round(ty)+'px';
         tt.style.display='block';
         cvs.style.cursor='pointer';
       } else {
@@ -2450,7 +2450,7 @@ function renderDesktopMap(){
           let tx=e.clientX-pr.left+14,ty=e.clientY-pr.top-44;
           if(tx+230>pr.width)tx=e.clientX-pr.left-230;
           if(ty<0)ty=e.clientY-pr.top+14;
-          tt.style.left=tx+'px';tt.style.top=ty+'px';
+          tt.style.left=Math.round(tx)+'px';tt.style.top=Math.round(ty)+'px';
           tt.style.display='block';
         } else {
           tt.style.display='none';
@@ -4289,6 +4289,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(btn)btn.style.display=UI.osmExpanded?'':'none';
     return;
   }
+  if(e.target.closest('#btn-add-pace')&&r){openPaceModal(-1);return;}
   if(e.target.closest('.edit-pace')&&r){
     const idx=+e.target.closest('.edit-pace').dataset.idx;
     openPaceModal(idx);return;}
