@@ -2718,7 +2718,7 @@ function tRoutes(r){
       const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;
       if(nights>0&&sleepStops<nights){
         const missing=nights-sleepStops;
-        return `<div style="margin-top:6px;font-size:14px;color:rgba(179,157,219,0.7);font-family:var(--font);">😴 ${sleepStops} of ${nights} nights have a sleep stop planned — ${missing} all nighter${missing!==1?'s':''}..? How's the caffeine..?</div>`;
+        return `<div style="margin-top:6px;font-size:14px;color:rgba(179,157,219,0.7);font-family:var(--font);">😴 ${sleepStops} of ${nights} nights have a sleep stop planned — ${missing} unplanned</div>`;
       }
       return '';
     })()}
