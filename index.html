@@ -178,6 +178,7 @@ select option{background:var(--bg3);}
       <div id="desktop-elev-wrap" style="position:absolute;bottom:16px;left:16px;right:16px;height:80px;pointer-events:none;border-radius:8px;overflow:hidden;">
         <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
+      <div id="desktop-legend" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);display:flex;flex-direction:column;gap:3px;z-index:20;"></div>
       <div class="map-ctrl" id="desktop-map-ctrl">
         <div class="map-ctrl-row">
           <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
@@ -377,7 +378,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set()};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set()};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -1340,6 +1341,7 @@ function drawMap(cvs,r,opts){
   // Stop dots (with off-route connectors for auto-stops with real coords)
   const dc={food:'#fbbf24',water:'#60a5fa',sleep:'#f87171',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59'};
   r.stops.forEach(s=>{
+    if(cvs.id==='desktop-map'&&UI.hiddenMapTypes.has(s.type))return;
     const rp=pts[s.snapIdx!==null&&s.snapIdx!==undefined?s.snapIdx:cidx(r,s.dist)];
     const hasReal=s.lat&&s.lon;
     const dotLon=hasReal?s.lon:rp.lon;
@@ -1376,7 +1378,7 @@ function drawMap(cvs,r,opts){
   });
 
   // Turn markers
-  if(r.turns&&r.turns.length){
+  if(r.turns&&r.turns.length&&!(cvs.id==='desktop-map'&&UI.hiddenMapTypes.has('turns'))){
     const liveDist=UI.gpsDistKm||0;
     r.turns.forEach(t=>{
       if(t.dist<liveDist)return; // skip passed turns
@@ -2241,6 +2243,41 @@ function renderDesktopMap(){
     anchor:isLive?0.75:0.5,
     highlightId:_highlightStopId
   });
+  // Render legend/filter panel
+  const legend=document.getElementById('desktop-legend');
+  if(legend&&r){
+    const types=[
+      {type:'town',col:'#4ade80',label:'Towns'},
+      {type:'water',col:'#60a5fa',label:'Water'},
+      {type:'crossing',col:'#6b9eb0',label:'Waterways'},
+      {type:'wc',col:'#2dd4bf',label:'Toilets'},
+      {type:'stockwater',col:'#94a3b8',label:'Stock water'},
+      {type:'food',col:'#fbbf24',label:'Food'},
+      {type:'fuel',col:'#f97316',label:'Fuel'},
+      {type:'shop',col:'#c084fc',label:'Shops'},
+      {type:'pub',col:'#f59e0b',label:'Pubs'},
+      {type:'camp',col:'#4a7c59',label:'Camps'},
+      {type:'hut',col:'#c8a96e',label:'Huts'},
+      {type:'accom',col:'#c084fc',label:'Accom'},
+      {type:'peak',col:'#94a3b8',label:'Peaks'},
+      {type:'sleep',col:'#f87171',label:'Sleep'},
+      {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
+    ];
+    // Only show types that exist on this route
+    const presentTypes=new Set(r.stops.map(s=>s.type));
+    if(r.turns&&r.turns.length)presentTypes.add('turns');
+    const filtered=types.filter(t=>presentTypes.has(t.type));
+    if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()){
+      legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join();
+      legend.innerHTML=filtered.map(t=>{
+        const hidden=UI.hiddenMapTypes.has(t.type);
+        return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
+          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${hidden?'none':t.col}" stroke="${t.col}" stroke-width="1.5"/></svg>
+          <span style="font-size:12px;color:${hidden?'rgba(255,255,255,0.4)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;">${t.label}</span>
+        </div>`;
+      }).join('');
+    }
+  }
   // Attach pan/zoom/tap interactions — once only
   attachMap(cvs,km=>openModal(km));
   // Tooltip on hover — attach once only
@@ -4000,6 +4037,15 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       const v=parseFloat(raw);      if(!isNaN(v)&&v>0&&v<=24){s.sleepH=v;saveAll();render();}
       else alert('Enter hours between 0 and 24');
     }
+    return;
+  }
+  // Desktop legend filter toggle
+  const li=e.target.closest('.map-legend-item');
+  if(li&&IS_DESKTOP()){
+    const t=li.dataset.ltype;
+    if(UI.hiddenMapTypes.has(t))UI.hiddenMapTypes.delete(t);
+    else UI.hiddenMapTypes.add(t);
+    renderDesktopMap();
     return;
   }
   // Direct unsleep from mission tile header — must be before sleep-at-stop handler
