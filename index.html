@@ -2306,14 +2306,17 @@ function renderDesktopMap(){
       ec.addEventListener('mousemove',e=>{
         const r2=cur();
         const tt=document.getElementById('desktop-tooltip');
-        if(!r2||!tt)return;
+        if(!r2||!tt||!r2.points.length)return;
         const rect=ec.getBoundingClientRect();
         const mx=e.clientX-rect.left;
+        const W2=ec.offsetWidth||rect.width;
+        const totalDist2=r2.points[r2.points.length-1].dist;
+        const pad2=8;
+        const ex2=d=>pad2+(d/totalDist2)*(W2-pad2*2);
         let bestStop=null,bestDx=Infinity;
         r2.stops.forEach(s=>{
           if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
-          const sx=ex(s.dist);
-          const dx=Math.abs(sx-mx);
+          const dx=Math.abs(ex2(s.dist)-mx);
           if(dx<bestDx){bestDx=dx;bestStop=s;}
         });
         if(bestStop&&bestDx<12){
