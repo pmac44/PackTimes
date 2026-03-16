@@ -174,7 +174,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="desktop-map-pane" id="desktop-map-pane">
       <canvas id="desktop-map" style="width:100%;height:100%;display:block;"></canvas>
-      <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:6px 12px;font-size:15px;font-weight:600;color:var(--text);font-family:var(--font);white-space:nowrap;z-index:30;max-width:240px;box-shadow:0 4px 16px rgba(0,0,0,0.5);transform:translateZ(0);-webkit-font-smoothing:antialiased;"></div>
+      <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;font-size:13px;font-weight:600;color:#fff;font-family:var(--font);white-space:normal;max-width:180px;z-index:30;box-shadow:0 4px 16px rgba(0,0,0,0.5);transform:translateZ(0);-webkit-font-smoothing:antialiased;line-height:1.3;"></div>
       <div id="desktop-elev-wrap" style="position:absolute;bottom:16px;left:16px;right:16px;height:80px;pointer-events:none;border-radius:8px;overflow:hidden;">
         <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
@@ -2400,12 +2400,16 @@ function renderDesktopMap(){
   const ec=document.getElementById('desktop-elev');
   const ew=document.getElementById('desktop-elev-wrap');
   if(ec&&ew&&r.points.length>1){
+    const dpr=devicePixelRatio||1;
     const W=ew.offsetWidth||pane.offsetWidth-32;
-    ec.width=W;ec.height=80;ec.style.width=W+'px';ec.style.height='80px';
+    const H=80;
+    ec.width=Math.round(W*dpr);ec.height=Math.round(H*dpr);
+    ec.style.width=W+'px';ec.style.height=H+'px';
     const ctx=ec.getContext('2d');
-    ctx.clearRect(0,0,W,80);
+    ctx.scale(dpr,dpr);
+    ctx.clearRect(0,0,W,H);
     ctx.fillStyle='rgba(10,15,10,0.72)';
-    if(ctx.roundRect)ctx.roundRect(0,0,W,80,8);else ctx.rect(0,0,W,80);
+    if(ctx.roundRect)ctx.roundRect(0,0,W,H,8);else ctx.rect(0,0,W,H);
     ctx.fill();
     const epts=r.points;
     const eles=epts.map(p=>p.ele);
@@ -2414,20 +2418,21 @@ function renderDesktopMap(){
     const totalDist=epts[epts.length-1].dist;
     const pad=8;
     const ex=d=>pad+(d/totalDist)*(W-pad*2);
-    const ey=e=>70-(e-minE)/eRange*(70-pad*2)-pad;
+    const ey=e=>(H-pad)-(e-minE)/eRange*(H-pad*2)-pad;
+    // Fill — cyan tinted to match route line
     ctx.beginPath();
-    ctx.moveTo(ex(epts[0].dist),72);
+    ctx.moveTo(ex(epts[0].dist),H-pad);
     epts.forEach(p=>ctx.lineTo(ex(p.dist),ey(p.ele)));
-    ctx.lineTo(ex(epts[epts.length-1].dist),72);
+    ctx.lineTo(ex(epts[epts.length-1].dist),H-pad);
     ctx.closePath();
-    ctx.fillStyle='rgba(139,111,212,0.25)';ctx.fill();
+    ctx.fillStyle='rgba(34,211,238,0.15)';ctx.fill();
+    // Line — cyan matching route
     ctx.beginPath();
     epts.forEach((p,i)=>i===0?ctx.moveTo(ex(p.dist),ey(p.ele)):ctx.lineTo(ex(p.dist),ey(p.ele)));
-    ctx.strokeStyle='rgba(139,111,212,0.8)';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.strokeStyle='rgba(34,211,238,0.85)';ctx.lineWidth=1.5;ctx.stroke();
     r.stops.forEach(s=>{
       if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
       const x=ex(s.dist);
-      // Find nearest elevation point
       const nearPt=epts.reduce((best,p)=>Math.abs(p.dist-s.dist)<Math.abs(best.dist-s.dist)?p:best,epts[0]);
       const y=ey(nearPt.ele);
       const isSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
@@ -3853,9 +3858,26 @@ function tPlan(r){
   }
 
   const summaryParts=[];
-  if(adjDur)summaryParts.push('<span>'+fmtHM(adjDur)+' riding</span>');
-  if(totalSleepH)summaryParts.push('<span>😴 '+totalSleepH.toFixed(1)+'h sleep</span>');
-  if(finEta&&sdt)summaryParts.push('<span style="color:var(--accent)">Finish '+fmtT(finEta)+dayOff(finEta,sdt)+'</span>');
+  if(adjDur)summaryParts.push('<span>🚴 '+fmtHM(adjDur)+' riding</span>');
+  if(totalSleepH)summaryParts.push('<span style="color:#b39ddb;">😴 '+totalSleepH.toFixed(1)+'h sleep</span>');
+  // Total time
+  if(adjDur&&totalSleepH){
+    const totalH=adjDur+totalSleepH;
+    summaryParts.push('<span style="color:var(--text2);">≈ '+Math.round(totalH)+'h total</span>');
+  }
+  if(finEta&&sdt)summaryParts.push('<span style="color:var(--accent);">Finish '+fmtT(finEta)+dayOff(finEta,sdt)+'</span>');
+  // Sleep per night + unplanned nights warning
+  const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):null;
+  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).length;
+  let sleepExtra='';
+  if(nights>0&&totalSleepH){
+    const avgSleep=(totalSleepH/sleepStops).toFixed(1);
+    sleepExtra+='<div style="font-size:15px;color:#b39ddb;margin-top:6px;">avg '+avgSleep+'h per sleep stop · '+nights+' night'+(nights!==1?'s':'')+'</div>';
+    if(sleepStops<nights){
+      const missing=nights-sleepStops;
+      sleepExtra+='<div style="font-size:14px;color:rgba(179,157,219,0.7);margin-top:3px;">😴 '+sleepStops+' of '+nights+' nights have a sleep stop — '+missing+' unplanned</div>';
+    }
+  }
 
   return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;">⭐ Showing starred stops only · ${unstarredCount} unstarred stop${unstarredCount!==1?'s':''} hidden</div>`:'')
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
@@ -3866,7 +3888,7 @@ function tPlan(r){
       +'</div>'
       +rows
     +'</div>'
-    +(summaryParts.length?'<div class="card"><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:17px;color:var(--text3);">'+summaryParts.join('')+'</div></div>':'');
+    +(summaryParts.length?'<div class="card"><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:17px;color:var(--text3);">'+summaryParts.join('')+'</div>'+sleepExtra+'</div>':'');
 }
 
 function printMission(){
