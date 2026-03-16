@@ -376,7 +376,7 @@ const newRoute=name=>({
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set()};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -2321,8 +2321,98 @@ function renderDesktopMap(){
 }
 
 // ═══════════════════════════════════════════
-//  QR / PLAN EXPORT
+//  DROPBOX SYNC
 // ═══════════════════════════════════════════
+const DBX_APP_KEY='5uh7f72xfyv171g';
+const DBX_REDIRECT=window.location.href.split('?')[0].split('#')[0];
+const DBX_FILE='/plan.json';
+
+function dbxAuthURL(){
+  const state=Math.random().toString(36).slice(2);
+  sessionStorage.setItem('dbx_state',state);
+  const params=new URLSearchParams({
+    client_id:DBX_APP_KEY,
+    redirect_uri:DBX_REDIRECT,
+    response_type:'token',
+    state,
+    token_access_type:'offline'
+  });
+  return'https://www.dropbox.com/oauth2/authorize?'+params;
+}
+
+function dbxHandleRedirect(){
+  const hash=window.location.hash;
+  if(!hash.includes('access_token'))return;
+  const params=new URLSearchParams(hash.slice(1));
+  const token=params.get('access_token');
+  const state=params.get('state');
+  if(token&&state===sessionStorage.getItem('dbx_state')){
+    UI.dbxToken=token;
+    sessionStorage.removeItem('dbx_state');
+    // Clean URL
+    history.replaceState(null,'',window.location.pathname);
+    saveAll();
+    dbxSetStatus('✓ Connected to Dropbox');
+    if(UI.tab==='settings')render();
+  }
+}
+
+function dbxSetStatus(msg,isErr){
+  const el=document.getElementById('dbx-status');
+  if(el){el.textContent=msg;el.style.color=isErr?'var(--red)':'var(--text3)';}
+}
+
+async function dbxSave(){
+  if(!UI.dbxToken){dbxSetStatus('Not connected','err');return;}
+  dbxSetStatus('Saving…');
+  try{
+    const data={_v:2,cur:CUR>=0?ROUTES[CUR].id:null,routes:ROUTES.map(packRoute)};
+    const res=await fetch('https://content.dropboxapi.com/2/files/upload',{
+      method:'POST',
+      headers:{
+        'Authorization':'Bearer '+UI.dbxToken,
+        'Dropbox-API-Arg':JSON.stringify({path:DBX_FILE,mode:'overwrite',autorename:false}),
+        'Content-Type':'application/octet-stream'
+      },
+      body:JSON.stringify(data)
+    });
+    if(res.ok){dbxSetStatus('✓ Saved — '+(new Date().toLocaleTimeString()));}
+    else if(res.status===401){UI.dbxToken=null;saveAll();dbxSetStatus('Session expired — reconnect','err');if(UI.tab==='settings')render();}
+    else{dbxSetStatus('Save failed: '+res.status,'err');}
+  }catch(e){dbxSetStatus('Save error: '+e.message,'err');}
+}
+
+async function dbxLoad(){
+  if(!UI.dbxToken){dbxSetStatus('Not connected','err');return;}
+  dbxSetStatus('Loading…');
+  try{
+    const res=await fetch('https://content.dropboxapi.com/2/files/download',{
+      method:'POST',
+      headers:{
+        'Authorization':'Bearer '+UI.dbxToken,
+        'Dropbox-API-Arg':JSON.stringify({path:DBX_FILE})
+      }
+    });
+    if(res.status===409){dbxSetStatus('No saved plan found in Dropbox.');return;}
+    if(res.status===401){UI.dbxToken=null;saveAll();dbxSetStatus('Session expired — reconnect','err');if(UI.tab==='settings')render();return;}
+    if(!res.ok){dbxSetStatus('Load failed: '+res.status,'err');return;}
+    const data=await res.json();
+    if(!data.routes){dbxSetStatus('Invalid data in Dropbox.','err');return;}
+    ROUTES=data.routes.map(unpackRoute);
+    const idx=data.cur?ROUTES.findIndex(r=>r.id===data.cur):-1;
+    CUR=idx>=0?idx:(ROUTES.length?0:-1);
+    await saveAll();
+    dbxSetStatus('✓ Loaded — '+(new Date().toLocaleTimeString()));
+    render();
+  }catch(e){dbxSetStatus('Load error: '+e.message,'err');}
+}
+
+// Check for OAuth redirect on page load
+window.addEventListener('DOMContentLoaded',()=>{
+  if(window.location.hash.includes('access_token'))dbxHandleRedirect();
+});
+
+
 // Tiny QR encoder — uses qrcodejs via CDN
 let _qrLib=null;
 async function loadQRLib(){
@@ -3081,6 +3171,20 @@ function tSettings(r){
     </div>
     <p style="font-size:14px;color:var(--text3);margin-top:4px;">Default 400m. Increase for remote areas where stops are further off-route.</p>
   </div>`:''}
+  <div class="card">
+    <div class="ctitle">Dropbox Sync</div>
+    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Sync your routes and stops between devices via Dropbox. Saves to <code style="font-size:13px;color:var(--accent);">/Apps/PackTimes/plan.json</code></p>
+    <div id="dbx-status" style="font-size:14px;color:var(--text3);margin-bottom:8px;font-family:var(--font);">${UI.dbxToken?'✓ Connected':'Not connected'}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${UI.dbxToken?`
+        <button class="btn btn-sm btn-p" id="btn-dbx-save">☁️ Save to Dropbox</button>
+        <button class="btn btn-sm btn-p" id="btn-dbx-load">⬇️ Load from Dropbox</button>
+        <button class="btn btn-sm" id="btn-dbx-disconnect">Disconnect</button>
+      `:`
+        <button class="btn btn-sm btn-p" id="btn-dbx-connect">🔗 Connect Dropbox</button>
+      `}
+    </div>
+  </div>
   <div class="card">
     <div class="ctitle">Offline Storage</div>
     <p style="font-size:17px;color:var(--text2);line-height:1.6;">Routes saved in IndexedDB — persists offline between sessions.</p>
@@ -3871,6 +3975,10 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(_wakeLock){_wakeLock.release();_wakeLock=null;}
     return;
   }
+  if(e.target.closest('#btn-dbx-connect')){window.location.href=dbxAuthURL();return;}
+  if(e.target.closest('#btn-dbx-save')){dbxSave();return;}
+  if(e.target.closest('#btn-dbx-load')){dbxLoad();return;}
+  if(e.target.closest('#btn-dbx-disconnect')){UI.dbxToken=null;saveAll();render();return;}
   if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
   if(e.target.closest('#btn-sim-start')){simStart();return;}
   if(e.target.closest('#btn-sim-stop')){simStop();return;}
