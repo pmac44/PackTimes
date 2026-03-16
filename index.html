@@ -1366,7 +1366,7 @@ function drawMap(cvs,r,opts){
   const flag=(i,col,lbl)=>{const p=pts[i];
     ctx.beginPath();ctx.arc(px(p.lon),py(p.lat),7,0,Math.PI*2);
     ctx.fillStyle=col;ctx.fill();ctx.fillStyle='#fff';
-    ctx.font=`bold ${mapFontSm}px monospace`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.font=`${mapFontSm}px DM Mono, monospace`;ctx.textAlign='center';ctx.textBaseline='middle';
     ctx.fillText(lbl,px(p.lon),py(p.lat));};
   flag(0,'#4ade80','S');flag(pts.length-1,'#ef4444','F');
 
@@ -1395,7 +1395,7 @@ function drawMap(cvs,r,opts){
       ctx.strokeStyle='#e8f5e8';ctx.lineWidth=1.2;ctx.stroke();
       // Label with white pill
       const lbl=km+'km';
-      ctx.font=`bold ${mapFontSm}px monospace`;ctx.textAlign='center';ctx.textBaseline='bottom';
+      ctx.font=`${mapFontSm}px DM Mono, monospace`;ctx.textAlign='center';ctx.textBaseline='bottom';
       const tw=ctx.measureText(lbl).width;
       const pillH=mapFontSm+4,pillY=my-pillH-4;
       ctx.fillStyle='rgba(255,255,255,0.92)';
