@@ -4166,8 +4166,10 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Direct unsleep from mission tile header
   const ud=e.target.closest('.unsleep-direct');
   if(ud&&cur()){
+    console.log('unsleep-direct clicked, sid=',ud.dataset.sid);
     const s=cur().stops.find(x=>x.id===ud.dataset.sid);
-    if(s){s.sleepAt=false;saveAll();render();}
+    console.log('found stop:', s?.name, 'sleepAt:', s?.sleepAt);
+    if(s){s.sleepAt=false;s.sleepH=null;saveAll();render();}
     return;
   }
   // Mission tile click — highlight stop on desktop map
