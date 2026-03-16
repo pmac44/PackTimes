@@ -1704,11 +1704,8 @@ function hitTest(cvs,cx,cy,cb){
       }
     }
   }
-          // Also highlight on map
-          _highlightStopId=bestStop.id;
-          const state=_ms['stops-map']||(_ms['stops-map']={zoom:1,cx:null,cy:null});
-          const panLon=(bestStop.lat&&bestStop.lon)?bestStop.lon:pts[cidx(r,bestStop.dist)].lon;
   // Normal route tap — find nearest route point
+  if(!cb)return;
   let best=0,bd=Infinity;
   pts.forEach((p,i)=>{const dx=px(p.lon)-mx,dy=py(p.lat)-my,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i;}});
   if(Math.sqrt(bd)>45)return;
