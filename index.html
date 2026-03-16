@@ -3447,20 +3447,15 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const s=r.stops.find(x=>x.id===sid);
     if(s){
       if(s.sleepAt){
+        // Toggle off — just render
         s.sleepAt=false;
-        // Update tile in place — remove purple bg, update button
-        const tile=sa.closest('.tap-stop');
-        if(tile){
-          tile.style.background='';tile.style.borderColor='';
-        }
-        sa.textContent='💤';sa.style.color='';sa.style.borderColor='';
-        saveAll();
+        saveAll();render();
       } else {
-        // Show inline duration picker — works on both Stops tab tiles and Mission tab chips
+        // Show inline duration picker
         const container=sa.closest('.tap-stop')||sa.closest('.sleep-dur-anchor')||sa.parentElement;
         if(!container)return;
-        const existing=container.querySelector('.sleep-dur-picker');
-        if(existing){existing.remove();return;}
+        const existing=document.querySelector('.sleep-dur-picker');
+        if(existing)existing.remove();
         const picker=document.createElement('div');
         picker.className='sleep-dur-picker';
         picker.style.cssText='display:flex;align-items:center;gap:6px;margin-top:6px;padding:6px 8px;background:rgba(60,40,120,0.3);border-radius:6px;border:1px solid rgba(130,100,220,0.4);flex-wrap:wrap;';
@@ -3475,20 +3470,11 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
           if(isNaN(v)||v<=0||v>24){alert('Enter hours between 0 and 24');return;}
           UI.lastSleepH=v;
           s.sleepAt=true;s.sleepH=v;s.starred=true;
-          const tile=sa.closest('.tap-stop');
-          if(tile){
-            tile.style.background='rgba(60,40,120,0.55)';tile.style.borderColor='rgba(130,100,220,0.6)';
-            sa.textContent='😴';
-            const starBtn=tile.querySelector('.star-stop');
-            if(starBtn)starBtn.textContent='⭐';
-          }
-          picker.remove();
           const toRemove=r.stops.filter(x=>!((x.type==='sleep'||x.sleepAt)&&x.id!==s.id&&Math.abs(x.dist-s.dist)<=5));
           r.stops=toRemove;
           saveAll();render();
         });
         picker.querySelector('.sleep-dur-cancel').addEventListener('click',()=>picker.remove());
-        return;
       }
     }
     return;
