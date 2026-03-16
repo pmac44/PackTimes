@@ -152,11 +152,11 @@ select option{background:var(--bg3);}
 .rli.active .ri-name{color:var(--accent);}
 .ri-inf{flex:1;min-width:0;}.ri-name{font-weight:500;font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ri-meta{font-size:18px;color:var(--text3);font-family:var(--font);margin-top:2px;}
-#alert-overlay{display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);align-items:center;justify-content:center;padding:20px;}
-#alert-box{background:var(--card);border:2px solid var(--accent3);border-radius:14px;padding:22px 18px;max-width:320px;width:100%;text-align:center;}
-#alert-ico{font-size:38px;margin-bottom:9px;}
-#alert-title{font-size:18px;font-weight:600;margin-bottom:6px;}
-#alert-msg{font-size:18px;color:var(--text2);margin-bottom:16px;line-height:1.65;}
+#alert-overlay{display:none;position:fixed;top:10px;left:10px;right:10px;z-index:9999;align-items:flex-start;justify-content:center;}
+#alert-box{background:rgba(10,15,10,0.95);border:1px solid var(--accent3);border-radius:10px;padding:10px 14px;width:100%;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,0.5);}
+#alert-ico{font-size:28px;flex-shrink:0;}
+#alert-title{font-size:17px;font-weight:600;margin-bottom:2px;}
+#alert-msg{font-size:15px;color:var(--text2);line-height:1.4;}
 </style>
 </head>
 <body>
@@ -333,9 +333,12 @@ select option{background:var(--bg3);}
 </div>
 <div id="alert-overlay">
   <div id="alert-box">
-    <div id="alert-ico">📍</div><div id="alert-title"></div>
-    <div id="alert-msg"></div>
-    <button class="btn btn-p" style="width:100%;" id="alert-ok">OK</button>
+    <div id="alert-ico">📍</div>
+    <div style="flex:1;min-width:0;">
+      <div id="alert-title"></div>
+      <div id="alert-msg"></div>
+    </div>
+    <button class="btn btn-sm" id="alert-ok" style="flex-shrink:0;">OK</button>
   </div>
 </div>
 
@@ -945,8 +948,86 @@ function updateGPSPill(){
 }
 
 // ═══════════════════════════════════════════
-//  PROXIMITY ALERTS
+//  RIDE SIMULATOR
 // ═══════════════════════════════════════════
+let _simPts=null,_simIdx=0,_simTimer=null;
+
+function simLoadGPX(txt){
+  const doc=new DOMParser().parseFromString(txt,'text/xml');
+  const pts=[];
+  doc.querySelectorAll('trkpt').forEach(p=>{
+    const lat=+p.getAttribute('lat'),lon=+p.getAttribute('lon');
+    const time=p.querySelector('time')?.textContent||null;
+    const speed=p.querySelector('speed')?.textContent||null;
+    if(!isNaN(lat)&&!isNaN(lon))pts.push({lat,lon,time,speed:speed?+speed:null});
+  });
+  return pts;
+}
+
+function simStart(){
+  const r=cur();
+  if(!r||!r.points.length){alert('No route loaded.');return;}
+  if(!r.hasTS){alert('Route needs timestamps. Upload a TCX with estimated times.');return;}
+  _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
+  _simIdx=0;
+  const speed=+(document.getElementById('sim-speed')?.value||20);
+  _simIdx=0;
+  UI.gpsActive=true;
+  UI.alertedStops=new Set();
+  _offRouteStart=null;_offRouteAlerted=false;
+  const liveState=ms('live-map');
+  liveState._userZoomed=false;liveState._autoZoomed=false;
+  updateGPSPill();
+  // Calculate interval from timestamps or use fixed 1s between points
+  function step(){
+    if(_simIdx>=_simPts.length){simStop();return;}
+    const p=_simPts[_simIdx];
+    // Calculate speed from adjacent points
+    let spd=null;
+    if(_simIdx>0){
+      const prev=_simPts[_simIdx-1];
+      const d=hav(prev,p)*1000; // metres
+      spd=d/(1/speed); // m/s at simulation speed
+    }
+    UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
+    const r=cur();
+    if(r){const snap=snapTo(r,p.lat,p.lon);if(snap)UI.gpsDistKm=snap.dist;}
+    checkAlerts();
+    if(UI.tab==='live')updateLive();
+    else updateGPSPill();
+    const status=document.getElementById('sim-status');
+    if(status)status.textContent=`Point ${_simIdx+1}/${_simPts.length} · ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`;
+    _simIdx++;
+    // Calculate delay from real timestamps
+    let delay=100;
+    if(_simIdx<_simPts.length){
+      const curr=_simPts[_simIdx-1],next=_simPts[_simIdx];
+      if(curr.time&&next.time){
+        const realMs=new Date(next.time)-new Date(curr.time);
+        if(realMs>0&&realMs<60000)delay=Math.max(30,realMs/speed);
+      }
+    }
+    _simTimer=setTimeout(step,delay);
+  }
+  step();
+  UI.simRunning=true;
+  document.getElementById('btn-sim-start').disabled=true;
+  const stopBtn=document.getElementById('btn-sim-stop');
+  if(stopBtn)stopBtn.disabled=false;
+  if(UI.tab!=='live'){UI.tab='live';render();}
+}
+
+function simStop(){
+  if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
+  UI.simRunning=false;
+  stopGPS();
+  document.getElementById('btn-sim-start').disabled=false;
+  document.getElementById('btn-sim-stop').disabled=true;
+  const status=document.getElementById('sim-status');
+  if(status)status.textContent=_simIdx>=(_simPts?.length||0)?'Simulation complete.':'Simulation stopped.';
+}
+
+
 // Alert distance is now stored in UI
 UI.alertKm=UI.alertKm||0.5;
 let _wakeLock=null;
@@ -959,6 +1040,7 @@ function checkAlerts(){
   const r=cur();if(!r||UI.gpsDistKm===null||!UI.gpsPos)return;
   // Stop proximity alerts
   for(const s of r.stops){
+    if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)continue;
     const rem=s.dist-UI.gpsDistKm;
     if(rem>0&&rem<=UI.alertKm&&!UI.alertedStops.has(s.id)){
       UI.alertedStops.add(s.id);showAlert(s,rem,r);break;
@@ -968,6 +1050,7 @@ function checkAlerts(){
   const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);
   if(!snap)return;
   const offM=snap.off*1000;
+  if(offM>5000)return; // More than 5km off — wrong route, don't alert
   if(offM>(UI.offRouteM||150)){
     // Check if we're near an intentional off-route stop
     const nearOffRoute=r.stops.some(s=>{
@@ -1152,7 +1235,7 @@ function drawMap(cvs,r,opts){
   if(heading!==null){
     ctx.save();
     ctx.translate(cpx,cpy);
-    ctx.rotate(heading*Math.PI/180);
+    ctx.rotate(-heading*Math.PI/180);
     ctx.translate(-cpx,-cpy);
   }
   if(_tileMode>0){
@@ -2567,7 +2650,7 @@ function tLiveShell(r){
         ${progressOverlay}
         ${(()=>{
           if(!UI.gpsActive)return '';
-          const alertDistKm=0.5;
+          const alertDistKm=(UI.turnAlertM||30)/1000;
           const turns=r.turns||[];
           // Reset dismissed flag for turns we've passed
           turns.forEach(t=>{if(t.dist<=liveDist)t._dismissed=false;});
@@ -2576,7 +2659,7 @@ function tLiveShell(r){
           const distM=Math.round((nextTurn.dist-liveDist)*1000);
           const arrow=nextTurn.type==='Left'?'↰':nextTurn.type==='Right'?'↱':'↑';
           const label=nextTurn.notes||nextTurn.name||(nextTurn.type+' turn');
-          return`<div class="turn-popup" id="turn-popup">
+          return`<div class="turn-popup" id="turn-popup" data-turn-dist="${nextTurn.dist}">
             <div class="turn-arrow">${arrow}</div>
             <div class="turn-info">
               <div class="turn-dist">${distM<1000?distM+'m':(distM/1000).toFixed(1)+'km'}</div>
@@ -2796,6 +2879,11 @@ function tSettings(r){
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>500m</span><span>1km</span><span>2km</span><span>3km</span></div>
     </div>
     <div class="field" style="margin-top:10px;">
+      <label class="lbl">Turn alert distance — <span id="turn-alert-m-val">${UI.turnAlertM||30}m</span></label>
+      <input type="range" id="turn-alert-sl" min="5" max="50" step="5" value="${UI.turnAlertM||30}" style="width:100%;accent-color:var(--accent);">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>5m</span><span>15m</span><span>25m</span><span>35m</span><span>50m</span></div>
+    </div>
+    <div class="field" style="margin-top:10px;">
       <label class="lbl">Off-route alert distance — <span id="offroute-m-val">${UI.offRouteM||150}m</span></label>
       <input type="range" id="offroute-sl" min="50" max="500" step="25" value="${UI.offRouteM||150}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>150m</span><span>300m</span><span>400m</span><span>500m</span></div>
@@ -2844,8 +2932,27 @@ function tSettings(r){
   </div>
   <div class="card">
     <div class="ctitle">Danger Zone</div>
+    <p style="font-size:16px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Deletes all routes, stops and settings from this device. Cannot be undone.</p>
     <button class="btn btn-r btn-full" id="btn-clearall">🗑 Clear all data &amp; start fresh</button>
-    <p style="font-size:16px;color:var(--text3);margin-top:6px;line-height:1.5;">Deletes all routes, stops and settings from this device. Cannot be undone.</p>
+  </div>
+  <div class="card">
+    <div class="ctitle">Ride Simulator</div>
+    <p style="font-size:15px;color:var(--text3);margin-bottom:10px;">Simulate riding the current route to test stop alerts, turn warnings and ETAs. Route must have timestamps.</p>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <label class="lbl" style="margin-bottom:0;">Speed</label>
+      <select id="sim-speed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-family:var(--font);font-size:15px;">
+        <option value="10">10×</option>
+        <option value="20" selected>20×</option>
+        <option value="50">50×</option>
+        <option value="100">100×</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-sm btn-p" id="btn-sim-start" ${!r||!r.hasTS||UI.simRunning?'disabled':''}>▶ Simulate Route</button>
+      <button class="btn btn-sm btn-r" id="btn-sim-stop" ${UI.simRunning?'':'disabled'}>■ Stop</button>
+    </div>
+    ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">Route needs timestamps — upload a TCX with estimated times.</p>`:''}
+    <div id="sim-status" style="font-size:14px;color:var(--text3);margin-top:6px;font-family:var(--font);"></div>
   </div>`;
 }
 
@@ -3334,14 +3441,27 @@ function updateLive(){
     setText('eta-'+s.id,(day?day.trim()+' ':'')+fmtT(eta));
   });
 
-  // Redraw map canvas, following GPS — but not during a peek
+  // Update turn popup distance live
+  const tp=document.getElementById('turn-popup');
+  if(tp){
+    const turnDist=tp.dataset.turnDist?parseFloat(tp.dataset.turnDist):null;
+    if(turnDist!==null){
+      const distM=Math.round((turnDist-liveDist)*1000);
+      const distEl=tp.querySelector('.turn-dist');
+      if(distEl)distEl.textContent=distM<1000?distM+'m':(distM/1000).toFixed(1)+'km';
+      // Remove popup if passed the turn
+      if(distM<=0){tp.remove();}
+    }
+  } else if(UI.gpsActive&&r.turns&&r.turns.length){
+    // Check if we need to show a new turn popup
+    render();
+  }
   if(!_livePeekTimer){
     const mc=document.getElementById('live-map');
     if(mc){
-      // Auto-zoom to riding level when motion detected (speed > 1 km/h)
+      // Auto-zoom to riding level on first motion only — don't override user zoom
       const state=ms('live-map');
-      if(UI.gpsPos&&UI.gpsPos.speed!=null&&UI.gpsPos.speed>0.3&&!state._userZoomed){
-        // ~0.3km wide = close riding view, ~150m each side
+      if(UI.gpsPos&&UI.gpsPos.speed!=null&&UI.gpsPos.speed>0.3&&!state._autoZoomed&&!state._userZoomed){
         state.zoom=zoomForKmWidth('live-map',0.3);
         state._autoZoomed=true;
       }
@@ -3580,6 +3700,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
 
   if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
+  if(e.target.closest('#btn-sim-start')){simStart();return;}
+  if(e.target.closest('#btn-sim-stop')){simStop();return;}
   if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
   if(e.target.closest('#turn-popup')){
     // Dismiss turn popup until next turn
@@ -3663,6 +3785,11 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     UI.alertKm=+e.target.value;
     const v=document.getElementById('alert-km-val');
     if(v)v.textContent=UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):((UI.alertKm*1000).toFixed(0)+'m');
+    return;}
+  if(e.target.id==='turn-alert-sl'){
+    UI.turnAlertM=+e.target.value;
+    const v=document.getElementById('turn-alert-m-val');
+    if(v)v.textContent=UI.turnAlertM+'m';
     return;}
   if(e.target.id==='offroute-sl'){
     UI.offRouteM=+e.target.value;
