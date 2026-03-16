@@ -2610,10 +2610,10 @@ function tStopsShell(r){
       </div>
       ${r.stops.length?`<div class="card">
         <div class="secrow">
-          <div class="ctitle">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt).length:r.stops.length})</div>
+          <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt).length:r.stops.length})</div>
           <button class="btn btn-sm${UI.stopsShowStarred?' btn-p':''}" id="btn-toggle-starred" style="font-size:15px;">${UI.stopsShowStarred?'⭐ Starred':'☆ All'}</button>
         </div>
-        ${clusteredStopRows(r,sdt)}
+        <div id="stops-list-rows">${clusteredStopRows(r,sdt)}</div>
       </div>`:''}
       ${!sdt?`<div class="banner warn"><span>⚠️</span><span>Set start date & time on the Route tab to see ETAs.</span></div>`:''}
     </div>
@@ -3891,7 +3891,17 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     saveAll();render();return;
   }
   if(e.target.closest('#btn-toggle-starred')){
-    UI.stopsShowStarred=!UI.stopsShowStarred;render();return;
+    UI.stopsShowStarred=!UI.stopsShowStarred;
+    const r=cur();if(!r)return;
+    const sdt=startDT(r);
+    const btn=document.getElementById('btn-toggle-starred');
+    const title=document.getElementById('stops-list-title');
+    const rows=document.getElementById('stops-list-rows');
+    const count=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt).length:r.stops.length;
+    if(btn){btn.textContent=UI.stopsShowStarred?'⭐ Starred':'☆ All';btn.className='btn btn-sm'+(UI.stopsShowStarred?' btn-p':'');}
+    if(title)title.textContent=(UI.stopsShowStarred?'Starred Stops':'All Stops')+' ('+count+')';
+    if(rows)rows.innerHTML=clusteredStopRows(r,sdt);
+    return;
   }
   if(e.target.closest('#osm-card-hdr')&&!e.target.closest('#btn-overpass')){
     UI.osmExpanded=!UI.osmExpanded;
