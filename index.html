@@ -1344,8 +1344,10 @@ function drawMap(cvs,r,opts){
     ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
     // Yellow ring for mission/starred stops on desktop
     if(cvs.id==='desktop-map'&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt)){
-      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),12,0,Math.PI*2);
-      ctx.strokeStyle='rgba(250,204,21,0.7)';ctx.lineWidth=1.5;ctx.stroke();
+      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),22,0,Math.PI*2);
+      ctx.fillStyle='rgba(250,204,21,0.25)';ctx.fill();
+      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),14,0,Math.PI*2);
+      ctx.strokeStyle='#facc15';ctx.lineWidth=3;ctx.stroke();
     }
     // Highlight selected stop
     if(opts.highlightId&&opts.highlightId===s.id){
