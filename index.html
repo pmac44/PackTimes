@@ -1437,6 +1437,7 @@ function drawMap(cvs,r,opts){
   flag(0,'#4ade80','S');flag(pts.length-1,'#ef4444','F');
 
   // km markers — true pxPerKm from total route screen length
+  if(!(IS_DESKTOP()&&UI.hiddenMapTypes.has('kmmarkers')&&(id==='desktop-map'||id==='stops-map'))){
   {
     let totalScreenPx=0;
     for(let i=1;i<pts.length;i++){
@@ -1475,6 +1476,7 @@ function drawMap(cvs,r,opts){
       ctx.fillText(lbl,mx,pillY+pillH-1);
     }
   }
+  } // end km markers toggle
 
   // GPS dot
   if(opts.showGPS&&UI.gpsDistKm!==null){
@@ -2325,10 +2327,12 @@ function renderDesktopMap(){
       {type:'police',col:'#3b82f6',label:'Police'},
       {type:'caravan',col:'#84cc16',label:'Caravan'},
       {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
+      {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
     ];
     // Only show types that exist on this route
     const presentTypes=new Set(r.stops.map(s=>s.type));
     if(r.turns&&r.turns.length)presentTypes.add('turns');
+    presentTypes.add('kmmarkers'); // always show km markers toggle
     const filtered=types.filter(t=>presentTypes.has(t.type));
     if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()){
       legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join();
@@ -3622,6 +3626,18 @@ function _sunApprox(lat,dateStr){
 }
 
 // Get day/night background colour for a given time
+// Returns true if a background colour string is light enough to need dark/white text
+function bgIsLight(bgCol){
+  if(!bgCol||bgCol==='var(--card2)')return false;
+  const m=bgCol.match(/rgba?\((\d+),(\d+),(\d+),?([\d.]+)?\)/);
+  if(!m)return false;
+  const r=+m[1],g=+m[2],b=+m[3],a=+(m[4]||1);
+  // Perceived luminance — higher = lighter
+  const lum=(0.299*r+0.587*g+0.114*b)/255;
+  // Against dark background (#0d1a0d), effective luminance accounts for alpha
+  return lum*a>0.35;
+}
+
 function dayNightBg(dt,sun){
   if(!dt||!sun)return'var(--card2)';
   const t=dt.getTime();
@@ -3768,7 +3784,10 @@ function tPlan(r){
     const borderCol=node.isStart?'rgba(74,222,128,0.5)':node.isFinish?'rgba(239,68,68,0.5)':isRest?'rgba(148,133,106,0.7)':isSleep?'rgba(130,100,220,0.6)':'var(--border)';
     const dotCol=node.isStart?'#4ade80':node.isFinish?'#ef4444':isRest?'#94856a':isSleep?'#8b6fd4':'#9db89d';
     const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--border2);margin-top:2px;"></div>';
-    const daydiv=dayStr?'<div style="font-size:15px;color:var(--text3);font-family:var(--font);">'+dayStr+'</div>':'';
+    const isLightBg=bgIsLight(bgCol);
+    const textCol=isLightBg?'#fff':'var(--text)';
+    const text3Col=isLightBg?'rgba(255,255,255,0.75)':'var(--text3)';
+    const daydiv=dayStr?'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);">'+dayStr+'</div>':'';
     const metaCount=node.cluster&&node.cluster.stops.length>1?' · '+node.cluster.stops.length+' stops':'';
     const chips=node.cluster?node.cluster.stops.map(s=>stopChip(s,r)).join(''):'';
     const chipsDiv=chips?'<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">'+chips+'</div>':'';
@@ -3791,7 +3810,7 @@ function tPlan(r){
     const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0):0;
     const depart=clusterSleepH>0&&eta?new Date(eta.getTime()+clusterSleepH*3600000):null;
     const departDay=depart&&sdt?dayOff(depart,sdt):'';
-    const departDiv=depart?'<div style="font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;">▶ '+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</div>':'';
+    const departDiv=depart?'<div style="font-size:14px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">▶ '+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</div>':'';
 
     rows+='<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:2px;">'
       +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;padding-top:2px;">'
@@ -3802,13 +3821,13 @@ function tPlan(r){
         +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span>'+(node.sleepStop&&node.sleepStop.sleepAt?'<button class="unsleep-direct" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤 unsleep</button>':'')+'</div>'):'')
         +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
-            +'<div style="font-size:17px;font-weight:600;color:var(--text);">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
-            +'<div style="font-size:15px;color:var(--text3);font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
+            +'<div style="font-size:17px;font-weight:600;color:'+textCol+';">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
+            +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
           +'</div>'
           +(isSleep?'':
           '<div style="display:flex;align-items:flex-start;gap:6px;">'
             +'<div style="text-align:right;">'
-              +'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:var(--accent);">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>'
+              +'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:'+(isLightBg?'#fff':'var(--accent)')+';">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>'
               +daydiv
               +departDiv
             +'</div>'
