@@ -174,7 +174,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="desktop-map-pane" id="desktop-map-pane">
       <canvas id="desktop-map" style="width:100%;height:100%;display:block;"></canvas>
-      <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;font-size:14px;color:var(--text);font-family:var(--font);white-space:nowrap;z-index:30;max-width:220px;"></div>
+      <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:6px 12px;font-size:15px;font-weight:600;color:var(--text);font-family:var(--font);white-space:nowrap;z-index:30;max-width:240px;box-shadow:0 4px 16px rgba(0,0,0,0.5);"></div>
       <div id="desktop-elev-wrap" style="position:absolute;bottom:16px;left:16px;right:16px;height:80px;pointer-events:none;border-radius:8px;overflow:hidden;">
         <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
@@ -2271,7 +2271,7 @@ function renderDesktopMap(){
         const hidden=UI.hiddenMapTypes.has(t.type);
         return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
           <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${hidden?'none':t.col}" stroke="${t.col}" stroke-width="1.5"/></svg>
-          <span style="font-size:12px;color:${hidden?'rgba(255,255,255,0.4)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;">${t.label}</span>
+          <span style="font-size:12px;color:${hidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;">${t.label}</span>
         </div>`;
       }).join('');
     }
@@ -2312,7 +2312,7 @@ function renderDesktopMap(){
         const eta=etaAt(bestStop.dist,r2);
         const etaStr=sdt&&eta?fmtDT(eta):'';
         const distStr=bestStop.dist.toFixed(1)+'km';
-        tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${distStr}${etaStr?' · '+etaStr:''}</span>`;
+        tt.innerHTML=`${bestStop.icon||'📍'} ${bestStop.name}<br><span style="font-size:13px;font-weight:400;color:var(--text3);">${distStr}${etaStr?' · '+etaStr:''}</span>`;
         const paneW=rect.width;
         let tx=mx+14,ty=my-36;
         if(tx+230>paneW)tx=mx-230;
@@ -2417,7 +2417,7 @@ function renderDesktopMap(){
           const sdt=startDT(r2);
           const eta=etaAt(bestStop.dist,r2);
           const etaStr=sdt&&eta?fmtDT(eta):'';
-          tt.innerHTML=`<span style="font-weight:600;">${bestStop.icon||'📍'} ${bestStop.name}</span><br><span style="color:var(--text3);font-size:13px;">${bestStop.dist.toFixed(1)}km${etaStr?' · '+etaStr:''}</span>`;
+          tt.innerHTML=`${bestStop.icon||'📍'} ${bestStop.name}<br><span style="font-size:13px;font-weight:400;color:var(--text3);">${bestStop.dist.toFixed(1)}km${etaStr?' · '+etaStr:''}</span>`;
           const pr=document.getElementById('desktop-map-pane').getBoundingClientRect();
           let tx=e.clientX-pr.left+14,ty=e.clientY-pr.top-44;
           if(tx+230>pr.width)tx=e.clientX-pr.left-230;
