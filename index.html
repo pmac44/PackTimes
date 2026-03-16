@@ -1372,37 +1372,37 @@ function drawMap(cvs,r,opts){
   // Stop dots (with off-route connectors for auto-stops with real coords)
   const dc={food:'#fbbf24',water:'#60a5fa',sleep:'#f87171',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
   r.stops.forEach(s=>{
-    if(IS_DESKTOP()&&UI.hiddenMapTypes.has(s.type)&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))return;
+    const isHidden=IS_DESKTOP()&&UI.hiddenMapTypes.has(s.type)&&(cvs.id==='desktop-map'||cvs.id==='stops-map');
+    const isHighlighted=opts.highlightId&&String(opts.highlightId)===String(s.id);
+    // Skip hidden stops unless they are highlighted
+    if(isHidden&&!isHighlighted)return;
     const rp=pts[s.snapIdx!==null&&s.snapIdx!==undefined?s.snapIdx:cidx(r,s.dist)];
     const hasReal=s.lat&&s.lon;
     const dotLon=hasReal?s.lon:rp.lon;
     const dotLat=hasReal?s.lat:rp.lat;
-    if(hasReal){
-      // Draw connector line from route to real position
-      ctx.beginPath();ctx.moveTo(px(rp.lon),py(rp.lat));ctx.lineTo(px(dotLon),py(dotLat));
-      ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
-      // Small route anchor dot
-      ctx.beginPath();ctx.arc(px(rp.lon),py(rp.lat),3,0,Math.PI*2);
-      ctx.fillStyle=dc[s.type]||'#fff';ctx.globalAlpha=0.5;ctx.fill();ctx.globalAlpha=1;
+    if(!isHidden){
+      if(hasReal){
+        ctx.beginPath();ctx.moveTo(px(rp.lon),py(rp.lat));ctx.lineTo(px(dotLon),py(dotLat));
+        ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+        ctx.beginPath();ctx.arc(px(rp.lon),py(rp.lat),3,0,Math.PI*2);
+        ctx.fillStyle=dc[s.type]||'#fff';ctx.globalAlpha=0.5;ctx.fill();ctx.globalAlpha=1;
+      }
+      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),7,0,Math.PI*2);
+      ctx.fillStyle=dc[s.type]||'#fff';ctx.fill();
+      ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
+      if(cvs.id==='desktop-map'&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt)){
+        const isSleepStop=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+        ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),22,0,Math.PI*2);
+        ctx.fillStyle=isSleepStop?'rgba(139,111,212,0.25)':'rgba(255,230,50,0.2)';ctx.fill();
+        ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),14,0,Math.PI*2);
+        ctx.strokeStyle=isSleepStop?'#b39ddb':'#ffe632';ctx.lineWidth=3;ctx.stroke();
+      }
     }
-    ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),7,0,Math.PI*2);
-    ctx.fillStyle=dc[s.type]||'#fff';ctx.fill();
-    ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
-    // Coloured ring for mission/starred stops on desktop — purple for sleep, yellow for others
-    if(cvs.id==='desktop-map'&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt)){
-      const isSleepStop=s.type==='sleep'||s.type==='rest'||s.sleepAt;
-      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),22,0,Math.PI*2);
-      ctx.fillStyle=isSleepStop?'rgba(139,111,212,0.25)':'rgba(255,230,50,0.2)';ctx.fill();
-      ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),14,0,Math.PI*2);
-      ctx.strokeStyle=isSleepStop?'#b39ddb':'#ffe632';ctx.lineWidth=3;ctx.stroke();
-    }
-    // Highlight selected stop
-    if(opts.highlightId&&String(opts.highlightId)===String(s.id)){
+    // Highlight selected stop — always shown even if type is hidden
+    if(isHighlighted){
       const isDesktop=cvs.id==='desktop-map';
-      // Outer glow ring
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),isDesktop?22:14,0,Math.PI*2);
       ctx.fillStyle=isDesktop?'rgba(239,68,68,0.25)':'rgba(239,68,68,0.2)';ctx.fill();
-      // Inner solid ring
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),isDesktop?14:10,0,Math.PI*2);
       ctx.strokeStyle='#ef4444';ctx.lineWidth=isDesktop?3:2;ctx.stroke();
     }
