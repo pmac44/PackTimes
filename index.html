@@ -2517,9 +2517,6 @@ function renderDesktopMap(){
     const ctx=ec.getContext('2d');
     ctx.scale(dpr,dpr);
     ctx.clearRect(0,0,W,H);
-    ctx.fillStyle='rgba(10,15,10,0.72)';
-    if(ctx.roundRect)ctx.roundRect(0,0,W,H,8);else ctx.rect(0,0,W,H);
-    ctx.fill();
     const epts=r.points;
     const eles=epts.map(p=>p.ele);
     const minE=Math.min(...eles),maxE=Math.max(...eles);
@@ -2528,18 +2525,11 @@ function renderDesktopMap(){
     const pad=8;
     const ex=d=>pad+(d/totalDist)*(W-pad*2);
     const ey=e=>(H-pad)-(e-minE)/eRange*(H-pad*2)-pad;
-    // Fill — dark tinted background under the line
-    ctx.beginPath();
-    ctx.moveTo(ex(epts[0].dist),H-pad);
-    epts.forEach(p=>ctx.lineTo(ex(p.dist),ey(p.ele)));
-    ctx.lineTo(ex(epts[epts.length-1].dist),H-pad);
-    ctx.closePath();
-    ctx.fillStyle='rgba(34,211,238,0.08)';ctx.fill();
-    // Line — day/night coloured segments matching route line, fallback cyan
-    const elats=r.points,elons=r.points;
+    // No background — transparent so map shows through
+    // Draw coloured fill segments first, then line on top
     const emidLat=(r.points.reduce((a,p)=>a<p.lat?a:p.lat,Infinity)+r.points.reduce((a,p)=>a>p.lat?a:p.lat,-Infinity))/2;
     const emidLon=(r.points.reduce((a,p)=>a<p.lon?a:p.lon,Infinity)+r.points.reduce((a,p)=>a>p.lon?a:p.lon,-Infinity))/2;
-    const getElevCol=i=>{
+    const getElevColAt=i=>{
       if(!startDT(r)||!Object.keys(_sunCache).length)return'rgba(34,211,238,0.85)';
       const eta=etaAt(epts[i].dist,r);
       if(!eta)return'rgba(34,211,238,0.85)';
@@ -2550,11 +2540,32 @@ function renderDesktopMap(){
       const m=bg.match(/rgba?\((\d+),(\d+),(\d+)/);
       return m?`rgba(${m[1]},${m[2]},${m[3]},0.9)`:'rgba(34,211,238,0.85)';
     };
-    // Sample every 10th point like route line
-    let curCol=getElevCol(0);
+    // No background — transparent so map shows through
+    // Draw coloured fill segments first, then line on top
+    let fillCol=getElevColAt(0);
+    let fillStart=0;
+    const drawFill=(fromIdx,toIdx,col)=>{
+      if(fromIdx>=toIdx)return;
+      const m=col.match(/rgba?\((\d+),(\d+),(\d+)/);
+      if(!m)return;
+      ctx.beginPath();
+      ctx.moveTo(ex(epts[fromIdx].dist),H-pad);
+      for(let i=fromIdx;i<=toIdx;i++)ctx.lineTo(ex(epts[i].dist),ey(epts[i].ele));
+      ctx.lineTo(ex(epts[toIdx].dist),H-pad);
+      ctx.closePath();
+      ctx.fillStyle=`rgba(${m[1]},${m[2]},${m[3]},0.25)`;ctx.fill();
+    };
+    // Draw fills by colour segment
+    for(let i=1;i<epts.length;i++){
+      const col=i%10===0?getElevColAt(i):fillCol;
+      if(col!==fillCol){drawFill(fillStart,i-1,fillCol);fillStart=i-1;fillCol=col;}
+    }
+    drawFill(fillStart,epts.length-1,fillCol);
+    // Draw line on top
+    let curCol=getElevColAt(0);
     ctx.beginPath();ctx.moveTo(ex(epts[0].dist),ey(epts[0].ele));
     for(let i=1;i<epts.length;i++){
-      const col=i%10===0?getElevCol(i):curCol;
+      const col=i%10===0?getElevColAt(i):curCol;
       if(col!==curCol){
         ctx.strokeStyle=curCol;ctx.lineWidth=1.5;ctx.stroke();
         ctx.beginPath();ctx.moveTo(ex(epts[i-1].dist),ey(epts[i-1].ele));
