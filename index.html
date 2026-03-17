@@ -3367,7 +3367,7 @@ function tLiveShell(r){
           hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':''):'';
         const ohHint=s.ohRaw?' · <span style="color:var(--text3);font-size:16px;">'+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
-        html+=`<div class="si live-stop" data-sid="${s.id}" style="${passed?(UI.simRunning?'display:none;':'opacity:.45;'):''}${tileBg}">
+        html+=`<div class="si live-stop" data-sid="${s.id}" style="${passed?'display:none;':''}${tileBg}">
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
             <div class="si-name">${passed?'✓ ':''}${s.name}${orBadge}</div>
