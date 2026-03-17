@@ -69,6 +69,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-outer{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;}
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 .live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
+@media(min-width:900px){.live-map-section{max-height:260px;}}
 .live-summary{position:absolute;bottom:0;left:0;right:0;padding:6px 8px 8px;display:flex;flex-direction:column;gap:5px;z-index:10;}
 .turn-popup{position:absolute;top:64px;left:8px;right:8px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;}
 .turn-arrow{font-size:42px;line-height:1;flex-shrink:0;}
@@ -192,6 +193,19 @@ select option{background:var(--bg3);}
         <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
       <div id="desktop-legend" style="position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:3px;z-index:20;"></div>
+      <div id="desktop-sim-ctrl" style="position:absolute;bottom:104px;right:8px;z-index:20;display:none;flex-direction:column;gap:4px;align-items:flex-end;">
+        <div style="background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:12px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">Sim</span>
+          <select id="sim-speed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 4px;font-family:var(--font);font-size:13px;">
+            <option value="10">10×</option>
+            <option value="20" selected>20×</option>
+            <option value="50">50×</option>
+            <option value="100">100×</option>
+          </select>
+          <button id="btn-sim-start" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--accent);border-color:rgba(74,222,128,.4);">▶ Play</button>
+          <button id="btn-sim-stop" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);display:none;">■ Stop</button>
+        </div>
+      </div>
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
         <button class="zbtn tile-tog" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
@@ -1653,7 +1667,9 @@ function peekLiveStop(s,r){
   // Measure everything NOW before any DOM changes
   const tabsH=document.getElementById('tabs').offsetHeight;
   const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
-  const mapH=Math.max(200,viewH-tabsH);
+  const viewW=window.innerWidth;
+  const maxH=IS_DESKTOP()?260:Math.round(viewW*16/9);
+  const mapH=Math.min(maxH,Math.max(200,viewH-tabsH));
   const summary=document.getElementById('live-summary');
   const sumH=summary?summary.offsetHeight:0;
   // Anchor: centre of visible area above summary
@@ -2450,6 +2466,16 @@ function renderDesktopMap(){
       </div>`:'');
     }
   }
+  // Show/update sim controls on desktop map
+  const simCtrl=document.getElementById('desktop-sim-ctrl');
+  if(simCtrl){
+    const show=r&&r.hasTS;
+    simCtrl.style.display=show?'flex':'none';
+    const startBtn=document.getElementById('btn-sim-start');
+    const stopBtn=document.getElementById('btn-sim-stop');
+    if(startBtn)startBtn.style.display=UI.simRunning?'none':'block';
+    if(stopBtn)stopBtn.style.display=UI.simRunning?'block':'none';
+  }
   // Attach legend click listener once
   if(!legend._clickAttached){
     legend._clickAttached=true;
@@ -2965,7 +2991,11 @@ function _render(){
   try{
 
   if(UI.tab==='live'&&r){
-    // Live: fixed map panel + scrollable section below
+    // On desktop during simulation, skip full re-render to prevent flashing — just update live overlays
+    if(IS_DESKTOP()&&UI.simRunning&&wrap.querySelector('#btn-live-gps')){
+      updateLive();
+      return;
+    }
     wrap.innerHTML=tLiveShell(r);
     setTimeout(()=>initLiveMap(r),80);
   } else if(UI.tab==='stops'&&r){
@@ -3168,25 +3198,7 @@ function tLiveShell(r){
     html+=`<button class="btn btn-full" id="btn-live-gps" style="justify-content:center;${UI.gpsActive?'border-color:rgba(248,113,113,.4);color:var(--red);background:rgba(248,113,113,.08);':'border-color:rgba(74,222,128,.4);color:var(--accent);background:rgba(74,222,128,.08);'}">
       ${UI.gpsActive?'<div class="pulse" style="color:var(--red);background:var(--red);width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-right:4px;"></div>⏹ Stop GPS':'▶ Start GPS'}
     </button>`;
-    // Simulator controls — shown on desktop for route preview
-    if(IS_DESKTOP()&&r.hasTS){
-      html+=`<div class="card" style="padding:8px 12px;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0;">Simulate</span>
-          <select id="sim-speed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:3px 6px;font-family:var(--font);font-size:14px;">
-            <option value="10">10×</option>
-            <option value="20" selected>20×</option>
-            <option value="50">50×</option>
-            <option value="100">100×</option>
-          </select>
-          ${!UI.simRunning
-            ?`<button class="btn btn-sm btn-p" id="btn-sim-start" style="flex:1;">▶ Play route</button>`
-            :`<button class="btn btn-sm btn-r" id="btn-sim-stop" style="flex:1;">■ Stop</button>`
-          }
-        </div>
-        <div style="font-size:12px;color:var(--text3);font-family:var(--font);margin-top:4px;">Watch day/night colours change as you ride</div>
-      </div>`;
-    }
+    // Simulator controls on desktop are shown on the big map overlay, not here
     html+=`<div class="card" style="padding:10px 12px;">
       <div class="prog" style="margin-top:0;"><div class="progf" id="live-progf2" style="width:${(prog*100).toFixed(1)}%"></div></div>
     </div>`;
@@ -3215,7 +3227,7 @@ function tLiveShell(r){
           hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':''):'';
         const ohHint=s.ohRaw?' · <span style="color:var(--text3);font-size:16px;">'+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
-        html+=`<div class="si live-stop" data-sid="${s.id}" style="${passed?'opacity:.45;':''}${tileBg}">
+        html+=`<div class="si live-stop" data-sid="${s.id}" style="${passed?(UI.simRunning?'display:none;':'opacity:.45;'):''}${tileBg}">
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
             <div class="si-name">${passed?'✓ ':''}${s.name}${orBadge}</div>
@@ -3341,7 +3353,10 @@ function initLiveMap(r){
     if(!mapSection)return;
     const tabsH=document.getElementById('tabs').offsetHeight;
     const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
-    const mapH=Math.max(200, viewH - tabsH);
+    const viewW=window.innerWidth;
+    // Mobile: cap at 16:9 portrait ratio (width * 16/9), desktop: cap at 260px
+    const maxH=IS_DESKTOP()?260:Math.round(viewW*16/9);
+    const mapH=Math.min(maxH,Math.max(200, viewH - tabsH));
     mapSection.style.height=mapH+'px';
     cvs.style.height=mapH+'px';
     if(!_livePeekTimer)drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.5,rotate:true});
