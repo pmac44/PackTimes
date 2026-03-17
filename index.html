@@ -206,6 +206,12 @@ select option{background:var(--bg3);}
           <button id="btn-sim-start" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--accent);border-color:rgba(74,222,128,.4);">▶ Play</button>
           <button id="btn-sim-stop" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);display:none;">■ Stop</button>
         </div>
+        <div id="desktop-sim-slider" style="display:none;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;width:220px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="range" id="sim-sl" min="0" max="100" step="0.5" value="0" style="flex:1;accent-color:var(--accent);">
+            <span id="sim-sl-val" style="font-size:12px;color:var(--text3);font-family:var(--font);white-space:nowrap;min-width:40px;text-align:right;">0km</span>
+          </div>
+        </div>
       </div>
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
@@ -1679,7 +1685,7 @@ function peekLiveStop(s,r){
   const tabsH=document.getElementById('tabs').offsetHeight;
   const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
   const viewW=window.innerWidth;
-  const maxH=IS_DESKTOP()?260:Math.round(viewW*16/9);
+  const maxH=IS_DESKTOP()?260:Math.round(viewW*20/9);
   const mapH=Math.min(maxH,Math.max(200,viewH-tabsH));
   const summary=document.getElementById('live-summary');
   const sumH=summary?summary.offsetHeight:0;
@@ -2486,8 +2492,18 @@ function renderDesktopMap(){
     simCtrl.style.display=show?'flex':'none';
     const startBtn=document.getElementById('btn-sim-start');
     const stopBtn=document.getElementById('btn-sim-stop');
+    const sliderWrap=document.getElementById('desktop-sim-slider');
     if(startBtn)startBtn.style.display=UI.simRunning?'none':'block';
     if(stopBtn)stopBtn.style.display=UI.simRunning?'block':'none';
+    if(sliderWrap)sliderWrap.style.display=UI.gpsActive?'block':'none';
+    // Update slider position without rebuilding it
+    const sl=document.getElementById('sim-sl');
+    const slVal=document.getElementById('sim-sl-val');
+    if(sl&&r&&document.activeElement!==sl){
+      sl.max=r.totalDist.toFixed(0);
+      sl.value=(UI.gpsDistKm||0).toFixed(1);
+    }
+    if(slVal)slVal.textContent=(UI.gpsDistKm||0).toFixed(1)+'km';
   }
   // Attach legend click listener once
   if(!legend._clickAttached){
@@ -3313,7 +3329,7 @@ function tLiveShell(r){
         </div>`;
       });
     });
-    if(UI.gpsActive){
+    if(UI.gpsActive&&!IS_DESKTOP()){
       html+=`<div class="card" style="border-color:rgba(248,113,113,.25);">
         <div class="ctitle" style="color:var(--red);">Simulate Position (demo)</div>
         <div class="slr">
@@ -3428,8 +3444,8 @@ function initLiveMap(r){
     const tabsH=document.getElementById('tabs').offsetHeight;
     const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
     const viewW=window.innerWidth;
-    // Mobile: cap at 16:9 portrait ratio (width * 16/9), desktop: cap at 260px
-    const maxH=IS_DESKTOP()?260:Math.round(viewW*16/9);
+    // Mobile: 20:9 portrait ratio (width * 20/9), desktop: cap at 260px
+    const maxH=IS_DESKTOP()?260:Math.round(viewW*20/9);
     const mapH=Math.min(maxH,Math.max(200, viewH - tabsH));
     mapSection.style.height=mapH+'px';
     cvs.style.height=mapH+'px';
@@ -4184,7 +4200,7 @@ function tPlan(r){
       +'</div>'
       +rows
     +((adjDur&&nights>0)?(()=>{
-      const dayCount=nights||1;
+      const dayCount=nights?nights+1:1;
       const avgDist=(r.totalDist/dayCount).toFixed(1);
       const avgRideH=adjDur/dayCount;
       const arh=Math.floor(avgRideH),arm=Math.round((avgRideH-arh)*60);
