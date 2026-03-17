@@ -69,7 +69,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-outer{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;}
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 .live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
-@media(min-width:900px){.live-map-section{max-height:260px;}}
+@media(min-width:900px){.live-map-section{max-height:500px;}}
 .live-summary{position:absolute;bottom:0;left:0;right:0;padding:6px 8px 8px;display:flex;flex-direction:column;gap:5px;z-index:10;}
 .turn-popup{position:absolute;top:64px;left:8px;right:8px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;}
 .turn-arrow{font-size:42px;line-height:1;flex-shrink:0;}
@@ -1691,7 +1691,8 @@ function peekLiveStop(s,r){
   const tabsH=document.getElementById('tabs').offsetHeight;
   const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
   const viewW=window.innerWidth;
-  const mapH=IS_DESKTOP()?260:Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH));
+  const sidebarW2=document.getElementById('desktop-sidebar')?.offsetWidth||400;
+const mapH=IS_DESKTOP()?Math.min(Math.round(sidebarW2*20/9),viewH-tabsH-120):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH));
   const summary=document.getElementById('live-summary');
   const sumH=summary?summary.offsetHeight:0;
   // Anchor: centre of visible area above summary
