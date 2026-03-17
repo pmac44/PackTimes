@@ -2528,17 +2528,41 @@ function renderDesktopMap(){
     const pad=8;
     const ex=d=>pad+(d/totalDist)*(W-pad*2);
     const ey=e=>(H-pad)-(e-minE)/eRange*(H-pad*2)-pad;
-    // Fill — cyan tinted to match route line
+    // Fill — dark tinted background under the line
     ctx.beginPath();
     ctx.moveTo(ex(epts[0].dist),H-pad);
     epts.forEach(p=>ctx.lineTo(ex(p.dist),ey(p.ele)));
     ctx.lineTo(ex(epts[epts.length-1].dist),H-pad);
     ctx.closePath();
-    ctx.fillStyle='rgba(34,211,238,0.15)';ctx.fill();
-    // Line — cyan matching route
-    ctx.beginPath();
-    epts.forEach((p,i)=>i===0?ctx.moveTo(ex(p.dist),ey(p.ele)):ctx.lineTo(ex(p.dist),ey(p.ele)));
-    ctx.strokeStyle='rgba(34,211,238,0.85)';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='rgba(34,211,238,0.08)';ctx.fill();
+    // Line — day/night coloured segments matching route line, fallback cyan
+    const elats=r.points,elons=r.points;
+    const emidLat=(r.points.reduce((a,p)=>a<p.lat?a:p.lat,Infinity)+r.points.reduce((a,p)=>a>p.lat?a:p.lat,-Infinity))/2;
+    const emidLon=(r.points.reduce((a,p)=>a<p.lon?a:p.lon,Infinity)+r.points.reduce((a,p)=>a>p.lon?a:p.lon,-Infinity))/2;
+    const getElevCol=i=>{
+      if(!startDT(r)||!Object.keys(_sunCache).length)return'rgba(34,211,238,0.85)';
+      const eta=etaAt(epts[i].dist,r);
+      if(!eta)return'rgba(34,211,238,0.85)';
+      const dateStr=eta.toLocaleDateString('en-CA');
+      const sun=_sunCache[`${emidLat.toFixed(2)},${emidLon.toFixed(2)},${dateStr}`];
+      if(!sun)return'rgba(34,211,238,0.85)';
+      const bg=dayNightBg(eta,sun);
+      const m=bg.match(/rgba?\((\d+),(\d+),(\d+)/);
+      return m?`rgba(${m[1]},${m[2]},${m[3]},0.9)`:'rgba(34,211,238,0.85)';
+    };
+    // Sample every 10th point like route line
+    let curCol=getElevCol(0);
+    ctx.beginPath();ctx.moveTo(ex(epts[0].dist),ey(epts[0].ele));
+    for(let i=1;i<epts.length;i++){
+      const col=i%10===0?getElevCol(i):curCol;
+      if(col!==curCol){
+        ctx.strokeStyle=curCol;ctx.lineWidth=1.5;ctx.stroke();
+        ctx.beginPath();ctx.moveTo(ex(epts[i-1].dist),ey(epts[i-1].ele));
+        curCol=col;
+      }
+      ctx.lineTo(ex(epts[i].dist),ey(epts[i].ele));
+    }
+    ctx.strokeStyle=curCol;ctx.lineWidth=1.5;ctx.stroke();
     r.stops.forEach(s=>{
       if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
       const x=ex(s.dist);
