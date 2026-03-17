@@ -200,8 +200,7 @@ select option{background:var(--bg3);}
         </div>
       </div>
       <div id="desktop-legend" style="position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:3px;z-index:20;"></div>
-      <div id="desktop-sim-ctrl" style="position:absolute;bottom:104px;right:8px;z-index:20;display:none;flex-direction:column;gap:4px;align-items:flex-end;">
-        <div style="background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:8px;">
+      <div id="desktop-sim-ctrl" style="position:absolute;bottom:122px;left:16px;z-index:20;display:none;flex-direction:row;gap:6px;align-items:center;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
           <span style="font-size:12px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">Sim</span>
           <select id="sim-speed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 4px;font-family:var(--font);font-size:13px;">
             <option value="10">10×</option>
@@ -213,7 +212,6 @@ select option{background:var(--bg3);}
           </select>
           <button id="btn-sim-start" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--accent);border-color:rgba(74,222,128,.4);">▶ Play</button>
           <button id="btn-sim-stop" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);display:none;">■ Stop</button>
-        </div>
       </div>
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
@@ -2219,6 +2217,16 @@ document.addEventListener('click',e=>{
     if(btn){btn.textContent=UI.gpsActive?'⏹ GPS':'GPS';btn.style.color=UI.gpsActive?'var(--red)':'';btn.style.borderColor=UI.gpsActive?'rgba(248,113,113,.4)':'';}
   }
 });
+document.addEventListener('input',e=>{
+  if(e.target.id==='sim-sl'&&e.target.closest('#desktop-sim-slider')){
+    const dist=+e.target.value;
+    const r=cur();
+    UI.gpsDistKm=dist;
+    if(r&&r.points.length){const pt=r.points[cidx(r,dist)];UI.gpsPos={lat:pt.lat,lon:pt.lon,acc:5,ts:Date.now()};}
+    const sv=document.getElementById('sim-sl-val');if(sv)sv.textContent=dist.toFixed(1)+'km';
+    updateLive();renderDesktopMap();
+  }
+});
 document.getElementById('pace-save').addEventListener('click',()=>{
   const r=cur();if(!r)return;
   if(_pace.from===null||_pace.to===null||_pace.to<=_pace.from){
@@ -2469,7 +2477,7 @@ function renderDesktopMap(){
   cvs._forcedH=ph;
   const isLive=UI.tab==='live';
   drawMap(cvs,r,{
-    showGPS:isLive,
+    showGPS:isLive||UI.simRunning, // show GPS dot on big map during sim regardless of tab
     followGPS:isLive&&UI.gpsActive,
     anchor:isLive?0.75:0.5,
     highlightId:_highlightStopId
@@ -2530,13 +2538,12 @@ function renderDesktopMap(){
   // Show/update sim controls on desktop map
   const simCtrl=document.getElementById('desktop-sim-ctrl');
   if(simCtrl){
-    const show=r&&r.hasTS;
+    const show=r&&r.hasTS&&UI.tab==='live'; // only on ride tab
     simCtrl.style.display=show?'flex':'none';
     const startBtn=document.getElementById('btn-sim-start');
     const stopBtn=document.getElementById('btn-sim-stop');
     if(startBtn)startBtn.style.display=UI.simRunning?'none':'block';
     if(stopBtn)stopBtn.style.display=UI.simRunning?'block':'none';
-    // Slider always visible on desktop when route has timestamps
     const sliderWrap=document.getElementById('desktop-sim-slider');
     if(sliderWrap)sliderWrap.style.display=show?'block':'none';
     const sl=document.getElementById('sim-sl');
@@ -4899,9 +4906,18 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     if(v)v.textContent=(UI.searchRadiusKm*1000).toFixed(0)+'m';
     return;}
   if(e.target.id==='sim-sl'){
-    UI.gpsDistKm=+e.target.value;UI.gpsPos={lat:0,lon:0,acc:5,ts:Date.now()};
-    const sv=e.target.nextElementSibling;if(sv)sv.textContent=(+e.target.value).toFixed(1)+'km';
-    render();}
+    const dist=+e.target.value;
+    const r=cur();
+    UI.gpsDistKm=dist;
+    if(r&&r.points.length){
+      const pt=r.points[cidx(r,dist)];
+      UI.gpsPos={lat:pt.lat,lon:pt.lon,acc:5,ts:Date.now()};
+    }
+    const sv=document.getElementById('sim-sl-val');if(sv)sv.textContent=dist.toFixed(1)+'km';
+    updateLive();
+    renderDesktopMap();
+    return;
+  }
 });
 
 document.getElementById('content-wrap').addEventListener('keydown',e=>{
