@@ -2450,6 +2450,7 @@ function renderDesktopMap(){
       {type:'fire',col:'#ef4444',label:'Fire stn'},
       {type:'police',col:'#3b82f6',label:'Police'},
       {type:'caravan',col:'#84cc16',label:'Caravan'},
+      {type:'sleep',col:'#b39ddb',label:'Sleep'},
       {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
       {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
     ];
@@ -3076,7 +3077,7 @@ function tStopsShell(r){
               {type:'peak',col:'#94a3b8'},{type:'church',col:'#e8c4f0'},
               {type:'school',col:'#93c5fd'},{type:'hall',col:'#d4a373'},
               {type:'police',col:'#3b82f6'},{type:'fire',col:'#ef4444'},
-              {type:'stockwater',col:'#94a3b8'},
+              {type:'stockwater',col:'#94a3b8'},{type:'sleep',col:'#b39ddb'},
             ];
             const present=new Set(r.stops.map(s=>s.type));
             if(r.turns&&r.turns.length)present.add('turns');
@@ -3104,7 +3105,7 @@ function tStopsShell(r){
               {type:'peak',col:'#94a3b8'},{type:'church',col:'#e8c4f0'},
               {type:'school',col:'#93c5fd'},{type:'hall',col:'#d4a373'},
               {type:'police',col:'#3b82f6'},{type:'fire',col:'#ef4444'},
-              {type:'stockwater',col:'#94a3b8'},
+              {type:'stockwater',col:'#94a3b8'},{type:'sleep',col:'#b39ddb'},
             ];
             const present=new Set(r.stops.map(s=>s.type));
             if(r.turns&&r.turns.length)present.add('turns');
@@ -3123,7 +3124,7 @@ function tStopsShell(r){
             }).join('');
           })()}
         </div>
-        <div id="mobile-layer-label" style="position:absolute;top:8px;left:32px;z-index:21;display:none;background:rgba(10,15,10,0.85);border:1px solid var(--border2);border-radius:5px;padding:3px 8px;font-size:12px;font-weight:600;color:rgba(255,255,255,0.85);font-family:var(--font);pointer-events:none;white-space:nowrap;"></div>`:''}
+        <div id="mobile-layer-label" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:21;display:none;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:8px;padding:8px 18px;font-size:18px;font-weight:600;color:#fff;font-family:var(--sans);pointer-events:none;white-space:nowrap;"></div>`:''}
       </div>
     </div>
     <div style="height:6px;flex-shrink:0;background:var(--bg);"></div>
@@ -4439,8 +4440,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(UI.hiddenMapTypes.has(t))UI.hiddenMapTypes.delete(t);
     else UI.hiddenMapTypes.add(t);
     const svg=mob.querySelector('circle');
-    const types={town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',wc:'#2dd4bf',stockwater:'#94a3b8',food:'#fbbf24',fuel:'#f97316',shop:'#c084fc',pub:'#f59e0b',camp:'#4a7c59',hut:'#c8a96e',accom:'#c084fc',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',peak:'#94a3b8',turns:'rgba(74,222,128,0.8)',kmmarkers:'rgba(255,255,255,0.7)'};
-    const labels={town:'Towns',water:'Water',crossing:'Waterways',wc:'Toilets',stockwater:'Stock water',food:'Food',fuel:'Fuel',shop:'Shops',pub:'Pubs',camp:'Camps',hut:'Huts',accom:'Accom',church:'Churches',school:'Schools',hall:'Halls',fire:'Fire stn',police:'Police',caravan:'Caravan',peak:'Peaks',turns:'Turns',kmmarkers:'km markers'};
+    const types={town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',wc:'#2dd4bf',stockwater:'#94a3b8',food:'#fbbf24',fuel:'#f97316',shop:'#c084fc',pub:'#f59e0b',camp:'#4a7c59',hut:'#c8a96e',accom:'#c084fc',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',peak:'#94a3b8',turns:'rgba(74,222,128,0.8)',kmmarkers:'rgba(255,255,255,0.7)',sleep:'#b39ddb'};
+    const labels={town:'Towns',water:'Water',crossing:'Waterways',wc:'Toilets',stockwater:'Stock water',food:'Food',fuel:'Fuel',shop:'Shops',pub:'Pubs',camp:'Camps',hut:'Huts',accom:'Accom',church:'Churches',school:'Schools',hall:'Halls',fire:'Fire stn',police:'Police',caravan:'Caravan',peak:'Peaks',turns:'Turns',kmmarkers:'km markers',sleep:'Sleep'};
     if(svg){
       const col=types[t]||'#fff';
       const hidden=UI.hiddenMapTypes.has(t);
