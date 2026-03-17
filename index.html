@@ -1908,7 +1908,8 @@ function hitTest(cvs,cx,cy,cb){
 // Render map controls HTML (zoom +/-, recenter, tile toggle)
 function mapCtrlHTML(mapId,showGPS){
   const isStopsMobile=mapId==='stops-map'&&!IS_DESKTOP();
-  return`<div class="map-ctrl${isStopsMobile?' map-ctrl-right':''}">
+  const pos=isStopsMobile?'bottom:8px;right:8px;top:auto;transform:none;':'';
+  return`<div class="map-ctrl" style="${pos}">
     <button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle satellite tiles" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["OSM","SAT","off"][_tileMode]}</button>
     ${showGPS?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:''}
@@ -3062,33 +3063,39 @@ function tStopsShell(r){
         <canvas id="stops-map"></canvas>
         <div class="mhint">tap route to add · drag to pan</div>
         ${mapCtrlHTML('stops-map',false)}
-        ${!IS_DESKTOP()?`<div id="mobile-map-legend" style="position:absolute;top:8px;left:6px;display:flex;flex-direction:column;gap:4px;z-index:20;">
+        ${!IS_DESKTOP()?`<div id="mobile-map-legend" style="position:absolute;top:8px;left:4px;display:flex;flex-direction:row;gap:4px;z-index:20;align-items:flex-start;">
           ${(()=>{
+            // Ordered by frequency of use — most common first, rare last
             const types=[
               {type:'town',col:'#4ade80'},{type:'water',col:'#60a5fa'},
-              {type:'crossing',col:'#6b9eb0'},{type:'wc',col:'#2dd4bf'},
-              {type:'stockwater',col:'#94a3b8'},{type:'food',col:'#fbbf24'},
-              {type:'fuel',col:'#f97316'},{type:'shop',col:'#c084fc'},
-              {type:'pub',col:'#f59e0b'},{type:'camp',col:'#4a7c59'},
+              {type:'food',col:'#fbbf24'},{type:'wc',col:'#2dd4bf'},
+              {type:'crossing',col:'#6b9eb0'},{type:'fuel',col:'#f97316'},
+              {type:'shop',col:'#c084fc'},{type:'camp',col:'#4a7c59'},
+              {type:'caravan',col:'#84cc16'},{type:'pub',col:'#f59e0b'},
               {type:'hut',col:'#c8a96e'},{type:'accom',col:'#c084fc'},
-              {type:'church',col:'#e8c4f0'},{type:'school',col:'#93c5fd'},
-              {type:'hall',col:'#d4a373'},{type:'fire',col:'#ef4444'},
-              {type:'police',col:'#3b82f6'},{type:'caravan',col:'#84cc16'},
-              {type:'peak',col:'#94a3b8'},{type:'turns',col:'rgba(74,222,128,0.8)'},
-              {type:'kmmarkers',col:'rgba(255,255,255,0.7)'},
+              {type:'turns',col:'rgba(74,222,128,0.8)'},{type:'kmmarkers',col:'rgba(255,255,255,0.7)'},
+              {type:'peak',col:'#94a3b8'},{type:'church',col:'#e8c4f0'},
+              {type:'school',col:'#93c5fd'},{type:'hall',col:'#d4a373'},
+              {type:'police',col:'#3b82f6'},{type:'fire',col:'#ef4444'},
+              {type:'stockwater',col:'#94a3b8'},
             ];
             const present=new Set(r.stops.map(s=>s.type));
             if(r.turns&&r.turns.length)present.add('turns');
             present.add('kmmarkers');
-            return types.filter(t=>present.has(t.type)).map(t=>{
+            const filtered=types.filter(t=>present.has(t.type));
+            const col1=filtered.filter((_,i)=>i%2===0);
+            const col2=filtered.filter((_,i)=>i%2===1);
+            const dotHTML=t=>{
               const hidden=UI.hiddenMapTypes.has(t.type);
-              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
-                <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#0a0f0a'}" stroke-width="1.5"/></svg>
+              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#0a0f0a'}" stroke-width="1.4"/></svg>
               </div>`;
-            }).join('');
+            };
+            return`<div style="display:flex;flex-direction:column;gap:2px;">${col1.map(dotHTML).join('')}</div>
+                   <div style="display:flex;flex-direction:column;gap:2px;">${col2.map(dotHTML).join('')}</div>`;
           })()}
         </div>
-        <div id="mobile-layer-label" style="position:absolute;top:8px;left:36px;z-index:21;display:none;background:rgba(10,15,10,0.85);border:1px solid var(--border2);border-radius:5px;padding:3px 8px;font-size:12px;font-weight:600;color:rgba(255,255,255,0.85);font-family:var(--font);pointer-events:none;white-space:nowrap;"></div>`:''}
+        <div id="mobile-layer-label" style="position:absolute;top:8px;left:54px;z-index:21;display:none;background:rgba(10,15,10,0.85);border:1px solid var(--border2);border-radius:5px;padding:3px 8px;font-size:12px;font-weight:600;color:rgba(255,255,255,0.85);font-family:var(--font);pointer-events:none;white-space:nowrap;"></div>`:''}
       </div>
     </div>
     <div style="height:6px;flex-shrink:0;background:var(--bg);"></div>
