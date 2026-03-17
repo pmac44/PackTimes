@@ -3947,25 +3947,28 @@ function tPlan(r){
     if(!isLast){
       const next=nodes[i+1];
       const segDist=next.dist-node.dist;
-      const segEtaFrom=node.isStart?sdt:eta;
-      const segEtaTo=next.isFinish?finEta:etaAt(next.dist,r);
-      const nodeSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
-      let segRideMs=0;
-      if(segEtaFrom&&segEtaTo) segRideMs=Math.max(0,(segEtaTo-segEtaFrom)-(nodeSleepH*3600000));
+      // Departure from current node = arrival + sleep at this node
+      const nodeSleepH=isSleep&&node.sleepStop?sleepHoursFor(node.sleepStop,eta):
+        node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
+      const departEta=eta&&nodeSleepH>0?new Date(eta.getTime()+nodeSleepH*3600000):
+        node.isStart?sdt:eta;
+      const arriveNextEta=next.isFinish?finEta:etaAt(next.dist,r);
+      // Riding time = time from departure to arrival at next node (no sleep to subtract)
+      const segRideMs=departEta&&arriveNextEta?Math.max(0,arriveNextEta-departEta):0;
       const segRideH=segRideMs/3600000;
       const segAvgSpd=segRideH>0.1?(segDist/segRideH).toFixed(1):null;
       const segStops=r.stops.filter(s=>s.dist>node.distEnd&&s.dist<(next.cluster?next.cluster.dist:next.dist));
       const hasWater=segStops.some(s=>s.type==='water')||(next.cluster&&next.cluster.stops.some(s=>s.type==='water'));
       const hasFood=segStops.some(s=>s.type==='food'||s.type==='shop')||(next.cluster&&next.cluster.stops.some(s=>s.type==='food'||s.type==='shop'));
-      // Format ride time as h:mm
-      let rideStr='';
-      if(segRideH>0.05){
-        const rh=Math.floor(segRideH),rm=Math.round((segRideH-rh)*60);
-        const rideHM=rh>0?(rh+'h'+(rm>0?' '+String(rm).padStart(2,'0')+'m':'')):(rm+'m');
-        rideStr=rideHM+(r.cumRiding&&segAvgSpd?' · '+segAvgSpd+' km/h':'');
-      }
+      const rh=Math.floor(segRideH),rm=Math.round((segRideH-rh)*60);
+      const rideHM=segRideH>0.05?(rh>0?(rh+'h'+(rm>0?' '+String(rm).padStart(2,'0')+'m':'')):(rm+'m')):'';
+      const rideStr=rideHM+(r.cumRiding&&segAvgSpd&&rideHM?' · '+segAvgSpd+' km/h':'');
       const foodIcon='<span style="font-size:18px;'+(hasFood?'':'opacity:.22;')+'">🍔</span>';
       const waterIcon='<span style="font-size:18px;'+(hasWater?'':'opacity:.22;')+'">💧</span>';
+      // Day label — count sleep nodes seen so far
+      const dayNum=nodes.slice(0,i+1).filter(n=>n.isSleep).length+1;
+      const dayLabel=UI.planSleepOnly&&!node.isFinish?
+        '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+dayNum+' ride</div>':'';
 
       rows+='<div style="display:flex;align-items:stretch;gap:10px;">'
         +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;">'
@@ -3973,6 +3976,7 @@ function tPlan(r){
         +'</div>'
         +'<div style="flex:1;padding:4px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
+            +dayLabel
             +'<span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+segDist.toFixed(1)+' km <span style="font-size:15px;color:var(--text3);font-weight:400;">('+next.dist.toFixed(1)+' km total)</span></span>'
             +(rideStr?'<br><span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+rideStr+'</span>':'')
           +'</div>'
