@@ -3859,6 +3859,7 @@ function tPlan(r){
   const totalSleepH=totalSleepHours(r);
   const adjDur=r.estDuration?(r.estDuration*r.timeFactor):null;
   const finEta=etaAt(r.totalDist,r);
+  let _planDay=1,_planLeg=1; // counters for day/leg labels
 
   // Sun data for day/night colours
   const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
@@ -3945,6 +3946,9 @@ function tPlan(r){
       +'</div>'
     +'</div>';
 
+    // After a sleep node, increment day and reset leg counter
+    if(isSleep){_planDay++;_planLeg=1;}
+
     if(!isLast){
       const next=nodes[i+1];
       const segDist=next.dist-node.dist;
@@ -3966,15 +3970,13 @@ function tPlan(r){
       const rideStr=rideHM+(r.cumRiding&&segAvgSpd&&rideHM?' · '+segAvgSpd+' km/h':'');
       const foodIcon='<span style="font-size:18px;'+(hasFood?'':'opacity:.22;')+'">🍔</span>';
       const waterIcon='<span style="font-size:18px;'+(hasWater?'':'opacity:.22;')+'">💧</span>';
-      // Day/leg label
-      const dayNum=nodes.slice(0,i+1).filter(n=>n.isSleep).length+1;
-      const legNum=nodes.slice(0,i).filter(n=>n.isSleep).length>0?
-        i-nodes.slice(0,i).map((n,idx)=>n.isSleep?idx:-1).filter(x=>x>=0).pop()-1:
-        i+1;
+      // Day/leg label using simple counters
+      const curDay=_planDay,curLeg=_planLeg;
+      _planLeg++;
       const dayLabel=!node.isFinish?(
         UI.planSleepOnly?
-          '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+dayNum+' ride</div>':
-          '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+dayNum+' · Leg '+legNum+'</div>'
+          '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' ride</div>':
+          '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' · Leg '+curLeg+'</div>'
       ):'';
 
       rows+='<div style="display:flex;align-items:stretch;gap:10px;">'
