@@ -2916,7 +2916,7 @@ function _render(){
   initDesktop(); // ensure content-wrap is in the right container
   // Tabs
   document.getElementById('tabs').innerHTML=
-    (IS_DESKTOP()?'<div style="display:flex;align-items:center;gap:6px;padding:0 12px;flex-shrink:0;border-right:1px solid var(--border);margin-right:4px;"><span style="font-size:18px;">⏱</span><span style="font-size:16px;font-weight:600;color:var(--accent);letter-spacing:-.5px;font-family:var(--sans);">PackTimes</span></div>':'')
+    (IS_DESKTOP()?'<div style="display:flex;align-items:center;gap:6px;padding:0 14px;flex-shrink:0;border-right:1px solid var(--border);margin-right:4px;"><span style="font-size:24px;line-height:1;">⏱</span><span style="font-size:20px;font-weight:600;color:var(--accent);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
     +TABS.map(t=>
     `<button class="tab ${UI.tab===t.id?'active':''}" data-tab="${t.id}">
       <span class="tab-icon">${t.icon}</span>${t.label}</button>`).join('');
