@@ -2917,7 +2917,7 @@ function _render(){
   initDesktop(); // ensure content-wrap is in the right container
   // Tabs
   document.getElementById('tabs').innerHTML=
-    (IS_DESKTOP()?'<div style="display:flex;align-items:center;gap:5px;padding:0 10px;flex-shrink:0;border-right:1px solid var(--border);"><span style="font-size:26px;line-height:1;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
+    (IS_DESKTOP()?'<div style="display:flex;align-items:center;gap:5px;padding:0 24px 0 10px;flex-shrink:0;border-right:1px solid var(--border);"><span style="font-size:26px;line-height:1;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
     +TABS.map(t=>
     `<button class="tab ${UI.tab===t.id?'active':''}" data-tab="${t.id}">
       <span class="tab-icon">${t.icon}</span>${t.label}</button>`).join('');
@@ -3359,15 +3359,9 @@ function tRoutes(r){
         <span class="startbar-lbl">🚦</span>
         <span class="startbar-lbl">Start</span>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex:1;position:relative;min-height:32px;">
-        <span style="font-family:var(--font);font-size:18px;color:#67e8f9;font-weight:500;pointer-events:none;">
-          ${sdt?sdt.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'2-digit'}):'Pick date'}
-        </span>
-        <input type="date" value="${r.startDate}" id="inp-date" style="position:absolute;left:0;top:0;width:50%;height:100%;min-height:32px;opacity:0;cursor:pointer;z-index:10;">
-        <span style="font-family:var(--font);font-size:18px;color:#67e8f9;font-weight:500;pointer-events:none;">
-          ${r.startTime||'--:--'}
-        </span>
-        <input type="time" value="${r.startTime}" id="inp-time" style="position:absolute;right:0;top:0;width:40%;height:100%;min-height:32px;opacity:0;cursor:pointer;z-index:10;">
+      <div style="display:flex;gap:8px;align-items:center;flex:1;">
+        <input type="date" value="${r.startDate}" id="inp-date" style="flex:1;background:transparent;border:none;border-bottom:1px solid var(--border2);color:#67e8f9;font-family:var(--font);font-size:18px;font-weight:500;cursor:pointer;padding:2px 0;outline:none;min-width:0;color-scheme:dark;">
+        <input type="time" value="${r.startTime||''}" id="inp-time" style="flex:0 0 auto;background:transparent;border:none;border-bottom:1px solid var(--border2);color:#67e8f9;font-family:var(--font);font-size:18px;font-weight:500;cursor:pointer;padding:2px 0;outline:none;color-scheme:dark;">
       </div>
     </div>
     ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="padding-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000))}</span></div>`:''}
@@ -3800,7 +3794,7 @@ function dayNightLabel(dt,sun){
 
 function tPlan(r){
   const sdt=startDT(r);
-  const header=`<div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;">
+  const header=`<div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>`;
   if(!r.stops.length) return header+'<div class="banner info"><span>📊</span><span>Add stops on the Stops tab to see your plan.</span></div>';
