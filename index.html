@@ -2917,7 +2917,7 @@ function _render(){
   initDesktop(); // ensure content-wrap is in the right container
   // Tabs
   document.getElementById('tabs').innerHTML=
-    (IS_DESKTOP()?'<div style="display:flex;align-items:center;gap:5px;padding:0 24px 0 10px;flex-shrink:0;border-right:1px solid var(--border);"><span style="font-size:26px;line-height:1;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
+    (IS_DESKTOP()?'<div style="width:400px;min-width:400px;display:flex;align-items:center;gap:5px;padding:0 16px;border-right:1px solid var(--border);box-sizing:border-box;"><span style="font-size:26px;line-height:1;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
     +TABS.map(t=>
     `<button class="tab ${UI.tab===t.id?'active':''}" data-tab="${t.id}">
       <span class="tab-icon">${t.icon}</span>${t.label}</button>`).join('');
@@ -3360,8 +3360,8 @@ function tRoutes(r){
         <span class="startbar-lbl">Start</span>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex:1;">
-        <input type="date" value="${r.startDate}" id="inp-date" style="flex:1;background:transparent;border:none;border-bottom:1px solid var(--border2);color:#67e8f9;font-family:var(--font);font-size:18px;font-weight:500;cursor:pointer;padding:2px 0;outline:none;min-width:0;color-scheme:dark;">
-        <input type="time" value="${r.startTime||''}" id="inp-time" style="flex:0 0 auto;background:transparent;border:none;border-bottom:1px solid var(--border2);color:#67e8f9;font-family:var(--font);font-size:18px;font-weight:500;cursor:pointer;padding:2px 0;outline:none;color-scheme:dark;">
+        <input type="date" value="${r.startDate||''}" id="inp-date" style="flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:#67e8f9;font-family:var(--font);font-size:16px;font-weight:500;cursor:pointer;padding:4px 6px;outline:none;color-scheme:dark;">
+        <input type="time" value="${r.startTime||''}" id="inp-time" style="flex:0 0 auto;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:#67e8f9;font-family:var(--font);font-size:16px;font-weight:500;cursor:pointer;padding:4px 6px;outline:none;color-scheme:dark;">
       </div>
     </div>
     ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="padding-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000))}</span></div>`:''}
