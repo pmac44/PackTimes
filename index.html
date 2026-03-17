@@ -4213,30 +4213,44 @@ function tPlan(r){
       +'</div>'
       +'</div>'
       +rows
-    +((adjDur&&nights>0)?(()=>{
+    +((adjDur||summaryParts.length)?(()=>{
+      const accent='font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);';
+      const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
+      const totalGain=elevGain(r.points);
+      const avgGainPerKm=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
+      const totRideH=Math.floor(adjDur||0),totRideM=Math.round(((adjDur||0)-totRideH)*60);
+      const totRideHM=(adjDur)?totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':''):'—';
+      const totSpd=(adjDur&&adjDur>0.1)?(r.totalDist/adjDur).toFixed(1):null;
+      const totalH=(adjDur||0)+(totalSleepH||0);
+      const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
+      const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
+      const avgSleepPerNight=nights>0?(totalSleepH/nights).toFixed(1):null;
       const dayCount=nights?nights+1:1;
       const avgDist=(r.totalDist/dayCount).toFixed(1);
-      const avgRideH=adjDur/dayCount;
+      const avgRideH=(adjDur||0)/dayCount;
       const arh=Math.floor(avgRideH),arm=Math.round((avgRideH-arh)*60);
       const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
       const avgSpd=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
-      const totalGain=elevGain(r.points);
       const avgGain=Math.round(totalGain/dayCount);
-      const avgGainPct=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
-      return'<div style="display:flex;align-items:stretch;gap:10px;padding:4px 0 2px;">'
-        +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;">'
-          +'<div style="width:2px;flex:1;min-height:20px;background:var(--border2);"></div>'
-        +'</div>'
+      const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:var(--border2);"></div></div>';
+      return'<div style="display:flex;align-items:stretch;gap:10px;margin-top:4px;">'
+        +spine
         +'<div style="flex:1;padding:4px 0 4px 2px;">'
-          +'<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Daily average · '+dayCount+' day'+(dayCount!==1?'s':'')+'</div>'
-          +'<span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+avgDist+' km</span>'
-          +'<br><span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+avgRideHM+(avgSpd?' · '+avgSpd+' km/h':'')+'</span>'
-          +(avgGain?'<br><span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+avgGain.toLocaleString()+' vm'+(avgGainPct?' · '+avgGainPct+'%':'')+'</span>':'')
+          +(dayCount>1?'<div style="'+lbl+'">Daily average · '+dayCount+' day'+(dayCount!==1?'s':'')+'</div>'
+            +'<span style="'+accent+'">'+avgDist+' km</span>'
+            +(adjDur?'<br><span style="'+accent+'">'+avgRideHM+(avgSpd?' · '+avgSpd+' km/h':'')+'</span>':'')
+            +(avgGain?'<br><span style="'+accent+'">'+avgGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':''):'')
+          +'<div style="'+lbl+'margin-top:12px;">Totals</div>'
+          +'<span style="'+accent+'">'+r.totalDist.toFixed(1)+' km</span>'
+          +(adjDur?'<br><span style="'+accent+'">'+totRideHM+(totSpd?' · '+totSpd+' km/h':'')+'</span>':'')
+          +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
+          +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;">'+totalSleepH.toFixed(1)+'h sleep'+(avgSleepPerNight?' · avg '+avgSleepPerNight+'h/night':'')+'</span>':'')
+          +(adjDur?'<br><span style="'+accent+'color:var(--text2);">'+totRideHM+(totalSleepH?' + '+totalSleepH.toFixed(1)+'h':'')+' = ≈ '+totalHM+' total</span>':'')
+          +(sleepStops<nights&&nights>0?'<br><span style="font-size:14px;color:rgba(179,157,219,0.7);">😴 '+sleepStops+' of '+nights+' nights planned — '+(nights-sleepStops)+' unplanned</span>':'')
         +'</div>'
       +'</div>';
     })():'')
-    +'</div>'
-    +(summaryParts.length?'<div class="card"><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:17px;color:var(--text3);">'+summaryParts.join('')+'</div>'+sleepExtra+'</div>':'');
+    +'</div>';
 }
 
 function printMission(){
