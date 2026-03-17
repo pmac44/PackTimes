@@ -3453,11 +3453,12 @@ function initLiveMap(r){
     const tabsH=document.getElementById('tabs').offsetHeight;
     const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
     const viewW=window.innerWidth;
-    // Mobile: use 20:9 portrait ratio, capped at available height
-    // Desktop: fixed 260px
     let mapH;
     if(IS_DESKTOP()){
-      mapH=260;
+      // Measure actual sidebar width and apply 20:9 portrait ratio
+      const sidebar=document.getElementById('desktop-sidebar');
+      const sideW=sidebar?sidebar.offsetWidth:400;
+      mapH=Math.round(sideW*20/9);
     } else {
       const ideal=Math.round(viewW*20/9);
       const avail=viewH-tabsH;
@@ -3467,10 +3468,10 @@ function initLiveMap(r){
     mapSection.style.minHeight=mapH+'px';
     cvs.style.width='100%';
     cvs.style.height=mapH+'px';
-    // On desktop set live-outer height to fill sidebar so it scrolls correctly
+    // On desktop set live-outer height so it scrolls
     if(IS_DESKTOP()){
       const lo=document.getElementById('live-scroller');
-      if(lo){const tabsEl=document.getElementById('tabs');lo.style.height=(viewH-(tabsEl?tabsEl.offsetHeight:50))+'px';}
+      if(lo)lo.style.height=Math.max(mapH+200,viewH-tabsH)+'px';
     }
     if(!_livePeekTimer)drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.5,rotate:true});
   };
@@ -4253,8 +4254,13 @@ function tPlan(r){
           +'<span style="'+accent+'">'+r.totalDist.toFixed(1)+' km</span>'
           +(adjDur?'<br><span style="'+accent+'">'+totRideHM+(totSpd?' · '+totSpd+' km/h':'')+'</span>':'')
           +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
-          +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;">'+totalSleepH.toFixed(1)+'h sleep'+(avgSleepPerNight?' · avg '+avgSleepPerNight+'h/night':'')+'</span>':'')
-          +(adjDur?'<br><span style="'+accent+'color:var(--text2);">'+totRideHM+(totalSleepH?' + '+totalSleepH.toFixed(1)+'h':'')+' = ≈ '+totalHM+' total</span>':'')
+          +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+totalSleepH.toFixed(1)+'h sleep</span>':'')
+          +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
+          +(adjDur?(()=>{
+            const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
+            const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
+            return'<br><span style="'+accent+'color:var(--text2);">≈ '+totalHM+' · '+daysHM+' total</span>';
+          })():'')
           +(sleepStops<nights&&nights>0?'<br><span style="font-size:14px;color:rgba(179,157,219,0.7);">😴 '+sleepStops+' of '+nights+' nights planned — '+(nights-sleepStops)+' unplanned</span>':'')
         +'</div>'
       +'</div>';
