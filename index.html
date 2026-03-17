@@ -3702,8 +3702,10 @@ async function fetchSunTimes(lat,lon,dateStr){
       const result={
         sunrise:new Date(j.results.sunrise),
         sunset:new Date(j.results.sunset),
-        dawn:new Date(j.results.civil_twilight_begin),
-        dusk:new Date(j.results.civil_twilight_end)
+        // Use nautical twilight for dawn/dusk — starts ~60min before sunrise,
+        // better matches when sky brightness becomes visually perceptible
+        dawn:new Date(j.results.nautical_twilight_begin),
+        dusk:new Date(j.results.nautical_twilight_end)
       };
       _sunCache[key]=result;
       return result;
@@ -3726,8 +3728,8 @@ function _sunApprox(lat,dateStr){
   const sunset=new Date(base.getTime()+setH*3600000);
   return{
     sunrise,sunset,
-    dawn:new Date(sunrise.getTime()-30*60000),
-    dusk:new Date(sunset.getTime()+30*60000)
+    dawn:new Date(sunrise.getTime()-60*60000),
+    dusk:new Date(sunset.getTime()+60*60000)
   };
 }
 
