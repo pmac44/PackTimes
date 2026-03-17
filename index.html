@@ -710,17 +710,17 @@ function startDT(r){
 function sleepHoursFor(s,arrivalEta){
   if(s.type==='rest')return s.sleepH||1;
   if(!s.departTime)return s.sleepH||(s.sleepAt?10:10);
-  // Fixed departure time mode — calculate hours from arrival to next occurrence of departTime
   const [dh,dm]=s.departTime.split(':').map(Number);
   if(!arrivalEta)return s.sleepH||10;
   const depart=new Date(arrivalEta);
   depart.setHours(dh,dm,0,0);
-  // If departure is before or within 1h of arrival, advance to next day
-  if(depart<=arrivalEta||(depart-arrivalEta)<3600000){
+  // If departure is at or before arrival, advance to next day
+  if(depart<=arrivalEta){
     depart.setDate(depart.getDate()+1);
     depart.setHours(dh,dm,0,0);
   }
-  return Math.max(1,(depart-arrivalEta)/3600000);
+  const hrs=Math.max(1,(depart-arrivalEta)/3600000);
+  return hrs;
 }
 
 // Get total sleep hours accounting for fixed departure times
@@ -757,15 +757,21 @@ function etaAt(distKm,r){
     }
   }
   // Add sleep stop durations for stops strictly before this point
-  // For fixed-departure stops, calculate arrival first then derive hours
+  // For fixed-departure stops, calculate arrival at THAT stop (not destination) then derive hours
   let sleepOffset=0;
   const sortedSleeps=r.stops.filter(s=>(s.type==='sleep'||s.type==='rest'||s.sleepAt)&&s.dist<distKm)
     .sort((a,b)=>a.dist-b.dist);
   sortedSleeps.forEach(s=>{
     if(s.departTime){
-      // Need arrival ETA at this stop to calculate departure
-      const arrivalHrs=hrs+sleepOffset;
-      const arrivalEta=new Date(base.getTime()+arrivalHrs*3600000);
+      // Riding hours to THIS sleep stop (not the destination)
+      let rideHrsToStop;
+      const crStop=cumRidingAt(s.dist,r),crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
+      if(crStop!==null&&crTot&&crTot>0){
+        rideHrsToStop=crStop*(targetTotal/crTot);
+      } else {
+        rideHrsToStop=targetTotal*(s.dist/r.totalDist);
+      }
+      const arrivalEta=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
       sleepOffset+=sleepHoursFor(s,arrivalEta);
     } else {
       sleepOffset+=s.sleepH||(s.type==='rest'?1:10);
