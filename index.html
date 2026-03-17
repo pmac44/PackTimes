@@ -1363,13 +1363,15 @@ function drawMap(cvs,r,opts){
   const baseScale=Math.min((W-pad*2)/lonKm,(H-pad-padBottom)/latKm);
   const scale=baseScale*state.zoom;
   let cLon=state.cx!==null?state.cx:(maxLon+minLon)/2;
+  // For desktop map, centre vertically in the visible area (above elevation profile)
+  const visibleMidY=id==='desktop-map'?(pad+(H-padBottom-pad)/2)/H:0.5;
   let cLat=state.cy!==null?state.cy:(maxLat+minLat)/2;
   if(opts.followGPS&&UI.gpsDistKm!==null){
     cLon=UI.gpsPos&&UI.gpsPos.lon?UI.gpsPos.lon:pts[cidx(r,UI.gpsDistKm)].lon;
     cLat=UI.gpsPos&&UI.gpsPos.lat?UI.gpsPos.lat:pts[cidx(r,UI.gpsDistKm)].lat;
     state.cx=cLon;state.cy=cLat;
   }
-  const cpx=W/2,cpy=H*anchor;
+  const cpx=W/2,cpy=H*(id==='desktop-map'&&state.cx===null?visibleMidY:anchor);
   const px=lon=>cpx+(lon-cLon)*kx*scale;
   const py=lat=>cpy-(lat-cLat)*ky*scale;
 
