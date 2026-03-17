@@ -1692,7 +1692,8 @@ function peekLiveStop(s,r){
   const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
   const viewW=window.innerWidth;
   const sidebarW2=document.getElementById('desktop-sidebar')?.offsetWidth||400;
-const mapH=IS_DESKTOP()?Math.max(300,viewH-tabsH-60):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH));
+const _sb=document.getElementById('desktop-sidebar');
+const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH));
   const summary=document.getElementById('live-summary');
   const sumH=summary?summary.offsetHeight:0;
   // Anchor: centre of visible area above summary
