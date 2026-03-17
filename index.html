@@ -146,8 +146,8 @@ select option{background:var(--bg3);}
 .t-sleep{background:rgba(130,100,220,.2);color:#b39ddb;}.t-accom{background:rgba(192,132,252,.15);color:var(--purple);}.t-wc{background:rgba(45,212,191,.15);color:#2dd4bf;}.t-town{background:rgba(74,222,128,.15);color:var(--accent);}.t-shop{background:rgba(192,132,252,.15);color:var(--purple);}.t-hut{background:rgba(200,169,110,.15);color:#c8a96e;}.t-fuel{background:rgba(249,115,22,.15);color:#f97316;}.t-peak{background:rgba(148,163,184,.15);color:#94a3b8;}.t-camp{background:rgba(74,124,89,.2);color:#4a7c59;}.t-rest{background:rgba(148,133,106,.2);color:#94856a;}.t-crossing{background:rgba(100,140,160,.2);color:#6b9eb0;}.t-church{background:rgba(232,196,240,.15);color:#e8c4f0;}.t-school{background:rgba(147,197,253,.15);color:#93c5fd;}.t-hall{background:rgba(212,163,115,.15);color:#d4a373;}.t-fire{background:rgba(239,68,68,.15);color:#ef4444;}.t-police{background:rgba(59,130,246,.15);color:#3b82f6;}.t-caravan{background:rgba(132,204,22,.15);color:#84cc16;}
 .slr{display:flex;align-items:center;gap:8px;}.slv{font-family:var(--font);font-size:18px;color:var(--accent);min-width:52px;text-align:right;}
 .next-card{background:var(--card2);border:1px solid var(--accent3);border-radius:10px;padding:12px 14px;}
-.nlbl{font-size:18px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--font);margin-bottom:2px;}
-.nname{font-size:19px;font-weight:600;color:var(--text);}
+.nlbl{font-size:18px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--sans);margin-bottom:2px;}
+.nname{font-size:19px;font-weight:600;color:var(--text);font-family:var(--sans);}
 .nrow{display:flex;align-items:baseline;gap:10px;margin-top:4px;}
 .nkm{font-size:24px;font-weight:600;color:var(--accent);font-family:var(--font);}
 .neta{font-size:18px;color:var(--text2);}
@@ -187,7 +187,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="desktop-map-pane" id="desktop-map-pane">
       <canvas id="desktop-map" style="width:100%;height:100%;display:block;"></canvas>
-      <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;font-size:13px;font-weight:600;color:#fff;font-family:var(--font);white-space:normal;max-width:180px;z-index:30;box-shadow:0 4px 16px rgba(0,0,0,0.5);transform:translateZ(0);-webkit-font-smoothing:antialiased;line-height:1.3;"></div>
+      <div id="desktop-tooltip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;font-size:14px;font-weight:500;color:#fff;font-family:var(--sans);white-space:normal;max-width:180px;z-index:30;box-shadow:0 4px 16px rgba(0,0,0,0.5);transform:translateZ(0);-webkit-font-smoothing:antialiased;line-height:1.3;"></div>
       <div id="desktop-elev-wrap" style="position:absolute;bottom:16px;left:16px;right:16px;height:80px;pointer-events:none;border-radius:8px;overflow:hidden;">
         <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
@@ -3197,7 +3197,7 @@ function tLiveShell(r){
     const stEl=hasSt?(st==='open'?'<span class="s-op" style="font-size:14px;">✓ Open</span>':st==='closed'?'<span class="s-cl" style="font-size:14px;">✗ Closed</span>':''):'';
     return`<div class="next-card live-summary-card" data-sid="${s.id}" style="flex:1;padding:8px 12px;cursor:pointer;">
       <div class="nlbl">${label}</div>
-      <div class="nname" style="font-size:17px;">${s.icon} ${s.name}</div>
+      <div class="nname">${s.icon} ${s.name}</div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px;">
         <div class="nkm" id="live-${idSuffix}-km" style="font-size:20px;">${dt.toFixed(1)}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
         <div class="neta" id="live-${idSuffix}-eta" style="font-size:15px;">${timeStr}</div>
