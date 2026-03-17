@@ -672,15 +672,37 @@ function startDT(r){
   if(!r||!r.startDate||!r.startTime)return null;
   return new Date(`${r.startDate}T${r.startTime}:00`);
 }
+// Get effective sleep hours for a stop — handles fixed departure time
+function sleepHoursFor(s,arrivalEta){
+  if(s.type==='rest')return s.sleepH||1;
+  if(!s.departTime)return s.sleepH||(s.sleepAt?10:10);
+  // Fixed departure time mode — calculate hours from arrival to next occurrence of departTime
+  const [dh,dm]=s.departTime.split(':').map(Number);
+  if(!arrivalEta)return s.sleepH||10;
+  const depart=new Date(arrivalEta);
+  depart.setHours(dh,dm,0,0);
+  // If departure is before or within 1h of arrival, advance to next day
+  if(depart<=arrivalEta||(depart-arrivalEta)<3600000){
+    depart.setDate(depart.getDate()+1);
+    depart.setHours(dh,dm,0,0);
+  }
+  return Math.max(1,(depart-arrivalEta)/3600000);
+}
+
+// Get total sleep hours accounting for fixed departure times
+function totalSleepHours(r){
+  return r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt)
+    .reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0);
+}
+
 function etaAt(distKm,r){
   if(!r||!r.points.length)return null;
   const base=startDT(r);if(!base)return null;
   const estTotal=r.estDuration||naismith(r.points,r.totalDist);
   if(!estTotal||!r.totalDist)return null;
-  const targetTotal=estTotal*r.timeFactor; // total riding hours after speed factor
+  const targetTotal=estTotal*r.timeFactor;
   let hrs;
   if(UI.gpsActive&&UI.gpsDistKm!==null){
-    // GPS anchor: real elapsed + variable-speed projection of remaining
     const nowDist=UI.gpsDistKm;
     const nowTime=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
     const elapsed=(nowTime-base)/3600000;
@@ -693,7 +715,6 @@ function etaAt(distKm,r){
       hrs=elapsed+targetTotal*(totRem/r.totalDist)*(rem/totRem);
     }
   } else {
-    // Plan mode: variable-speed via cumRiding, scaled to match targetTotal
     const crHere=cumRidingAt(distKm,r),crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
     if(crHere!==null&&crTot&&crTot>0){
       hrs=crHere*(targetTotal/crTot);
@@ -701,8 +722,22 @@ function etaAt(distKm,r){
       hrs=targetTotal*(distKm/r.totalDist);
     }
   }
-  // Add sleep stop durations for sleep stops strictly before this point (arrival time, not departure)
-  r.stops.forEach(s=>{if((s.type==='sleep'||s.type==='rest'||s.sleepAt)&&s.dist<distKm)hrs+=(s.sleepH||(s.type==='rest'?1:10));});
+  // Add sleep stop durations for stops strictly before this point
+  // For fixed-departure stops, calculate arrival first then derive hours
+  let sleepOffset=0;
+  const sortedSleeps=r.stops.filter(s=>(s.type==='sleep'||s.type==='rest'||s.sleepAt)&&s.dist<distKm)
+    .sort((a,b)=>a.dist-b.dist);
+  sortedSleeps.forEach(s=>{
+    if(s.departTime){
+      // Need arrival ETA at this stop to calculate departure
+      const arrivalHrs=hrs+sleepOffset;
+      const arrivalEta=new Date(base.getTime()+arrivalHrs*3600000);
+      sleepOffset+=sleepHoursFor(s,arrivalEta);
+    } else {
+      sleepOffset+=s.sleepH||(s.type==='rest'?1:10);
+    }
+  });
+  hrs+=sleepOffset;
   return new Date(base.getTime()+hrs*3600000);
 }
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
@@ -3296,7 +3331,7 @@ function tRoutes(r){
   const sdt=startDT(r);
   const adjDur=r.estDuration?r.estDuration*r.timeFactor:null;
   const avgSpd=adjDur&&r.totalDist?(r.totalDist/adjDur).toFixed(1):null;
-  const totalSleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0);
+  const totalSleepH=totalSleepHours(r);
   const totalH=adjDur?adjDur+totalSleepH:null;
   const finEta=sdt&&adjDur?new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000):null;
   return routeList+`
@@ -3343,7 +3378,7 @@ function tRoutes(r){
     </div>
     <div class="srow" style="grid-template-columns:1fr 1fr;margin-top:7px;">
       <div class="sbox"><div class="sval" id="rt-riding" style="font-size:18px;color:#60a5fa;">${adjDur?fmtHM(adjDur):'—'}</div><div class="slbl" style="color:#60a5fa;">riding</div></div>
-      <div class="sbox">${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;const sleepH=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||10),0);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl" style="color:#b39ddb;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl" style="color:#b39ddb;">sleep/night</div>';})()}</div>
+      <div class="sbox">${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;const sleepH=totalSleepHours(r);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl" style="color:#b39ddb;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl" style="color:#b39ddb;">sleep/night</div>';})()}</div>
     </div>
     <div id="rt-sleeprow" style="margin-top:8px;display:flex;gap:12px;font-size:16px;color:var(--text3);font-family:var(--font);"${totalSleepH>0?'':' hidden'}>
       <span>😴 +${totalSleepH.toFixed(1)}h sleep</span>
@@ -3818,7 +3853,7 @@ function tPlan(r){
     {name:'Finish 🏁',dist:r.totalDist,distEnd:r.totalDist,isFinish:true,cluster:null},
   ];
 
-  const totalSleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0);
+  const totalSleepH=totalSleepHours(r);
   const adjDur=r.estDuration?(r.estDuration*r.timeFactor):null;
   const finEta=etaAt(r.totalDist,r);
 
@@ -3861,19 +3896,22 @@ function tPlan(r){
     let sleepDiv='';
     if(isSleep&&node.sleepStop){
       const s=node.sleepStop;
-      const hrs=s.sleepH||(s.type==='rest'?1:4);
+      const hrs=sleepHoursFor(s,eta);
       const depart=eta?new Date(eta.getTime()+hrs*3600000):null;
       const departDay=depart&&sdt?dayOff(depart,sdt):'';
       const col=s.type==='rest'?'#94856a':'#b39ddb';
       const icon=s.type==='rest'?'🪑':'😴';
+      const sleepLabel=s.departTime?
+        `<div style="color:${col};">⏰ depart ${s.departTime} (${hrs.toFixed(1)}h)</div>`:
+        `<div style="color:${col};">${icon} ${hrs.toFixed(1)}h</div>`;
       sleepDiv='<div style="margin-top:6px;display:flex;gap:12px;font-family:var(--font);font-size:15px;">'
         +'<div><span style="color:var(--text3);">Arrive</span> <span style="color:var(--text);">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</span></div>'
         +(depart?'<div><span style="color:var(--text3);">Leave</span> <span style="color:var(--text);">'+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</span></div>':'')
-        +'<div style="color:'+col+';">'+icon+' '+hrs+'h</div>'
+        +sleepLabel
         +'</div>';
     }
     // Cluster sleep departure
-    const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0):0;
+    const clusterSleepH=node.cluster?node.clustetotalSleepHours(r):0;
     const depart=clusterSleepH>0&&eta?new Date(eta.getTime()+clusterSleepH*3600000):null;
     const departDay=depart&&sdt?dayOff(depart,sdt):'';
     const departDiv=depart?'<div style="font-size:14px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">▶ '+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</div>':'';
@@ -3909,7 +3947,7 @@ function tPlan(r){
       const segDist=next.dist-node.dist;
       const segEtaFrom=node.isStart?sdt:eta;
       const segEtaTo=next.isFinish?finEta:etaAt(next.dist,r);
-      const nodeSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0):0;
+      const nodeSleepH=node.cluster?node.clustetotalSleepHours(r):0;
       let segRideMs=0;
       if(segEtaFrom&&segEtaTo) segRideMs=Math.max(0,(segEtaTo-segEtaFrom)-(nodeSleepH*3600000));
       const segRideH=segRideMs/3600000;
@@ -3982,7 +4020,7 @@ function printMission(){
   const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
   const clusters=clusterStops(planStops);
   const finEta=etaAt(r.totalDist,r);
-  const totalSleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0);
+  const totalSleepH=totalSleepHours(r);
 
   let rows='';
   clusters.forEach(cl=>{
@@ -4044,7 +4082,7 @@ function patchSpeedFactor(r){
     const spd=(r.totalDist/adj).toFixed(1);
     const vs=document.getElementById('rt-avgspd'),vr=document.getElementById('rt-riding');
     if(vs)vs.textContent=spd;if(vr){vr.textContent=fmtHM(adj);vr.style.color='#60a5fa';}
-    const sleepH=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||(s.type==='rest'?1:10)),0);
+    const sleepH=totalSleepHours(r);
     const vt=document.getElementById('rt-total'),sr=document.getElementById('rt-sleeprow');
     if(sleepH>0){
       if(sr)sr.removeAttribute('hidden');
@@ -4242,28 +4280,64 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       if(existing){existing.remove();return;}
       const picker=document.createElement('div');
       picker.className='sleep-dur-picker';
-      picker.style.cssText='display:flex;align-items:center;gap:6px;margin-top:6px;padding:8px 10px;background:var(--card);border-radius:8px;border:1px solid rgba(130,100,220,0.6);flex-wrap:wrap;box-shadow:0 4px 16px rgba(0,0,0,0.5);';
+      picker.style.cssText='display:flex;flex-direction:column;gap:6px;margin-top:6px;padding:8px 10px;background:var(--card);border-radius:8px;border:1px solid rgba(130,100,220,0.6);box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:220px;';
+      const isDeparture=!!s.departTime;
       const currentH=s.sleepH||UI.lastSleepH||10;
-      picker.innerHTML=`<span style="font-size:14px;color:#b39ddb;">😴 Sleep hours:</span>
-        <input type="number" min="1" max="24" step="0.5" value="${currentH}" style="width:52px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);">
-        <button class="btn btn-sm btn-p sleep-dur-ok" style="padding:2px 8px;">✓</button>
-        <button class="btn btn-sm sleep-dur-cancel" style="padding:2px 8px;">✕</button>
-        ${s.sleepAt?`<button class="btn btn-sm btn-r sleep-dur-unsleep" style="padding:2px 8px;margin-left:4px;">💤 Remove sleep</button>`:''}`;
+      const currentDepart=s.departTime||'07:00';
+      picker.innerHTML=`
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-sm sdp-mode-dur${!isDeparture?' btn-p':''}" style="flex:1;padding:2px 6px;font-size:13px;">⏱ Duration</button>
+          <button class="btn btn-sm sdp-mode-dep${isDeparture?' btn-p':''}" style="flex:1;padding:2px 6px;font-size:13px;">⏰ Depart at</button>
+        </div>
+        <div class="sdp-dur-row" style="display:${isDeparture?'none':'flex'};align-items:center;gap:6px;">
+          <span style="font-size:14px;color:#b39ddb;">😴 Hours:</span>
+          <input type="number" class="sdp-hours" min="1" max="24" step="0.5" value="${currentH}" style="width:52px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);">
+        </div>
+        <div class="sdp-dep-row" style="display:${isDeparture?'flex':'none'};align-items:center;gap:6px;">
+          <span style="font-size:14px;color:#b39ddb;">⏰ Depart:</span>
+          <input type="time" class="sdp-depart" value="${currentDepart}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);">
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-p sleep-dur-ok" style="padding:2px 10px;">✓</button>
+          <button class="btn btn-sm sleep-dur-cancel" style="padding:2px 10px;">✕</button>
+          ${s.sleepAt?'<button class="btn btn-sm btn-r sleep-dur-unsleep" style="padding:2px 8px;">💤 Remove sleep</button>':''}
+        </div>`;
       container.appendChild(picker);
-      picker.querySelector('input').focus();
+      // Mode toggle
+      picker.querySelector('.sdp-mode-dur').addEventListener('click',ev=>{
+        ev.stopPropagation();
+        picker.querySelector('.sdp-dur-row').style.display='flex';
+        picker.querySelector('.sdp-dep-row').style.display='none';
+        picker.querySelector('.sdp-mode-dur').classList.add('btn-p');
+        picker.querySelector('.sdp-mode-dep').classList.remove('btn-p');
+      });
+      picker.querySelector('.sdp-mode-dep').addEventListener('click',ev=>{
+        ev.stopPropagation();
+        picker.querySelector('.sdp-dur-row').style.display='none';
+        picker.querySelector('.sdp-dep-row').style.display='flex';
+        picker.querySelector('.sdp-mode-dep').classList.add('btn-p');
+        picker.querySelector('.sdp-mode-dur').classList.remove('btn-p');
+      });
       picker.querySelector('.sleep-dur-ok').addEventListener('click',ev=>{
         ev.stopPropagation();
-        const v=parseFloat(picker.querySelector('input').value);
-        if(isNaN(v)||v<=0||v>24){alert('Enter hours between 0 and 24');return;}
-        UI.lastSleepH=v;
-        s.sleepAt=true;s.sleepH=v;s.starred=true;
+        const isDepMode=picker.querySelector('.sdp-dep-row').style.display!=='none';
+        s.sleepAt=true;s.starred=true;
+        if(isDepMode){
+          const depart=picker.querySelector('.sdp-depart').value;
+          if(!depart){alert('Enter a departure time');return;}
+          s.departTime=depart;s.sleepH=null;
+        } else {
+          const v=parseFloat(picker.querySelector('.sdp-hours').value);
+          if(isNaN(v)||v<=0||v>24){alert('Enter hours between 0 and 24');return;}
+          UI.lastSleepH=v;s.sleepH=v;s.departTime=null;
+        }
         saveAll();render();
       });
       picker.querySelector('.sleep-dur-cancel').addEventListener('click',ev=>{ev.stopPropagation();picker.remove();});
       const unsleepBtn=picker.querySelector('.sleep-dur-unsleep');
       if(unsleepBtn)unsleepBtn.addEventListener('click',ev=>{
         ev.stopPropagation();
-        s.sleepAt=false;s.sleepH=null;picker.remove();saveAll();render();
+        s.sleepAt=false;s.sleepH=null;s.departTime=null;picker.remove();saveAll();render();
       });
     }
     return;
