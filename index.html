@@ -46,6 +46,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   .desktop-map-pane #desktop-map{position:absolute;top:0;left:0;width:100%!important;height:100%!important;}
   .tabs{font-size:18px;}
   .tab{padding:8px 10px;flex:1!important;}
+  .mobile-only-logo{display:none!important;}
 }
 .header{display:none;}
 .hlogo{font-size:20px;}.htitle{font-size:20px;font-weight:600;color:var(--accent);letter-spacing:-.5px;}
@@ -2916,7 +2917,7 @@ function _render(){
   initDesktop(); // ensure content-wrap is in the right container
   // Tabs
   document.getElementById('tabs').innerHTML=
-    (IS_DESKTOP()?'<div style="display:flex;align-items:center;gap:6px;padding:0 14px;flex-shrink:0;border-right:1px solid var(--border);margin-right:4px;"><span style="font-size:24px;line-height:1;">⏱</span><span style="font-size:20px;font-weight:600;color:var(--accent);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
+    (IS_DESKTOP()?'<div style="display:flex;align-items:center;gap:5px;padding:0 10px;flex-shrink:0;border-right:1px solid var(--border);"><span style="font-size:26px;line-height:1;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
     +TABS.map(t=>
     `<button class="tab ${UI.tab===t.id?'active':''}" data-tab="${t.id}">
       <span class="tab-icon">${t.icon}</span>${t.label}</button>`).join('');
@@ -3303,7 +3304,7 @@ function initLiveMap(r){
 // ─── Combined Route tab (routes list + route detail) ───
 function tRoutes(r){
   const routeList=`
-  <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;">
+  <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>
   <div class="card">
@@ -3460,7 +3461,7 @@ function tRoutes(r){
 // ─── Settings tab ───
 function tSettings(r){
   return`
-  <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;">
+  <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>
   ${r?`
