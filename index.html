@@ -396,7 +396,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set()};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -3847,9 +3847,11 @@ function tPlan(r){
   });
   // Re-sort by dist
   nodeList.sort((a,b)=>a.dist-b.dist);
+  // Sleep-only filter — keep start, finish and sleep nodes only
+  const filteredList=UI.planSleepOnly?nodeList.filter(n=>n.isSleep):nodeList;
   const nodes=[
     {name:'Start 🚩',dist:0,distEnd:0,isStart:true,cluster:null},
-    ...nodeList,
+    ...filteredList,
     {name:'Finish 🏁',dist:r.totalDist,distEnd:r.totalDist,isFinish:true,cluster:null},
   ];
 
@@ -4007,7 +4009,10 @@ function tPlan(r){
     +'<div class="card" style="padding:14px 12px;">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
+        +'<div style="display:flex;align-items:center;gap:6px;">'
+        +'<button class="btn btn-sm'+( UI.planSleepOnly?' btn-p':'')+'" id="btn-plan-sleep-filter" style="font-size:13px;" title="Show sleep stops only">😴</button>'
         +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;">🖨️ Print</button>'
+      +'</div>'
       +'</div>'
       +rows
     +'</div>'
@@ -4473,6 +4478,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     UI.turnStatus=null;
     saveAll();render();return;
   }
+  if(e.target.closest('#btn-plan-sleep-filter')){
+    UI.planSleepOnly=!UI.planSleepOnly;render();return;}
   if(e.target.closest('#btn-print-mission')){printMission();return;}
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
