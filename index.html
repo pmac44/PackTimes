@@ -3356,15 +3356,15 @@ function tRoutes(r){
         <span class="startbar-lbl">🚦</span>
         <span class="startbar-lbl">Start</span>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex:1;position:relative;">
+      <div style="display:flex;gap:8px;align-items:center;flex:1;position:relative;min-height:32px;">
         <span style="font-family:var(--font);font-size:18px;color:#67e8f9;font-weight:500;pointer-events:none;">
           ${sdt?sdt.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'2-digit'}):'Pick date'}
         </span>
-        <input type="date" value="${r.startDate}" id="inp-date" style="position:absolute;left:0;top:0;width:50%;height:100%;opacity:0;cursor:pointer;">
+        <input type="date" value="${r.startDate}" id="inp-date" style="position:absolute;left:0;top:0;width:50%;height:100%;min-height:32px;opacity:0;cursor:pointer;">
         <span style="font-family:var(--font);font-size:18px;color:#67e8f9;font-weight:500;pointer-events:none;">
           ${r.startTime||'--:--'}
         </span>
-        <input type="time" value="${r.startTime}" id="inp-time" style="position:absolute;right:0;top:0;width:40%;height:100%;opacity:0;cursor:pointer;">
+        <input type="time" value="${r.startTime}" id="inp-time" style="position:absolute;right:0;top:0;width:40%;height:100%;min-height:32px;opacity:0;cursor:pointer;">
       </div>
     </div>
     ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="padding-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000))}</span></div>`:''}
