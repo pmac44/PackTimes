@@ -66,7 +66,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .content > *{margin-bottom:13px;}
 /* Live tab: fixed map + scrollable below */
 /* Live tab */
-.live-outer{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;}
+.live-outer{overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;}
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 .live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
 
@@ -3467,6 +3467,11 @@ function initLiveMap(r){
     mapSection.style.minHeight=mapH+'px';
     cvs.style.width='100%';
     cvs.style.height=mapH+'px';
+    // On desktop set live-outer height to fill sidebar so it scrolls correctly
+    if(IS_DESKTOP()){
+      const lo=document.getElementById('live-scroller');
+      if(lo){const tabsEl=document.getElementById('tabs');lo.style.height=(viewH-(tabsEl?tabsEl.offsetHeight:50))+'px';}
+    }
     if(!_livePeekTimer)drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.5,rotate:true});
   };
   sizeLiveMap();
