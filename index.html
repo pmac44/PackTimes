@@ -3062,8 +3062,8 @@ function _render(){
   try{
 
   if(UI.tab==='live'&&r){
-    // On desktop during simulation, skip full re-render to prevent flashing — just update live overlays
-    if(IS_DESKTOP()&&UI.simRunning&&wrap.querySelector('#btn-live-gps')){
+    // On desktop during simulation or GPS, skip full re-render to prevent flashing
+    if(IS_DESKTOP()&&(UI.simRunning||UI.gpsActive)&&wrap.querySelector('#live-map-section')){
       updateLive();
       return;
     }
