@@ -105,6 +105,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .warn{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:var(--amber);}
 .info{background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.3);color:var(--blue);}
 .ok{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:var(--accent);}
+.ok-bright{background:rgba(163,230,53,.15);border:1px solid rgba(163,230,53,.5);color:#a3e635;}
 .err{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);}
 .srow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;}
 .sbox{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px;text-align:center;}
@@ -3317,7 +3318,7 @@ function tRoutes(r){
         <button class="btn btn-sm btn-r del-route" data-ridx="${i}">✕</button>
       </div>`).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX above to get started.</p>`}
   </div>
-  ${UI.turnStatus?`<div class="banner ${UI.turnStatus.type==='ok'?'ok':'warn'}">
+  ${UI.turnStatus?`<div class="banner ${UI.turnStatus.type==='ok'?'ok-bright':'warn'}">
     <span>${UI.turnStatus.type==='ok'?'↩':'⚠️'}</span>
     <div style="flex:1;">
       <div>${UI.turnStatus.msg}</div>
@@ -3340,7 +3341,7 @@ function tRoutes(r){
     const hasTurns=r.turns&&r.turns.length>0;
     const autoTurns=hasTurns&&r.turns.every(t=>t.auto);
     const tsBanner=r.hasTS
-      ?`<div class="banner ok"><span>✓</span><span>Route has timestamps — ETAs anchored to planned pace.</span></div>`
+      ?`<div class="banner ok-bright"><span>✓</span><span>Route has timestamps — ETAs anchored to planned pace.</span></div>`
       :`<div class="banner warn"><span>⚠️</span><span>No timestamps — speed estimated from elevation. Adjust with speed factor below. Try re-exporting as TCX if possible.</span></div>`;
     const turnBanner=hasTurns
       ?(autoTurns
