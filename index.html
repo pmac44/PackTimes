@@ -4012,8 +4012,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span>'+(node.sleepStop&&node.sleepStop.sleepAt?'<button class="unsleep-direct" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤 unsleep</button>':'')+'</div>'):'')
-        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span>'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤</button>':'')+'</div>'):'')        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +'<div style="font-size:17px;font-weight:600;color:'+textCol+';">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
             +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
@@ -4369,14 +4368,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
-  // Direct unsleep from mission tile header — must be before sleep-at-stop handler
-  const ud=e.target.closest('.unsleep-direct');
-  if(ud){
-    const sid=ud.dataset.sid;
-    const s=r?r.stops.find(x=>String(x.id)===String(sid)):null;
-    if(s){s.sleepAt=false;s.sleepH=null;saveAll();render();}
-    return;
-  }
+  // Direct unsleep from mission tile — now handled via sleep picker
   // Sleep-at toggle
   const sa=e.target.closest('.sleep-at-stop');
   if(sa&&r){
@@ -4588,7 +4580,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-print-mission')){printMission();return;}
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
-  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.unsleep-direct')){
+  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')){
     const sid=mn.dataset.sid;
     if(sid){
       _highlightStopId=sid;
