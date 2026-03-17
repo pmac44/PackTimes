@@ -3333,14 +3333,14 @@ function tRoutes(r){
     </div>
     <div class="srow" style="grid-template-columns:1fr 1fr;margin-top:7px;">
       <div class="sbox"><div class="sval" id="rt-riding" style="font-size:18px;color:#60a5fa;">${adjDur?fmtHM(adjDur):'—'}</div><div class="slbl" style="color:#60a5fa;">riding</div></div>
-      <div class="sbox">${(()=>{const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):null;const sleepH=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||10),0);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl" style="color:#b39ddb;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl" style="color:#b39ddb;">sleep/night</div>';})()}</div>
+      <div class="sbox">${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;const sleepH=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).reduce((a,s)=>a+(s.sleepH||10),0);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl" style="color:#b39ddb;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl" style="color:#b39ddb;">sleep/night</div>';})()}</div>
     </div>
     <div id="rt-sleeprow" style="margin-top:8px;display:flex;gap:12px;font-size:16px;color:var(--text3);font-family:var(--font);"${totalSleepH>0?'':' hidden'}>
       <span>😴 +${totalSleepH.toFixed(1)}h sleep</span>
       ${totalH?`<span id="rt-total" style="color:#b39ddb;">≈ ${Math.round(totalH)}h total</span>`:'<span id="rt-total"></span>'}
     </div>
     ${(()=>{
-      const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):0;
+      const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():0;
       const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;
       if(nights>0&&sleepStops<nights){
         const missing=nights-sleepStops;
@@ -3942,7 +3942,7 @@ function tPlan(r){
   }
   if(finEta&&sdt)summaryParts.push('<span style="color:var(--accent);">Finish '+fmtT(finEta)+dayOff(finEta,sdt)+'</span>');
   // Sleep per night + unplanned nights warning
-  const nights=sdt&&finEta?Math.ceil((finEta-sdt)/86400000):null;
+  const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;
   const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).length;
   let sleepExtra='';
   if(nights>0&&totalSleepH){
