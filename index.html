@@ -3911,7 +3911,7 @@ function tPlan(r){
         +'</div>';
     }
     // Cluster sleep departure
-    const clusterSleepH=node.cluster?node.clustetotalSleepHours(r):0;
+    const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
     const depart=clusterSleepH>0&&eta?new Date(eta.getTime()+clusterSleepH*3600000):null;
     const departDay=depart&&sdt?dayOff(depart,sdt):'';
     const departDiv=depart?'<div style="font-size:14px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">▶ '+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</div>':'';
@@ -3947,7 +3947,7 @@ function tPlan(r){
       const segDist=next.dist-node.dist;
       const segEtaFrom=node.isStart?sdt:eta;
       const segEtaTo=next.isFinish?finEta:etaAt(next.dist,r);
-      const nodeSleepH=node.cluster?node.clustetotalSleepHours(r):0;
+      const nodeSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
       let segRideMs=0;
       if(segEtaFrom&&segEtaTo) segRideMs=Math.max(0,(segEtaTo-segEtaFrom)-(nodeSleepH*3600000));
       const segRideH=segRideMs/3600000;
