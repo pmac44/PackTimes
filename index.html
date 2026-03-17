@@ -194,9 +194,9 @@ select option{background:var(--bg3);}
         <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
       <div id="desktop-sim-slider" style="position:absolute;bottom:100px;left:16px;right:16px;display:none;z-index:20;pointer-events:all;">
-        <div style="display:flex;align-items:center;gap:6px;background:rgba(10,15,10,0.7);border-radius:6px;padding:3px 8px;">
-          <input type="range" id="sim-sl" min="0" max="100" step="0.5" value="0" style="flex:1;accent-color:var(--accent);height:16px;">
-          <span id="sim-sl-val" style="font-size:12px;color:var(--text3);font-family:var(--font);white-space:nowrap;min-width:44px;text-align:right;">0km</span>
+        <div id="sim-sl-val" style="position:absolute;bottom:calc(100% + 4px);right:0;font-size:12px;color:var(--text3);font-family:var(--font);background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;white-space:nowrap;">0.0km</div>
+        <div style="background:rgba(10,15,10,0.7);border-radius:6px;padding:3px 8px;">
+          <input type="range" id="sim-sl" min="0" max="100" step="0.5" value="0" style="width:100%;accent-color:var(--accent);height:16px;display:block;">
         </div>
       </div>
       <div id="desktop-legend" style="position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:3px;z-index:20;"></div>
@@ -209,6 +209,7 @@ select option{background:var(--bg3);}
             <option value="100">100×</option>
             <option value="200">200×</option>
             <option value="500">500×</option>
+            <option value="1000">1000×</option>
           </select>
           <button id="btn-sim-start" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--accent);border-color:rgba(74,222,128,.4);">▶ Play</button>
           <button id="btn-sim-stop" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);display:none;">■ Stop</button>
@@ -3791,6 +3792,7 @@ function tSettings(r){
         <option value="100">100×</option>
         <option value="200">200×</option>
         <option value="500">500×</option>
+        <option value="1000">1000×</option>
       </select>
     </div>
     <div style="display:flex;gap:8px;">
