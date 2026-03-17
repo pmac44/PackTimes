@@ -2431,7 +2431,8 @@ function renderDesktopMap(){
     const filtered=types.filter(t=>presentTypes.has(t.type));
     if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()){
       legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join();
-      legend.innerHTML=filtered.map(t=>{
+      legend.innerHTML='<div style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);font-family:var(--font);text-transform:uppercase;letter-spacing:1.5px;padding:2px 6px;margin-bottom:2px;">Layers</div>'
+        +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
         return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
           <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${hidden?'none':t.col}" stroke="${t.col}" stroke-width="1.5"/></svg>
