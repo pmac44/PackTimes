@@ -3873,13 +3873,15 @@ async function fetchSunTimes(lat,lon,dateStr){
     const res=await fetch(url);
     const j=await res.json();
     if(j.status==='OK'){
+      // API returns UTC times. Shift them to local time so they compare
+      // correctly against ETAs which are local Date objects
+      const tzOffsetMs=new Date().getTimezoneOffset()*60000*-1;
+      const toLocal=utcStr=>new Date(new Date(utcStr).getTime()+tzOffsetMs);
       const result={
-        sunrise:new Date(j.results.sunrise),
-        sunset:new Date(j.results.sunset),
-        // Use nautical twilight for dawn/dusk — starts ~60min before sunrise,
-        // better matches when sky brightness becomes visually perceptible
-        dawn:new Date(j.results.nautical_twilight_begin),
-        dusk:new Date(j.results.nautical_twilight_end)
+        sunrise:toLocal(j.results.sunrise),
+        sunset:toLocal(j.results.sunset),
+        dawn:toLocal(j.results.nautical_twilight_begin),
+        dusk:toLocal(j.results.nautical_twilight_end)
       };
       _sunCache[key]=result;
       return result;
@@ -3893,10 +3895,8 @@ async function fetchSunTimes(lat,lon,dateStr){
 
 // Rough fallback sunrise/sunset when API unavailable
 function _sunApprox(lat,dateStr){
-  // Simple approximation: sunrise ~6am, sunset ~6pm local solar time
-  // Use UTC offset from longitude (15 degrees = 1 hour)
-  const base=new Date(dateStr+'T00:00:00Z');
-  // We store times as UTC but ETA dates are also UTC, so this is consistent
+  // Use local midnight as base so times match local ETA dates
+  const base=new Date(dateStr+'T00:00:00');
   const riseH=6,setH=18;
   const sunrise=new Date(base.getTime()+riseH*3600000);
   const sunset=new Date(base.getTime()+setH*3600000);
