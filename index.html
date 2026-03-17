@@ -1105,6 +1105,7 @@ function simStart(){
   UI.gpsActive=true;
   UI.alertedStops=new Set();
   _offRouteStart=null;_offRouteAlerted=false;
+  // Reset auto-zoom for live (small) map only — don't touch desktop big map state
   const liveState=ms('live-map');
   liveState._userZoomed=false;liveState._autoZoomed=false;
   updateGPSPill();
@@ -1381,13 +1382,14 @@ function drawMap(cvs,r,opts){
       cLat=routeMidLat;
     }
   }
+  const _wasFit=state.cx===null||state.cy===null;
   if(opts.followGPS&&UI.gpsDistKm!==null){
     cLon=UI.gpsPos&&UI.gpsPos.lon?UI.gpsPos.lon:pts[cidx(r,UI.gpsDistKm)].lon;
     cLat=UI.gpsPos&&UI.gpsPos.lat?UI.gpsPos.lat:pts[cidx(r,UI.gpsDistKm)].lat;
   }
-  // Save computed centre so tiles align
-  state.cx=cLon;state.cy=cLat;
-  const cpx=W/2,cpy=H*(id==='desktop-map'&&state.cx===null?visibleMidY:anchor);
+  // Only save centre to state when fitting (was null) or following GPS — not during static redraws
+  if(_wasFit||opts.followGPS){state.cx=cLon;state.cy=cLat;}
+  const cpx=W/2,cpy=H*(!_wasFit&&id==='desktop-map'?anchor:id==='desktop-map'?visibleMidY:anchor);
   const px=lon=>cpx+(lon-cLon)*kx*scale;
   const py=lat=>cpy-(lat-cLat)*ky*scale;
 
@@ -2478,8 +2480,8 @@ function renderDesktopMap(){
   cvs._forcedH=ph;
   const isLive=UI.tab==='live';
   drawMap(cvs,r,{
-    showGPS:isLive||UI.simRunning, // show GPS dot on big map during sim regardless of tab
-    followGPS:isLive&&UI.gpsActive,
+    showGPS:isLive||UI.simRunning,
+    followGPS:isLive&&UI.gpsActive&&!UI.simRunning, // never follow on big map during sim
     anchor:isLive?0.75:0.5,
     highlightId:_highlightStopId
   });
