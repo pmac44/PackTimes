@@ -149,7 +149,7 @@ select option{background:var(--bg3);}
 .slr{display:flex;align-items:center;gap:8px;}.slv{font-family:var(--font);font-size:18px;color:var(--accent);min-width:52px;text-align:right;}
 .next-card{background:var(--card2);border:1px solid var(--accent3);border-radius:10px;padding:12px 14px;}
 .nlbl{font-size:18px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--sans);margin-bottom:2px;}
-.nname{font-size:19px;font-weight:600;color:var(--text);font-family:var(--sans);}
+.nname{font-size:18px;font-weight:500;color:var(--text);font-family:var(--sans);line-height:1.35;}
 .nrow{display:flex;align-items:baseline;gap:10px;margin-top:4px;}
 .nkm{font-size:24px;font-weight:600;color:var(--accent);font-family:var(--font);}
 .neta{font-size:18px;color:var(--text2);}
@@ -1685,8 +1685,7 @@ function peekLiveStop(s,r){
   const tabsH=document.getElementById('tabs').offsetHeight;
   const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
   const viewW=window.innerWidth;
-  const maxH=IS_DESKTOP()?260:Math.round(viewW*20/9);
-  const mapH=Math.min(maxH,Math.max(200,viewH-tabsH));
+  const mapH=IS_DESKTOP()?260:Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH));
   const summary=document.getElementById('live-summary');
   const sumH=summary?summary.offsetHeight:0;
   // Anchor: centre of visible area above summary
@@ -3444,10 +3443,19 @@ function initLiveMap(r){
     const tabsH=document.getElementById('tabs').offsetHeight;
     const viewH=(window.visualViewport?window.visualViewport.height:window.innerHeight);
     const viewW=window.innerWidth;
-    // Mobile: 20:9 portrait ratio (width * 20/9), desktop: cap at 260px
-    const maxH=IS_DESKTOP()?260:Math.round(viewW*20/9);
-    const mapH=Math.min(maxH,Math.max(200, viewH - tabsH));
+    // Mobile: use 20:9 portrait ratio, capped at available height
+    // Desktop: fixed 260px
+    let mapH;
+    if(IS_DESKTOP()){
+      mapH=260;
+    } else {
+      const ideal=Math.round(viewW*20/9);
+      const avail=viewH-tabsH;
+      mapH=Math.min(ideal,Math.max(200,avail));
+    }
     mapSection.style.height=mapH+'px';
+    mapSection.style.minHeight=mapH+'px';
+    cvs.style.width='100%';
     cvs.style.height=mapH+'px';
     if(!_livePeekTimer)drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.5,rotate:true});
   };
