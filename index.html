@@ -3966,10 +3966,16 @@ function tPlan(r){
       const rideStr=rideHM+(r.cumRiding&&segAvgSpd&&rideHM?' · '+segAvgSpd+' km/h':'');
       const foodIcon='<span style="font-size:18px;'+(hasFood?'':'opacity:.22;')+'">🍔</span>';
       const waterIcon='<span style="font-size:18px;'+(hasWater?'':'opacity:.22;')+'">💧</span>';
-      // Day label — count sleep nodes seen so far
+      // Day/leg label
       const dayNum=nodes.slice(0,i+1).filter(n=>n.isSleep).length+1;
-      const dayLabel=UI.planSleepOnly&&!node.isFinish?
-        '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+dayNum+' ride</div>':'';
+      const legNum=nodes.slice(0,i).filter(n=>n.isSleep).length>0?
+        i-nodes.slice(0,i).map((n,idx)=>n.isSleep?idx:-1).filter(x=>x>=0).pop()-1:
+        i+1;
+      const dayLabel=!node.isFinish?(
+        UI.planSleepOnly?
+          '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+dayNum+' ride</div>':
+          '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+dayNum+' · Leg '+legNum+'</div>'
+      ):'';
 
       rows+='<div style="display:flex;align-items:stretch;gap:10px;">'
         +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;">'
