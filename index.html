@@ -208,6 +208,8 @@ select option{background:var(--bg3);}
             <option value="20" selected>20×</option>
             <option value="50">50×</option>
             <option value="100">100×</option>
+            <option value="200">200×</option>
+            <option value="500">500×</option>
           </select>
           <button id="btn-sim-start" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--accent);border-color:rgba(74,222,128,.4);">▶ Play</button>
           <button id="btn-sim-stop" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);display:none;">■ Stop</button>
@@ -216,7 +218,6 @@ select option{background:var(--bg3);}
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
         <button class="zbtn tile-tog" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
-        <button class="zbtn" id="desktop-gps-btn" title="Toggle GPS" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">GPS</button>
       </div>
     </div>
   </div>
@@ -1131,6 +1132,8 @@ function simStart(){
     checkAlerts();
     if(UI.tab==='live')updateLive();
     else updateGPSPill();
+    // Always update desktop big map during simulation
+    if(IS_DESKTOP())renderDesktopMap();
     const status=document.getElementById('sim-status');
     if(status){
       const distKm=UI.gpsDistKm?UI.gpsDistKm.toFixed(1)+'km':'—';
@@ -2533,8 +2536,9 @@ function renderDesktopMap(){
     const stopBtn=document.getElementById('btn-sim-stop');
     if(startBtn)startBtn.style.display=UI.simRunning?'none':'block';
     if(stopBtn)stopBtn.style.display=UI.simRunning?'block':'none';
+    // Slider always visible on desktop when route has timestamps
     const sliderWrap=document.getElementById('desktop-sim-slider');
-    if(sliderWrap)sliderWrap.style.display=UI.gpsActive?'block':'none';
+    if(sliderWrap)sliderWrap.style.display=show?'block':'none';
     const sl=document.getElementById('sim-sl');
     const slVal=document.getElementById('sim-sl-val');
     if(sl&&r&&document.activeElement!==sl){
@@ -2542,14 +2546,6 @@ function renderDesktopMap(){
       sl.value=(UI.gpsDistKm||0).toFixed(1);
     }
     if(slVal)slVal.textContent=(UI.gpsDistKm||0).toFixed(1)+'km';
-  }
-  // Update desktop GPS button state
-  const desktopGpsBtn=document.getElementById('desktop-gps-btn');
-  if(desktopGpsBtn){
-    desktopGpsBtn.textContent=UI.gpsActive?'⏹ GPS':'GPS';
-    desktopGpsBtn.style.color=UI.gpsActive?'var(--red)':'';
-    desktopGpsBtn.style.borderColor=UI.gpsActive?'rgba(248,113,113,.4)':'';
-    desktopGpsBtn.style.background=UI.gpsActive?'rgba(248,113,113,.08)':'';
   }
   // Attach legend click listener once
   if(!legend._clickAttached){
@@ -3773,6 +3769,8 @@ function tSettings(r){
         <option value="20" selected>20×</option>
         <option value="50">50×</option>
         <option value="100">100×</option>
+        <option value="200">200×</option>
+        <option value="500">500×</option>
       </select>
     </div>
     <div style="display:flex;gap:8px;">
