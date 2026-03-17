@@ -2481,8 +2481,8 @@ function renderDesktopMap(){
   const isLive=UI.tab==='live';
   drawMap(cvs,r,{
     showGPS:isLive||UI.simRunning,
-    followGPS:isLive&&UI.gpsActive&&!UI.simRunning, // never follow on big map during sim
-    anchor:isLive?0.75:0.5,
+    followGPS:false,
+    anchor:0.5,
     highlightId:_highlightStopId
   });
   // Render legend/filter panel
