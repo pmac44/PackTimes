@@ -575,7 +575,17 @@ function autoDetectTurns(pts,thresholdDeg=45,minDistKm=0.1){
   }
   return turns;
 }
-function elevGain(pts){let g=0;for(let i=1;i<pts.length;i++){const d=pts[i].ele-pts[i-1].ele;if(d>0)g+=d;}return Math.round(g);}
+function elevGain(pts){
+  // Use a rolling threshold to filter GPS noise — only count gain after 10m continuous climb
+  let g=0,base=pts[0]?.ele||0,peak=base;
+  for(let i=1;i<pts.length;i++){
+    const e=pts[i].ele;
+    if(e>peak)peak=e;
+    else if(peak-e>10){g+=peak-base;base=e;peak=e;}
+  }
+  if(peak>base)g+=peak-base;
+  return Math.round(g);
+}
 function durationFromTS(pts){
   const a=pts.find(p=>p.time),b=[...pts].reverse().find(p=>p.time);
   if(!a||!b||a===b)return null;return(b.time-a.time)/3600000;
