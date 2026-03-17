@@ -216,6 +216,7 @@ select option{background:var(--bg3);}
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
         <button class="zbtn tile-tog" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
+        <button class="zbtn" id="desktop-gps-btn" title="Toggle GPS" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">GPS</button>
       </div>
     </div>
   </div>
@@ -1369,8 +1370,9 @@ function drawMap(cvs,r,opts){
   if(opts.followGPS&&UI.gpsDistKm!==null){
     cLon=UI.gpsPos&&UI.gpsPos.lon?UI.gpsPos.lon:pts[cidx(r,UI.gpsDistKm)].lon;
     cLat=UI.gpsPos&&UI.gpsPos.lat?UI.gpsPos.lat:pts[cidx(r,UI.gpsDistKm)].lat;
-    state.cx=cLon;state.cy=cLat;
   }
+  // Always save computed centre back to state so tiles align correctly
+  state.cx=cLon;state.cy=cLat;
   const cpx=W/2,cpy=H*(id==='desktop-map'&&state.cx===null?visibleMidY:anchor);
   const px=lon=>cpx+(lon-cLon)*kx*scale;
   const py=lat=>cpy-(lat-cLat)*ky*scale;
@@ -2186,6 +2188,17 @@ function _redrawPaceMap(){
 })();
 
 document.getElementById('pace-modal-x').addEventListener('click',closePaceModal);
+
+// Desktop map overlay button listeners (outside content-wrap)
+document.addEventListener('click',e=>{
+  if(e.target.closest('#btn-sim-start')&&!e.target.closest('#content-wrap')){simStart();}
+  if(e.target.closest('#btn-sim-stop')&&!e.target.closest('#content-wrap')){simStop();}
+  if(e.target.closest('#desktop-gps-btn')){
+    toggleGPS();
+    const btn=document.getElementById('desktop-gps-btn');
+    if(btn){btn.textContent=UI.gpsActive?'⏹ GPS':'GPS';btn.style.color=UI.gpsActive?'var(--red)':'';btn.style.borderColor=UI.gpsActive?'rgba(248,113,113,.4)':'';}
+  }
+});
 document.getElementById('pace-save').addEventListener('click',()=>{
   const r=cur();if(!r)return;
   if(_pace.from===null||_pace.to===null||_pace.to<=_pace.from){
