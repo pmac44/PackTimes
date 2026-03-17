@@ -1306,27 +1306,40 @@ function drawMap(cvs,r,opts){
   // Day/night coloured route line for desktop map
   if(id==='desktop-map'&&startDT(r)&&Object.keys(_sunCache).length){
     const sdt=startDT(r);
-    const midLat=(r.points.reduce((a,p)=>a+p.lat,0)/r.points.length);
-    const midLon=(r.points.reduce((a,p)=>a+p.lon,0)/r.points.length);
-    // Draw dark outline first
+    const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
+    const midLat=(Math.min(...lats)+Math.max(...lats))/2;
+    const midLon=(Math.min(...lons)+Math.max(...lons))/2;
+    const getSun=eta=>{
+      if(!eta)return null;
+      const dateStr=eta.toLocaleDateString('en-CA');
+      return _sunCache[`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`]||null;
+    };
+    const getCol=eta=>{
+      if(!eta)return'#22d3ee';
+      const sun=getSun(eta);
+      if(!sun)return'#22d3ee';
+      const bg=dayNightBg(eta,sun);
+      const m=bg.match(/rgba?\((\d+),(\d+),(\d+)/);
+      return m?`rgb(${m[1]},${m[2]},${m[3]})`:'#22d3ee';
+    };
+    // Draw dark outline
     ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
     for(let i=1;i<pts.length;i++)ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
     if(_tileMode>0){ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=5;ctx.stroke();}
     else{ctx.strokeStyle='#1a2d1a';ctx.lineWidth=4;ctx.stroke();}
-    // Draw coloured segments
+    // Batch segments by colour
+    let curCol=getCol(etaAt(pts[0].dist,r));
+    ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
     for(let i=1;i<pts.length;i++){
-      const eta=etaAt(pts[i].dist,r);
-      if(!eta){ctx.beginPath();ctx.moveTo(px(pts[i-1].lon),py(pts[i-1].lat));ctx.lineTo(px(pts[i].lon),py(pts[i].lat));ctx.strokeStyle='#22d3ee';ctx.lineWidth=2.5;ctx.stroke();continue;}
-      const dateStr=eta.toLocaleDateString('en-CA');
-      const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`;
-      const sun=_sunCache[key];
-      const col=sun?dayNightBg(eta,sun):'#22d3ee';
-      // Convert rgba background to a stroke colour — extract rgb and boost opacity
-      const m=col.match(/rgba?\((\d+),(\d+),(\d+)/);
-      const strokeCol=m?`rgba(${m[1]},${m[2]},${m[3]},0.9)`:'#22d3ee';
-      ctx.beginPath();ctx.moveTo(px(pts[i-1].lon),py(pts[i-1].lat));ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
-      ctx.strokeStyle=strokeCol;ctx.lineWidth=2.5;ctx.stroke();
+      const col=getCol(etaAt(pts[i].dist,r));
+      if(col!==curCol){
+        ctx.strokeStyle=curCol;ctx.lineWidth=2.5;ctx.stroke();
+        ctx.beginPath();ctx.moveTo(px(pts[i-1].lon),py(pts[i-1].lat));
+        curCol=col;
+      }
+      ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
     }
+    ctx.strokeStyle=curCol;ctx.lineWidth=2.5;ctx.stroke();
   } else {
   ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
   for(let i=1;i<pts.length;i++)ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
