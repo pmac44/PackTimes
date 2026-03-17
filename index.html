@@ -4183,6 +4183,28 @@ function tPlan(r){
       +'</div>'
       +'</div>'
       +rows
+    +((adjDur&&nights>0)?(()=>{
+      const dayCount=nights||1;
+      const avgDist=(r.totalDist/dayCount).toFixed(1);
+      const avgRideH=adjDur/dayCount;
+      const arh=Math.floor(avgRideH),arm=Math.round((avgRideH-arh)*60);
+      const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
+      const avgSpd=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
+      const totalGain=elevGain(r.points);
+      const avgGain=Math.round(totalGain/dayCount);
+      const avgGainPct=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
+      return'<div style="display:flex;align-items:stretch;gap:10px;padding:4px 0 2px;">'
+        +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;">'
+          +'<div style="width:2px;flex:1;min-height:20px;background:var(--border2);"></div>'
+        +'</div>'
+        +'<div style="flex:1;padding:4px 0 4px 2px;">'
+          +'<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Daily average · '+dayCount+' day'+(dayCount!==1?'s':'')+'</div>'
+          +'<span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+avgDist+' km</span>'
+          +'<br><span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+avgRideHM+(avgSpd?' · '+avgSpd+' km/h':'')+'</span>'
+          +(avgGain?'<br><span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+avgGain.toLocaleString()+' vm'+(avgGainPct?' · '+avgGainPct+'%':'')+'</span>':'')
+        +'</div>'
+      +'</div>';
+    })():'')
     +'</div>'
     +(summaryParts.length?'<div class="card"><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:17px;color:var(--text3);">'+summaryParts.join('')+'</div>'+sleepExtra+'</div>':'');
 }
