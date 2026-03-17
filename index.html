@@ -3062,7 +3062,7 @@ function tStopsShell(r){
         <canvas id="stops-map"></canvas>
         <div class="mhint">tap route to add · drag to pan</div>
         ${mapCtrlHTML('stops-map',false)}
-        ${!IS_DESKTOP()?`<div id="mobile-map-legend" style="position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:2px;z-index:20;">
+        ${!IS_DESKTOP()?`<div id="mobile-map-legend" style="position:absolute;top:8px;left:6px;display:flex;flex-direction:column;gap:4px;z-index:20;">
           ${(()=>{
             const types=[
               {type:'town',col:'#4ade80'},{type:'water',col:'#60a5fa'},
@@ -3082,12 +3082,13 @@ function tStopsShell(r){
             present.add('kmmarkers');
             return types.filter(t=>present.has(t.type)).map(t=>{
               const hidden=UI.hiddenMapTypes.has(t.type);
-              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(10,15,10,0.6);border-radius:6px;">
-                <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="${hidden?'none':t.col}" stroke="${t.col}" stroke-width="1.5"/></svg>
+              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="${hidden?'none':t.col}" stroke="${t.col}" stroke-width="1.2"/></svg>
               </div>`;
             }).join('');
           })()}
-        </div>`:''}
+        </div>
+        <div id="mobile-layer-label" style="position:absolute;top:8px;left:36px;z-index:21;display:none;background:rgba(10,15,10,0.85);border:1px solid var(--border2);border-radius:5px;padding:3px 8px;font-size:12px;font-weight:600;color:rgba(255,255,255,0.85);font-family:var(--font);pointer-events:none;white-space:nowrap;"></div>`:''}
       </div>
     </div>
     <div style="height:6px;flex-shrink:0;background:var(--bg);"></div>
@@ -4404,7 +4405,20 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     else UI.hiddenMapTypes.add(t);
     const svg=mob.querySelector('circle');
     const types={town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',wc:'#2dd4bf',stockwater:'#94a3b8',food:'#fbbf24',fuel:'#f97316',shop:'#c084fc',pub:'#f59e0b',camp:'#4a7c59',hut:'#c8a96e',accom:'#c084fc',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',peak:'#94a3b8',turns:'rgba(74,222,128,0.8)',kmmarkers:'rgba(255,255,255,0.7)'};
+    const labels={town:'Towns',water:'Water',crossing:'Waterways',wc:'Toilets',stockwater:'Stock water',food:'Food',fuel:'Fuel',shop:'Shops',pub:'Pubs',camp:'Camps',hut:'Huts',accom:'Accom',church:'Churches',school:'Schools',hall:'Halls',fire:'Fire stn',police:'Police',caravan:'Caravan',peak:'Peaks',turns:'Turns',kmmarkers:'km markers'};
     if(svg){const col=types[t]||'#fff';svg.setAttribute('fill',UI.hiddenMapTypes.has(t)?'none':col);}
+    // Show brief label
+    const lbl=document.getElementById('mobile-layer-label');
+    if(lbl){
+      const hidden=UI.hiddenMapTypes.has(t);
+      const rect=mob.getBoundingClientRect();
+      const mapRect=mob.closest('.map-wrap').getBoundingClientRect();
+      lbl.textContent=(hidden?'○ ':'● ')+(labels[t]||t);
+      lbl.style.top=(rect.top-mapRect.top+4)+'px';
+      lbl.style.display='block';
+      clearTimeout(lbl._hideTimer);
+      lbl._hideTimer=setTimeout(()=>lbl.style.display='none',1000);
+    }
     redrawMap('stops-map');
     return;
   }
