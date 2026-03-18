@@ -4400,7 +4400,7 @@ function tPlan(r){
       sleepDiv='<div style="margin-top:8px;font-family:var(--font);font-size:15px;">'
         +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="color:var(--text3);min-width:52px;">Arrive</span><span style="color:var(--text);">${(dayStr?dayStr+' ':'')+fmtT(eta)}</span></div>`
         +(beforeMeals.length?'<div style="margin:4px 0;">'+beforeMeals.map(fmtChip).join('')+'</div>':'')
-        +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="color:var(--text3);min-width:52px;">${icon} ${s.departTime?'Wake':'Sleep'}</span><span style="color:${col};">${s.departTime?(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake)+' ('+hrs.toFixed(1)+'h)':hrs.toFixed(1)+'h'}</span></div>`
+        +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="color:var(--text3);min-width:52px;">${s.departTime?'Wake':'Sleep'}</span><span style="color:${col};">${s.departTime?(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake)+' ('+hrs.toFixed(1)+'h) '+icon:hrs.toFixed(1)+'h '+icon}</span></div>`
         +(afterMeals.length?'<div style="margin:4px 0;">'+afterMeals.map(fmtChip).join('')+'</div>':'')
         +(depart?`<div style="display:flex;gap:6px;"><span style="color:var(--text3);min-width:52px;">Depart</span><span style="color:var(--accent);">${(departDay?departDay.trim()+' ':'')+fmtT(depart)}</span></div>`:'')
         +'</div>';
