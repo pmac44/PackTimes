@@ -3227,6 +3227,10 @@ function renderKeepScroll(){
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
 
 // Expand/collapse icons for stops map
+// Pencil edit icon — white on dark, solid background applied by button style
+const ICON_EDIT=`<svg viewBox="0 0 20 20" width="16" height="16" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="M13.5 2.5l4 4-9 9-4.5 1 1-4.5 8.5-9.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="11.5" y1="4.5" x2="15.5" y2="8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+// X remove icon — white on dark, solid background applied by button style
+const ICON_REMOVE=`<svg viewBox="0 0 20 20" width="14" height="14" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
 const ICON_EXPAND=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="5" y1="5" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="5,11 5,5 11,5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="33" y1="33" x2="22" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="27,33 33,33 33,27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ICON_COLLAPSE=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="5" y1="5" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="9,16 16,16 16,9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="33" y1="33" x2="22" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="29,22 22,22 22,29" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 // Shared layer type definitions — towns first, kmmarkers second, turns third, rest sorted by quantity at runtime
@@ -4413,7 +4417,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤</button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(251,191,36,0.1);border:1px solid '+(node.sleepStop.meals&&node.sleepStop.meals.length?'rgba(251,191,36,0.6)':'rgba(251,191,36,0.3)')+';border-radius:6px;cursor:pointer;" title="Add food">'+'🍔'+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤</button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(251,191,36,0.1);border:1px solid '+(node.sleepStop.meals&&node.sleepStop.meals.length?'rgba(251,191,36,0.6)':'rgba(251,191,36,0.3)')+';border-radius:6px;cursor:pointer;" title="Add food">'+'🍔'+'</button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +'<div style="font-size:17px;font-weight:600;color:'+textCol+';">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
             +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
@@ -4427,7 +4431,7 @@ function tPlan(r){
             +'</div>'
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'😴':'💤')+'</button>':''})():'')
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid '+(hasMeals?'rgba(251,191,36,0.6)':'var(--border)')+';border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Add food here">'+'🍔'+'</button>':''})():'')
-            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const isEditing=UI.planEditCluster===ts.id;return ts?'<button class="cluster-edit-btn" data-sid="'+ts.id+'" style="background:none;border:1px solid '+(isEditing?'var(--accent)':'var(--border)')+';border-radius:6px;cursor:pointer;font-size:13px;font-family:var(--font);font-weight:600;color:'+(isEditing?'var(--accent)':'var(--text3)')+';padding:2px 8px;margin-top:1px;">'+(isEditing?'Done':'Edit')+'</button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const isEditing=UI.planEditCluster===ts.id;return ts?'<button class="cluster-edit-btn" data-sid="'+ts.id+'" style="background:'+(isEditing?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(isEditing?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;margin-top:1px;color:'+(isEditing?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':''})():'')
           +'</div>')
         +'</div>'
         // Edit mode: show individual stops with unstar option
@@ -4445,12 +4449,28 @@ function tPlan(r){
                   +'<div style="font-size:15px;font-weight:600;color:var(--text);">'+s.name+'</div>'
                   +(warnings.length?'<div style="font-size:12px;color:var(--text3);">has: '+warnings.join(', ')+'</div>':'')
                 +'</div>'
-                +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:none;border:1px solid rgba(248,113,113,0.5);border-radius:6px;cursor:pointer;font-size:13px;font-family:var(--font);font-weight:600;color:rgba(248,113,113,0.8);padding:2px 8px;white-space:nowrap;">Unstar</button>'
+                +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
               +'</div>';
             }).join('')
           +'</div>';
         })():'')
-        +(isSleep?sleepDiv+chipsDiv:chipsDiv+(()=>{
+        +(isSleep?sleepDiv
+          // Edit mode for sleep tile
+          +(node.sleepStop&&UI.planEditCluster===node.sleepStop.id?(()=>{
+            const s=node.sleepStop;
+            const warnings=[];
+            if(s.meals&&s.meals.length)warnings.push(s.meals.length+' food item'+(s.meals.length>1?'s':''));
+            return'<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">'
+              +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:5px;">'
+                +'<div>'
+                  +'<div style="font-size:15px;font-weight:600;color:var(--text);">'+s.name+'</div>'
+                  +(warnings.length?'<div style="font-size:12px;color:var(--text3);">has: '+warnings.join(', ')+'</div>':'')
+                +'</div>'
+                +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
+              +'</div>'
+            +'</div>';
+          })():'')
+          +chipsDiv:chipsDiv+(()=>{
           const stopMeals=node.cluster?node.cluster.stops.flatMap(s=>s.meals||[]):[];
           if(!stopMeals.length)return'';
           const sorted=[...stopMeals].sort((a,b)=>(a.when==='after'?1:0)-(b.when==='after'?1:0));
