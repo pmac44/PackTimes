@@ -2021,7 +2021,7 @@ function hitTest(cvs,cx,cy,cb){
             UI.stopsMapExpanded=false;
             setStopsMapHeight(0.60,false);
             const expandBtn=document.getElementById('stops-map-expand');
-            if(expandBtn)expandBtn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="4,10 4,4 10,4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="28,4 34,4 34,10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="4,28 4,34 10,34" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="28,34 34,34 34,28" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+            if(expandBtn)expandBtn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="30" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
             const scroll=document.querySelector('.stops-scroll');
             if(scroll)scroll.style.display='';
           }
@@ -2100,13 +2100,13 @@ function mapCtrlHTML(mapId,showGPS){
   const gpsBtn=UI.gpsActive?
     `<button class="zbtn" id="btn-gpstoggle" style="width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
     `<button class="zbtn" id="btn-gpstoggle" style="width:auto;padding:0 8px;font-size:12px;font-family:var(--font);">GPS</button>`;
-  const expandSVG=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="4,10 4,4 10,4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="28,4 34,4 34,10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="4,28 4,34 10,34" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="28,34 34,34 34,28" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+  const expandSVG=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="30" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const shrinkSVG=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="8,14 14,14 14,8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="24,8 24,14 30,14" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="8,24 14,24 14,30" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="24,30 24,24 30,24" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
-  const expandBtn=isStopsMobile?`<button class="zbtn" id="stops-map-expand" title="${UI.stopsMapExpanded?'Shrink map':'Expand map'}" style="padding:0;overflow:hidden;">${UI.stopsMapExpanded?shrinkSVG:expandSVG}</button>`:'';
+  const expandBtn=isStopsMobile?`<button class="zbtn" id="stops-map-expand" title="${UI.stopsMapExpanded?'Shrink map':'Expand map'}" style="padding:0;overflow:hidden;">${UI.stopsMapExpanded?ICON_COLLAPSE:ICON_EXPAND}</button>`:'';
   return`<div class="map-ctrl" style="${pos}">
-    ${expandBtn}
     <button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle satellite tiles" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["OSM","SAT","off"][_tileMode]}</button>
+    ${expandBtn}
     ${showGPS?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:''}
     ${mapId==='live-map'?gpsBtn:''}
   </div>`;
@@ -2662,34 +2662,7 @@ function renderDesktopMap(){
   // Render legend/filter panel
   const legend=document.getElementById('desktop-legend');
   if(legend&&r){
-    const types=[
-      {type:'town',col:'#4ade80',label:'Towns'},
-      {type:'water',col:'#60a5fa',label:'Water'},
-      {type:'crossing',col:'#6b9eb0',label:'Waterways'},
-      {type:'wc',col:'#2dd4bf',label:'Toilets'},
-      {type:'stockwater',col:'#94a3b8',label:'Stock water'},
-      {type:'food',col:'#fbbf24',label:'Food'},
-      {type:'fuel',col:'#f97316',label:'Fuel'},
-      {type:'shop',col:'#c084fc',label:'Shops'},
-      {type:'pub',col:'#f59e0b',label:'Pubs'},
-      {type:'camp',col:'#4a7c59',label:'Camps'},
-      {type:'hut',col:'#c8a96e',label:'Huts'},
-      {type:'accom',col:'#c084fc',label:'Accom'},
-      {type:'peak',col:'#94a3b8',label:'Peaks'},
-      {type:'sleep',col:'#b39ddb',label:'Sleep'},      {type:'church',col:'#e8c4f0',label:'Churches'},
-      {type:'school',col:'#93c5fd',label:'Schools'},
-      {type:'hall',col:'#d4a373',label:'Halls'},
-      {type:'fire',col:'#ef4444',label:'Fire stn'},
-      {type:'police',col:'#3b82f6',label:'Police'},
-      {type:'caravan',col:'#84cc16',label:'Caravan'},
-      {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
-      {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
-    ];
-    // Only show types that exist on this route
-    const presentTypes=new Set(r.stops.map(s=>s.type));
-    if(r.turns&&r.turns.length)presentTypes.add('turns');
-    presentTypes.add('kmmarkers'); // always show km markers toggle
-    const filtered=types.filter(t=>presentTypes.has(t.type));
+    const filtered=sortedLayers(r);
     if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()){
       legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join();
       legend.innerHTML='<div style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);font-family:var(--font);text-transform:uppercase;letter-spacing:1.5px;padding:2px 6px;margin-bottom:2px;">Layers</div>'
@@ -3241,6 +3214,50 @@ function renderKeepScroll(){
 }
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
 
+// Expand/collapse icons for stops map
+const ICON_EXPAND=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="13" y2="13" stroke="currentColor" stroke-width="2"/><polyline points="4,9 4,4 9,4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="25" y2="13" stroke="currentColor" stroke-width="2"/><polyline points="29,4 34,4 34,9" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="13" y2="25" stroke="currentColor" stroke-width="2"/><polyline points="4,29 4,34 9,34" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="25" y2="25" stroke="currentColor" stroke-width="2"/><polyline points="29,34 34,34 34,29" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+const ICON_COLLAPSE=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="17" y2="17" stroke="currentColor" stroke-width="2"/><polyline points="8,13 8,8 13,8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="8" x2="21" y2="17" stroke="currentColor" stroke-width="2"/><polyline points="25,8 30,8 30,13" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="30" x2="17" y2="21" stroke="currentColor" stroke-width="2"/><polyline points="8,25 8,30 13,30" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="21" y2="21" stroke="currentColor" stroke-width="2"/><polyline points="25,30 30,30 30,25" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+// Shared layer type definitions — towns first, kmmarkers second, turns third, rest sorted by quantity at runtime
+const LAYER_TYPES=[
+  {type:'town',col:'#4ade80',label:'Towns'},
+  {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
+  {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
+  {type:'water',col:'#60a5fa',label:'Water'},
+  {type:'food',col:'#fbbf24',label:'Food'},
+  {type:'wc',col:'#2dd4bf',label:'Toilets'},
+  {type:'crossing',col:'#6b9eb0',label:'Waterways'},
+  {type:'fuel',col:'#f97316',label:'Fuel'},
+  {type:'shop',col:'#c084fc',label:'Shops'},
+  {type:'camp',col:'#4a7c59',label:'Camps'},
+  {type:'caravan',col:'#84cc16',label:'Caravan'},
+  {type:'pub',col:'#f59e0b',label:'Pubs'},
+  {type:'hut',col:'#c8a96e',label:'Huts'},
+  {type:'accom',col:'#c084fc',label:'Accom'},
+  {type:'peak',col:'#94a3b8',label:'Peaks'},
+  {type:'church',col:'#e8c4f0',label:'Churches'},
+  {type:'school',col:'#93c5fd',label:'Schools'},
+  {type:'hall',col:'#d4a373',label:'Halls'},
+  {type:'police',col:'#3b82f6',label:'Police'},
+  {type:'fire',col:'#ef4444',label:'Fire stn'},
+  {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
+  {type:'sleep',col:'#b39ddb',label:'Sleep'},
+];
+function sortedLayers(r){
+  const PRIORITY=['town','kmmarkers','turns'];
+  const counts={};
+  (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
+  const present=new Set(r?r.stops.map(s=>s.type):[]);
+  if(r&&r.turns&&r.turns.length)present.add('turns');
+  present.add('kmmarkers');
+  return LAYER_TYPES.filter(t=>present.has(t.type)).sort((a,b)=>{
+    const ai=PRIORITY.indexOf(a.type),bi=PRIORITY.indexOf(b.type);
+    if(ai>=0&&bi>=0)return ai-bi;
+    if(ai>=0)return -1;
+    if(bi>=0)return 1;
+    return(counts[b.type]||0)-(counts[a.type]||0);
+  });
+}
+
 function _render(){
   initDesktop(); // ensure content-wrap is in the right container
   // Tabs
@@ -3315,13 +3332,13 @@ function _render(){
             mc.style.height=h+'px';mc._forcedH=h;
             // Scroll card to top and hide other cards
             if(card)card.scrollIntoView({block:'start'});
-            expandBtn.textContent='✕';
+            expandBtn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="20" x2="18" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="14,16 18,20 14,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,14 20,18 24,22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
             // Hide sibling cards
             document.querySelectorAll('#content-wrap .card').forEach(c=>{if(c!==card)c.style.display='none';});
           } else {
             if(wrap){wrap.style.height='400px';wrap.dataset.expanded='0';}
             mc.style.height='400px';mc._forcedH=400;
-            expandBtn.textContent='⛶';
+            expandBtn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="30" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
             document.querySelectorAll('#content-wrap .card').forEach(c=>{c.style.display='';});
           }
           redrawMap('map-cvs');
@@ -3352,26 +3369,9 @@ function tStopsShell(r){
         ${!IS_DESKTOP()?`
         <div id="mobile-map-legend" style="position:absolute;top:8px;left:4px;display:flex;flex-direction:column;gap:2px;z-index:20;">
           ${(()=>{
-            const types=[
-              {type:'town',col:'#4ade80',label:'Towns'},{type:'water',col:'#60a5fa',label:'Water'},
-              {type:'food',col:'#fbbf24',label:'Food'},{type:'wc',col:'#2dd4bf',label:'Toilets'},
-              {type:'crossing',col:'#6b9eb0',label:'Waterways'},{type:'fuel',col:'#f97316',label:'Fuel'},
-              {type:'shop',col:'#c084fc',label:'Shops'},{type:'camp',col:'#4a7c59',label:'Camps'},
-              {type:'caravan',col:'#84cc16',label:'Caravan'},{type:'pub',col:'#f59e0b',label:'Pubs'},
-              {type:'hut',col:'#c8a96e',label:'Huts'},{type:'accom',col:'#c084fc',label:'Accom'},
-              {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},{type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km'},
-              {type:'peak',col:'#94a3b8',label:'Peaks'},{type:'church',col:'#e8c4f0',label:'Churches'},
-              {type:'school',col:'#93c5fd',label:'Schools'},{type:'hall',col:'#d4a373',label:'Halls'},
-              {type:'police',col:'#3b82f6',label:'Police'},{type:'fire',col:'#ef4444',label:'Fire stn'},
-              {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},{type:'sleep',col:'#b39ddb',label:'Sleep'},
-            ];
-            const present=new Set(r.stops.map(s=>s.type));
-            if(r.turns&&r.turns.length)present.add('turns');
-            present.add('kmmarkers');
-            const filtered=types.filter(t=>present.has(t.type));
+            const filtered=sortedLayers(r);
             const expanded=UI.stopsMapExpanded;
-            // Each dot row is ~20px; cap left column at available height / 20px
-            const tabsH=48; // approx
+            const tabsH=48;
             const viewH=typeof window!=='undefined'?(window.visualViewport?window.visualViewport.height:window.innerHeight):800;
             const mapH=Math.round((viewH-tabsH)*(expanded?1.0:0.60));
             const CAP=Math.max(4,Math.floor((mapH-16)/20));
@@ -3381,12 +3381,13 @@ function tStopsShell(r){
               const hidden=UI.hiddenMapTypes.has(t.type);
               return`<div class="mob-layer-btn" data-ltype="${t.type}" style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:1px 0;">
                 <svg width="13" height="13" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#0a0f0a'}" stroke-width="1.4"/></svg>
-                ${expanded?`<span style="font-size:11px;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;font-family:var(--font);">${t.label}</span>`:''}
+                <span class="mob-layer-lbl" style="font-size:11px;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;font-family:var(--font);display:${UI.stopsMapExpanded?'inline':'none'};">${t.label}</span>
               </div>`;
             };
+            const rightLeft=expanded?'90px':'30px';
             return left.map(dotHTML).join('')
               +'</div>'
-              +(right.length?'<div id="mobile-map-legend-r" style="position:absolute;top:8px;right:4px;display:flex;flex-direction:column;gap:2px;z-index:20;">'
+              +(right.length?`<div id="mobile-map-legend-r" style="position:absolute;top:8px;left:${rightLeft};display:flex;flex-direction:column;gap:2px;z-index:20;">`
               +right.map(dotHTML).join('')+'</div>':'');
           })()}
         <div id="mobile-layer-label" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:21;display:none;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:8px;padding:8px 18px;font-size:18px;font-weight:600;color:#fff;font-family:var(--sans);pointer-events:none;white-space:nowrap;"></div>`:''}
@@ -3502,7 +3503,7 @@ function initStopsMap(r){
       UI.stopsMapExpanded=false;
       setStopsMapHeight(0.60,false);
       const btn=document.getElementById('stops-map-expand');
-      if(btn)btn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="4,10 4,4 10,4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="28,4 34,4 34,10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="4,28 4,34 10,34" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="28,34 34,34 34,28" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+      if(btn)btn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="30" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
       const scroll=document.querySelector('.stops-scroll');
       if(scroll)scroll.style.display='';
       // This callback fires for route-line taps only (stop dot taps are handled by hitTest)
@@ -3517,7 +3518,6 @@ function initStopsMap(r){
     expandBtn.onclick=e=>{
       e.stopPropagation();
       UI.stopsMapExpanded=!UI.stopsMapExpanded;
-      expandBtn.textContent=UI.stopsMapExpanded?'✕':'⛶';
       const scroll=document.querySelector('.stops-scroll');
       if(UI.stopsMapExpanded){
         setStopsMapHeight(1.0,false);
@@ -3526,6 +3526,15 @@ function initStopsMap(r){
         setStopsMapHeight(0.60,false);
         if(scroll)scroll.style.display='';
       }
+      // Update expand button icon
+      expandBtn.innerHTML=UI.stopsMapExpanded?`${ICON_COLLAPSE}`:`${ICON_EXPAND}`;
+      // Show/hide layer labels
+      document.querySelectorAll('.mob-layer-lbl').forEach(el=>{
+        el.style.display=UI.stopsMapExpanded?'inline':'none';
+      });
+      // Reposition right column
+      const legendR=document.getElementById('mobile-map-legend-r');
+      if(legendR)legendR.style.left=UI.stopsMapExpanded?'90px':'30px';
     };
   }
 }
