@@ -4020,7 +4020,7 @@ function stopRow(s,r,sdt){
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="font-size:16px;">${s.starred!==false?'⭐':'☆'}</button>
         ${s.type!=='sleep'&&s.type!=='rest'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="font-size:15px;${s.sleepAt?'color:var(--accent);border-color:var(--accent3);':''}">${s.sleepAt?'😴':'💤'}</button>`:''}
-        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="font-size:15px;${s.meals&&s.meals.length?'color:#fbbf24;border-color:rgba(251,191,36,0.5);':''}">${s.meals&&s.meals.length?'🍽️':'🍔'}</button>
+        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="font-size:15px;${s.meals&&s.meals.length?'color:#fbbf24;border-color:rgba(251,191,36,0.5);':''}">🍔</button>
         <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename">✏️</button>
         ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit position" style="font-size:15px;">📍</button>`:''}
         ${s.type==='sleep'?`<button class="btn btn-sm edit-sleep" data-sid="${s.id}" title="Edit sleep duration" style="font-size:15px;">😴</button>`:''}
@@ -4353,7 +4353,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(251,191,36,0.1);border:1px solid '+(node.sleepStop.meals&&node.sleepStop.meals.length?'rgba(251,191,36,0.6)':'rgba(251,191,36,0.3)')+';border-radius:6px;cursor:pointer;" title="Add food">'+(node.sleepStop.meals&&node.sleepStop.meals.length?'🍽️':'🍔')+'</button>':'')+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(251,191,36,0.1);border:1px solid '+(node.sleepStop.meals&&node.sleepStop.meals.length?'rgba(251,191,36,0.6)':'rgba(251,191,36,0.3)')+';border-radius:6px;cursor:pointer;" title="Add food">'+'🍔'+'</button>':'')+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +'<div style="font-size:17px;font-weight:600;color:'+textCol+';">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
             +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
@@ -4366,7 +4366,7 @@ function tPlan(r){
               +departDiv
             +'</div>'
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'😴':'💤')+'</button>':''})():'')
-            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid '+(hasMeals?'rgba(251,191,36,0.6)':'var(--border)')+';border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Add food here">'+(hasMeals?'🍽️':'🍔')+'</button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid '+(hasMeals?'rgba(251,191,36,0.6)':'var(--border)')+';border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Add food here">'+'🍔'+'</button>':''})():'')
           +'</div>')
         +'</div>'
         +(isSleep?sleepDiv+chipsDiv:chipsDiv+(()=>{
@@ -4465,7 +4465,7 @@ function tPlan(r){
         +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
         +'<button class="btn btn-sm'+( UI.planSleepOnly?' btn-p':'')+'" id="btn-plan-sleep-filter" style="font-size:13px;" title="Show sleep stops only">😴</button>'
-        +(UI.gpsDistKm!==null?'<button class="btn btn-sm'+( UI.planHidePassed?' btn-p':'')+'" id="btn-plan-hide-passed" style="font-size:13px;" title="Hide passed stops">✓ Hide passed</button>':'')
+        +(UI.planHidePassed?'<button class="btn btn-sm btn-p" id="btn-plan-hide-passed" style="font-size:13px;" title="Hide passed stops">✓ Hide passed</button>':'<button class="btn btn-sm" id="btn-plan-hide-passed" style="font-size:13px;" title="Hide passed stops">✓ Hide passed</button>')
         +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;">🖨️ Print</button>'
       +'</div>'
       +'</div>'
