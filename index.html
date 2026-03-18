@@ -35,6 +35,7 @@
   --text:#e8f5e8;--text2:#9db89d;--text3:#6a8a6a;
   --font:'DM Mono','Courier New',monospace;
   --sans:'DM Sans',system-ui,sans-serif;
+  --sab:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18px;}
@@ -3457,8 +3458,10 @@ function _stopsMapH(fraction){
   const headerH=document.querySelector('.header')?.offsetHeight||48;
   const viewH=window.visualViewport?window.visualViewport.height:window.innerHeight;
   if(fraction>=1.0){
-    // Full screen: fill everything below the header, tabs overlap
-    return Math.round(viewH-headerH);
+    // Full screen: subtract header and a safe bottom margin for gesture bar + tab bar overlap
+    const tabsEl=document.getElementById('tabs');
+    const safeBottom=tabsEl?tabsEl.offsetHeight:56;
+    return Math.round(viewH-headerH-safeBottom);
   }
   return Math.round((viewH-tabsH-headerH)*fraction);
 }
