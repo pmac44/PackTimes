@@ -4434,12 +4434,16 @@ function tPlan(r){
           +'<div style="'+lbl+'">🍔 Food plan · '+allMeals.length+' item'+(allMeals.length!==1?'s':'')+'</div>'
           // Carry from start
           +(fromStart.length?'<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">🎒 Carry from start:</span><br>'+fmtList(fromStart)+'</div>':'')
-          // All resupply stops in route order — eat here + carry forward together
+          // All resupply stops in route order — each item on its own line
           +buyStopsSorted.map(({stop,eat,carry})=>
-            '<div style="margin-bottom:6px;">'
+            '<div style="margin-bottom:8px;">'
             +'<span style="font-size:13px;color:var(--text3);">🛒 Buy at '+stop.name+':</span><br>'
-            +(eat.length?'<span style="font-size:12px;color:var(--text3);">Eat here: </span>'+fmtList(eat):'')
-            +(carry.length?(eat.length?'<br>':'')+'<span style="font-size:12px;color:var(--text3);">Carry forward: </span>'+fmtList(carry):'')
+            +eat.map(m=>'<div style="margin:2px 0;">'+fmtItem(m)+'<span style="font-size:12px;color:var(--text3);margin-left:4px;">eat here</span></div>').join('')
+            +carry.map(m=>{
+              const dest=r.stops.find(s=>String(s.id)===String(m.stop.id));
+              const destName=dest?dest.name:'later';
+              return'<div style="margin:2px 0;">'+fmtItem(m)+'<span style="font-size:12px;color:var(--text3);margin-left:4px;">carry forward to '+destName+'</span></div>';
+            }).join('')
             +'</div>'
           ).join('')
           // Per-day eaten
