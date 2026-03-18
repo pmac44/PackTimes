@@ -3214,14 +3214,28 @@ function scrollTileToTop(tile){
   const offset=tileRect.top-scrollerRect.top;
   scroller.scrollTo({top:scroller.scrollTop+offset,behavior:'smooth'});
 }
-function renderKeepScroll(){
+function renderKeepScroll(anchorSid){
   const wrap=document.getElementById('content-wrap');
+  // If we have a specific element to anchor to, use it — more reliable when content height changes
+  const anchorEl=anchorSid?document.querySelector(`[data-sid="${anchorSid}"]`)?.closest('.mission-node'):null;
+  const anchorOffsetBefore=anchorEl?(anchorEl.getBoundingClientRect().top-(wrap?wrap.getBoundingClientRect().top:0)):null;
   const scrollTop=wrap?wrap.scrollTop:0;
   render();
-  // Restore scroll after render completes
   requestAnimationFrame(()=>{
-    const w=document.getElementById('content-wrap');
-    if(w)w.scrollTop=scrollTop;
+    requestAnimationFrame(()=>{
+      const w=document.getElementById('content-wrap');
+      if(!w)return;
+      if(anchorSid){
+        // Find the element in the new render and restore its visual position
+        const newEl=document.querySelector(`[data-sid="${anchorSid}"]`)?.closest('.mission-node');
+        if(newEl&&anchorOffsetBefore!==null){
+          const newOffset=newEl.getBoundingClientRect().top-w.getBoundingClientRect().top;
+          w.scrollTop+=newOffset-anchorOffsetBefore;
+          return;
+        }
+      }
+      if(scrollTop>0)w.scrollTop=scrollTop;
+    });
   });
 }
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
@@ -4290,7 +4304,7 @@ function tPlan(r){
     }
     if(missingDays.length){
       Promise.all(missingDays.map(d=>fetchSunTimes(midLat,midLon,d)))
-        .then(()=>render());
+        .then(()=>renderKeepScroll());
     }
   }
 
@@ -5446,15 +5460,14 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(mu&&r){
     const sid=mu.dataset.sid;
     UI.planEditCluster=UI.planEditCluster===sid?null:sid;
-    renderKeepScroll();return;
+    renderKeepScroll(sid);return;
   }
   const cu=e.target.closest('.cluster-unstar-stop');
   if(cu&&r){
     const s=r.stops.find(x=>String(x.id)===String(cu.dataset.sid));
     if(s){
       s.starred=false;
-      // If no more starred stops remain in this cluster's area, close edit mode
-      saveAll();renderKeepScroll();
+      saveAll();renderKeepScroll(cu.dataset.sid);
     }
     return;
   }
