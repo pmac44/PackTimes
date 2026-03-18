@@ -2663,7 +2663,11 @@ function renderDesktopMap(){
     const filtered=sortedLayers(r);
     if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()){
       legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join();
-      legend.innerHTML='<div style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);font-family:var(--font);text-transform:uppercase;letter-spacing:1.5px;padding:2px 6px;margin-bottom:2px;">Layers</div>'
+      const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
+      legend.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 6px;margin-bottom:2px;">'
+        +'<span style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);font-family:var(--font);text-transform:uppercase;letter-spacing:1.5px;">Layers</span>'
+        +`<span id="desktop-legend-all" style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.55);font-family:var(--font);cursor:pointer;text-decoration:underline;">${allHidden?'show all':'hide all'}</span>`
+        +'</div>'
         +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
         return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
@@ -2705,6 +2709,16 @@ function renderDesktopMap(){
   if(!legend._clickAttached){
     legend._clickAttached=true;
     legend.addEventListener('click',e=>{
+      if(e.target.closest('#desktop-legend-all')){
+        const r2=cur();
+        const filtered2=r2?sortedLayers(r2):[];
+        const allHidden2=filtered2.every(t=>UI.hiddenMapTypes.has(t.type));
+        if(allHidden2){filtered2.forEach(t=>UI.hiddenMapTypes.delete(t.type));}
+        else{filtered2.forEach(t=>UI.hiddenMapTypes.add(t.type));}
+        legend.dataset.rendered='';
+        renderDesktopMap();
+        return;
+      }
       const li=e.target.closest('.map-legend-item');
       if(!li)return;
       const t=li.dataset.ltype;
