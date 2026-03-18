@@ -434,7 +434,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,turnAudio:true,keepScreenOn:false};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,turnAudio:true,keepScreenOn:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -3761,15 +3761,23 @@ function initLiveMap(r){
 
 // ─── Combined Route tab (routes list + route detail) ───
 function tRoutes(r){
+  const routeMgmtExpanded=UI.routeMgmtExpanded!==false; // default open, collapses when route loaded
+  const actuallyExpanded=!r||routeMgmtExpanded; // always open if no route loaded
   const routeList=`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>
-  <div class="card">
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
-      <div class="ctitle" style="margin-bottom:0;">Your Routes</div>
-      <button class="btn btn-sm btn-p btn-full" id="btn-upload-route">↑ Upload GPX / TCX</button>
+  <div class="card" style="padding:${actuallyExpanded?'14px 12px':'10px 12px'};">
+    <div id="route-mgmt-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${actuallyExpanded?'margin-bottom:10px;':''}">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:16px;color:var(--text3);">${actuallyExpanded?'▼':'▶'}</span>
+        <span class="ctitle" style="margin-bottom:0;">Routes${r?' · '+r.name:''}</span>
+      </div>
+      ${r?`<span style="font-size:13px;color:var(--text3);">${r.totalDist?r.totalDist.toFixed(0)+'km':''}</span>`:''}
     </div>
+    ${actuallyExpanded?`
+    <button class="btn btn-sm btn-p btn-full" id="btn-upload-route">↑ Upload GPX / TCX</button>
+    <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
     ${ROUTES.length?ROUTES.map((rt,i)=>`
       <div class="rli ${i===CUR?'active':''}" data-ridx="${i}">
         <div class="ri-inf">
@@ -3778,17 +3786,32 @@ function tRoutes(r){
         </div>
         <button class="btn btn-sm btn-r del-route" data-ridx="${i}">✕</button>
       </div>`).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX above to get started.</p>`}
-  </div>
-  ${UI.turnStatus?`<div class="banner ${UI.turnStatus.type==='ok'?'ok-bright':'warn'}">
-    <span>${UI.turnStatus.type==='ok'?'↩':'⚠️'}</span>
-    <div style="flex:1;">
-      <div>${UI.turnStatus.msg}</div>
-      ${UI.turnStatus.type==='warn'&&r?`<button class="btn btn-sm" id="btn-auto-turns" style="margin-top:6px;">⚙ Auto-detect turns (basic — review carefully)</button>`:''}
     </div>
-    <button class="btn btn-sm" id="btn-dismiss-turns">✕</button>
-  </div>`:''}
-  <input type="file" accept=".gpx,.tcx" id="gpx-input" style="display:none;">
-  <button class="btn btn-sm btn-full" id="btn-demo">▶ Load demo route</button>`;
+    ${UI.turnStatus?`<div class="banner ${UI.turnStatus.type==='ok'?'ok-bright':'warn'}" style="margin-top:8px;">
+      <span>${UI.turnStatus.type==='ok'?'↩':'⚠️'}</span>
+      <div style="flex:1;">
+        <div>${UI.turnStatus.msg}</div>
+        ${UI.turnStatus.type==='warn'&&r?`<button class="btn btn-sm" id="btn-auto-turns" style="margin-top:6px;">⚙ Auto-detect turns (basic — review carefully)</button>`:''}
+      </div>
+      <button class="btn btn-sm" id="btn-dismiss-turns">✕</button>
+    </div>`:''}
+    <button class="btn btn-sm btn-full" style="margin-top:8px;" id="btn-demo">▶ Load demo route</button>
+    ${r?(()=>{
+      const hasTurns=r.turns&&r.turns.length>0;
+      const autoTurns=hasTurns&&r.turns.every(t=>t.auto);
+      const tsBanner=r.hasTS
+        ?`<div class="banner ok-bright" style="margin-top:6px;"><span>✓</span><span>Route has timestamps</span></div>`
+        :`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><span>No timestamps — speed estimated from elevation.</span></div>`;
+      const turnBanner=hasTurns
+        ?(autoTurns
+          ?`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><span>Auto-detected turns (${r.turns.length}) — review carefully.</span></div>`
+          :`<div class="banner ok-bright" style="margin-top:6px;"><span>↩</span><span>${r.turns.length} turn${r.turns.length!==1?'s':''} imported</span></div>`)
+        :`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><div style="flex:1;"><span>No turn information.</span><div style="margin-top:6px;"><button class="btn btn-sm" id="btn-auto-turns">⚙ Auto-detect turns</button></div></div></div>`;
+      return tsBanner+turnBanner;
+    })():''}
+    `:''}
+  </div>
+  <input type="file" accept=".gpx,.tcx" id="gpx-input" style="display:none;">`;
   if(!r)return routeList;
   const sdt=startDT(r);
   const adjDur=r.estDuration?r.estDuration*r.timeFactor:null;
@@ -3798,20 +3821,6 @@ function tRoutes(r){
   const totalH=adjDur?adjDur+totalSleepH+totalMealH:null;
   const finEta=sdt&&adjDur?new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000):null;
   return routeList+`
-  <hr style="border:none;border-top:2px solid var(--border);margin:8px 0;">
-  ${(()=>{
-    const hasTurns=r.turns&&r.turns.length>0;
-    const autoTurns=hasTurns&&r.turns.every(t=>t.auto);
-    const tsBanner=r.hasTS
-      ?`<div class="banner ok-bright"><span>✓</span><span>Route has timestamps — ETAs anchored to planned pace.</span></div>`
-      :`<div class="banner warn"><span>⚠️</span><span>No timestamps — speed estimated from elevation. Adjust with speed factor below. Try re-exporting as TCX if possible.</span></div>`;
-    const turnBanner=hasTurns
-      ?(autoTurns
-        ?`<div class="banner warn"><span>⚠️</span><span>Auto-detected turns (${r.turns.length}) — estimated from route shape, review carefully before relying on them.</span></div>`
-        :`<div class="banner ok-bright"><span>↩</span><span>${r.turns.length} turn${r.turns.length!==1?'s':''} imported — turn navigation available on Ride tab.</span></div>`)
-      :`<div class="banner warn"><span>⚠️</span><div style="flex:1;"><span>No turn information — re-export with turn instructions for navigation.</span><div style="margin-top:6px;"><button class="btn btn-sm" id="btn-auto-turns">⚙ Auto-detect turns (basic — review carefully)</button></div></div></div>`;
-    return tsBanner+turnBanner;
-  })()}
   <div class="card">
     <div class="startbar" style="margin-top:0;">
       <div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;">
@@ -5349,6 +5358,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
   if(e.target.closest('#btn-sim-start')){simStart();return;}
   if(e.target.closest('#btn-sim-stop')){simStop();return;}
+  if(e.target.closest('#route-mgmt-hdr')){UI.routeMgmtExpanded=!UI.routeMgmtExpanded;render();return;}
   if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
   if(e.target.closest('#turn-popup')){
     // Dismiss turn popup until next turn
