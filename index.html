@@ -4884,6 +4884,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
+  // Star toggle
+  const ss=e.target.closest('.star-stop');
   if(ss&&r){
     const sid=ss.dataset.sid;
     const s=r.stops.find(x=>String(x.id)===String(sid));
