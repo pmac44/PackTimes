@@ -3589,7 +3589,7 @@ function tLiveShell(r){
         <div class="nkm" id="live-${idSuffix}-km" style="font-size:20px;">${dt.toFixed(1)}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
         <div class="neta" id="live-${idSuffix}-eta" style="font-size:15px;">${timeStr}</div>
       </div>
-      ${remStr?`<div id="live-${idSuffix}-rem" style="font-size:13px;color:var(--text3);margin-top:1px;">in ${remStr}</div>`:''}
+      ${remStr?`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:1px;"><div id="live-${idSuffix}-rem" style="font-size:20px;font-weight:600;color:var(--accent);font-family:var(--font);">in ${remStr}</div></div>`:''}
       ${stEl?`<div style="margin-top:2px;">${stEl}</div>`:''}
     </div>`;
   };
@@ -4808,7 +4808,7 @@ function updateLive(){
               <div class="nkm" id="live-${sfx}-km" style="font-size:20px;">${dt2}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
               <div class="neta" id="live-${sfx}-eta" style="font-size:15px;">${timeStr}</div>
             </div>
-            ${remStr2?`<div id="live-${sfx}-rem" style="font-size:13px;color:var(--text3);margin-top:1px;">in ${remStr2}</div>`:''}</div>`;
+            ${remStr2?`<div id="live-${sfx}-rem" style="font-size:20px;font-weight:600;color:var(--accent);font-family:var(--font);margin-top:1px;">in ${remStr2}</div>`:''}</div>`;
         };
         nextCardsEl.innerHTML=
           '<div style="display:flex;gap:5px;">'+mkCard('Next stop',nextS,'next')+mkCard('Next sleep',nextSleep,'sleep')+'</div>'
@@ -4827,7 +4827,8 @@ function updateLive(){
     if(remEl&&eta){
       const now=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
       const remH=(eta-now)/3600000;
-      remEl.textContent=remH>0?'in '+(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
+      const remTxt=remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):null;
+      remEl.textContent=remTxt?'in '+remTxt:'';
     }
   };
   patchCard(next,'next');
@@ -4862,7 +4863,7 @@ function updateLive(){
               <div class="si-name">${s.name}${orBadge}</div>
               <div class="si-meta">${dt} km · <span class="tag t-${s.type}">${s.type}</span></div>
             </div>
-            <div class="si-eta">${timeStr}${remStr?`<div style="font-size:13px;color:var(--text3);">in ${remStr}</div>`:''}</div>
+            <div class="si-eta">${timeStr}${remStr?`<div style="font-size:17px;font-weight:600;color:var(--accent);font-family:var(--font);">in ${remStr}</div>`:''}</div>
           </div>`;
         }).join('');
       })();
