@@ -3310,38 +3310,6 @@ function _render(){
     setTimeout(()=>{
       if(!r)return;
       const ec=document.getElementById('elev-cvs');if(ec)drawElev(ec,r);
-      // Route tab map: display-only, no tap callback
-      const mc=document.getElementById('map-cvs');
-      if(mc){drawMap(mc,r,{anchor:0.5});attachMap(mc,null);}
-      // Expand button for route map
-      const expandBtn=document.getElementById('route-map-expand');
-      if(expandBtn){
-        expandBtn.onclick=e=>{
-          e.stopPropagation();
-          const wrap=document.getElementById('route-map-wrap');
-          const card=wrap?wrap.closest('.card'):null;
-          const isExpanded=wrap&&wrap.dataset.expanded==='1';
-          if(!isExpanded){
-            // Expand to full screen minus tabs
-            const tabsH=document.getElementById('tabs').offsetHeight;
-            const viewH=window.visualViewport?window.visualViewport.height:window.innerHeight;
-            const h=viewH-tabsH;
-            if(wrap){wrap.style.height=h+'px';wrap.dataset.expanded='1';}
-            mc.style.height=h+'px';mc._forcedH=h;
-            // Scroll card to top and hide other cards
-            if(card)card.scrollIntoView({block:'start'});
-            expandBtn.innerHTML=ICON_COLLAPSE;
-            // Hide sibling cards
-            document.querySelectorAll('#content-wrap .card').forEach(c=>{if(c!==card)c.style.display='none';});
-          } else {
-            if(wrap){wrap.style.height='400px';wrap.dataset.expanded='0';}
-            mc.style.height='400px';mc._forcedH=400;
-            expandBtn.innerHTML=ICON_EXPAND;
-            document.querySelectorAll('#content-wrap .card').forEach(c=>{c.style.display='';});
-          }
-          redrawMap('map-cvs');
-        };
-      }
     },30);
   }
   setTimeout(()=>requestAnimationFrame(renderDesktopMap),0);
@@ -3456,6 +3424,10 @@ function _stopsMapH(fraction){
   const tabsH=document.getElementById('tabs').offsetHeight;
   const headerH=document.querySelector('.header')?.offsetHeight||48;
   const viewH=window.visualViewport?window.visualViewport.height:window.innerHeight;
+  if(fraction>=1.0){
+    // Full screen: fill everything below the header, tabs overlap
+    return Math.round(viewH-headerH);
+  }
   return Math.round((viewH-tabsH-headerH)*fraction);
 }
 
@@ -3513,12 +3485,15 @@ function initStopsMap(r){
       e.stopPropagation();
       UI.stopsMapExpanded=!UI.stopsMapExpanded;
       const scroll=document.querySelector('.stops-scroll');
+      const panel=document.getElementById('stops-map-panel');
       if(UI.stopsMapExpanded){
         setStopsMapHeight(1.0,false);
         if(scroll)scroll.style.display='none';
+        if(panel)panel.style.zIndex='50';
       } else {
         setStopsMapHeight(0.60,false);
         if(scroll)scroll.style.display='';
+        if(panel)panel.style.zIndex='';
       }
       expandBtn.innerHTML=UI.stopsMapExpanded?`${ICON_COLLAPSE}`:`${ICON_EXPAND}`;
     };
@@ -3918,22 +3893,6 @@ function tRoutes(r){
           </div>
         </div>`;
       }).join('')}
-  </div>
-  <div class="card" ${IS_DESKTOP()?'style="display:none;"':''}>
-    <div class="ctitle">Route Map</div>
-    <div class="map-wrap" id="route-map-wrap" style="height:400px;position:relative;">
-      <canvas id="map-cvs" style="height:400px;"></canvas>
-      ${zoomBtnsHTML('map-cvs')}
-      ${mapCtrlHTML('map-cvs',false)}
-      <button id="route-map-expand" style="position:absolute;bottom:8px;right:8px;z-index:22;background:rgba(10,15,10,0.82);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:0;overflow:hidden;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="14" y1="14" x2="30" y2="30" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="14,22 14,14 22,14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="24" y1="24" x2="8" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,16 8,8 16,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    </div>
-  </div>
-  <div class="card" id="map-legend-card">
-    <div class="ctitle" style="font-size:13px;margin-bottom:6px;">Map Legend</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;">
-      ${[['var(--accent)','Town'],['var(--amber)','Food'],['#f97316','Fuel'],['var(--blue)','Water'],['var(--purple)','Shop'],['#c084fc','Accom'],['#4a7c59','Camp'],['var(--red)','Sleep'],['#94856a','Rest'],['#2dd4bf','Toilets'],['#c8a96e','Hut'],['#94a3b8','Peak/Saddle'],['#6b9eb0','Waterway'],['#f97316','Hike-a-bike']].map(([c,l])=>
-        `<span style="font-size:15px;color:var(--text3);display:flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:${c};flex-shrink:0;display:inline-block;"></span>${l}</span>`).join('')}
-    </div>
   </div>
   `}
 
