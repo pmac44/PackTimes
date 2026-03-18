@@ -311,8 +311,19 @@ select option{background:var(--bg3);}
       <span id="m-dist-val" style="display:none;"></span>
     </div>
     <div id="m-sleep-row" style="display:none;" class="field">
-      <label class="lbl" id="m-sleep-lbl">Sleep duration (hours)</label>
-      <input type="number" id="m-sleep" value="10" min="0.5" max="24" step="0.5">
+      <label class="lbl" id="m-sleep-lbl">Sleep</label>
+      <div style="display:flex;gap:4px;margin-bottom:6px;">
+        <button class="btn btn-sm" id="m-sleep-mode-dur" style="flex:1;font-size:13px;">⏱ Duration</button>
+        <button class="btn btn-sm" id="m-sleep-mode-wake" style="flex:1;font-size:13px;">⏰ Wake at</button>
+      </div>
+      <div id="m-sleep-dur-row" style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:14px;color:#b39ddb;">😴 Hours:</span>
+        <input type="number" id="m-sleep" value="10" min="0.5" max="24" step="0.5" style="width:60px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);">
+      </div>
+      <div id="m-sleep-wake-row" style="display:none;align-items:center;gap:6px;">
+        <span style="font-size:14px;color:#b39ddb;">⏰ Wake:</span>
+        <input type="time" id="m-sleep-wake" value="07:00" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);">
+      </div>
     </div>
     <div id="m-hike-row" style="display:none;" class="field">
       <label class="lbl">Hike-a-bike</label>
@@ -804,7 +815,8 @@ function dayOff(d,b){if(!d||!b)return'';const days=['Sun','Mon','Tue','Wed','Thu
 function addStop(r,dist,type,name,opts){
   opts=opts||{};
   r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:name||(type+' stop'),
-    sleepH:opts.sleepH||10,ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
+    sleepH:opts.sleepH||10,departTime:opts.departTime||null,
+    ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
     icon:{food:'🍔',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
     auto:opts.auto||false,
     starred:opts.starred!==undefined?opts.starred:(type==='town'?true:!opts.auto),
@@ -2414,7 +2426,20 @@ document.getElementById('m-type').addEventListener('change',()=>{
   updateModalFields();
   const t=document.getElementById('m-type').value;
   const lbl=document.getElementById('m-sleep-lbl');
-  if(lbl)lbl.textContent=t==='rest'?'Rest duration (hours)':'Sleep duration (hours)';
+  if(lbl)lbl.textContent=t==='rest'?'Rest':'Sleep';
+});
+// Sleep mode toggle in add stop modal
+document.getElementById('m-sleep-mode-dur').addEventListener('click',()=>{
+  document.getElementById('m-sleep-dur-row').style.display='flex';
+  document.getElementById('m-sleep-wake-row').style.display='none';
+  document.getElementById('m-sleep-mode-dur').classList.add('btn-p');
+  document.getElementById('m-sleep-mode-wake').classList.remove('btn-p');
+});
+document.getElementById('m-sleep-mode-wake').addEventListener('click',()=>{
+  document.getElementById('m-sleep-dur-row').style.display='none';
+  document.getElementById('m-sleep-wake-row').style.display='flex';
+  document.getElementById('m-sleep-mode-wake').classList.add('btn-p');
+  document.getElementById('m-sleep-mode-dur').classList.remove('btn-p');
 });
 document.getElementById('m-has-hours').addEventListener('change',function(){
   const timesDiv=document.getElementById('m-oh-times');
@@ -2554,14 +2579,17 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
   const t=document.getElementById('m-type').value;
   const name=document.getElementById('m-name').value.trim();
   const dist=parseFloat(document.getElementById('m-dist').value);
-  const sleepH=parseFloat(document.getElementById('m-sleep').value||10);
+  // Sleep: check if wake mode or duration mode
+  const isWakeMode=document.getElementById('m-sleep-wake-row').style.display!=='none';
+  const sleepH=isWakeMode?null:parseFloat(document.getElementById('m-sleep').value||10);
+  const departTime=isWakeMode?document.getElementById('m-sleep-wake').value:null;
   const hasHours=document.getElementById('m-has-hours').checked;
   let ohRaw=null,ohRules=null;
   if(hasHours){
     const openT=document.getElementById('m-open').value,closeT=document.getElementById('m-close').value;
     if(openT&&closeT){ohRaw=openT+'-'+closeT;ohRules=parseOH(ohRaw);}
   }
-  addStop(r,dist,t,name||(t.charAt(0).toUpperCase()+t.slice(1)+' at '+dist.toFixed(1)+'km'),{sleepH,ohRaw,ohRules});
+  addStop(r,dist,t,name||(t.charAt(0).toUpperCase()+t.slice(1)+' at '+dist.toFixed(1)+'km'),{sleepH,departTime,ohRaw,ohRules});
   saveAll();closeModal();render();
 });
 
@@ -4355,7 +4383,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(251,191,36,0.1);border:1px solid '+(node.sleepStop.meals&&node.sleepStop.meals.length?'rgba(251,191,36,0.6)':'rgba(251,191,36,0.3)')+';border-radius:6px;cursor:pointer;" title="Add food">'+'🍔'+'</button>':'')+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(179,157,219,0.15);border:1px solid rgba(179,157,219,0.5);border-radius:6px;cursor:pointer;color:#b39ddb;">💤</button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="font-size:14px;padding:2px 8px;background:rgba(251,191,36,0.1);border:1px solid '+(node.sleepStop.meals&&node.sleepStop.meals.length?'rgba(251,191,36,0.6)':'rgba(251,191,36,0.3)')+';border-radius:6px;cursor:pointer;" title="Add food">'+'🍔'+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +'<div style="font-size:17px;font-weight:600;color:'+textCol+';">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
             +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
@@ -4369,6 +4397,7 @@ function tPlan(r){
             +'</div>'
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'😴':'💤')+'</button>':''})():'')
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid '+(hasMeals?'rgba(251,191,36,0.6)':'var(--border)')+';border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Add food here">'+'🍔'+'</button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="mission-unstar" data-sid="'+ts.id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:15px;padding:2px 6px;margin-top:1px;" title="Unstar — remove from mission">☆</button>':''})():'')
           +'</div>')
         +'</div>'
         +(isSleep?sleepDiv+chipsDiv:chipsDiv+(()=>{
@@ -5296,11 +5325,17 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     UI.planSleepOnly=!UI.planSleepOnly;renderKeepScroll();return;}
   if(e.target.closest('#btn-plan-hide-passed')){
     UI.planHidePassed=!UI.planHidePassed;renderKeepScroll();return;}
+  const mu=e.target.closest('.mission-unstar');
+  if(mu&&r){
+    const s=r.stops.find(x=>String(x.id)===String(mu.dataset.sid));
+    if(s){s.starred=false;saveAll();renderKeepScroll();}
+    return;
+  }
   if(e.target.closest('#btn-print-mission')){printMission();return;}
   if(e.target.closest('#btn-go-food')){UI.tab='food';render();return;}
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
-  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')){
+  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.mission-unstar')){
     const sid=mn.dataset.sid;
     if(sid){
       _highlightStopId=sid;
