@@ -421,7 +421,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,turnAudio:true,keepScreenOn:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -1074,11 +1074,15 @@ function startGPS(){
     else updateGPSPill();
   },err=>console.warn('GPS',err),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
   updateGPSPill();if(UI.tab==='live'||UI.tab==='settings')render();
+  requestWakeLock();
 }
 function stopGPS(){
   if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;UI.gpsWatchId=null;UI.gpsHeading=null;
   _offRouteStart=null;_offRouteAlerted=false;
+  if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
+  _lastTurnBeepDist=null;
+  releaseWakeLock();
   updateGPSPill();if(UI.tab==='live'||UI.tab==='settings')render();
 }
 function updateGPSPill(){
@@ -1185,6 +1189,83 @@ function simStop(){
 UI.alertKm=UI.alertKm||0.5;
 let _wakeLock=null;
 let _offRouteStart=null;
+
+// ─── Audio alerts ───
+let _audioCtx=null;
+let _turnBeepTimer=null;
+let _lastTurnBeepDist=null;
+
+function getAudioCtx(){
+  if(!_audioCtx)_audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if(_audioCtx.state==='suspended')_audioCtx.resume();
+  return _audioCtx;
+}
+
+function playTone(freq1,freq2,duration){
+  // freq2 optional — plays two tones in sequence for left/right distinction
+  try{
+    const ctx=getAudioCtx();
+    const t=ctx.currentTime;
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.type='sine';
+    osc.frequency.setValueAtTime(freq1,t);
+    if(freq2)osc.frequency.setValueAtTime(freq2,t+duration*0.5);
+    gain.gain.setValueAtTime(0.6,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+duration);
+    osc.start(t);osc.stop(t+duration);
+  }catch(e){}
+}
+
+function playTurnBeep(turnType){
+  if(!UI.turnAudio)return;
+  // Left: high→low (600→400Hz), Right: low→high (400→600Hz), Straight: mid single (500Hz)
+  if(turnType==='Left')playTone(660,420,0.18);
+  else if(turnType==='Right')playTone(420,660,0.18);
+  else playTone(520,null,0.15);
+}
+
+function scheduleTurnBeeps(distM,turnType){
+  if(!UI.turnAudio)return;
+  if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
+  // Fixed rhythm: occasional at >30m, medium at 15-30m, rapid under 15m
+  const interval=distM>30?2000:distM>15?1000:400;
+  playTurnBeep(turnType);
+  _turnBeepTimer=setTimeout(()=>{
+    if(UI.gpsActive&&UI.gpsDistKm!==null){
+      const r=cur();
+      if(r&&r.turns){
+        const alertDistKm=(UI.turnAlertM||30)/1000;
+        const t=r.turns.find(t=>t.dist>UI.gpsDistKm&&t.dist-UI.gpsDistKm<=alertDistKm&&!t._dismissed);
+        if(t){
+          const rem=(t.dist-UI.gpsDistKm)*1000;
+          scheduleTurnBeeps(rem,t.type);
+          return;
+        }
+      }
+    }
+    _turnBeepTimer=null;
+  },interval);
+}
+
+// ─── Wake Lock ───
+async function requestWakeLock(){
+  if(!UI.keepScreenOn)return;
+  try{
+    if('wakeLock' in navigator){
+      _wakeLock=await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release',()=>{_wakeLock=null;});
+    }
+  }catch(e){console.log('WakeLock unavailable:',e);}
+}
+function releaseWakeLock(){
+  if(_wakeLock){_wakeLock.release();_wakeLock=null;}
+}
+// Re-request wake lock when page becomes visible again (e.g. after screen dim)
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&UI.gpsActive&&UI.keepScreenOn)requestWakeLock();
+});
 let _offRouteAlerted=false;
 const OFF_ROUTE_M=150; // metres from route before warning
 const OFF_ROUTE_SECS=8; // seconds before alerting
@@ -1204,6 +1285,23 @@ function checkAlerts(){
     const rem=s.dist-UI.gpsDistKm;
     if(rem>0&&rem<=UI.alertKm&&!UI.alertedStops.has(s.id)){
       UI.alertedStops.add(s.id);UI._alertStopDist=s.dist;showAlert(s,rem,r);break;
+    }
+  }
+  // Turn audio beeps
+  if(UI.turnAudio&&r.turns&&r.turns.length){
+    const alertDistKm=UI.simRunning?(UI.turnAlertM||30)*20/1000:(UI.turnAlertM||30)/1000;
+    const nextTurn=r.turns.find(t=>t.dist>UI.gpsDistKm&&t.dist-UI.gpsDistKm<=alertDistKm&&!t._dismissed);
+    if(nextTurn){
+      const remM=(nextTurn.dist-UI.gpsDistKm)*1000;
+      // Only start new beep sequence if this is a new turn
+      if(_lastTurnBeepDist!==nextTurn.dist){
+        _lastTurnBeepDist=nextTurn.dist;
+        scheduleTurnBeeps(remM,nextTurn.type);
+      }
+    } else {
+      // No turn ahead — stop beeping
+      if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
+      _lastTurnBeepDist=null;
     }
   }
   // Off-route detection
@@ -1249,7 +1347,6 @@ function showAlert(s,remKm,r){
   document.getElementById('alert-msg').innerHTML=`${remKm.toFixed(1)} km away<br>ETA: <strong>${fmtT(eta)}</strong><br>${stTxt}`;
   document.getElementById('alert-overlay').style.display='flex';
   if(navigator.vibrate)navigator.vibrate([200,100,200,100,200]);
-  if('wakeLock' in navigator)navigator.wakeLock.request('screen').then(wl=>{_wakeLock=wl;}).catch(()=>{});
 }
 // alert-ok handled via event delegation above
 document.getElementById('gpspill').addEventListener('click',toggleGPS);
@@ -3748,7 +3845,17 @@ function tSettings(r){
   ${r?`
   <div class="card">
     <div class="ctitle">Proximity Alerts</div>
-    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Full-screen alert and vibration when a stop is within range.</p>
+    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Full-screen alert when a stop is within range.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:16px;">
+        <input type="checkbox" id="toggle-turn-audio" ${UI.turnAudio?'checked':''} style="width:18px;height:18px;accent-color:var(--accent);">
+        <span>🔔 Turn audio alerts <span style="font-size:13px;color:var(--text3);">(escalating beeps — left/right/straight tones)</span></span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:16px;">
+        <input type="checkbox" id="toggle-keep-screen" ${UI.keepScreenOn?'checked':''} style="width:18px;height:18px;accent-color:var(--accent);">
+        <span>💡 Keep screen on during GPS <span style="font-size:13px;color:var(--text3);">(OS may dim; prevents sleep)</span></span>
+      </label>
+    </div>
     <div class="field">
       <label class="lbl">Stop alert distance — <span id="alert-km-val">${(UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):(UI.alertKm*1000).toFixed(0)+'m')}</span></label>
       <input type="range" id="alert-sl" min="0.05" max="3" step="0.05" value="${UI.alertKm}" style="width:100%;accent-color:var(--accent);">
@@ -5194,6 +5301,18 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
   const r=cur();if(!r)return;
   if(e.target.id==='inp-date'){r.startDate=e.target.value;saveAll();setTimeout(()=>render(),50);}
   if(e.target.id==='inp-time'){r.startTime=e.target.value;saveAll();setTimeout(()=>render(),50);}
+  if(e.target.id==='toggle-turn-audio'){
+    UI.turnAudio=e.target.checked;
+    // Play a test beep so user knows it's working
+    if(UI.turnAudio)setTimeout(()=>playTone(520,null,0.2),100);
+    saveAll();return;
+  }
+  if(e.target.id==='toggle-keep-screen'){
+    UI.keepScreenOn=e.target.checked;
+    if(UI.keepScreenOn&&UI.gpsActive)requestWakeLock();
+    else releaseWakeLock();
+    saveAll();return;
+  }
 });
 
 document.getElementById('content-wrap').addEventListener('input',e=>{
