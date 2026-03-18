@@ -1538,7 +1538,7 @@ function drawMap(cvs,r,opts){
     const midLon=(Math.min(...lons)+Math.max(...lons))/2;
     const getSun=eta=>{
       if(!eta)return null;
-      const dateStr=eta.toISOString().slice(0,10);
+      const dateStr=eta.toLocaleDateString('en-CA');
       return _sunCache[`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`]||null;
     };
     const getCol=eta=>{
@@ -2800,7 +2800,7 @@ function renderDesktopMap(){
       if(!startDT(r)||!Object.keys(_sunCache).length)return'rgba(34,211,238,0.85)';
       const eta=etaAt(epts[i].dist,r);
       if(!eta)return'rgba(34,211,238,0.85)';
-      const dateStr=eta.toISOString().slice(0,10);
+      const dateStr=eta.toLocaleDateString('en-CA');
       const sun=_sunCache[`${emidLat.toFixed(2)},${emidLon.toFixed(2)},${dateStr}`];
       if(!sun)return'rgba(34,211,238,0.85)';
       const bg=dayNightBg(eta,sun);
@@ -4248,7 +4248,7 @@ function tPlan(r){
     const missingDays=[];
     for(let d=0;d<days;d++){
       const dt=new Date(sdt.getTime()+d*86400000);
-      const dateStr=dt.toISOString().slice(0,10); // UTC YYYY-MM-DD matches sun API
+      const dateStr=dt.toLocaleDateString('en-CA'); // local date = correct day for sun API request
       const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`;
       if(!_sunCache[key])missingDays.push(dateStr);
     }
@@ -4304,7 +4304,7 @@ function tPlan(r){
   const midLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
   const getSun=(dt)=>{
     if(!dt)return null;
-    const localDateStr=dt.toISOString().slice(0,10); // UTC YYYY-MM-DD matches sun API cache keys
+    const localDateStr=dt.toLocaleDateString('en-CA'); // local date for correct sun lookup
     const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${localDateStr}`;
     return _sunCache[key]||null;
   };
