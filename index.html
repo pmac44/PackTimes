@@ -4959,6 +4959,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         picker.querySelector('.food-done').addEventListener('click',ev=>{
           ev.stopPropagation();
           if(!s.meals.length)delete s.meals;
+          else s.starred=true; // auto-star if food assigned
           picker.remove();saveAll();renderKeepScroll();
         });
       };
