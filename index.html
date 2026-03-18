@@ -4379,8 +4379,10 @@ function tPlan(r){
         if(!buyEarlierByStop[key])buyEarlierByStop[key]=[];
         buyEarlierByStop[key].push(m);
       });
-      // Per-day eaten meal counts
+      // Per-day eaten meal counts — all days from 1 to total
+      const totalDays=sdt&&finEta?Math.ceil((finEta-sdt)/86400000)+1:1;
       const mealsByDay={};
+      for(let d=1;d<=totalDays;d++)mealsByDay[d]={meals:0,snacks:0};
       eatenMeals.forEach(m=>{
         const eta=etaAt(m.stop.dist,r);
         const day=sdt&&eta?Math.ceil((eta-sdt)/86400000):1;
@@ -4411,10 +4413,13 @@ function tPlan(r){
               '<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">📍 Bought at '+name+':</span><br>'+fmtList(items)+'</div>'
             ).join(''):'')
           // Per-day eaten
-          +(Object.keys(mealsByDay).length?'<div style="'+lbl+'margin-top:8px;">Eaten per day</div>'
-            +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks}])=>
-              `<span style="font-size:15px;color:var(--text2);">Day ${day}: ${meals>0?meals+' meal'+(meals!==1?'s':''):''}${meals>0&&snacks>0?' + ':''}${snacks>0?snacks+' snack'+(snacks!==1?'s':''):''}</span><br>`
-            ).join(''):'')
+          +'<div style="'+lbl+'margin-top:8px;">Eaten per day</div>'
+          +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks}])=>{
+            const total=meals+snacks;
+            const txt=total===0?'<span style="color:rgba(251,191,36,0.4);">no food planned</span>':
+              (meals>0?meals+' meal'+(meals!==1?'s':''):'')+(meals>0&&snacks>0?' + ':'')+(snacks>0?snacks+' snack'+(snacks!==1?'s':''):'');
+            return`<span style="font-size:15px;color:var(--text2);">Day ${day}: ${txt}</span><br>`;
+          }).join('')
         +'</div>'
       +'</div>';
     })());
