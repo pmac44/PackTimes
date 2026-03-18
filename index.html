@@ -3549,6 +3549,11 @@ function tLiveShell(r){
     const st=shopSt(s,r);
     const hasSt=s.ohRules&&(s.type==='food'||s.type==='shop'||s.type==='hut');
     const stEl=hasSt?(st==='open'?'<span class="s-op" style="font-size:14px;">✓ Open</span>':st==='closed'?'<span class="s-cl" style="font-size:14px;">✗ Closed</span>':''):'';
+    // Time remaining to stop
+    const now=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+    const remMs=eta?eta-now:null;
+    const remH=remMs?remMs/3600000:null;
+    const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
     return`<div class="next-card live-summary-card" data-sid="${s.id}" style="flex:1;padding:8px 12px;cursor:pointer;">
       <div class="nlbl">${label}</div>
       <div class="nname" id="live-${idSuffix}-name">${s.icon} ${s.name}</div>
@@ -3556,6 +3561,7 @@ function tLiveShell(r){
         <div class="nkm" id="live-${idSuffix}-km" style="font-size:20px;">${dt.toFixed(1)}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
         <div class="neta" id="live-${idSuffix}-eta" style="font-size:15px;">${timeStr}</div>
       </div>
+      ${remStr?`<div id="live-${idSuffix}-rem" style="font-size:13px;color:var(--text3);margin-top:1px;">in ${remStr}</div>`:''}
       ${stEl?`<div style="margin-top:2px;">${stEl}</div>`:''}
     </div>`;
   };
@@ -4787,6 +4793,13 @@ function updateLive(){
     setText(`live-${idSuffix}-km`,dt);
     setText(`live-${idSuffix}-eta`,(day?day.trim()+' ':'')+fmtT(eta));
     setText(`live-${idSuffix}-name`,(s.icon||'')+' '+s.name);
+    // Update time remaining
+    const remEl=document.getElementById(`live-${idSuffix}-rem`);
+    if(remEl&&eta){
+      const now=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+      const remH=(eta-now)/3600000;
+      remEl.textContent=remH>0?'in '+(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
+    }
   };
   patchCard(next,'next');
   patchCard(nextWater,'water');
@@ -4808,15 +4821,19 @@ function updateLive(){
           const day=sdt?dayOff(eta,sdt):'';
           const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
           const dt=(s.dist-liveDist).toFixed(1);
+          const now=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+          const remMs=eta?eta-now:null;
+          const remH=remMs?remMs/3600000:null;
+          const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
           const orBadge=s.offRouteM>50?`<span style="font-size:13px;color:var(--text3);"> (${s.offRouteM}m off route)</span>`:'';
           const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':'';
           return`<div class="si live-stop" style="${tileBg}">
             <div class="sdot d-${s.type}"></div>
             <div class="si-inf">
               <div class="si-name">${s.name}${orBadge}</div>
-              <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type}</span></div>
+              <div class="si-meta">${dt} km · <span class="tag t-${s.type}">${s.type}</span></div>
             </div>
-            <div class="si-eta">${timeStr}</div>
+            <div class="si-eta">${timeStr}${remStr?`<div style="font-size:13px;color:var(--text3);">in ${remStr}</div>`:''}</div>
           </div>`;
         }).join('');
       })();
