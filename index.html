@@ -4055,7 +4055,8 @@ function stopRow(s,r,sdt){
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="font-size:16px;">${s.starred!==false?'⭐':'☆'}</button>
         ${s.type!=='sleep'&&s.type!=='rest'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="font-size:15px;${s.sleepAt?'color:var(--accent);border-color:var(--accent3);':''}">${s.sleepAt?'😴':'💤'}</button>`:''}
         <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="font-size:15px;${s.meals&&s.meals.length?'color:#fbbf24;border-color:rgba(251,191,36,0.5);':''}">🍔</button>
-        ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit stop" style="font-size:15px;">📍</button>`:''}
+        <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename" style="font-size:15px;">✏️</button>
+        ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit position" style="font-size:15px;">📍</button>`:''}
         ${(()=>{const lat=s.lat||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lat;const lon=s.lon||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lon;return lat&&lon?`<a href="https://maps.google.com/?q=${lat.toFixed(5)},${lon.toFixed(5)}" target="_blank" class="btn btn-sm" title="Open in Google Maps" style="text-decoration:none;font-size:13px;font-family:var(--font);font-weight:600;padding:0 8px;">MAP</a>`:'';})()}
         ${isTown?'':`<button class="btn btn-r btn-sm del-stop" data-sid="${s.id}">✕</button>`}
       </div>
