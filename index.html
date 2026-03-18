@@ -3736,7 +3736,7 @@ function tRoutes(r){
     const turnBanner=hasTurns
       ?(autoTurns
         ?`<div class="banner warn"><span>⚠️</span><span>Auto-detected turns (${r.turns.length}) — estimated from route shape, review carefully before relying on them.</span></div>`
-        :`<div class="banner ok"><span>↩</span><span>${r.turns.length} turn${r.turns.length!==1?'s':''} imported — turn navigation available on Ride tab.</span></div>`)
+        :`<div class="banner ok-bright"><span>↩</span><span>${r.turns.length} turn${r.turns.length!==1?'s':''} imported — turn navigation available on Ride tab.</span></div>`)
       :`<div class="banner warn"><span>⚠️</span><div style="flex:1;"><span>No turn information — re-export with turn instructions for navigation.</span><div style="margin-top:6px;"><button class="btn btn-sm" id="btn-auto-turns">⚙ Auto-detect turns (basic — review carefully)</button></div></div></div>`;
     return tsBanner+turnBanner;
   })()}
