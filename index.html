@@ -3578,7 +3578,7 @@ function tLiveShell(r){
     const hasSt=s.ohRules&&(s.type==='food'||s.type==='shop'||s.type==='hut');
     const stEl=hasSt?(st==='open'?'<span class="s-op" style="font-size:14px;">✓ Open</span>':st==='closed'?'<span class="s-cl" style="font-size:14px;">✗ Closed</span>':''):'';
     // Time remaining to stop
-    const now=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+    const now=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
     const remMs=eta?eta-now:null;
     const remH=remMs?remMs/3600000:null;
     const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
@@ -4798,13 +4798,17 @@ function updateLive(){
           if(!st)return`<div class="next-card" style="opacity:.45;flex:1;padding:8px 12px;"><div class="nlbl">${label}</div><div class="nname" style="font-size:17px;">None ahead</div></div>`;
           const eta=etaAt(st.dist,r);const dt2=(st.dist-liveDist).toFixed(1);
           const day=sdt&&eta?dayOff(eta,sdt):'';const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
+          const now2=(UI.gpsDistKm!==null&&r)?etaAt(UI.gpsDistKm,r):new Date();
+          const remH2=eta&&now2?(eta-now2)/3600000:null;
+          const remStr2=remH2!==null&&remH2>0?(remH2<1?(Math.round(remH2*60)+'min'):(Math.floor(remH2)+'h'+(Math.round((remH2%1)*60)>0?' '+Math.round((remH2%1)*60)+'m':''))):null;
           return`<div class="next-card live-summary-card" data-sid="${st.id}" style="flex:1;padding:8px 12px;cursor:pointer;">
             <div class="nlbl">${label}</div>
             <div class="nname" id="live-${sfx}-name">${st.icon||''} ${st.name}</div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px;">
               <div class="nkm" id="live-${sfx}-km" style="font-size:20px;">${dt2}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
               <div class="neta" id="live-${sfx}-eta" style="font-size:15px;">${timeStr}</div>
-            </div></div>`;
+            </div>
+            ${remStr2?`<div id="live-${sfx}-rem" style="font-size:13px;color:var(--text3);margin-top:1px;">in ${remStr2}</div>`:''}</div>`;
         };
         nextCardsEl.innerHTML=
           '<div style="display:flex;gap:5px;">'+mkCard('Next stop',nextS,'next')+mkCard('Next sleep',nextSleep,'sleep')+'</div>'
@@ -4821,7 +4825,7 @@ function updateLive(){
     // Update time remaining
     const remEl=document.getElementById(`live-${idSuffix}-rem`);
     if(remEl&&eta){
-      const now=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+      const now=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
       const remH=(eta-now)/3600000;
       remEl.textContent=remH>0?'in '+(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
     }
@@ -4846,7 +4850,7 @@ function updateLive(){
           const day=sdt?dayOff(eta,sdt):'';
           const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
           const dt=(s.dist-liveDist).toFixed(1);
-          const now=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+          const now=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
           const remMs=eta?eta-now:null;
           const remH=remMs?remMs/3600000:null;
           const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
