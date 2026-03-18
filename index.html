@@ -3199,7 +3199,7 @@ function tStopsShell(r){
     <div class="stops-scroll">
       <div style="padding:6px 4px 2px;display:flex;flex-direction:column;gap:6px;color:var(--text3);font-size:16px;">
         <div style="display:flex;align-items:center;gap:6px;"><span>👆</span><span>Tap on the map to add a stop</span></div>
-        <div style="display:flex;align-items:center;gap:6px;"><span>👇</span><span>Or search for stops below</span></div>
+        <div style="display:flex;align-items:center;gap:6px;"><span>👇</span><span>Or search for stops below — star ⭐ the ones you want in your Mission list</span></div>
       </div>
       <div class="card" style="${UI.osmExpanded?'':'padding-top:10px;padding-bottom:10px;'}">
         <div class="secrow" style="cursor:pointer;margin-bottom:${UI.osmExpanded?'10':'0'}px;" id="osm-card-hdr">
@@ -3403,7 +3403,7 @@ function tLiveShell(r){
     const stEl=hasSt?(st==='open'?'<span class="s-op" style="font-size:14px;">✓ Open</span>':st==='closed'?'<span class="s-cl" style="font-size:14px;">✗ Closed</span>':''):'';
     return`<div class="next-card live-summary-card" data-sid="${s.id}" style="flex:1;padding:8px 12px;cursor:pointer;">
       <div class="nlbl">${label}</div>
-      <div class="nname">${s.icon} ${s.name}</div>
+      <div class="nname" id="live-${idSuffix}-name">${s.icon} ${s.name}</div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px;">
         <div class="nkm" id="live-${idSuffix}-km" style="font-size:20px;">${dt.toFixed(1)}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
         <div class="neta" id="live-${idSuffix}-eta" style="font-size:15px;">${timeStr}</div>
@@ -3469,6 +3469,7 @@ function tLiveShell(r){
           </div>`;
         })()}
         <div class="live-summary" id="live-summary">
+          <div id="live-next-cards" style="display:contents;">
           <div style="display:flex;gap:5px;">
             ${summaryCard('Next stop',next,'next')}
             ${summaryCard('Next sleep',r.stops.find(s=>s.dist>liveDist&&(s.type==='sleep'||s.sleepAt)),'sleep')}
@@ -3476,6 +3477,7 @@ function tLiveShell(r){
           <div style="display:flex;gap:5px;">
             ${summaryCard('Next water',nextWater,'water')}
             ${summaryCard('Next food',nextFood,'food')}
+          </div>
           </div>
           ${r.stops.length&&!next?`<div class="banner ok" style="margin:0;padding:5px 8px;"><span>🏁</span><span>All stops passed!</span></div>`:''}
         </div>
@@ -4436,11 +4438,43 @@ function updateLive(){
   const pf=document.getElementById('live-progf');if(pf)pf.style.width=(prog*100).toFixed(1)+'%';
 
   const patchCard=(s,idSuffix)=>{
+    const nameEl=document.getElementById(`live-${idSuffix}-name`);
+    const card=nameEl?nameEl.closest('.next-card'):null;
+    const currentSid=card?card.dataset.sid:null;
+    const newSid=s?String(s.id):'null';
+    if(currentSid!==newSid){
+      // Stop changed — rebuild the whole next-cards row
+      const nextCardsEl=document.getElementById('live-next-cards');
+      if(nextCardsEl){
+        const nextS=r.stops.find(s2=>s2.dist>liveDist&&starred(s2));
+        const nextSleep=r.stops.find(s2=>s2.dist>liveDist&&(s2.type==='sleep'||s2.sleepAt));
+        const nextFoodS=r.stops.find(s2=>s2.dist>liveDist&&starred(s2)&&(s2.type==='food'||s2.type==='shop'));
+        const nextWaterOnlyS=r.stops.find(s2=>s2.dist>liveDist&&starred(s2)&&s2.type==='water');
+        const nextWaterS=(!nextWaterOnlyS||(nextFoodS&&nextFoodS.dist<=nextWaterOnlyS.dist))?nextFoodS:nextWaterOnlyS;
+        const mkCard=(label,st,sfx)=>{
+          if(!st)return`<div class="next-card" style="opacity:.45;flex:1;padding:8px 12px;"><div class="nlbl">${label}</div><div class="nname" style="font-size:17px;">None ahead</div></div>`;
+          const eta=etaAt(st.dist,r);const dt2=(st.dist-liveDist).toFixed(1);
+          const day=sdt&&eta?dayOff(eta,sdt):'';const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
+          return`<div class="next-card live-summary-card" data-sid="${st.id}" style="flex:1;padding:8px 12px;cursor:pointer;">
+            <div class="nlbl">${label}</div>
+            <div class="nname" id="live-${sfx}-name">${st.icon||''} ${st.name}</div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px;">
+              <div class="nkm" id="live-${sfx}-km" style="font-size:20px;">${dt2}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
+              <div class="neta" id="live-${sfx}-eta" style="font-size:15px;">${timeStr}</div>
+            </div></div>`;
+        };
+        nextCardsEl.innerHTML=
+          '<div style="display:flex;gap:5px;">'+mkCard('Next stop',nextS,'next')+mkCard('Next sleep',nextSleep,'sleep')+'</div>'
+          +'<div style="display:flex;gap:5px;">'+mkCard('Next water',nextWaterS,'water')+mkCard('Next food',nextFoodS,'food')+'</div>';
+      }
+      return;
+    }
     if(!s)return;
     const dt=(s.dist-liveDist).toFixed(1),eta=etaAt(s.dist,r);
     const day=sdt?dayOff(eta,sdt):'';
     setText(`live-${idSuffix}-km`,dt);
     setText(`live-${idSuffix}-eta`,(day?day.trim()+' ':'')+fmtT(eta));
+    setText(`live-${idSuffix}-name`,(s.icon||'')+' '+s.name);
   };
   patchCard(next,'next');
   patchCard(nextWater,'water');
