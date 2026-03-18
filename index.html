@@ -3117,7 +3117,7 @@ function _render(){
       if(mc){drawMap(mc,r,{anchor:0.5});attachMap(mc,null);}
     },30);
   }
-  setTimeout(renderDesktopMap,60);
+  setTimeout(()=>requestAnimationFrame(renderDesktopMap),0);
   }catch(err){
     wrap.innerHTML=`<div class="content"><div class="banner err"><span>⚠️</span><span>Render error: ${err.message}<br><small style="font-family:monospace;font-size:13px;">${err.stack?err.stack.split('\n').slice(0,3).join('<br>'):'no stack'}</small></span></div></div>`;
     console.error('_render error:',err);
@@ -4206,8 +4206,10 @@ function tPlan(r){
         +((()=>{
           const stopMeals=(isSleep&&node.sleepStop?node.sleepStop.meals:node.cluster?node.cluster.stops.flatMap(s=>s.meals||[]):[]);
           if(!stopMeals||!stopMeals.length)return'';
+          const sortOrder=m=>m.source==='here-carry'?2:m.when==='after'?1:0;
+          const sorted=[...stopMeals].sort((a,b)=>sortOrder(a)-sortOrder(b));
           return'<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">'
-            +stopMeals.map(m=>{
+            +sorted.map(m=>{
               const stopHasSleep=(isSleep&&node.sleepStop)||
                 (node.cluster&&node.cluster.stops.some(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt));
               const whenLabel=stopHasSleep&&m.source!=='here-carry'?(m.when==='after'?' · after sleep':' · before sleep'):'';
