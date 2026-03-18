@@ -434,7 +434,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,turnAudio:true,keepScreenOn:false};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -3425,7 +3425,7 @@ function tStopsShell(r){
       ${r.stops.length?`<div class="card">
         <div class="secrow">
           <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt).length:r.stops.length})</div>
-          <button class="btn btn-sm${UI.stopsShowStarred?' btn-p':''}" id="btn-toggle-starred" style="font-size:15px;">${UI.stopsShowStarred?'⭐ Starred':'☆ All'}</button>
+          <button class="btn btn-sm${UI.stopsShowStarred?' btn-p':''}" id="btn-toggle-starred" style="font-size:15px;">${UI.stopsShowStarred?'★ Starred':'☆ All'}</button>
         </div>
         <div id="stops-list-rows">${clusteredStopRows(r,sdt)}</div>
       </div>`:''}
@@ -3902,7 +3902,7 @@ function tRoutes(r){
             <div style="font-size:14px;color:var(--accent);font-family:var(--font);">${hh}h ${mm}m · ${spd} km/h avg</div>
           </div>
           <div style="display:flex;gap:5px;">
-            <button class="btn btn-sm edit-pace" data-idx="${i}">✏️</button>
+            <button class="btn btn-sm edit-pace" data-idx="${i}">Rename</button>
             <button class="btn btn-r btn-sm del-pace" data-idx="${i}">✕</button>
           </div>
         </div>`;
@@ -4083,10 +4083,10 @@ function stopRow(s,r,sdt){
         </div>
       </div>
       <div style="display:flex;gap:4px;margin-top:6px;">
-        <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="font-size:16px;">${s.starred!==false?'⭐':'☆'}</button>
-        ${s.type!=='sleep'&&s.type!=='rest'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="font-size:15px;${s.sleepAt?'color:var(--accent);border-color:var(--accent3);':''}">${s.sleepAt?'😴':'💤'}</button>`:''}
-        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="font-size:15px;${s.meals&&s.meals.length?'color:#fbbf24;border-color:rgba(251,191,36,0.5);':''}">🍔</button>
-        <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename" style="font-size:15px;">✏️</button>
+        <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="font-size:16px;";font-weight:600;color:${s.starred!==false?'#fbbf24':'var(--text3)'}">★</button>
+        ${s.type!=='sleep'&&s.type!=='rest'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="font-size:15px;${s.sleepAt?'color:var(--accent);border-color:var(--accent3);':''}">${s.sleepAt?'Sleep':'Sleep'}</button>`:''}
+        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="font-size:15px;${s.meals&&s.meals.length?'color:#fbbf24;border-color:rgba(251,191,36,0.5);':''}">Food</button>
+        <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename" style="font-size:15px;">Rename</button>
         ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit position" style="font-size:15px;">📍</button>`:''}
         ${(()=>{const lat=s.lat||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lat;const lon=s.lon||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lon;return lat&&lon?`<a href="https://maps.google.com/?q=${lat.toFixed(5)},${lon.toFixed(5)}" target="_blank" class="btn btn-sm" title="Open in Google Maps" style="text-decoration:none;font-size:13px;font-family:var(--font);font-weight:600;padding:0 8px;">MAP</a>`:'';})()}
         ${isTown?'':`<button class="btn btn-r btn-sm del-stop" data-sid="${s.id}">✕</button>`}
@@ -4427,9 +4427,29 @@ function tPlan(r){
             +'</div>'
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'😴':'💤')+'</button>':''})():'')
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid '+(hasMeals?'rgba(251,191,36,0.6)':'var(--border)')+';border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Add food here">'+'🍔'+'</button>':''})():'')
-            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="mission-unstar" data-sid="'+ts.id+'" style="background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:15px;padding:2px 6px;margin-top:1px;" title="Unstar — remove from mission">☆</button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const isEditing=UI.planEditCluster===ts.id;return ts?'<button class="cluster-edit-btn" data-sid="'+ts.id+'" style="background:none;border:1px solid '+(isEditing?'var(--accent)':'var(--border)')+';border-radius:6px;cursor:pointer;font-size:13px;font-family:var(--font);font-weight:600;color:'+(isEditing?'var(--accent)':'var(--text3)')+';padding:2px 8px;margin-top:1px;">'+(isEditing?'Done':'Edit')+'</button>':''})():'')
           +'</div>')
         +'</div>'
+        // Edit mode: show individual stops with unstar option
+        +(node.cluster&&UI.planEditCluster===(node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0])?.id?(()=>{
+          const stops=node.cluster.stops;
+          return'<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px;">'
+            +stops.map(s=>{
+              const hasFood=s.meals&&s.meals.length;
+              const hasSleep=s.sleepAt||s.type==='sleep'||s.type==='rest';
+              const warnings=[];
+              if(hasFood)warnings.push(s.meals.length+' food item'+(s.meals.length>1?'s':''));
+              if(hasSleep)warnings.push('sleep');
+              return'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:5px;">'
+                +'<div>'
+                  +'<div style="font-size:15px;font-weight:600;color:var(--text);">'+s.name+'</div>'
+                  +(warnings.length?'<div style="font-size:12px;color:var(--text3);">has: '+warnings.join(', ')+'</div>':'')
+                +'</div>'
+                +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:none;border:1px solid rgba(248,113,113,0.5);border-radius:6px;cursor:pointer;font-size:13px;font-family:var(--font);font-weight:600;color:rgba(248,113,113,0.8);padding:2px 8px;white-space:nowrap;">Unstar</button>'
+              +'</div>';
+            }).join('')
+          +'</div>';
+        })():'')
         +(isSleep?sleepDiv+chipsDiv:chipsDiv+(()=>{
           const stopMeals=node.cluster?node.cluster.stops.flatMap(s=>s.meals||[]):[];
           if(!stopMeals.length)return'';
@@ -5402,17 +5422,27 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     UI.planSleepOnly=!UI.planSleepOnly;renderKeepScroll();return;}
   if(e.target.closest('#btn-plan-hide-passed')){
     UI.planHidePassed=!UI.planHidePassed;renderKeepScroll();return;}
-  const mu=e.target.closest('.mission-unstar');
+  const mu=e.target.closest('.cluster-edit-btn');
   if(mu&&r){
-    const s=r.stops.find(x=>String(x.id)===String(mu.dataset.sid));
-    if(s){s.starred=false;saveAll();renderKeepScroll();}
+    const sid=mu.dataset.sid;
+    UI.planEditCluster=UI.planEditCluster===sid?null:sid;
+    renderKeepScroll();return;
+  }
+  const cu=e.target.closest('.cluster-unstar-stop');
+  if(cu&&r){
+    const s=r.stops.find(x=>String(x.id)===String(cu.dataset.sid));
+    if(s){
+      s.starred=false;
+      // If no more starred stops remain in this cluster's area, close edit mode
+      saveAll();renderKeepScroll();
+    }
     return;
   }
   if(e.target.closest('#btn-print-mission')){printMission();return;}
   if(e.target.closest('#btn-go-food')){UI.tab='food';render();return;}
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
-  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.mission-unstar')){
+  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.cluster-edit-btn')&&!e.target.closest('.cluster-unstar-stop')){
     const sid=mn.dataset.sid;
     if(sid){
       _highlightStopId=sid;
