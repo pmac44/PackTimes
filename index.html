@@ -2016,7 +2016,16 @@ function hitTest(cvs,cx,cy,cb){
       if(Math.sqrt(bestStopD)<28){
         _highlightStopId=bestStop.id;
         if(cvs.id==='stops-map'){
-          // Stops map — pan and zoom to stop
+          // If map is expanded, collapse it first then scroll to tile
+          if(UI.stopsMapExpanded){
+            UI.stopsMapExpanded=false;
+            setStopsMapHeight(0.60,false);
+            const expandBtn=document.getElementById('stops-map-expand');
+            if(expandBtn)expandBtn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="4,10 4,4 10,4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="28,4 34,4 34,10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="4,28 4,34 10,34" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="28,34 34,34 34,28" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+            const scroll=document.querySelector('.stops-scroll');
+            if(scroll)scroll.style.display='';
+          }
+          // Pan and zoom to stop
           const state=ms(cvs.id);
           const p=pts[cidx(r,bestStop.dist)];
           const panLon=(bestStop.lat&&bestStop.lon)?bestStop.lon:p.lon;
@@ -2091,15 +2100,13 @@ function mapCtrlHTML(mapId,showGPS){
   const gpsBtn=UI.gpsActive?
     `<button class="zbtn" id="btn-gpstoggle" style="width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
     `<button class="zbtn" id="btn-gpstoggle" style="width:auto;padding:0 8px;font-size:12px;font-family:var(--font);">GPS</button>`;
-  // Expand button for stops map on mobile — distinct icon (arrows out)
-  const expandBtn=isStopsMobile?`<button class="zbtn" id="stops-map-expand" title="Expand map" style="padding:0;overflow:hidden;">${UI.stopsMapExpanded?
-    `<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="18" y2="18" stroke="currentColor" stroke-width="2"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="8" x2="20" y2="18" stroke="currentColor" stroke-width="2"/><polyline points="24,8 30,8 30,14" fill="none" stroke="currentColor" stroke-width="2"/><line x1="8" y1="30" x2="18" y2="20" stroke="currentColor" stroke-width="2"/><polyline points="8,24 8,30 14,30" fill="none" stroke="currentColor" stroke-width="2"/><line x1="30" y1="30" x2="20" y2="20" stroke="currentColor" stroke-width="2"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2"/></svg>`:
-    `<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="4,10 4,4 10,4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="28,4 34,4 34,10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="4,28 4,34 10,34" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="28,34 34,34 34,28" fill="none" stroke="currentColor" stroke-width="2"/></svg>`
-  }</button>`:'';
+  const expandSVG=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="4,10 4,4 10,4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="28,4 34,4 34,10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="4,28 4,34 10,34" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="28,34 34,34 34,28" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+  const shrinkSVG=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="8,14 14,14 14,8" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="24,8 24,14 30,14" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="8,24 14,24 14,30" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="24,30 24,24 30,24" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+  const expandBtn=isStopsMobile?`<button class="zbtn" id="stops-map-expand" title="${UI.stopsMapExpanded?'Shrink map':'Expand map'}" style="padding:0;overflow:hidden;">${UI.stopsMapExpanded?shrinkSVG:expandSVG}</button>`:'';
   return`<div class="map-ctrl" style="${pos}">
+    ${expandBtn}
     <button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle satellite tiles" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["OSM","SAT","off"][_tileMode]}</button>
-    ${expandBtn}
     ${showGPS?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:''}
     ${mapId==='live-map'?gpsBtn:''}
   </div>`;
@@ -3362,9 +3369,14 @@ function tStopsShell(r){
             if(r.turns&&r.turns.length)present.add('turns');
             present.add('kmmarkers');
             const filtered=types.filter(t=>present.has(t.type));
-            const left=filtered.filter((_,i)=>i%2===0);
-            const right=filtered.filter((_,i)=>i%2===1);
             const expanded=UI.stopsMapExpanded;
+            // Each dot row is ~20px; cap left column at available height / 20px
+            const tabsH=48; // approx
+            const viewH=typeof window!=='undefined'?(window.visualViewport?window.visualViewport.height:window.innerHeight):800;
+            const mapH=Math.round((viewH-tabsH)*(expanded?1.0:0.60));
+            const CAP=Math.max(4,Math.floor((mapH-16)/20));
+            const left=filtered.slice(0,CAP);
+            const right=filtered.slice(CAP);
             const dotHTML=t=>{
               const hidden=UI.hiddenMapTypes.has(t.type);
               return`<div class="mob-layer-btn" data-ltype="${t.type}" style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:1px 0;">
@@ -3374,10 +3386,9 @@ function tStopsShell(r){
             };
             return left.map(dotHTML).join('')
               +'</div>'
-              +'<div id="mobile-map-legend-r" style="position:absolute;top:8px;left:'+(expanded?'90px':'30px')+';display:flex;flex-direction:column;gap:2px;z-index:20;">'
-              +right.map(dotHTML).join('');
+              +(right.length?'<div id="mobile-map-legend-r" style="position:absolute;top:8px;right:4px;display:flex;flex-direction:column;gap:2px;z-index:20;">'
+              +right.map(dotHTML).join('')+'</div>':'');
           })()}
-        </div>
         <div id="mobile-layer-label" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:21;display:none;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:8px;padding:8px 18px;font-size:18px;font-weight:600;color:#fff;font-family:var(--sans);pointer-events:none;white-space:nowrap;"></div>`:''}
       </div>
     </div>
@@ -3487,15 +3498,18 @@ function initStopsMap(r){
   drawMap(cvs,r,{anchor:0.5,highlightId:_highlightStopId});
   attachMap(cvs,km=>{
     if(UI.stopsMapExpanded){
-      // Collapse first, then open modal
+      // Collapse map first
       UI.stopsMapExpanded=false;
       setStopsMapHeight(0.60,false);
       const btn=document.getElementById('stops-map-expand');
-      if(btn)btn.textContent='⛶';
+      if(btn)btn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="4" y1="4" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="4,10 4,4 10,4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="4" x2="24" y2="14" stroke="currentColor" stroke-width="2"/><polyline points="28,4 34,4 34,10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="4" y1="34" x2="14" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="4,28 4,34 10,34" fill="none" stroke="currentColor" stroke-width="2"/><line x1="34" y1="34" x2="24" y2="24" stroke="currentColor" stroke-width="2"/><polyline points="28,34 34,34 34,28" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
       const scroll=document.querySelector('.stops-scroll');
       if(scroll)scroll.style.display='';
+      // This callback fires for route-line taps only (stop dot taps are handled by hitTest)
+      openModal(km);
+    } else {
+      openModal(km);
     }
-    openModal(km);
   });
   // Expand button
   const expandBtn=document.getElementById('stops-map-expand');
