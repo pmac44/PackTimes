@@ -45,8 +45,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   .desktop-sidebar{width:400px;min-width:340px;max-width:440px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;}
   .desktop-map-pane{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;}
   .desktop-map-pane #desktop-map{position:absolute;top:0;left:0;width:100%!important;height:100%!important;}
-  .tabs{font-size:18px;}
-  .tab{padding:8px 10px;flex:1!important;}
+  .tabs{font-size:15px;}
+  .tab{padding:8px 6px;flex:1!important;min-width:0!important;}
+  .tab-icon{font-size:16px;}
   .mobile-only-logo{display:none!important;}
 }
 .header{display:none;}
@@ -57,8 +58,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .gpsoff{color:var(--text3);border-color:var(--border);}
 .pulse{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.4s infinite;}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.3;transform:scale(.6);}}
-.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
-.tab{flex:1;padding:8px 4px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:18px;font-weight:500;cursor:pointer;text-align:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;}
+.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{flex-shrink:0;min-width:64px;padding:8px 4px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:18px;font-weight:500;cursor:pointer;text-align:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
 .tab-icon{display:block;font-size:18px;margin-bottom:1px;}
 /* Normal scrolling content (most tabs) */
@@ -3170,6 +3172,7 @@ const TABS=[
   {id:'routes',icon:'≡',label:'Route'},
   {id:'stops',icon:'⊙',label:'Stops'},
   {id:'plan',icon:'✦',label:'Mission'},
+  {id:'food',icon:'<svg viewBox="0 0 18 18" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="display:inline-block;vertical-align:middle;"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>',label:'Food'},
   {id:'live',icon:'▶',label:'Ride'},
   {id:'settings',icon:'⚙',label:'Settings'},
 ];
@@ -3205,6 +3208,11 @@ function _render(){
     +TABS.map(t=>
     `<button class="tab ${UI.tab===t.id?'active':''}" data-tab="${t.id}">
       <span class="tab-icon">${t.icon}</span>${t.label}</button>`).join('');
+  // Scroll active tab into view (for scrollable tab bar)
+  requestAnimationFrame(()=>{
+    const activeTab=document.querySelector('.tab.active');
+    if(activeTab)activeTab.scrollIntoView({block:'nearest',inline:'center'});
+  });
   const r=cur();
   document.getElementById('hroute').textContent=r?r.name:'';
   updateGPSPill();
@@ -3240,6 +3248,7 @@ function _render(){
     let html='';
     if(UI.tab==='routes')html=r?tRoutes(r):tRoutes(null);
     else if(UI.tab==='plan')html=r?tPlan(r):`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`;
+    else if(UI.tab==='food')html=r?tFood(r):`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`;
     else if(UI.tab==='settings')html=tSettings(r);
     else html=`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`;
     wrap.innerHTML=`<div class="content" style="flex:1;">${html}</div>`;
@@ -4498,77 +4507,115 @@ function tPlan(r){
       +'</div>';
     })():'')
     +'</div>'
-    // Food plan summary card
-    +((()=>{
-      const allMeals=r.stops.flatMap(s=>(s.meals||[]).map(m=>({...m,stop:s})));
-      if(!allMeals.length)return'';
-      const accent='font-size:17px;font-weight:600;font-family:var(--font);';
-      const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
-      // Separate carry-forward from eaten items
-      const eatenMeals=allMeals;
-      // Build inventory: what to carry from start
-      const fromStart=allMeals.filter(m=>m.source==='start');
-      // Group all stop-bought items by the BUYING stop
-      // "buy here" = eat at this stop; "bought at earlier stop" = carry forward from that stop
-      const buyByStop={};
-      // Items eaten here that are bought here
-      allMeals.filter(m=>m.source==='here').forEach(m=>{
-        const key=m.stop.name;
-        if(!buyByStop[key])buyByStop[key]={stop:m.stop,eat:[],carry:[]};
-        buyByStop[key].eat.push(m);
-      });
-      // Items eaten at a later stop but bought at an earlier stop — add to the BUYING stop's carry list
-      allMeals.filter(m=>m.source&&m.source!=='start'&&m.source!=='here').forEach(m=>{
-        const src=r.stops.find(s=>String(s.id)===String(m.source));
-        const key=src?src.name:'Unknown';
-        if(!buyByStop[key])buyByStop[key]={stop:src||m.stop,eat:[],carry:[]};
-        buyByStop[key].carry.push(m);
-      });
-      // Sort buy stops by distance along route
-      const buyStopsSorted=Object.values(buyByStop).sort((a,b)=>(a.stop.dist||0)-(b.stop.dist||0));
-      // Per-day eaten meal counts — all days from 1 to total
-      const totalDays=sdt&&finEta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():1;
-      const mealsByDay={};
-      for(let d=1;d<=totalDays;d++)mealsByDay[d]={meals:0,snacks:0};
-      eatenMeals.forEach(m=>{
-        const eta=etaAt(m.stop.dist,r);
-        // Count which day this is by counting midnights since start (same as dayOff logic)
-        const day=sdt&&eta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<=eta){n++;d.setDate(d.getDate()+1);}return n;})():1;
-        if(!mealsByDay[day])mealsByDay[day]={meals:0,snacks:0};
-        if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
-      });
-      const fmtItem=m=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:14px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>`;
-      const fmtList=items=>items.map(fmtItem).join('');
-      const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:var(--border2);"></div></div>';
-      return'<div style="display:flex;align-items:stretch;gap:10px;margin-top:4px;">'
-        +spine
-        +'<div style="flex:1;padding:4px 0 4px 2px;">'
-          +'<div style="'+lbl+'">🍔 Food plan · '+allMeals.length+' item'+(allMeals.length!==1?'s':'')+'</div>'
-          // Carry from start
-          +(fromStart.length?'<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">🎒 Carry from start:</span><br>'+fmtList(fromStart)+'</div>':'')
-          // All resupply stops in route order — each item on its own line
-          +buyStopsSorted.map(({stop,eat,carry})=>
-            '<div style="margin-bottom:8px;">'
-            +'<span style="font-size:13px;color:var(--text3);">🛒 Buy at '+stop.name+':</span><br>'
-            +eat.map(m=>'<div style="margin:2px 0;">'+fmtItem(m)+'<span style="font-size:12px;color:var(--text3);margin-left:4px;">eat here</span></div>').join('')
-            +carry.map(m=>{
-              const dest=r.stops.find(s=>String(s.id)===String(m.stop.id));
-              const destName=dest?dest.name:'later';
-              return'<div style="margin:2px 0;">'+fmtItem(m)+'<span style="font-size:12px;color:var(--text3);margin-left:4px;">carry forward to '+destName+'</span></div>';
-            }).join('')
-            +'</div>'
-          ).join('')
-          // Per-day eaten
-          +'<div style="'+lbl+'margin-top:8px;">Eaten per day</div>'
-          +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks}])=>{
-            const total=meals+snacks;
-            const txt=total===0?'<span style="color:rgba(251,191,36,0.4);">no food planned</span>':
-              (meals>0?meals+' meal'+(meals!==1?'s':''):'')+(meals>0&&snacks>0?' + ':'')+(snacks>0?snacks+' snack'+(snacks!==1?'s':''):'');
-            return`<span style="font-size:15px;color:var(--text2);">Day ${day}: ${txt}</span><br>`;
-          }).join('')
-        +'</div>'
-      +'</div>';
-    })());
+    +(r.stops.some(s=>s.meals&&s.meals.length)?'<div class="card" style="cursor:pointer;border-color:rgba(251,191,36,0.4);" id="btn-go-food"><div style="display:flex;align-items:center;gap:8px;"><span style="font-size:20px;">🍔</span><div><div style="font-size:15px;font-weight:600;color:#fbbf24;">Food plan</div><div style="font-size:13px;color:var(--text3);">'+r.stops.filter(s=>s.meals&&s.meals.length).length+' stops with food assigned — tap to view</div></div></div></div>':'');
+}
+
+function tFood(r){
+  const sdt=startDT(r);
+  const finEta=etaAt(r.totalDist,r);
+  const allMeals=r.stops.flatMap(s=>(s.meals||[]).map(m=>({...m,stop:s})));
+  const fmtItem=m=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:14px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>`;
+  const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;display:block;margin-top:10px;';
+
+  if(!allMeals.length){
+    return'<div class="card"><div style="font-size:15px;color:var(--text3);text-align:center;padding:16px 0;">No food planned yet.<br><span style="font-size:13px;">Use the 🍔 button on Mission or Stops tabs to add food.</span></div></div>';
+  }
+
+  // ── Next food action card ──
+  const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
+  const isLive=UI.gpsActive&&UI.gpsDistKm!==null;
+
+  // Find next stop with any food action (eat or buy for carry)
+  const foodStops=r.stops.filter(s=>s.meals&&s.meals.length&&s.dist>liveDist)
+    .sort((a,b)=>a.dist-b.dist);
+
+  // Also find next stop where you need to pick up carried items
+  const buyStops={};
+  allMeals.filter(m=>m.source==='here').forEach(m=>{const k=m.stop.name;if(!buyStops[k])buyStops[k]={stop:m.stop,eat:[],carry:[]};buyStops[k].eat.push(m);});
+  allMeals.filter(m=>m.source&&m.source!=='start'&&m.source!=='here').forEach(m=>{
+    const src=r.stops.find(s=>String(s.id)===String(m.source));
+    const k=src?src.name:'Unknown';
+    if(!buyStops[k])buyStops[k]={stop:src||m.stop,eat:[],carry:[]};
+    buyStops[k].carry.push(m);
+  });
+  const buyStopsSorted=Object.values(buyStops).sort((a,b)=>(a.stop.dist||0)-(b.stop.dist||0));
+  const nextBuyStop=buyStopsSorted.find(({stop})=>stop.dist>liveDist);
+  const nextEatStop=foodStops[0];
+  // Pick whichever comes first
+  const nextActionStop=(!nextBuyStop&&!nextEatStop)?null:
+    !nextBuyStop?nextEatStop:
+    !nextEatStop?nextBuyStop.stop:
+    nextEatStop.dist<=nextBuyStop.stop.dist?nextEatStop:nextBuyStop.stop;
+
+  let nextCard='';
+  if(!nextActionStop){
+    nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.4);">
+      <div style="font-size:16px;color:#fbbf24;font-weight:600;">🎉 All food stops passed</div>
+      <div style="font-size:14px;color:var(--text3);margin-top:4px;">Nothing more to buy or eat.</div>
+    </div>`;
+  } else {
+    const distToNext=(nextActionStop.dist-liveDist).toFixed(1);
+    const eta=etaAt(nextActionStop.dist,r);
+    const day=sdt&&eta?dayOff(eta,sdt):'';
+    const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
+    const stopData=buyStops[nextActionStop.name];
+    const eatItems=(nextActionStop.meals||[]).filter(m=>m.source!=='here'||true);
+    // Build action lines
+    let actions='';
+    if(stopData){
+      if(stopData.eat.length)actions+=stopData.eat.map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'<span style="font-size:13px;color:var(--text3);margin-left:4px;">eat here</span></div>').join('');
+      if(stopData.carry.length)actions+=stopData.carry.map(m=>{
+        const dest=r.stops.find(s=>String(s.id)===String(m.stop.id));
+        return'<div style="margin:3px 0;">'+fmtItem(m)+'<span style="font-size:13px;color:var(--text3);margin-left:4px;">carry to '+(dest?dest.name:'later')+'</span></div>';
+      }).join('');
+    } else if(nextEatStop){
+      actions=(nextEatStop.meals||[]).map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'</div>').join('');
+    }
+    nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.5);background:rgba(251,191,36,0.06);">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${isLive?'next food stop':'next food stop'}</div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;">
+        <div style="font-size:18px;font-weight:600;color:#fbbf24;">${nextActionStop.name}</div>
+        <div style="font-size:15px;color:var(--accent);font-family:var(--font);">${distToNext} km · ${timeStr}</div>
+      </div>
+      ${actions}
+    </div>`;
+  }
+
+  // ── Carry from start ──
+  const fromStart=allMeals.filter(m=>m.source==='start');
+
+  // ── Per-day breakdown ──
+  const totalDays=sdt&&finEta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():1;
+  const mealsByDay={};
+  for(let d=1;d<=totalDays;d++)mealsByDay[d]={meals:0,snacks:0};
+  allMeals.forEach(m=>{
+    const eta=etaAt(m.stop.dist,r);
+    const day=sdt&&eta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<=eta){n++;d.setDate(d.getDate()+1);}return n;})():1;
+    if(!mealsByDay[day])mealsByDay[day]={meals:0,snacks:0};
+    if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
+  });
+
+  return nextCard
+    +'<div class="card">'
+      +(fromStart.length?`<div style="${lbl}margin-top:0;">🎒 Carry from start</div>`+fromStart.map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'</div>').join(''):'')
+      +buyStopsSorted.map(({stop,eat,carry})=>
+        `<div style="${lbl}">${stop.dist<=liveDist?'✓ ':''} 🛒 Buy at ${stop.name} · ${stop.dist.toFixed(1)} km</div>`
+        +eat.map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'<span style="font-size:12px;color:var(--text3);margin-left:4px;">eat here</span></div>').join('')
+        +carry.map(m=>{
+          const dest=r.stops.find(s=>String(s.id)===String(m.stop.id));
+          return'<div style="margin:3px 0;">'+fmtItem(m)+'<span style="font-size:12px;color:var(--text3);margin-left:4px;">carry to '+(dest?dest.name:'later')+'</span></div>';
+        }).join('')
+      ).join('')
+    +'</div>'
+    +'<div class="card">'
+      +`<div style="${lbl}margin-top:0;">Eaten per day</div>`
+      +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks}])=>{
+        const total=meals+snacks;
+        const txt=total===0?'<span style="color:rgba(251,191,36,0.4);">no food planned</span>':
+          (meals>0?meals+' meal'+(meals!==1?'s':''):'')+(meals>0&&snacks>0?' + ':'')+(snacks>0?snacks+' snack'+(snacks!==1?'s':''):'');
+        return`<div style="font-size:15px;color:var(--text2);margin-bottom:2px;">Day ${day}: ${txt}</div>`;
+      }).join('')
+    +'</div>';
 }
 
 function printMission(){
@@ -5215,8 +5262,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     saveAll();render();return;
   }
   if(e.target.closest('#btn-plan-sleep-filter')){
-    UI.planSleepOnly=!UI.planSleepOnly;render();return;}
+    UI.planSleepOnly=!UI.planSleepOnly;renderKeepScroll();return;}
   if(e.target.closest('#btn-print-mission')){printMission();return;}
+  if(e.target.closest('#btn-go-food')){UI.tab='food';render();return;}
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
   if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')){
