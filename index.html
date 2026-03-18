@@ -1526,7 +1526,7 @@ function drawMap(cvs,r,opts){
     const midLon=(Math.min(...lons)+Math.max(...lons))/2;
     const getSun=eta=>{
       if(!eta)return null;
-      const dateStr=eta.toLocaleDateString('en-CA');
+      const dateStr=eta.toISOString().slice(0,10);
       return _sunCache[`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`]||null;
     };
     const getCol=eta=>{
@@ -2772,7 +2772,7 @@ function renderDesktopMap(){
       if(!startDT(r)||!Object.keys(_sunCache).length)return'rgba(34,211,238,0.85)';
       const eta=etaAt(epts[i].dist,r);
       if(!eta)return'rgba(34,211,238,0.85)';
-      const dateStr=eta.toLocaleDateString('en-CA');
+      const dateStr=eta.toISOString().slice(0,10);
       const sun=_sunCache[`${emidLat.toFixed(2)},${emidLon.toFixed(2)},${dateStr}`];
       if(!sun)return'rgba(34,211,238,0.85)';
       const bg=dayNightBg(eta,sun);
@@ -4105,15 +4105,12 @@ async function fetchSunTimes(lat,lon,dateStr){
     const res=await fetch(url);
     const j=await res.json();
     if(j.status==='OK'){
-      // API returns UTC times. Shift them to local time so they compare
-      // correctly against ETAs which are local Date objects
-      const tzOffsetMs=new Date().getTimezoneOffset()*60000*-1;
-      const toLocal=utcStr=>new Date(new Date(utcStr).getTime()+tzOffsetMs);
+      // API returns UTC times. Date.getTime() comparisons are always UTC so no shift needed.
       const result={
-        sunrise:toLocal(j.results.sunrise),
-        sunset:toLocal(j.results.sunset),
-        dawn:toLocal(j.results.nautical_twilight_begin),
-        dusk:toLocal(j.results.nautical_twilight_end)
+        sunrise:new Date(j.results.sunrise),
+        sunset:new Date(j.results.sunset),
+        dawn:new Date(j.results.nautical_twilight_begin),
+        dusk:new Date(j.results.nautical_twilight_end)
       };
       _sunCache[key]=result;
       return result;
@@ -4127,8 +4124,8 @@ async function fetchSunTimes(lat,lon,dateStr){
 
 // Rough fallback sunrise/sunset when API unavailable
 function _sunApprox(lat,dateStr){
-  // Use local midnight as base so times match local ETA dates
-  const base=new Date(dateStr+'T00:00:00');
+  // Use UTC midnight as base to match the sun API which returns UTC times
+  const base=new Date(dateStr+'T00:00:00Z');
   const riseH=6,setH=18;
   const sunrise=new Date(base.getTime()+riseH*3600000);
   const sunset=new Date(base.getTime()+setH*3600000);
@@ -4225,7 +4222,7 @@ function tPlan(r){
     const missingDays=[];
     for(let d=0;d<days;d++){
       const dt=new Date(sdt.getTime()+d*86400000);
-      const dateStr=dt.toLocaleDateString('en-CA'); // local YYYY-MM-DD
+      const dateStr=dt.toISOString().slice(0,10); // UTC YYYY-MM-DD matches sun API
       const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`;
       if(!_sunCache[key])missingDays.push(dateStr);
     }
@@ -4281,8 +4278,7 @@ function tPlan(r){
   const midLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
   const getSun=(dt)=>{
     if(!dt)return null;
-    // Use local date string (not UTC) so we get the right day's sun times
-    const localDateStr=dt.toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+    const localDateStr=dt.toISOString().slice(0,10); // UTC YYYY-MM-DD matches sun API cache keys
     const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${localDateStr}`;
     return _sunCache[key]||null;
   };
