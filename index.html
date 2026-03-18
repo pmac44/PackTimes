@@ -434,7 +434,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,turnAudio:true,keepScreenOn:false};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,turnAudio:true,keepScreenOn:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -3259,7 +3259,6 @@ function _render(){
     // Stops: fixed map panel + scrollable section below
     wrap.innerHTML=tStopsShell(r);
     _lastStopsScrollTop=0;
-    _stopsMapExpanded=true;
     _stopsScrollLocked=false;
     _stopsTileSelected=false;
     _stopsScrollBaseline=0;
@@ -3308,7 +3307,9 @@ function tStopsShell(r){
         <canvas id="stops-map"></canvas>
         <div class="mhint">tap route to add · drag to pan</div>
         ${mapCtrlHTML('stops-map',false)}
-        ${!IS_DESKTOP()?`<div id="mobile-map-legend" style="position:absolute;top:8px;left:4px;display:flex;flex-direction:column;gap:2px;z-index:20;">
+        ${!IS_DESKTOP()?`
+        <button id="stops-map-expand" style="position:absolute;top:8px;right:44px;z-index:22;background:rgba(10,15,10,0.82);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:18px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;">⛶</button>
+        <div id="mobile-map-legend" style="position:absolute;top:8px;left:4px;display:flex;flex-direction:column;gap:2px;z-index:20;">
           ${(()=>{
             const types=[
               {type:'town',col:'#4ade80'},{type:'water',col:'#60a5fa'},
@@ -3327,45 +3328,17 @@ function tStopsShell(r){
             if(r.turns&&r.turns.length)present.add('turns');
             present.add('kmmarkers');
             const filtered=types.filter(t=>present.has(t.type));
+            // Split into two columns — left gets even indices, right gets odd
+            const left=filtered.filter((_,i)=>i%2===0);
+            const right=filtered.filter((_,i)=>i%2===1);
             const dotHTML=t=>{
               const hidden=UI.hiddenMapTypes.has(t.type);
               return`<div class="mob-layer-btn" data-ltype="${t.type}" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
                 <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#0a0f0a'}" stroke-width="1.4"/></svg>
               </div>`;
             };
-            return filtered.map(dotHTML).join('');
-          })()}
-        </div>
-        <div id="mobile-map-legend-r" style="position:absolute;top:8px;right:4px;display:flex;flex-direction:column;gap:2px;z-index:20;">
-          ${(()=>{
-            const types=[
-              {type:'town',col:'#4ade80'},{type:'water',col:'#60a5fa'},
-              {type:'food',col:'#fbbf24'},{type:'wc',col:'#2dd4bf'},
-              {type:'crossing',col:'#6b9eb0'},{type:'fuel',col:'#f97316'},
-              {type:'shop',col:'#c084fc'},{type:'camp',col:'#4a7c59'},
-              {type:'caravan',col:'#84cc16'},{type:'pub',col:'#f59e0b'},
-              {type:'hut',col:'#c8a96e'},{type:'accom',col:'#c084fc'},
-              {type:'turns',col:'rgba(74,222,128,0.8)'},{type:'kmmarkers',col:'rgba(255,255,255,0.7)'},
-              {type:'peak',col:'#94a3b8'},{type:'church',col:'#e8c4f0'},
-              {type:'school',col:'#93c5fd'},{type:'hall',col:'#d4a373'},
-              {type:'police',col:'#3b82f6'},{type:'fire',col:'#ef4444'},
-              {type:'stockwater',col:'#94a3b8'},{type:'sleep',col:'#b39ddb'},
-            ];
-            const present=new Set(r.stops.map(s=>s.type));
-            if(r.turns&&r.turns.length)present.add('turns');
-            present.add('kmmarkers');
-            const filtered=types.filter(t=>present.has(t.type));
-            // Only show overflow dots that don't fit in left column
-            // Left column capacity based on map height ~300px / 24px per dot = ~12 dots
-            const CAP=12;
-            if(filtered.length<=CAP)return'';
-            const overflow=filtered.slice(CAP);
-            return overflow.map(t=>{
-              const hidden=UI.hiddenMapTypes.has(t.type);
-              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
-                <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#0a0f0a'}" stroke-width="1.4"/></svg>
-              </div>`;
-            }).join('');
+            // Return left column; right column is a sibling div
+            return left.map(dotHTML).join('')+'</div><div id="mobile-map-legend-r" style="position:absolute;top:8px;left:30px;display:flex;flex-direction:column;gap:2px;z-index:20;">'+right.map(dotHTML).join('');
           })()}
         </div>
         <div id="mobile-layer-label" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:21;display:none;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:8px;padding:8px 18px;font-size:18px;font-weight:600;color:#fff;font-family:var(--sans);pointer-events:none;white-space:nowrap;"></div>`:''}
@@ -3471,10 +3444,38 @@ function initStopsMap(r){
     const wrap=document.getElementById('stops-map-wrap');
     if(panel&&wrap){panel.style.height='250px';wrap.style.height='250px';cvs.style.height='250px';cvs._forcedH=250;}
   } else {
-    setStopsMapHeight(0.60,false);
+    setStopsMapHeight(UI.stopsMapExpanded?1.0:0.60,false);
   }
   drawMap(cvs,r,{anchor:0.5,highlightId:_highlightStopId});
-  attachMap(cvs,km=>openModal(km));
+  attachMap(cvs,km=>{
+    if(UI.stopsMapExpanded){
+      // Collapse first, then open modal
+      UI.stopsMapExpanded=false;
+      setStopsMapHeight(0.60,false);
+      const btn=document.getElementById('stops-map-expand');
+      if(btn)btn.textContent='⛶';
+      const scroll=document.querySelector('.stops-scroll');
+      if(scroll)scroll.style.display='';
+    }
+    openModal(km);
+  });
+  // Expand button
+  const expandBtn=document.getElementById('stops-map-expand');
+  if(expandBtn){
+    expandBtn.onclick=e=>{
+      e.stopPropagation();
+      UI.stopsMapExpanded=!UI.stopsMapExpanded;
+      expandBtn.textContent=UI.stopsMapExpanded?'✕':'⛶';
+      const scroll=document.querySelector('.stops-scroll');
+      if(UI.stopsMapExpanded){
+        setStopsMapHeight(1.0,false);
+        if(scroll)scroll.style.display='none';
+      } else {
+        setStopsMapHeight(0.60,false);
+        if(scroll)scroll.style.display='';
+      }
+    };
+  }
 }
 
 // Stops scroll listener — attached to document so it survives re-renders
@@ -3485,7 +3486,6 @@ function ensureStopsScrollListener(){
   document.addEventListener('scroll',handleStopsScroll,{passive:true,capture:true});
 }
 let _lastStopsScrollTop=0;
-let _stopsMapExpanded=true;
 let _stopsScrollLocked=false;
 let _stopsTileSelected=false;
 let _stopsScrollBaseline=0;
