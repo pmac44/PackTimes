@@ -2665,10 +2665,12 @@ function renderDesktopMap(){
     if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()){
       legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join();
       const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
-      legend.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 6px;margin-bottom:2px;">'
-        +'<span style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);font-family:var(--font);text-transform:uppercase;letter-spacing:1.5px;">Layers</span>'
-        +`<span id="desktop-legend-all" style="font-size:10px;font-weight:600;color:rgba(255,255,255,0.55);font-family:var(--font);cursor:pointer;text-decoration:underline;">${allHidden?'show all':'hide all'}</span>`
-        +'</div>'
+      const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
+      // "All" toggle row — same style as layer rows, white dot when all visible, empty when any hidden
+      legend.innerHTML=`<div id="desktop-legend-all" class="map-legend-item" data-ltype="__all__" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);margin-bottom:2px;opacity:1;">
+          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${allVisible?'rgba(255,255,255,0.85)':'none'}" stroke="rgba(255,255,255,0.85)" stroke-width="1.5"/></svg>
+          <span style="font-size:12px;color:rgba(255,255,255,0.85);font-family:var(--font);white-space:nowrap;font-weight:600;">All</span>
+        </div>`
         +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
         return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
@@ -2721,7 +2723,7 @@ function renderDesktopMap(){
         return;
       }
       const li=e.target.closest('.map-legend-item');
-      if(!li)return;
+      if(!li||li.dataset.ltype==='__all__')return;
       const t=li.dataset.ltype;
       if(UI.hiddenMapTypes.has(t))UI.hiddenMapTypes.delete(t);
       else UI.hiddenMapTypes.add(t);
@@ -3384,8 +3386,7 @@ function tStopsShell(r){
             return allDot+filtered.map(dotHTML).join('');
           })()}
         </div>
-        <div id="mobile-map-legend-r" style="display:none;"></div>
-        <div id="mobile-layer-label" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:21;display:none;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:8px;padding:8px 18px;font-size:18px;font-weight:600;color:#fff;font-family:var(--sans);pointer-events:none;white-space:nowrap;"></div>`:''}
+        <div id="mobile-map-legend-r" style="display:none;"></div>`:''}
       </div>
     </div>
     <div style="height:6px;flex-shrink:0;background:var(--bg);"></div>
@@ -5123,26 +5124,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     else UI.hiddenMapTypes.add(t);
     const svg=mob.querySelector('circle');
     const types={town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',wc:'#2dd4bf',stockwater:'#94a3b8',food:'#fbbf24',fuel:'#f97316',shop:'#c084fc',pub:'#f59e0b',camp:'#4a7c59',hut:'#c8a96e',accom:'#c084fc',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',peak:'#94a3b8',turns:'rgba(74,222,128,0.8)',kmmarkers:'rgba(255,255,255,0.7)',sleep:'#b39ddb'};
-    const labels={town:'Towns',water:'Water',crossing:'Waterways',wc:'Toilets',stockwater:'Stock water',food:'Food',fuel:'Fuel',shop:'Shops',pub:'Pubs',camp:'Camps',hut:'Huts',accom:'Accom',church:'Churches',school:'Schools',hall:'Halls',fire:'Fire stn',police:'Police',caravan:'Caravan',peak:'Peaks',turns:'Turns',kmmarkers:'km markers',sleep:'Sleep'};
     if(svg){
       const col=types[t]||'#fff';
       const hidden=UI.hiddenMapTypes.has(t);
       svg.setAttribute('fill',hidden?'none':col);
       svg.setAttribute('stroke',hidden?col:'#0a0f0a');
     }
-    // Show brief label
-    const lbl=document.getElementById('mobile-layer-label');
-    if(lbl){
-      const hidden=UI.hiddenMapTypes.has(t);
-      const rect=mob.getBoundingClientRect();
-      const mapRect=mob.closest('.map-wrap').getBoundingClientRect();
-      lbl.textContent=(hidden?'○ ':'● ')+(labels[t]||t);
-      lbl.style.top=(rect.top-mapRect.top+4)+'px';
-      lbl.style.display='block';
-      clearTimeout(lbl._hideTimer);
-      lbl._hideTimer=setTimeout(()=>lbl.style.display='none',1000);
-    }
-    // Update All dot to reflect current state
     const r2=cur();
     if(r2){
       const allTypes=sortedLayers(r2).map(t=>t.type);
