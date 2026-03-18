@@ -423,7 +423,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,turnAudio:true,keepScreenOn:false};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,turnAudio:true,keepScreenOn:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -769,11 +769,12 @@ function etaAt(distKm,r){
   const sortedStops=r.stops.filter(s=>((s.type==='sleep'||s.type==='rest'||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist<distKm)
     .sort((a,b)=>a.dist-b.dist);
   sortedStops.forEach(s=>{
-    // Before-sleep meals (excluding carry-only items)
-    const beforeMealH=(s.meals||[]).filter(m=>m.when==='before'||!m.when).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+    const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+    // Before-sleep meals — or ALL meals if no sleep at this stop
+    const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
     sleepOffset+=beforeMealH;
     // Sleep
-    if(s.type==='sleep'||s.type==='rest'||s.sleepAt){
+    if(hasSleep){
       if(s.departTime){
         let rideHrsToStop;
         const crStop=cumRidingAt(s.dist,r),crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
@@ -785,8 +786,8 @@ function etaAt(distKm,r){
         sleepOffset+=s.sleepH||(s.type==='rest'?1:10);
       }
     }
-    // After-sleep meals (excluding carry-only items)
-    const afterMealH=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+    // After-sleep meals (only relevant if stop has sleep)
+    const afterMealH=hasSleep?(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0):0;
     sleepOffset+=afterMealH;
   });
   hrs+=sleepOffset;
@@ -4255,7 +4256,9 @@ function tPlan(r){
   // Re-sort by dist
   nodeList.sort((a,b)=>a.dist-b.dist);
   // Sleep-only filter — keep start, finish and sleep nodes only
-  const filteredList=UI.planSleepOnly?nodeList.filter(n=>n.isSleep):nodeList;
+  const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:null;
+  const filteredList=(UI.planSleepOnly?nodeList.filter(n=>n.isSleep):nodeList)
+    .filter(n=>!UI.planHidePassed||liveDist===null||n.dist>=liveDist);
   const nodes=[
     {name:'Start 🚩',dist:0,distEnd:0,isStart:true,cluster:null},
     ...filteredList,
@@ -4306,8 +4309,10 @@ function tPlan(r){
     let sleepDiv='';
     if(isSleep&&node.sleepStop){
       const s=node.sleepStop;
-      const beforeMealH=(s.meals||[]).filter(m=>m.when==='before'||!m.when).reduce((a,m)=>a+(m.durationMin||20)/60,0);
-      const afterMealH=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+      const beforeMeals=(s.meals||[]).filter(m=>m.when==='before'||!m.when);
+      const afterMeals=(s.meals||[]).filter(m=>m.when==='after');
+      const beforeMealH=beforeMeals.reduce((a,m)=>a+(m.durationMin||20)/60,0);
+      const afterMealH=afterMeals.reduce((a,m)=>a+(m.durationMin||20)/60,0);
       const arrivalWithMeals=eta&&beforeMealH>0?new Date(eta.getTime()+beforeMealH*3600000):eta;
       const hrs=sleepHoursFor(s,arrivalWithMeals);
       const wake=arrivalWithMeals?new Date(arrivalWithMeals.getTime()+hrs*3600000):null;
@@ -4316,16 +4321,25 @@ function tPlan(r){
       const departDay=depart&&sdt?dayOff(depart,sdt):'';
       const col=s.type==='rest'?'#94856a':'#b39ddb';
       const icon=s.type==='rest'?'🪑':'😴';
-      const sleepLabel=s.departTime?
-        `<div style="color:${col};">⏰ wake ${s.departTime} (${hrs.toFixed(1)}h)</div>`:
-        `<div style="color:${col};">${icon} ${hrs.toFixed(1)}h</div>`;
-      sleepDiv='<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:12px;font-family:var(--font);font-size:15px;">'
-        +'<div><span style="color:var(--text3);">Arrive</span> <span style="color:var(--text);">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</span></div>'
-        +(beforeMealH>0?'<div><span style="color:#fbbf24;">🍽️ +'+(beforeMealH*60).toFixed(0)+'min</span></div>':'')
-        +(wake?'<div><span style="color:var(--text3);">Wake</span> <span style="color:var(--text);">'+(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake)+'</span></div>':'')
-        +(afterMealH>0?'<div><span style="color:#fbbf24;">🍽️ +'+(afterMealH*60).toFixed(0)+'min</span></div>':'')
-        +(depart&&afterMealH>0?'<div><span style="color:var(--text3);">Depart</span> <span style="color:var(--accent);">'+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</span></div>':'')
-        +sleepLabel
+      const fmtChip=m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;display:inline-block;margin:2px 2px 2px 0;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier'}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
+      const row=(label,val,color)=>`<div style="display:flex;align-items:baseline;gap:6px;margin-top:4px;font-family:var(--font);font-size:15px;"><span style="color:var(--text3);min-width:52px;">${label}</span><span style="color:${color||'var(--text)'};">${val}</span></div>`;
+      sleepDiv='<div style="margin-top:8px;">'
+        // 1. Arrive
+        +row('Arrive',(dayStr?dayStr+' ':'')+fmtT(eta))
+        // 2. Before-sleep meals
+        +(beforeMeals.length?'<div style="margin-top:4px;">'+beforeMeals.map(fmtChip).join('')+'</div>':'')
+        // 3. Sleep / wake
+        +row(s.departTime?'Wake':'Sleep',(s.departTime?(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake):'')+(s.departTime?'':' '+hrs.toFixed(1)+'h'),col)
+        +(s.departTime?'':row('','⏰ '+hrs.toFixed(1)+'h '+icon,col))
+        // Actually just show sleep line cleanly
+        +'</div>';
+      // Rebuild more cleanly
+      sleepDiv='<div style="margin-top:8px;font-family:var(--font);font-size:15px;">'
+        +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="color:var(--text3);min-width:52px;">Arrive</span><span style="color:var(--text);">${(dayStr?dayStr+' ':'')+fmtT(eta)}</span></div>`
+        +(beforeMeals.length?'<div style="margin:4px 0;">'+beforeMeals.map(fmtChip).join('')+'</div>':'')
+        +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="color:var(--text3);min-width:52px;">${icon} ${s.departTime?'Wake':'Sleep'}</span><span style="color:${col};">${s.departTime?(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake)+' ('+hrs.toFixed(1)+'h)':hrs.toFixed(1)+'h'}</span></div>`
+        +(afterMeals.length?'<div style="margin:4px 0;">'+afterMeals.map(fmtChip).join('')+'</div>':'')
+        +(depart?`<div style="display:flex;gap:6px;"><span style="color:var(--text3);min-width:52px;">Depart</span><span style="color:var(--accent);">${(departDay?departDay.trim()+' ':'')+fmtT(depart)}</span></div>`:'')
         +'</div>';
     }
     // Cluster sleep departure
@@ -4356,21 +4370,13 @@ function tPlan(r){
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="background:none;border:1px solid '+(hasMeals?'rgba(251,191,36,0.6)':'var(--border)')+';border-radius:6px;cursor:pointer;font-size:18px;padding:2px 6px;margin-top:1px;" title="Add food here">'+(hasMeals?'🍽️':'🍔')+'</button>':''})():'')
           +'</div>')
         +'</div>'
-        +(isSleep?sleepDiv+chipsDiv:chipsDiv)
-        // Meals assigned to this stop
-        +((()=>{
-          const stopMeals=(isSleep&&node.sleepStop?node.sleepStop.meals:node.cluster?node.cluster.stops.flatMap(s=>s.meals||[]):[]);
-          if(!stopMeals||!stopMeals.length)return'';
-          const sortOrder=m=>m.source==='here-carry'?2:m.when==='after'?1:0;
-          const sorted=[...stopMeals].sort((a,b)=>sortOrder(a)-sortOrder(b));
+        +(isSleep?sleepDiv+chipsDiv:chipsDiv+(()=>{
+          const stopMeals=node.cluster?node.cluster.stops.flatMap(s=>s.meals||[]):[];
+          if(!stopMeals.length)return'';
+          const sorted=[...stopMeals].sort((a,b)=>(a.when==='after'?1:0)-(b.when==='after'?1:0));
+          const srcLabel=m=>m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier';
           return'<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">'
-            +sorted.map(m=>{
-              const stopHasSleep=(isSleep&&node.sleepStop)||
-                (node.cluster&&node.cluster.stops.some(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt));
-              const whenLabel=stopHasSleep&&m.source!=='here-carry'?(m.when==='after'?' · after sleep':' · before sleep'):'';
-              const srcLabel=m.source==='here'||m.source==='here-carry'?'buy here':m.source==='start'?'from start':'bought earlier';
-              return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${srcLabel}${whenLabel}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
-            }).join('')
+            +sorted.map(m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${srcLabel(m)}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`).join('')
             +'</div>';
         })())
       +'</div>'
@@ -4460,6 +4466,7 @@ function tPlan(r){
         +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
         +'<button class="btn btn-sm'+( UI.planSleepOnly?' btn-p':'')+'" id="btn-plan-sleep-filter" style="font-size:13px;" title="Show sleep stops only">😴</button>'
+        +(UI.gpsDistKm!==null?'<button class="btn btn-sm'+( UI.planHidePassed?' btn-p':'')+'" id="btn-plan-hide-passed" style="font-size:13px;" title="Hide passed stops">✓ Hide passed</button>':'')
         +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;">🖨️ Print</button>'
       +'</div>'
       +'</div>'
@@ -4548,7 +4555,16 @@ function tFood(r){
     nextEatStop.dist<=nextBuyStop.stop.dist?nextEatStop:nextBuyStop.stop;
 
   let nextCard='';
-  if(!nextActionStop){
+  const fromStart=allMeals.filter(m=>m.source==='start');
+
+  if(!isLive&&fromStart.length){
+    // Not started yet — show what to pack first
+    nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.5);background:rgba(251,191,36,0.06);">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Before you leave — pack these</div>
+      <div style="font-size:17px;font-weight:600;color:#fbbf24;margin-bottom:6px;">🎒 Carry from start</div>
+      ${fromStart.map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'</div>').join('')}
+    </div>`;
+  } else if(!nextActionStop){
     nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.4);">
       <div style="font-size:16px;color:#fbbf24;font-weight:600;">🎉 All food stops passed</div>
       <div style="font-size:14px;color:var(--text3);margin-top:4px;">Nothing more to buy or eat.</div>
@@ -4559,8 +4575,6 @@ function tFood(r){
     const day=sdt&&eta?dayOff(eta,sdt):'';
     const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
     const stopData=buyStops[nextActionStop.name];
-    const eatItems=(nextActionStop.meals||[]).filter(m=>m.source!=='here'||true);
-    // Build action lines
     let actions='';
     if(stopData){
       if(stopData.eat.length)actions+=stopData.eat.map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'<span style="font-size:13px;color:var(--text3);margin-left:4px;">eat here</span></div>').join('');
@@ -4568,8 +4582,8 @@ function tFood(r){
         const dest=r.stops.find(s=>String(s.id)===String(m.stop.id));
         return'<div style="margin:3px 0;">'+fmtItem(m)+'<span style="font-size:13px;color:var(--text3);margin-left:4px;">carry to '+(dest?dest.name:'later')+'</span></div>';
       }).join('');
-    } else if(nextEatStop){
-      actions=(nextEatStop.meals||[]).map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'</div>').join('');
+    } else {
+      actions=(nextActionStop.meals||[]).map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'</div>').join('');
     }
     nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.5);background:rgba(251,191,36,0.06);">
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${isLive?'next food stop':'next food stop'}</div>
@@ -4580,9 +4594,6 @@ function tFood(r){
       ${actions}
     </div>`;
   }
-
-  // ── Carry from start ──
-  const fromStart=allMeals.filter(m=>m.source==='start');
 
   // ── Per-day breakdown ──
   const totalDays=sdt&&finEta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():1;
@@ -5263,6 +5274,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   if(e.target.closest('#btn-plan-sleep-filter')){
     UI.planSleepOnly=!UI.planSleepOnly;renderKeepScroll();return;}
+  if(e.target.closest('#btn-plan-hide-passed')){
+    UI.planHidePassed=!UI.planHidePassed;renderKeepScroll();return;}
   if(e.target.closest('#btn-print-mission')){printMission();return;}
   if(e.target.closest('#btn-go-food')){UI.tab='food';render();return;}
   // Mission tile click — highlight stop on desktop map
