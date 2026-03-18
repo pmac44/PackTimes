@@ -4208,9 +4208,11 @@ function tPlan(r){
           if(!stopMeals||!stopMeals.length)return'';
           return'<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">'
             +stopMeals.map(m=>{
-              const whenLabel=m.source==='here-carry'?'carry':m.when==='after'?'after sleep':'before sleep';
+              const stopHasSleep=(isSleep&&node.sleepStop)||
+                (node.cluster&&node.cluster.stops.some(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt));
+              const whenLabel=stopHasSleep&&m.source!=='here-carry'?(m.when==='after'?' · after sleep':' · before sleep'):'';
               const srcLabel=m.source==='here'||m.source==='here-carry'?'buy here':m.source==='start'?'from start':'bought earlier';
-              return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${srcLabel}${m.source!=='here-carry'?' · '+whenLabel:' · carry'}${m.durationMin&&m.durationMin!==20&&m.source!=='here-carry'?' · '+m.durationMin+'min':''}</span>`;
+              return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${srcLabel}${m.source==='here-carry'?' · carry':whenLabel}${m.durationMin&&m.durationMin!==20&&m.source!=='here-carry'?' · '+m.durationMin+'min':''}</span>`;
             }).join('')
             +'</div>';
         })())
