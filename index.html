@@ -4396,21 +4396,24 @@ function tPlan(r){
       const eatenMeals=allMeals;
       // Build inventory: what to carry from start
       const fromStart=allMeals.filter(m=>m.source==='start');
-      // Group buy-here by stop
+      // Group all stop-bought items by the BUYING stop
+      // "buy here" = eat at this stop; "bought at earlier stop" = carry forward from that stop
       const buyByStop={};
+      // Items eaten here that are bought here
       allMeals.filter(m=>m.source==='here').forEach(m=>{
         const key=m.stop.name;
-        if(!buyByStop[key])buyByStop[key]={stop:m.stop,eat:[]};
+        if(!buyByStop[key])buyByStop[key]={stop:m.stop,eat:[],carry:[]};
         buyByStop[key].eat.push(m);
       });
-      // Group bought-earlier by source stop
-      const buyEarlierByStop={};
-      allMeals.filter(m=>m.source&&m.source!=='start'&&m.source!=='here'&&m.source!=='here-carry').forEach(m=>{
+      // Items eaten at a later stop but bought at an earlier stop — add to the BUYING stop's carry list
+      allMeals.filter(m=>m.source&&m.source!=='start'&&m.source!=='here').forEach(m=>{
         const src=r.stops.find(s=>String(s.id)===String(m.source));
         const key=src?src.name:'Unknown';
-        if(!buyEarlierByStop[key])buyEarlierByStop[key]=[];
-        buyEarlierByStop[key].push(m);
+        if(!buyByStop[key])buyByStop[key]={stop:src||m.stop,eat:[],carry:[]};
+        buyByStop[key].carry.push(m);
       });
+      // Sort buy stops by distance along route
+      const buyStopsSorted=Object.values(buyByStop).sort((a,b)=>(a.stop.dist||0)-(b.stop.dist||0));
       // Per-day eaten meal counts — all days from 1 to total
       const totalDays=sdt&&finEta?Math.ceil((finEta-sdt)/86400000)+1:1;
       const mealsByDay={};
@@ -4430,19 +4433,14 @@ function tPlan(r){
           +'<div style="'+lbl+'">🍔 Food plan · '+allMeals.length+' item'+(allMeals.length!==1?'s':'')+'</div>'
           // Carry from start
           +(fromStart.length?'<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">🎒 Carry from start:</span><br>'+fmtList(fromStart)+'</div>':'')
-          // Resupply stops — buy here to eat + buy here to carry
-          +(Object.keys(buyByStop).length?
-            Object.values(buyByStop).map(({stop,eat,carry})=>
-              '<div style="margin-bottom:6px;">'
-              +'<span style="font-size:13px;color:var(--text3);">🛒 Buy at '+stop.name+':</span><br>'
-              +(eat.length?'<span style="font-size:12px;color:var(--text3);">Eat: </span>'+fmtList(eat):'')
-              +'</div>'
-            ).join(''):'')
-          // Items bought at earlier stops
-          +(Object.keys(buyEarlierByStop).length?
-            Object.entries(buyEarlierByStop).map(([name,items])=>
-              '<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">📍 Bought at '+name+':</span><br>'+fmtList(items)+'</div>'
-            ).join(''):'')
+          // All resupply stops in route order — eat here + carry forward together
+          +buyStopsSorted.map(({stop,eat,carry})=>
+            '<div style="margin-bottom:6px;">'
+            +'<span style="font-size:13px;color:var(--text3);">🛒 Buy at '+stop.name+':</span><br>'
+            +(eat.length?'<span style="font-size:12px;color:var(--text3);">Eat here: </span>'+fmtList(eat):'')
+            +(carry.length?(eat.length?'<br>':'')+'<span style="font-size:12px;color:var(--text3);">Carry forward: </span>'+fmtList(carry):'')
+            +'</div>'
+          ).join('')
           // Per-day eaten
           +'<div style="'+lbl+'margin-top:8px;">Eaten per day</div>'
           +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks}])=>{
