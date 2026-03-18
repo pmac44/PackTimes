@@ -4446,6 +4446,41 @@ function updateLive(){
   patchCard(nextWater,'water');
   patchCard(nextFood,'food');
 
+  // Rebuild stop list to hide passed stops and update next cards
+  const stopList=document.getElementById('live-stop-list');
+  if(stopList){
+    const r2=cur();
+    if(r2){
+      // Rebuild the stop list HTML
+      const newHtml=(()=>{
+        const planStops=r2.stops.filter(s=>starred(s));
+        if(!planStops.length)return'';
+        return planStops.map(s=>{
+          const passed=UI.gpsDistKm!==null&&s.dist<liveDist;
+          if(passed)return''; // hide passed stops
+          const eta=etaAt(s.dist,r2);
+          const day=sdt?dayOff(eta,sdt):'';
+          const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
+          const dt=(s.dist-liveDist).toFixed(1);
+          const orBadge=s.offRouteM>50?`<span style="font-size:13px;color:var(--text3);"> (${s.offRouteM}m off route)</span>`:'';
+          const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':'';
+          return`<div class="si live-stop" style="${tileBg}">
+            <div class="sdot d-${s.type}"></div>
+            <div class="si-inf">
+              <div class="si-name">${s.name}${orBadge}</div>
+              <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type}</span></div>
+            </div>
+            <div class="si-eta">${timeStr}</div>
+          </div>`;
+        }).join('');
+      })();
+      if(stopList.dataset.lastDist!==liveDist.toFixed(1)){
+        stopList.dataset.lastDist=liveDist.toFixed(1);
+        stopList.innerHTML=newHtml;
+      }
+    }
+  }
+
   r.stops.forEach(s=>{
     const eta=etaAt(s.dist,r),day=sdt?dayOff(eta,sdt):'';
     setText('eta-'+s.id,(day?day.trim()+' ':'')+fmtT(eta));
