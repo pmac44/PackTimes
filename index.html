@@ -1912,17 +1912,40 @@ function hitTest(cvs,cx,cy,cb){
         }
         // Scroll sidebar to stop tile FIRST, then redraw desktop map after
         if(cvs.id==='desktop-map'){
-          if(UI.tab!=='stops'){UI.tab='stops';render();}
-          setTimeout(()=>{
-            const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
-            if(tile){
-              document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
-              tile.classList.add('hi');
-              scrollTileToTop(tile);
-            }
-            // Redraw after scroll is complete
-            redrawMap('desktop-map');
-          },50);
+          if(UI.tab==='plan'){
+            // Mission tab — only act if stop is in the mission list
+            const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
+            if(!planStops.some(s=>String(s.id)===String(bestStop.id)))return;
+            setTimeout(()=>{
+              // Try mission-node with matching data-sid
+              let tile=document.querySelector(`.mission-node[data-sid="${bestStop.id}"]`);
+              if(!tile){
+                // Also try cluster nodes that contain this stop
+                document.querySelectorAll('.mission-node').forEach(el=>{
+                  if(el.dataset.sid&&String(el.dataset.sid)===String(bestStop.id))tile=el;
+                });
+              }
+              if(tile){
+                document.querySelectorAll('.mission-node').forEach(el=>el.style.outline='');
+                tile.style.outline='2px solid var(--accent)';
+                tile.scrollIntoView({behavior:'smooth',block:'nearest'});
+                setTimeout(()=>{tile.style.outline='';},1500);
+              }
+              // Do NOT redraw/move the big map
+            },0);
+          } else {
+            if(UI.tab!=='stops'){UI.tab='stops';render();}
+            setTimeout(()=>{
+              const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
+              if(tile){
+                document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
+                tile.classList.add('hi');
+                scrollTileToTop(tile);
+              }
+              // Redraw after scroll is complete
+              redrawMap('desktop-map');
+            },50);
+          }
         } else {
           setTimeout(()=>{
             const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
@@ -3061,6 +3084,16 @@ function scrollTileToTop(tile){
   const offset=tileRect.top-scrollerRect.top;
   scroller.scrollTo({top:scroller.scrollTop+offset,behavior:'smooth'});
 }
+function renderKeepScroll(){
+  const wrap=document.getElementById('content-wrap');
+  const scrollTop=wrap?wrap.scrollTop:0;
+  render();
+  // Restore scroll after render completes
+  requestAnimationFrame(()=>{
+    const w=document.getElementById('content-wrap');
+    if(w)w.scrollTop=scrollTop;
+  });
+}
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
 
 function _render(){
@@ -3866,6 +3899,7 @@ function stopRow(s,r,sdt){
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="font-size:16px;">${s.starred!==false?'⭐':'☆'}</button>
         ${s.type!=='sleep'&&s.type!=='rest'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="font-size:15px;${s.sleepAt?'color:var(--accent);border-color:var(--accent3);':''}">${s.sleepAt?'😴':'💤'}</button>`:''}
+        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="font-size:15px;${s.meals&&s.meals.length?'color:#fbbf24;border-color:rgba(251,191,36,0.5);':''}">${s.meals&&s.meals.length?'🍽️':'🍔'}</button>
         <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Rename">✏️</button>
         ${!s.auto?`<button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit position" style="font-size:15px;">📍</button>`:''}
         ${s.type==='sleep'?`<button class="btn btn-sm edit-sleep" data-sid="${s.id}" title="Edit sleep duration" style="font-size:15px;">😴</button>`:''}
@@ -4832,13 +4866,13 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
           if(isNaN(v)||v<=0||v>24){alert('Enter hours between 0 and 24');return;}
           UI.lastSleepH=v;s.sleepH=v;s.departTime=null;
         }
-        saveAll();render();
+        saveAll();renderKeepScroll();
       });
       picker.querySelector('.sleep-dur-cancel').addEventListener('click',ev=>{ev.stopPropagation();picker.remove();});
       const unsleepBtn=picker.querySelector('.sleep-dur-unsleep');
       if(unsleepBtn)unsleepBtn.addEventListener('click',ev=>{
         ev.stopPropagation();
-        s.sleepAt=false;s.sleepH=null;s.departTime=null;picker.remove();saveAll();render();
+        s.sleepAt=false;s.sleepH=null;s.departTime=null;picker.remove();saveAll();renderKeepScroll();
       });
     }
     return;
@@ -4849,7 +4883,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const sid=fa.dataset.sid;
     const s=r.stops.find(x=>String(x.id)===String(sid));
     if(s){
-      const container=fa.closest('.sleep-dur-anchor')||fa.closest('.mission-node')||fa.parentElement;
+      const container=fa.closest('.tap-stop')||fa.closest('.sleep-dur-anchor')||fa.closest('.mission-node')||fa.parentElement;
       if(!container)return;
       const existing=document.querySelector('.food-picker');
       if(existing){existing.remove();return;}
@@ -4929,7 +4963,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         picker.querySelector('.food-done').addEventListener('click',ev=>{
           ev.stopPropagation();
           if(!s.meals.length)delete s.meals;
-          picker.remove();saveAll();render();
+          picker.remove();saveAll();renderKeepScroll();
         });
       };
       renderPicker();
@@ -5008,7 +5042,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   // Tap stop → zoom map to it (stops page only)
   const ts=e.target.closest('.tap-stop');
-  if(ts&&!e.target.closest('.del-stop')&&!e.target.closest('.rename-stop')&&!e.target.closest('.star-stop')&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.edit-dist')&&!e.target.closest('.edit-sleep')&&!e.target.closest('#em-save')&&!e.target.closest('#edit-modal-x')&&UI.tab==='stops'&&r){
+  if(ts&&!e.target.closest('.del-stop')&&!e.target.closest('.rename-stop')&&!e.target.closest('.star-stop')&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.edit-dist')&&!e.target.closest('.edit-sleep')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('#em-save')&&!e.target.closest('#edit-modal-x')&&UI.tab==='stops'&&r){
     const s=r.stops.find(s=>String(s.id)===String(ts.dataset.sid));
     if(s){
       _highlightStopId=s.id;
