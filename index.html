@@ -2021,7 +2021,7 @@ function hitTest(cvs,cx,cy,cb){
             UI.stopsMapExpanded=false;
             setStopsMapHeight(0.60,false);
             const expandBtn=document.getElementById('stops-map-expand');
-            if(expandBtn)expandBtn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="30" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+            if(expandBtn)expandBtn.innerHTML=ICON_EXPAND;
             const scroll=document.querySelector('.stops-scroll');
             if(scroll)scroll.style.display='';
           }
@@ -3213,8 +3213,8 @@ function renderKeepScroll(){
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
 
 // Expand/collapse icons for stops map
-const ICON_EXPAND=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="30" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const ICON_COLLAPSE=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="20" y1="20" x2="8" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="14,20 20,20 20,14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="18" y1="18" x2="30" y2="30" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="18,24 18,18 24,18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_EXPAND=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="14" y1="14" x2="30" y2="30" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="14,22 14,14 22,14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="24" y1="24" x2="8" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,16 8,8 16,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICON_COLLAPSE=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="14" y1="14" x2="30" y2="30" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="22,30 30,30 30,22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="24" y1="24" x2="8" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,16 8,8 16,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 // Shared layer type definitions — towns first, kmmarkers second, turns third, rest sorted by quantity at runtime
 const LAYER_TYPES=[
   {type:'town',col:'#4ade80',label:'Towns'},
@@ -3330,13 +3330,13 @@ function _render(){
             mc.style.height=h+'px';mc._forcedH=h;
             // Scroll card to top and hide other cards
             if(card)card.scrollIntoView({block:'start'});
-            expandBtn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="20" x2="18" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="14,16 18,20 14,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,14 20,18 24,22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+            expandBtn.innerHTML=ICON_COLLAPSE;
             // Hide sibling cards
             document.querySelectorAll('#content-wrap .card').forEach(c=>{if(c!==card)c.style.display='none';});
           } else {
             if(wrap){wrap.style.height='400px';wrap.dataset.expanded='0';}
             mc.style.height='400px';mc._forcedH=400;
-            expandBtn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="30" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+            expandBtn.innerHTML=ICON_EXPAND;
             document.querySelectorAll('#content-wrap .card').forEach(c=>{c.style.display='';});
           }
           redrawMap('map-cvs');
@@ -3492,7 +3492,7 @@ function initStopsMap(r){
       UI.stopsMapExpanded=false;
       setStopsMapHeight(0.60,false);
       const btn=document.getElementById('stops-map-expand');
-      if(btn)btn.innerHTML=`<svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="8" y1="8" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,14 8,8 14,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="30" y1="30" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="24,30 30,30 30,24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      if(btn)btn.innerHTML=ICON_EXPAND;
       const scroll=document.querySelector('.stops-scroll');
       if(scroll)scroll.style.display='';
       // This callback fires for route-line taps only (stop dot taps are handled by hitTest)
@@ -3920,7 +3920,7 @@ function tRoutes(r){
       <canvas id="map-cvs" style="height:400px;"></canvas>
       ${zoomBtnsHTML('map-cvs')}
       ${mapCtrlHTML('map-cvs',false)}
-      <button id="route-map-expand" style="position:absolute;bottom:8px;right:8px;z-index:22;background:rgba(10,15,10,0.82);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:18px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;">⛶</button>
+      <button id="route-map-expand" style="position:absolute;bottom:8px;right:8px;z-index:22;background:rgba(10,15,10,0.82);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:0;overflow:hidden;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="14" y1="14" x2="30" y2="30" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="14,22 14,14 22,14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="24" y1="24" x2="8" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="8,16 8,8 16,8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
   </div>
   <div class="card" id="map-legend-card">
