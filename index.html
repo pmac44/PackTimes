@@ -711,17 +711,17 @@ function startDT(r){
 function sleepHoursFor(s,arrivalEta){
   if(s.type==='rest')return s.sleepH||1;
   if(!s.departTime)return s.sleepH||(s.sleepAt?10:10);
+  // Fixed wake time mode — calculate hours from arrival to next occurrence of wakeTime
   const [dh,dm]=s.departTime.split(':').map(Number);
   if(!arrivalEta)return s.sleepH||10;
-  const depart=new Date(arrivalEta);
-  depart.setHours(dh,dm,0,0);
-  // If departure is at or before arrival, advance to next day
-  if(depart<=arrivalEta){
-    depart.setDate(depart.getDate()+1);
-    depart.setHours(dh,dm,0,0);
+  const wake=new Date(arrivalEta);
+  wake.setHours(dh,dm,0,0);
+  // If wake time is at or before arrival, advance to next day
+  if(wake<=arrivalEta){
+    wake.setDate(wake.getDate()+1);
+    wake.setHours(dh,dm,0,0);
   }
-  const hrs=Math.max(1,(depart-arrivalEta)/3600000);
-  return hrs;
+  return Math.max(1,(wake-arrivalEta)/3600000);
 }
 
 // Get total sleep hours accounting for fixed departure times
@@ -757,32 +757,33 @@ function etaAt(distKm,r){
       hrs=targetTotal*(distKm/r.totalDist);
     }
   }
-  // Add sleep stop durations for stops strictly before this point
-  // For fixed-departure stops, calculate arrival at THAT stop (not destination) then derive hours
+  // Add stop durations for stops strictly before this point
+  // Order at each stop: before-meals → sleep → after-meals
   let sleepOffset=0;
-  const sortedSleeps=r.stops.filter(s=>(s.type==='sleep'||s.type==='rest'||s.sleepAt)&&s.dist<distKm)
+  const sortedStops=r.stops.filter(s=>((s.type==='sleep'||s.type==='rest'||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist<distKm)
     .sort((a,b)=>a.dist-b.dist);
-  sortedSleeps.forEach(s=>{
-    if(s.departTime){
-      // Riding hours to THIS sleep stop (not the destination)
-      let rideHrsToStop;
-      const crStop=cumRidingAt(s.dist,r),crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
-      if(crStop!==null&&crTot&&crTot>0){
-        rideHrsToStop=crStop*(targetTotal/crTot);
+  sortedStops.forEach(s=>{
+    // Before-sleep meals (excluding carry-only items)
+    const beforeMealH=(s.meals||[]).filter(m=>m.source!=='here-carry'&&(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+    sleepOffset+=beforeMealH;
+    // Sleep
+    if(s.type==='sleep'||s.type==='rest'||s.sleepAt){
+      if(s.departTime){
+        let rideHrsToStop;
+        const crStop=cumRidingAt(s.dist,r),crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
+        if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
+        else{rideHrsToStop=targetTotal*(s.dist/r.totalDist);}
+        const arrivalEta=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
+        sleepOffset+=sleepHoursFor(s,arrivalEta);
       } else {
-        rideHrsToStop=targetTotal*(s.dist/r.totalDist);
+        sleepOffset+=s.sleepH||(s.type==='rest'?1:10);
       }
-      const arrivalEta=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
-      sleepOffset+=sleepHoursFor(s,arrivalEta);
-    } else {
-      sleepOffset+=s.sleepH||(s.type==='rest'?1:10);
     }
+    // After-sleep meals (excluding carry-only items)
+    const afterMealH=(s.meals||[]).filter(m=>m.source!=='here-carry'&&m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+    sleepOffset+=afterMealH;
   });
   hrs+=sleepOffset;
-  // Add meal stop durations for stops strictly before this point
-  const mealOffset=r.stops.filter(s=>s.meals&&s.meals.length&&s.dist<distKm)
-    .reduce((a,s)=>a+s.meals.reduce((b,m)=>b+(m.durationMin||20)/60,0),0);
-  hrs+=mealOffset;
   return new Date(base.getTime()+hrs*3600000);
 }
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
@@ -4150,17 +4151,25 @@ function tPlan(r){
     let sleepDiv='';
     if(isSleep&&node.sleepStop){
       const s=node.sleepStop;
-      const hrs=sleepHoursFor(s,eta);
-      const depart=eta?new Date(eta.getTime()+hrs*3600000):null;
+      const beforeMealH=(s.meals||[]).filter(m=>m.when==='before'||!m.when).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+      const afterMealH=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+      const arrivalWithMeals=eta&&beforeMealH>0?new Date(eta.getTime()+beforeMealH*3600000):eta;
+      const hrs=sleepHoursFor(s,arrivalWithMeals);
+      const wake=arrivalWithMeals?new Date(arrivalWithMeals.getTime()+hrs*3600000):null;
+      const depart=wake&&afterMealH>0?new Date(wake.getTime()+afterMealH*3600000):wake;
+      const wakeDay=wake&&sdt?dayOff(wake,sdt):'';
       const departDay=depart&&sdt?dayOff(depart,sdt):'';
       const col=s.type==='rest'?'#94856a':'#b39ddb';
       const icon=s.type==='rest'?'🪑':'😴';
       const sleepLabel=s.departTime?
-        `<div style="color:${col};">⏰ depart ${s.departTime} (${hrs.toFixed(1)}h)</div>`:
+        `<div style="color:${col};">⏰ wake ${s.departTime} (${hrs.toFixed(1)}h)</div>`:
         `<div style="color:${col};">${icon} ${hrs.toFixed(1)}h</div>`;
-      sleepDiv='<div style="margin-top:6px;display:flex;gap:12px;font-family:var(--font);font-size:15px;">'
+      sleepDiv='<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:12px;font-family:var(--font);font-size:15px;">'
         +'<div><span style="color:var(--text3);">Arrive</span> <span style="color:var(--text);">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</span></div>'
-        +(depart?'<div><span style="color:var(--text3);">Leave</span> <span style="color:var(--text);">'+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</span></div>':'')
+        +(beforeMealH>0?'<div><span style="color:#fbbf24;">🍽️ +'+(beforeMealH*60).toFixed(0)+'min</span></div>':'')
+        +(wake?'<div><span style="color:var(--text3);">Wake</span> <span style="color:var(--text);">'+(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake)+'</span></div>':'')
+        +(afterMealH>0?'<div><span style="color:#fbbf24;">🍽️ +'+(afterMealH*60).toFixed(0)+'min</span></div>':'')
+        +(depart&&afterMealH>0?'<div><span style="color:var(--text3);">Depart</span> <span style="color:var(--accent);">'+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</span></div>':'')
         +sleepLabel
         +'</div>';
     }
@@ -4199,8 +4208,9 @@ function tPlan(r){
           if(!stopMeals||!stopMeals.length)return'';
           return'<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">'
             +stopMeals.map(m=>{
-              const srcLabel=m.source==='here'?'buy here':m.source==='start'?'from start':'buy earlier';
-              return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${srcLabel}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
+              const whenLabel=m.source==='here-carry'?'carry':m.when==='after'?'after sleep':'before sleep';
+              const srcLabel=m.source==='here'||m.source==='here-carry'?'buy here':m.source==='start'?'from start':'bought earlier';
+              return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${srcLabel}${m.source!=='here-carry'?' · '+whenLabel:' · carry'}${m.durationMin&&m.durationMin!==20&&m.source!=='here-carry'?' · '+m.durationMin+'min':''}</span>`;
             }).join('')
             +'</div>';
         })())
@@ -4344,39 +4354,63 @@ function tPlan(r){
       if(!allMeals.length)return'';
       const accent='font-size:17px;font-weight:600;font-family:var(--font);';
       const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
-      // Group: from start vs buy along route
+      // Separate carry-forward from eaten items
+      const eatenMeals=allMeals.filter(m=>m.source!=='here-carry');
+      const carryItems=allMeals.filter(m=>m.source==='here-carry');
+      // Build inventory: what to carry from start
       const fromStart=allMeals.filter(m=>m.source==='start');
-      const buyHere=allMeals.filter(m=>m.source==='here');
-      const buyEarlier=allMeals.filter(m=>m.source&&m.source!=='start'&&m.source!=='here');
-      // Buy earlier — group by source stop id
+      // Group buy-here by stop
+      const buyByStop={};
+      allMeals.filter(m=>m.source==='here'||m.source==='here-carry').forEach(m=>{
+        const key=m.stop.name;
+        if(!buyByStop[key])buyByStop[key]={stop:m.stop,eat:[],carry:[]};
+        if(m.source==='here-carry')buyByStop[key].carry.push(m);
+        else buyByStop[key].eat.push(m);
+      });
+      // Group bought-earlier by source stop
       const buyEarlierByStop={};
-      buyEarlier.forEach(m=>{
+      allMeals.filter(m=>m.source&&m.source!=='start'&&m.source!=='here'&&m.source!=='here-carry').forEach(m=>{
         const src=r.stops.find(s=>String(s.id)===String(m.source));
-        const key=src?src.name:'Unknown stop';
+        const key=src?src.name:'Unknown';
         if(!buyEarlierByStop[key])buyEarlierByStop[key]=[];
         buyEarlierByStop[key].push(m);
       });
-      // Per-day meal counts
+      // Per-day eaten meal counts
       const mealsByDay={};
-      allMeals.forEach(m=>{
+      eatenMeals.forEach(m=>{
         const eta=etaAt(m.stop.dist,r);
         const day=sdt&&eta?Math.ceil((eta-sdt)/86400000):1;
         if(!mealsByDay[day])mealsByDay[day]={meals:0,snacks:0};
         if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
       });
-      const fmtList=items=>items.map(m=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:14px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>`).join('');
+      const fmtItem=m=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:14px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>`;
+      const fmtList=items=>items.map(fmtItem).join('');
       const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:var(--border2);"></div></div>';
       return'<div style="display:flex;align-items:stretch;gap:10px;margin-top:4px;">'
         +spine
         +'<div style="flex:1;padding:4px 0 4px 2px;">'
           +'<div style="'+lbl+'">🍔 Food plan · '+allMeals.length+' item'+(allMeals.length!==1?'s':'')+'</div>'
-          +(fromStart.length?'<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">Carry from start:</span><br>'+fmtList(fromStart)+'</div>':'')
-          +(Object.keys(buyEarlierByStop).length?Object.entries(buyEarlierByStop).map(([name,items])=>'<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">Buy at '+name+':</span><br>'+fmtList(items)+'</div>').join(''):'')
-          +(buyHere.length?'<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">Buy at eating stop:</span><br>'+fmtList(buyHere)+'</div>':'')
-          +'<div style="'+lbl+'margin-top:8px;">Per day</div>'
-          +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks}])=>
-            `<span style="font-size:15px;color:var(--text2);">Day ${day}: ${meals>0?meals+' meal'+(meals!==1?'s':''):''}${meals>0&&snacks>0?' + ':''}${snacks>0?snacks+' snack'+(snacks!==1?'s':''):''}</span><br>`
-          ).join('')
+          // Carry from start
+          +(fromStart.length?'<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">🎒 Carry from start:</span><br>'+fmtList(fromStart)+'</div>':'')
+          // Resupply stops — buy here to eat + buy here to carry
+          +(Object.keys(buyByStop).length?
+            Object.values(buyByStop).map(({stop,eat,carry})=>
+              '<div style="margin-bottom:6px;">'
+              +'<span style="font-size:13px;color:var(--text3);">🛒 Buy at '+stop.name+':</span><br>'
+              +(eat.length?'<span style="font-size:12px;color:var(--text3);">Eat: </span>'+fmtList(eat):'')
+              +(carry.length?'<br><span style="font-size:12px;color:var(--text3);">Carry forward: </span>'+fmtList(carry):'')
+              +'</div>'
+            ).join(''):'')
+          // Items bought at earlier stops
+          +(Object.keys(buyEarlierByStop).length?
+            Object.entries(buyEarlierByStop).map(([name,items])=>
+              '<div style="margin-bottom:6px;"><span style="font-size:13px;color:var(--text3);">📍 Bought at '+name+':</span><br>'+fmtList(items)+'</div>'
+            ).join(''):'')
+          // Per-day eaten
+          +(Object.keys(mealsByDay).length?'<div style="'+lbl+'margin-top:8px;">Eaten per day</div>'
+            +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks}])=>
+              `<span style="font-size:15px;color:var(--text2);">Day ${day}: ${meals>0?meals+' meal'+(meals!==1?'s':''):''}${meals>0&&snacks>0?' + ':''}${snacks>0?snacks+' snack'+(snacks!==1?'s':''):''}</span><br>`
+            ).join(''):'')
         +'</div>'
       +'</div>';
     })());
@@ -4745,14 +4779,14 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       picker.innerHTML=`
         <div style="display:flex;gap:4px;">
           <button class="btn btn-sm sdp-mode-dur${!isDeparture?' btn-p':''}" style="flex:1;padding:2px 6px;font-size:13px;">⏱ Duration</button>
-          <button class="btn btn-sm sdp-mode-dep${isDeparture?' btn-p':''}" style="flex:1;padding:2px 6px;font-size:13px;">⏰ Depart at</button>
+          <button class="btn btn-sm sdp-mode-dep${isDeparture?' btn-p':''}" style="flex:1;padding:2px 6px;font-size:13px;">⏰ Wake at</button>
         </div>
         <div class="sdp-dur-row" style="display:${isDeparture?'none':'flex'};align-items:center;gap:6px;">
           <span style="font-size:14px;color:#b39ddb;">😴 Hours:</span>
           <input type="number" class="sdp-hours" min="1" max="24" step="0.5" value="${currentH}" style="width:52px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);">
         </div>
         <div class="sdp-dep-row" style="display:${isDeparture?'flex':'none'};align-items:center;gap:6px;">
-          <span style="font-size:14px;color:#b39ddb;">⏰ Depart:</span>
+          <span style="font-size:14px;color:#b39ddb;">⏰ Wake:</span>
           <input type="time" class="sdp-depart" value="${currentDepart}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);">
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -4816,29 +4850,34 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       const picker=document.createElement('div');
       picker.className='food-picker';
       picker.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:6px;padding:10px 12px;background:var(--card);border-radius:8px;border:1px solid rgba(251,191,36,0.5);box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:260px;';
+      const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
       const renderPicker=()=>{
         picker.innerHTML=`
           <div style="font-size:13px;color:#fbbf24;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">🍔 Food at this stop</div>
-          ${s.meals.map((m,i)=>`
-            <div class="food-item" style="display:flex;flex-direction:column;gap:4px;padding:6px 8px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:6px;">
-              <div style="display:flex;gap:4px;align-items:center;">
-                <button class="btn btn-sm food-type-toggle${m.type==='meal'?' btn-p':''}" data-i="${i}" data-val="meal" style="flex:1;font-size:13px;padding:2px 4px;">🍽️ Meal</button>
-                <button class="btn btn-sm food-type-toggle${m.type==='snack'?' btn-p':''}" data-i="${i}" data-val="snack" style="flex:1;font-size:13px;padding:2px 4px;">🍫 Snack</button>
-                <button class="btn btn-sm btn-r food-remove" data-i="${i}" style="padding:2px 6px;font-size:13px;">✕</button>
+          ${s.meals.map((m,i)=>{
+            const isCarryOnly=m.source==='here-carry';
+            return `<div class="food-item" style="display:flex;flex-direction:column;gap:4px;padding:6px 8px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:6px;">
+              <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                <button class="btn btn-sm food-type-toggle${m.type==='meal'?' btn-p':''}" data-i="${i}" data-val="meal" style="font-size:13px;padding:2px 6px;">🍽️ Meal</button>
+                <button class="btn btn-sm food-type-toggle${m.type==='snack'?' btn-p':''}" data-i="${i}" data-val="snack" style="font-size:13px;padding:2px 6px;">🍫 Snack</button>
+                ${hasSleep&&!isCarryOnly?`<button class="btn btn-sm food-when-toggle${(m.when||'before')==='before'?' btn-p':''}" data-i="${i}" data-val="before" style="font-size:11px;padding:2px 4px;">Before sleep</button><button class="btn btn-sm food-when-toggle${m.when==='after'?' btn-p':''}" data-i="${i}" data-val="after" style="font-size:11px;padding:2px 4px;">After sleep</button>`:''}
+                <button class="btn btn-sm btn-r food-remove" data-i="${i}" style="padding:2px 6px;font-size:13px;margin-left:auto;">✕</button>
               </div>
-              <input type="text" class="food-name" data-i="${i}" placeholder="${m.type==='snack'?'Snack name (optional)':'Meal name (optional)'}" value="${m.name||''}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;padding:3px 6px;font-family:var(--font);">
+              <input type="text" class="food-name" data-i="${i}" placeholder="Name (optional)" value="${m.name||''}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;padding:3px 6px;font-family:var(--font);">
               <select class="food-source" data-i="${i}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;padding:3px 6px;font-family:var(--font);">
-                <option value="start"${m.source==='start'?' selected':''}>🎒 Carry from start</option>
-                <option value="here"${m.source==='here'?' selected':''}>🛒 Buy here</option>
-                ${buyStops.map(bs=>`<option value="${bs.id}"${String(m.source)===String(bs.id)?' selected':''}">📍 Buy at ${bs.name}</option>`).join('')}
+                <option value="start"${m.source==='start'?' selected':''}>🎒 Carried from start</option>
+                <option value="here"${m.source==='here'?' selected':''}>🛒 Buy &amp; eat here</option>
+                <option value="here-carry"${m.source==='here-carry'?' selected':''}>🛒 Buy here &amp; carry forward</option>
+                ${buyStops.map(bs=>`<option value="${bs.id}"${String(m.source)===String(bs.id)?' selected':''}>📍 Bought at ${bs.name}</option>`).join('')}
               </select>
-              <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:13px;color:var(--text3);">⏱ Stop time:</span>
+              ${!isCarryOnly?`<div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:13px;color:var(--text3);">⏱ Eat time:</span>
                 <input type="number" class="food-dur" data-i="${i}" min="5" max="120" step="5" value="${m.durationMin||20}" style="width:52px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;padding:2px 4px;font-family:var(--font);">
                 <span style="font-size:13px;color:var(--text3);">min</span>
-              </div>
-            </div>`).join('')}
-          <div style="display:flex;gap:6px;">
+              </div>`:'<div style="font-size:12px;color:var(--text3);padding:2px 0;">Carried forward — no stop time</div>'}
+            </div>`;
+          }).join('')}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn btn-sm food-add-meal" style="flex:1;font-size:13px;">+ Meal</button>
             <button class="btn btn-sm food-add-snack" style="flex:1;font-size:13px;">+ Snack</button>
             <button class="btn btn-sm food-done btn-p" style="padding:2px 10px;">✓ Done</button>
@@ -4847,6 +4886,11 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         picker.querySelectorAll('.food-type-toggle').forEach(btn=>btn.addEventListener('click',ev=>{
           ev.stopPropagation();
           s.meals[+btn.dataset.i].type=btn.dataset.val;
+          renderPicker();
+        }));
+        picker.querySelectorAll('.food-when-toggle').forEach(btn=>btn.addEventListener('click',ev=>{
+          ev.stopPropagation();
+          s.meals[+btn.dataset.i].when=btn.dataset.val;
           renderPicker();
         }));
         picker.querySelectorAll('.food-remove').forEach(btn=>btn.addEventListener('click',ev=>{
