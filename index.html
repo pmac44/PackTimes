@@ -729,6 +729,10 @@ function totalSleepHours(r){
   return r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt)
     .reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0);
 }
+function totalMealHours(r){
+  return r.stops.filter(s=>s.meals&&s.meals.length)
+    .reduce((a,s)=>a+s.meals.filter(m=>m.source!=='here-carry').reduce((b,m)=>b+(m.durationMin||20)/60,0),0);
+}
 
 function etaAt(distKm,r){
   if(!r||!r.points.length)return null;
@@ -3612,8 +3616,9 @@ function tRoutes(r){
   const adjDur=r.estDuration?r.estDuration*r.timeFactor:null;
   const avgSpd=adjDur&&r.totalDist?(r.totalDist/adjDur).toFixed(1):null;
   const totalSleepH=totalSleepHours(r);
-  const totalH=adjDur?adjDur+totalSleepH:null;
-  const finEta=sdt&&adjDur?new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000):null;
+  const totalMealH=totalMealHours(r);
+  const totalH=adjDur?adjDur+totalSleepH+totalMealH:null;
+  const finEta=sdt&&adjDur?new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000):null;
   return routeList+`
   <hr style="border:none;border-top:2px solid var(--border);margin:8px 0;">
   ${(()=>{
@@ -3646,7 +3651,7 @@ function tRoutes(r){
         </label>
       </div>
     </div>
-    ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="padding-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH)*3600000))}</span></div>`:''}
+    ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="padding-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000))}</span></div>`:''}
   </div>
   <div class="card">
     <div class="ctitle">Route Summary</div>
@@ -4315,7 +4320,7 @@ function tPlan(r){
   if(totalSleepH)summaryParts.push('<span style="color:#b39ddb;">😴 '+totalSleepH.toFixed(1)+'h sleep</span>');
   // Total time
   if(adjDur&&totalSleepH){
-    const totalH=adjDur+totalSleepH;
+    const totalH=adjDur+totalSleepH+totalMealHours(r||cur());
     summaryParts.push('<span style="color:var(--text2);">≈ '+Math.round(totalH)+'h total</span>');
   }
   if(finEta&&sdt)summaryParts.push('<span style="color:var(--accent);">Finish '+fmtT(finEta)+dayOff(finEta,sdt)+'</span>');
@@ -4351,7 +4356,7 @@ function tPlan(r){
       const totRideH=Math.floor(adjDur||0),totRideM=Math.round(((adjDur||0)-totRideH)*60);
       const totRideHM=(adjDur)?totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':''):'—';
       const totSpd=(adjDur&&adjDur>0.1)?(r.totalDist/adjDur).toFixed(1):null;
-      const totalH=(adjDur||0)+(totalSleepH||0);
+      const totalH=(adjDur||0)+(totalSleepH||0)+totalMealHours(r);
       const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
       const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
       const avgSleepPerNight=nights>0?(totalSleepH/nights).toFixed(1):null;
