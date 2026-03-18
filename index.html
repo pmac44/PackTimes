@@ -4614,13 +4614,17 @@ function tFood(r){
   const finEta=etaAt(r.totalDist,r);
   const allMeals=r.stops.flatMap(s=>(s.meals||[]).map(m=>({...m,stop:s})));
   const fmtItem=m=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:14px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>`;
-  const fmtGrouped=items=>{
-    // Group by type+name, show count badge
+  const fmtGrouped=(items,titlePrefix)=>{
     const groups={};
     items.forEach(m=>{const k=(m.type||'meal')+'|'+(m.name||'');if(!groups[k])groups[k]={m,count:0};groups[k].count++;});
-    return Object.values(groups).map(({m,count})=>
-      `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:14px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}${count>1?` <span style="background:rgba(251,191,36,0.3);border-radius:8px;padding:0 5px;font-size:12px;">×${count}</span>`:''}</span>`
+    const titleLine=titlePrefix?`<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">${titlePrefix}</div>`:'';
+    const lines=Object.values(groups).map(({m,count})=>
+      `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;">
+        <span style="padding:3px 10px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:16px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>
+        ${count>1?`<span style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);">×${count}</span>`:''}
+      </div>`
     ).join('');
+    return titleLine+lines;
   };
   const lbl='font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;margin-top:12px;';
 
@@ -4661,9 +4665,7 @@ function tFood(r){
   if(!isLive&&fromStart.length){
     // Not started yet — show what to pack first
     nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.5);background:rgba(251,191,36,0.06);">
-      <div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Before you leave — pack these</div>
-      <div style="font-size:17px;font-weight:600;color:#fbbf24;margin-bottom:6px;">🎒 Carry from start</div>
-      ${fmtGrouped(fromStart)}
+      ${fmtGrouped(fromStart,'Before you leave — pack these')}
     </div>`;
   } else if(!nextActionStop){
     nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.4);">
@@ -4710,7 +4712,7 @@ function tFood(r){
   return'<div style="padding:6px 4px 2px;display:flex;align-items:flex-start;gap:6px;color:var(--text3);font-size:16px;"><span>💡</span><span>Add food to a stop on the Mission or Stops tab using 🍔, nominate where you got it from, and it will appear here.</span></div>'
     +nextCard
     +'<div class="card">'
-      +(fromStart.length?`<div style="${lbl}margin-top:0;">🎒 Carry from start</div>`+fmtGrouped(fromStart):'')
+      +(fromStart.length?fmtGrouped(fromStart,'🎒 Carry from start'):'')
       +buyStopsSorted.map(({stop,eat,carry})=>
         `<div style="${lbl}">${stop.dist<=liveDist?'✓ ':''} 🛒 Buy at ${stop.name} · ${stop.dist.toFixed(1)} km</div>`
         +eat.map(m=>'<div style="margin:3px 0;">'+fmtItem(m)+'<span style="font-size:12px;color:var(--text3);margin-left:4px;">eat here</span></div>').join('')
