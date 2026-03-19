@@ -1801,18 +1801,23 @@ function drawMap(cvs,r,opts){
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),7,0,Math.PI*2);
       ctx.fillStyle=dc[s.type]||'#fff';ctx.fill();
       ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
-      if(cvs.id==='desktop-map'&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt)){
+      const isMapWithRings=cvs.id==='desktop-map'||cvs.id==='stops-map';
+      const missionVisible=!UI.hiddenMapTypes.has('mission');
+      if(isMapWithRings&&missionVisible&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt)){
         const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
-        // Outer yellow glow fill always
-        ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),26,0,Math.PI*2);
+        const ringR=cvs.id==='desktop-map'?22:14;
+        const glowR=cvs.id==='desktop-map'?26:18;
+        const innerR=cvs.id==='desktop-map'?16:10;
+        // Outer yellow glow fill
+        ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),glowR,0,Math.PI*2);
         ctx.fillStyle='rgba(255,230,50,0.15)';ctx.fill();
-        // Yellow outer ring — always for mission/sleep stops
-        ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),22,0,Math.PI*2);
-        ctx.strokeStyle='#ffe632';ctx.lineWidth=3;ctx.stroke();
+        // Yellow outer ring
+        ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),ringR,0,Math.PI*2);
+        ctx.strokeStyle='#ffe632';ctx.lineWidth=cvs.id==='desktop-map'?3:2;ctx.stroke();
         // Purple inner ring — only when sleep is involved
         if(hasSleep){
-          ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),16,0,Math.PI*2);
-          ctx.strokeStyle='#b39ddb';ctx.lineWidth=3;ctx.stroke();
+          ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),innerR,0,Math.PI*2);
+          ctx.strokeStyle='#b39ddb';ctx.lineWidth=cvs.id==='desktop-map'?3:2;ctx.stroke();
         }
       }
     }
@@ -3541,6 +3546,7 @@ const LAYER_TYPES=[
   {type:'town',col:'#4ade80',label:'Towns'},
   {type:'weather',col:'#60a5fa',label:'ETA Weather'},
   {type:'allsleep',col:'#b39ddb',label:'All sleep'},
+  {type:'mission',col:'#ffe632',label:'Mission list'},
   {type:'rest',col:'#94856a',label:'Snack Stops'},
   {type:'water',col:'#60a5fa',label:'Water'},
   {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
@@ -3566,7 +3572,7 @@ const LAYER_TYPES=[
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['town','weather','allsleep','rest','water','sleep','hike','kmmarkers','turns'];
+  const PRIORITY=['town','weather','mission','allsleep','rest','water','sleep','hike','kmmarkers','turns'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
@@ -3575,6 +3581,7 @@ function sortedLayers(r){
   if(r&&r.points.length)present.add('weather');
   if(r&&r.stops.some(s=>s.type==='sleep'||s.sleepAt))present.add('allsleep');
   if(r&&r.stops.some(s=>s.type==='rest'))present.add('rest');
+  if(r&&r.stops.some(s=>s.starred!==false))present.add('mission');
   if(r&&r.paceSegs&&r.paceSegs.length)present.add('hike');
   return LAYER_TYPES.filter(t=>present.has(t.type)).sort((a,b)=>{
     const ai=PRIORITY.indexOf(a.type),bi=PRIORITY.indexOf(b.type);
