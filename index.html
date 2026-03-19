@@ -3266,7 +3266,8 @@ const STRIP_ICON_STAR='<svg width="26" height="26" viewBox="0 0 24 24" fill="#fb
 // Build icon cluster for a stop in the live strip
 function liveStripIcons(s){
   const icons=[];
-  if(s.type==='water')icons.push(STRIP_ICON_WATER);
+  const waterTypes=new Set(['water','food','shop','town','accom','pub','fuel']);
+  if(waterTypes.has(s.type))icons.push(STRIP_ICON_WATER);
   if(s.type==='food'||s.type==='shop'||s.type==='town')icons.push(STRIP_ICON_SHOP);
   if(s.meals&&s.meals.length)icons.push(STRIP_ICON_FOOD);
   if(s.type==='sleep'||s.sleepAt)icons.push(STRIP_ICON_SLEEP);
@@ -3286,7 +3287,9 @@ function buildLiveStrip(r,liveDist,sdt){
   const add=s=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);}};
   add(ahead[0]); // next stop always first
   add(ahead.find(s=>s.type==='sleep'||s.sleepAt));
-  add(ahead.find(s=>s.type==='water'));
+  // Water — pure water point OR any stop where water is likely available (food/shop/town/camp/hut/accom/pub)
+  const waterTypes=new Set(['water','food','shop','town','accom','pub','fuel']);
+  add(ahead.find(s=>waterTypes.has(s.type)));
   add(ahead.find(s=>s.type==='food'||s.type==='shop')); // resupply — buy food here
   add(ahead.find(s=>s.meals&&s.meals.length));           // eat stop — carrying food
   const now=etaAt(liveDist,r)||sdt||new Date(); // always use route time, never wall clock
