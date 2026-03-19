@@ -72,8 +72,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-outer{overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;}
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 .live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
-
-.live-summary{position:absolute;bottom:0;left:0;right:0;padding:6px 8px 8px;display:flex;flex-direction:column;gap:5px;z-index:10;}
+.live-next-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 10px;}
+.live-next-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);}
+.live-next-row:last-child{border-bottom:none;}
+.live-next-icons{display:flex;gap:3px;align-items:center;flex-shrink:0;}
+.live-next-name{flex:1;min-width:0;font-size:18px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.live-next-right{text-align:right;flex-shrink:0;}
+.live-next-km{font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);}
+.live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;}
+.live-next-in{font-size:14px;color:var(--text2);font-family:var(--font);margin-top:1px;}
 .turn-popup{position:absolute;top:64px;left:8px;right:8px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;}
 .turn-arrow{font-size:42px;line-height:1;flex-shrink:0;}
 .turn-info{flex:1;min-width:0;}
@@ -820,9 +827,10 @@ function dayOff(d,b){if(!d||!b)return'';const days=['Sun','Mon','Tue','Wed','Thu
 // ═══════════════════════════════════════════
 //  STOPS
 // ═══════════════════════════════════════════
+function capName(s){if(!s)return s;return s.charAt(0).toUpperCase()+s.slice(1);}
 function addStop(r,dist,type,name,opts){
   opts=opts||{};
-  r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:name||(type+' stop'),
+  r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:capName(name||(type+' stop')),
     sleepH:opts.sleepH||10,departTime:opts.departTime||null,
     ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
     icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
@@ -1844,10 +1852,8 @@ function peekLiveStop(s,r){
   const sidebarW2=document.getElementById('desktop-sidebar')?.offsetWidth||400;
 const _sb=document.getElementById('desktop-sidebar');
 const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH));
-  const summary=document.getElementById('live-summary');
-  const sumH=summary?summary.offsetHeight:0;
-  // Anchor: centre of visible area above summary
-  const anchor=(mapH-sumH)/2/mapH;
+  // Anchor: centre of map
+  const anchor=0.5;
 
   // Scroll to top instantly
   const scroller=document.getElementById('live-scroller');
@@ -2571,7 +2577,7 @@ document.getElementById('em-save').addEventListener('click',()=>{
   const s=r.stops.find(s=>String(s.id)===String(modal.dataset.sid));
   if(s){
     const nm=document.getElementById('em-name').value.trim();
-    if(nm)s.name=nm;
+    if(nm)s.name=capName(nm);
     // Distance
     const distVal=parseFloat(document.getElementById('em-dist').value);
     if(!isNaN(distVal))s.dist=distVal;
@@ -3250,6 +3256,68 @@ function renderKeepScroll(anchorSid){
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();if(_afterRender){_afterRender();_afterRender=null;}});}
 
 // Expand/collapse icons for stops map
+// SVG icons for live next strip — 16px, coloured
+const STRIP_ICON_SLEEP='<svg width="18" height="18" viewBox="0 0 24 24" fill="#b39ddb" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const STRIP_ICON_WATER='<svg width="18" height="18" viewBox="0 0 24 24" fill="#60a5fa" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg>';
+const STRIP_ICON_FOOD='<svg width="16" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>';
+const STRIP_ICON_SHOP='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>';
+const STRIP_ICON_STAR='<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+
+// Build icon cluster for a stop in the live strip
+function liveStripIcons(s){
+  const icons=[];
+  if(s.type==='sleep'||s.sleepAt)icons.push(STRIP_ICON_SLEEP);
+  if(s.type==='water')icons.push(STRIP_ICON_WATER);
+  if(s.type==='food')icons.push(STRIP_ICON_FOOD);
+  if(s.type==='shop'||s.type==='town')icons.push(STRIP_ICON_SHOP);
+  if(s.meals&&s.meals.length)icons.push(STRIP_ICON_FOOD);
+  // Deduplicate
+  const seen=new Set();
+  return icons.filter(i=>{if(seen.has(i))return false;seen.add(i);return true;}).join('');
+}
+
+// Build the live next strip HTML — unique upcoming stops with icon clusters
+function buildLiveStrip(r,liveDist,sdt){
+  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt;
+  const ahead=r.stops.filter(s=>s.dist>liveDist&&starred(s));
+  if(!ahead.length)return'<div class="live-next-strip"><div class="live-next-row" style="justify-content:center;color:var(--accent);font-size:14px;">🏁 All stops passed</div></div>';
+  // Collect distinct upcoming stops — next stop, next sleep, next water, next food — deduplicated by id
+  const seen=new Set();
+  const rows=[];
+  const add=s=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);}};
+  add(ahead[0]); // next stop always first
+  add(ahead.find(s=>s.type==='sleep'||s.sleepAt));
+  add(ahead.find(s=>s.type==='water'));
+  add(ahead.find(s=>s.type==='food'||s.type==='shop'));
+  const html=rows.map(s=>{
+    const eta=etaAt(s.dist,r);
+    const dt=(s.dist-liveDist).toFixed(1);
+    const day=sdt&&eta?dayOff(eta,sdt):'';
+    const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
+    const now=(UI.gpsDistKm!==null&&r)?etaAt(UI.gpsDistKm,r):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+    const remMs=eta&&now?(eta-now):null;
+    const remH=remMs?remMs/3600000:null;
+    const inStr=remH!==null&&remH>0
+      ?(remH<1?(Math.round(remH*60)+'min')
+        :(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':'')))
+      :null;
+    const icons=liveStripIcons(s);
+    const st=shopSt(s,r);
+    const hasSt=s.ohRules&&(s.type==='food'||s.type==='shop'||s.type==='hut');
+    const openBadge=hasSt?(st==='open'?'<span style="font-size:11px;color:var(--accent);margin-left:4px;">✓</span>':st==='closed'?'<span style="font-size:11px;color:var(--red);margin-left:4px;">✗</span>':''):'';
+    return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
+      <div class="live-next-icons">${icons||STRIP_ICON_STAR}</div>
+      <div class="live-next-name">${s.name}${openBadge}</div>
+      <div class="live-next-right">
+        <div class="live-next-km">${dt}<span style="font-size:11px;color:var(--text3);margin-left:2px;">km</span></div>
+        <div class="live-next-eta">${timeStr}</div>
+        ${inStr?`<div class="live-next-in">in ${inStr}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  return`<div class="live-next-strip" id="live-next-strip">${html}</div>`;
+}
+
 // Fork & knife food icon — use currentColor so context controls colour
 const ICON_FOOD=`<svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>`;
 // Pencil edit icon — white on dark, solid background applied by button style
@@ -3702,7 +3770,6 @@ function tLiveShell(r){
           if(!UI.gpsActive)return '';
           const alertDistKm=UI.simRunning?(UI.turnAlertM||30)*20/1000:(UI.turnAlertM||30)/1000;
           const turns=r.turns||[];
-          // Reset dismissed flag for turns we've passed
           turns.forEach(t=>{if(t.dist<=liveDist)t._dismissed=false;});
           const nextTurn=turns.find(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm&&!t._dismissed);
           if(!nextTurn)return '';
@@ -3718,20 +3785,8 @@ function tLiveShell(r){
             </div>
           </div>`;
         })()}
-        <div class="live-summary" id="live-summary">
-          <div id="live-next-cards" style="display:contents;">
-          <div style="display:flex;gap:5px;">
-            ${summaryCard('Next stop',next,'next')}
-            ${summaryCard('Next sleep',r.stops.find(s=>s.dist>liveDist&&(s.type==='sleep'||s.sleepAt)),'sleep')}
-          </div>
-          <div style="display:flex;gap:5px;">
-            ${summaryCard('Next water',nextWater,'water')}
-            ${summaryCard('Next food',nextFood,'food')}
-          </div>
-          </div>
-          ${r.stops.length&&!next?`<div class="banner ok" style="margin:0;padding:5px 8px;"><span>🏁</span><span>All stops passed!</span></div>`:''}
-        </div>
       </div>
+      ${buildLiveStrip(r,liveDist,sdt)}
       <div class="live-stop-list" id="live-stop-list">
         ${stopListHtml}
       </div>
@@ -4894,56 +4949,16 @@ function updateLive(){
   const pf=document.getElementById('live-progf');if(pf)pf.style.width=(prog*100).toFixed(1)+'%';
 
   const patchCard=(s,idSuffix)=>{
-    const nameEl=document.getElementById(`live-${idSuffix}-name`);
-    const card=nameEl?nameEl.closest('.next-card'):null;
-    const currentSid=card?card.dataset.sid:null;
-    const newSid=s?String(s.id):'null';
-    if(currentSid!==newSid){
-      // Stop changed — rebuild the whole next-cards row
-      const nextCardsEl=document.getElementById('live-next-cards');
-      if(nextCardsEl){
-        const nextS=r.stops.find(s2=>s2.dist>liveDist&&starred(s2));
-        const nextSleep=r.stops.find(s2=>s2.dist>liveDist&&(s2.type==='sleep'||s2.sleepAt));
-        const nextFoodS=r.stops.find(s2=>s2.dist>liveDist&&starred(s2)&&(s2.type==='food'||s2.type==='shop'));
-        const nextWaterOnlyS=r.stops.find(s2=>s2.dist>liveDist&&starred(s2)&&s2.type==='water');
-        const nextWaterS=(!nextWaterOnlyS||(nextFoodS&&nextFoodS.dist<=nextWaterOnlyS.dist))?nextFoodS:nextWaterOnlyS;
-        const mkCard=(label,st,sfx)=>{
-          if(!st)return`<div class="next-card" style="opacity:.45;flex:1;padding:8px 12px;"><div class="nlbl">${label}</div><div class="nname" style="font-size:17px;">None ahead</div></div>`;
-          const eta=etaAt(st.dist,r);const dt2=(st.dist-liveDist).toFixed(1);
-          const day=sdt&&eta?dayOff(eta,sdt):'';const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
-          const now2=(UI.gpsDistKm!==null&&r)?etaAt(UI.gpsDistKm,r):new Date();
-          const remH2=eta&&now2?(eta-now2)/3600000:null;
-          const remStr2=remH2!==null&&remH2>0?(remH2<1?(Math.round(remH2*60)+'min'):(Math.floor(remH2)+'h'+(Math.round((remH2%1)*60)>0?' '+Math.round((remH2%1)*60)+'m':''))):null;
-          return`<div class="next-card live-summary-card" data-sid="${st.id}" style="flex:1;padding:8px 12px;cursor:pointer;">
-            <div class="nlbl">${label}</div>
-            <div class="nname" id="live-${sfx}-name">${st.icon||''} ${st.name}</div>
-            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px;">
-              <div class="nkm" id="live-${sfx}-km" style="font-size:20px;">${dt2}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
-              <div class="neta" id="live-${sfx}-eta" style="font-size:15px;">${timeStr}</div>
-            </div>
-            ${remStr2?`<div id="live-${sfx}-rem" style="font-size:20px;font-weight:600;color:var(--accent);font-family:var(--font);margin-top:1px;">in ${remStr2}</div>`:''}</div>`;
-        };
-        nextCardsEl.innerHTML=
-          '<div style="display:flex;gap:5px;">'+mkCard('Next stop',nextS,'next')+mkCard('Next sleep',nextSleep,'sleep')+'</div>'
-          +'<div style="display:flex;gap:5px;">'+mkCard('Next water',nextWaterS,'water')+mkCard('Next food',nextFoodS,'food')+'</div>';
-      }
-      return;
-    }
-    if(!s)return;
-    const dt=(s.dist-liveDist).toFixed(1),eta=etaAt(s.dist,r);
-    const day=sdt?dayOff(eta,sdt):'';
-    setText(`live-${idSuffix}-km`,dt);
-    setText(`live-${idSuffix}-eta`,(day?day.trim()+' ':'')+fmtT(eta));
-    setText(`live-${idSuffix}-name`,(s.icon||'')+' '+s.name);
-    // Update time remaining
-    const remEl=document.getElementById(`live-${idSuffix}-rem`);
-    if(remEl&&eta){
-      const now=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
-      const remH=(eta-now)/3600000;
-      const remTxt=remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):null;
-      remEl.textContent=remTxt?'in '+remTxt:'';
-    }
+    // Legacy no-op — strip is rebuilt wholesale below
   };
+  // Rebuild strip if any stop changed
+  const strip=document.getElementById('live-next-strip');
+  if(strip){
+    const newHtml=buildLiveStrip(r,liveDist,sdt);
+    const tmp=document.createElement('div');tmp.innerHTML=newHtml;
+    const newStrip=tmp.firstElementChild;
+    if(newStrip&&strip.innerHTML!==newStrip.innerHTML)strip.innerHTML=newStrip.innerHTML;
+  }
   patchCard(next,'next');
   patchCard(nextWater,'water');
   patchCard(nextFood,'food');
