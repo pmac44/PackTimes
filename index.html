@@ -1615,7 +1615,8 @@ function drawMap(cvs,r,opts){
   const paceSegs=(opts.paceFrom!==undefined)?
     (opts.paceTo!==undefined&&opts.paceTo!==null?[{from:opts.paceFrom,to:opts.paceTo}]:(opts.paceFrom!==null?[{from:opts.paceFrom,to:opts.paceFrom}]:[])):
     (r.paceSegs||[]);
-  paceSegs.forEach(seg=>{
+  const hikeHidden=UI.hiddenMapTypes.has('hike')&&opts.paceFrom===undefined;
+  if(!hikeHidden)paceSegs.forEach(seg=>{
     if(seg.from===null||seg.from===undefined)return;
     const segPts=pts.filter(p=>p.dist>=seg.from&&p.dist<=seg.to);
     if(segPts.length<2)return;
@@ -2779,6 +2780,12 @@ function renderDesktopMap(){
           <span style="font-size:10px;color:rgba(255,255,255,0.4);font-family:var(--font);">night</span>
         </div>
       </div>`:'')
+      +`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="4" fill="none" stroke="#fbbf24" stroke-width="2"/></svg>
+          <span style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);">On mission list</span>
+        </div>
+      </div>`
       +(!UI.hiddenMapTypes.has('weather')?`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
         <div style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);margin-bottom:3px;line-height:1.5;">Weather at ETA · faded = low confidence (4+ days)</div>
         ${[['rgba(161,98,7,0.88)','rgba(251,191,36,0.6)','#fef3c7','Sun'],['rgba(71,85,105,0.88)','rgba(148,163,184,0.4)','#e2e8f0','Cloud'],['rgba(37,99,235,0.88)','rgba(147,197,253,0.5)','#bfdbfe','Rain'],['rgba(30,64,175,0.92)','rgba(147,197,253,0.6)','#bfdbfe','Heavy'],['rgba(91,33,182,0.92)','rgba(196,181,253,0.8)','#ddd6fe','Storm !']].map(([bg,border,tc,lbl])=>`
@@ -3427,6 +3434,7 @@ const LAYER_TYPES=[
   {type:'water',col:'#60a5fa',label:'Water'},
   {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
   {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
+  {type:'hike',col:'#f97316',label:'Hike-a-bike'},
   {type:'sleep',col:'#b39ddb',label:'Bivi'},
   {type:'food',col:'#fbbf24',label:'Food'},
   {type:'wc',col:'#2dd4bf',label:'Toilets'},
@@ -3447,7 +3455,7 @@ const LAYER_TYPES=[
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['town','weather','allsleep','water','sleep','kmmarkers','turns'];
+  const PRIORITY=['town','weather','allsleep','water','sleep','hike','kmmarkers','turns'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
@@ -3455,6 +3463,7 @@ function sortedLayers(r){
   present.add('kmmarkers');
   if(r&&r.points.length)present.add('weather');
   if(r&&r.stops.some(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt))present.add('allsleep');
+  if(r&&r.paceSegs&&r.paceSegs.length)present.add('hike');
   return LAYER_TYPES.filter(t=>present.has(t.type)).sort((a,b)=>{
     const ai=PRIORITY.indexOf(a.type),bi=PRIORITY.indexOf(b.type);
     if(ai>=0&&bi>=0)return ai-bi;
