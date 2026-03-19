@@ -5827,7 +5827,7 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
 // Register inline service worker for PWA installability (skip in iframes)
 if('serviceWorker' in navigator && window.self===window.top){
   const swCode=`
-    const CACHE='packtimes-v1';
+    const CACHE='packtimes-v2';
     const OFFLINE_URL=self.location.href;
     self.addEventListener('install',e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.addAll([OFFLINE_URL])).then(()=>self.skipWaiting()));
