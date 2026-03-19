@@ -294,7 +294,7 @@ select option{background:var(--bg3);}
         <option value="sleep">😴 Sleep</option>
         <option value="rest">🪑 Rest</option>
         <option value="water">💧 Water</option>
-        <option value="food">🍔 Food</option>
+        <option value="food">🍴 Food</option>
         <option value="shop">🛒 Shop</option>
         <option value="town">🏘️ Town</option>
       </select>
@@ -818,7 +818,7 @@ function addStop(r,dist,type,name,opts){
   r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:name||(type+' stop'),
     sleepH:opts.sleepH||10,departTime:opts.departTime||null,
     ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
-    icon:{food:'🍔',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
+    icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
     auto:opts.auto||false,
     starred:opts.starred!==undefined?opts.starred:(type==='town'?true:!opts.auto),
     crossing:opts.crossing||false,
@@ -3174,7 +3174,7 @@ function importPlan(jsonStr,r){
     if(existingIds.has(s.id))return;
     r.stops.push({...s,
       ohRules:s.ohRaw?parseOH(s.ohRaw):null,
-      icon:{food:'🍔',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[s.type]||'📍'
+      icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[s.type]||'📍'
     });
   });
   r.stops.sort((a,b)=>a.dist-b.dist);
@@ -3244,6 +3244,8 @@ function renderKeepScroll(anchorSid){
 function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
 
 // Expand/collapse icons for stops map
+// Fork & knife food icon — use currentColor so context controls colour
+const ICON_FOOD=`<svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>`;
 // Pencil edit icon — white on dark, solid background applied by button style
 const ICON_EDIT=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 // X remove icon — white on dark, solid background applied by button style
@@ -3408,7 +3410,7 @@ function tStopsShell(r){
         <div id="osm-body" style="${UI.osmExpanded?'':'display:none'}">
         <p style="font-size:13px;color:var(--text3);margin:4px 0 8px;">Radius: ${(UI.searchRadiusKm*1000).toFixed(0)}m · <span style="text-decoration:underline;cursor:pointer;" onclick="document.getElementById('tabs').querySelectorAll('[data-tab]').forEach(b=>{if(b.dataset.tab==='settings'){b.click();}})">adjust in Settings</span></p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
-          ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍔 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['caravan','🚐 Caravan parks',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['halls','🏛️ Community halls',false],['churches','⛪ Churches',false],['schools','🏫 Schools',false],['fire','🚒 Fire stations',false],['police','🚔 Police',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
+          ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍴 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['caravan','🚐 Caravan parks',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['halls','🏛️ Community halls',false],['churches','⛪ Churches',false],['schools','🏫 Schools',false],['fire','🚒 Fire stations',false],['police','🚔 Police',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
             const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
             return '<label style="display:flex;align-items:center;gap:6px;font-size:15px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span>'+lbl+'</span></label>';
           }).join('')}
@@ -3978,7 +3980,7 @@ function tSettings(r){
     <div class="ctitle">OSM Search Defaults</div>
     <p style="font-size:15px;color:var(--text2);margin-bottom:10px;">Choose which stop types to search for by default. Changes apply immediately on the Stops tab.</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-      ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍔 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['caravan','🚐 Caravan parks',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['halls','🏛️ Community halls',false],['churches','⛪ Churches',false],['schools','🏫 Schools',false],['fire','🚒 Fire stations',false],['police','🚔 Police',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
+      ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍴 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['caravan','🚐 Caravan parks',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['halls','🏛️ Community halls',false],['churches','⛪ Churches',false],['schools','🏫 Schools',false],['fire','🚒 Fire stations',false],['police','🚔 Police',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
         const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
         return '<label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span>'+lbl+'</span></label>';
       }).join('')}
@@ -4161,7 +4163,7 @@ function makeCluster(stops){
 }
 
 function typeIcons(types){
-  const m={food:'🍔',water:'💧',sleep:'😴',town:'🏘️',shop:'🛒'};
+  const m={food:'🍴',water:'💧',sleep:'😴',town:'🏘️',shop:'🛒'};
   return types.map(t=>m[t]||'📍').join('');
 }
 
@@ -4522,7 +4524,7 @@ function tPlan(r){
       const rh=Math.floor(segRideH),rm=Math.round((segRideH-rh)*60);
       const rideHM=segRideH>0.05?(rh>0?(rh+'h'+(rm>0?' '+String(rm).padStart(2,'0')+'m':'')):(rm+'m')):'';
       const rideStr=rideHM+(r.cumRiding&&segAvgSpd&&rideHM?' · '+segAvgSpd+' km/h':'');
-      const foodIcon='<span style="font-size:18px;'+(hasFood?'':'opacity:.22;')+'">🍔</span>';
+      const foodIcon='<span style="display:inline-flex;align-items:center;'+(hasFood?'color:#fbbf24;':'opacity:.22;color:var(--text2);')+'">'+ICON_FOOD+'</span>';
       const waterIcon='<span style="font-size:18px;'+(hasWater?'':'opacity:.22;')+'">💧</span>';
       // Day/leg label using simple counters
       const curDay=_planDay,curLeg=_planLeg;
@@ -4632,7 +4634,7 @@ function tPlan(r){
       +'</div>';
     })():'')
     +'</div>'
-    +(r.stops.some(s=>s.meals&&s.meals.length)?'<div class="card" style="cursor:pointer;border-color:rgba(251,191,36,0.4);" id="btn-go-food"><div style="display:flex;align-items:center;gap:8px;"><span style="font-size:20px;">🍔</span><div><div style="font-size:15px;font-weight:600;color:#fbbf24;">Food plan</div><div style="font-size:13px;color:var(--text3);">'+r.stops.filter(s=>s.meals&&s.meals.length).length+' stops with food assigned — tap to view</div></div></div></div>':'');
+    +(r.stops.some(s=>s.meals&&s.meals.length)?'<div class="card" style="cursor:pointer;border-color:rgba(251,191,36,0.4);" id="btn-go-food"><div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-flex;align-items:center;color:#fbbf24;font-size:20px;">'+ICON_FOOD+'</span><div><div style="font-size:15px;font-weight:600;color:#fbbf24;">Food plan</div><div style="font-size:13px;color:var(--text3);">'+r.stops.filter(s=>s.meals&&s.meals.length).length+' stops with food assigned — tap to view</div></div></div></div>':'');
 }
 
 function tFood(r){
@@ -4655,8 +4657,8 @@ function tFood(r){
   const lbl='font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;margin-top:12px;';
 
   if(!allMeals.length){
-    return'<div style="padding:6px 4px 8px;display:flex;align-items:flex-start;gap:6px;color:var(--text3);font-size:16px;"><span>💡</span><span>Add food to a stop on the Mission or Stops tab using 🍔, nominate where you got it from, and it will appear here.</span></div>'
-    +'<div class="card"><div style="font-size:16px;color:var(--text3);text-align:center;padding:16px 0;">No food planned yet.<br><span style="font-size:14px;">Use the 🍔 button on Mission or Stops tabs to add food.</span></div></div>';
+    return'<div style="padding:6px 4px 8px;display:flex;align-items:flex-start;gap:6px;color:var(--text3);font-size:16px;"><span>💡</span><span>Add food to a stop on the Mission or Stops tab using the '+ICON_FOOD+' button, nominate where you got it from, and it will appear here.</span></div>'
+    +'<div class="card"><div style="font-size:16px;color:var(--text3);text-align:center;padding:16px 0;">No food planned yet.<br><span style="font-size:14px;">Use the '+ICON_FOOD+' button on Mission or Stops tabs to add food.</span></div></div>';
   }
 
   // ── Next food action card ──
@@ -4735,7 +4737,7 @@ function tFood(r){
     if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
   });
 
-  return'<div style="padding:6px 4px 2px;display:flex;align-items:flex-start;gap:6px;color:var(--text3);font-size:16px;"><span>💡</span><span>Add food to a stop on the Mission or Stops tab using 🍔, nominate where you got it from, and it will appear here.</span></div>'
+  return'<div style="padding:6px 4px 2px;display:flex;align-items:flex-start;gap:6px;color:var(--text3);font-size:16px;"><span>💡</span><span>Add food to a stop on the Mission or Stops tab using the '+ICON_FOOD+' button, nominate where you got it from, and it will appear here.</span></div>'
     +nextCard
     +'<div class="card">'
       +(fromStart.length?fmtGrouped(fromStart,'🎒 Carry from start'):'')
@@ -5235,7 +5237,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
       const renderPicker=()=>{
         picker.innerHTML=`
-          <div style="font-size:13px;color:#fbbf24;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">🍔 Food at this stop</div>
+          <div style="font-size:13px;color:#fbbf24;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;display:flex;align-items:center;gap:5px;">${ICON_FOOD} Food at this stop</div>
           ${s.meals.map((m,i)=>{
             const isCarryOnly=false;
             return `<div class="food-item" style="display:flex;flex-direction:column;gap:4px;padding:6px 8px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:6px;">
