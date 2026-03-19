@@ -439,6 +439,7 @@ const newRoute=name=>({
   id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
   name:name||'New Route',points:[],hasTS:false,totalDist:0,estDuration:null,
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
+  adaptiveSpeed:false,baseTimeFactor:1.0,
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
@@ -460,6 +461,8 @@ function unpackRoute(r){
     Array.isArray(a)?{lat:a[0],lon:a[1],ele:a[2],dist:a[3],time:a[4]?new Date(a[4]):null}:a)};
   // Rebuild cumRiding if missing (old saved routes)
   if(!out.paceSegs)out.paceSegs=[];
+  if(out.adaptiveSpeed===undefined)out.adaptiveSpeed=false;
+  if(!out.baseTimeFactor)out.baseTimeFactor=out.timeFactor||1.0;
   if(!out.cumRiding&&out.points.length>1)out.cumRiding=buildCumRiding(out.points,out.paceSegs||[]);
   // Restore ohRules Sets (lost in JSON.stringify)
   // Also migrate any stops with short/numeric IDs to proper alphanumeric IDs
@@ -1117,6 +1120,7 @@ function startGPS(){
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
     const r=cur();
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap)UI.gpsDistKm=snap.dist;}
+    runAdaptiveCalibration();
     checkAlerts();
     if(UI.tab==='live')updateLive();
     else if(UI.tab==='settings')patchGPSInfo();
@@ -1129,10 +1133,112 @@ function stopGPS(){
   if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;UI.gpsWatchId=null;UI.gpsHeading=null;
   _offRouteStart=null;_offRouteAlerted=false;
+  UI._adaptiveWindow=[];// clear window on GPS stop
   if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
   _lastTurnBeepDist=null;
   releaseWakeLock();
   updateGPSPill();if(UI.tab==='live'||UI.tab==='settings')render();
+}
+
+// ═══════════════════════════════════════════
+//  ADAPTIVE SPEED CALIBRATION
+// ═══════════════════════════════════════════
+const ADAPTIVE_WINDOW_MIN_MS=25*60*1000;  // need 25min of clean data
+const ADAPTIVE_COOLDOWN_MS=30*60*1000;    // recalibrate at most every 30min
+const ADAPTIVE_GAP_MS=20*60*1000;         // reset window if GPS gap > 20min
+const ADAPTIVE_MIN_SPEED_KMH=4;           // below this = stopped, exclude
+const ADAPTIVE_MAX_GRADE_PCT=8;           // exclude steep climb/descent segments
+const ADAPTIVE_BLEND=0.4;                 // weight of new signal vs existing factor
+const ADAPTIVE_MAX_DRIFT=0.30;            // hard cap: ±30% from baseTimeFactor
+const ADAPTIVE_WARN_DRIFT=0.25;           // warn if drift exceeds ±25%
+
+function runAdaptiveCalibration(){
+  const r=cur();
+  if(!r||!r.adaptiveSpeed||!UI.gpsActive||UI.gpsDistKm===null||!UI.gpsPos)return;
+  if(!UI._adaptiveWindow)UI._adaptiveWindow=[];
+
+  const now=UI.gpsPos.ts;
+  const dist=UI.gpsDistKm;
+  const pts=r.points;
+
+  // Detect GPS gap — reset window if too long since last sample
+  const last=UI._adaptiveWindow[UI._adaptiveWindow.length-1];
+  if(last&&(now-last.ts)>ADAPTIVE_GAP_MS){
+    UI._adaptiveWindow=[];
+  }
+
+  // Compute local gradient at current position to filter steep sections
+  const idx=pts.reduce((bi,p,i)=>Math.abs(p.dist-dist)<Math.abs(pts[bi].dist-dist)?i:bi,0);
+  const lookback=Math.max(0,idx-5),lookahead=Math.min(pts.length-1,idx+5);
+  const dEle=pts[lookahead].ele-pts[lookback].ele;
+  const dDist=(pts[lookahead].dist-pts[lookback].dist)*1000; // m
+  const gradePct=dDist>10?Math.abs(dEle/dDist*100):0;
+  const isSteep=gradePct>ADAPTIVE_MAX_GRADE_PCT;
+
+  // Compute speed from GPS coords (km/h)
+  let speedKmh=null;
+  if(UI.gpsPos.speed!=null&&!isNaN(UI.gpsPos.speed)){
+    speedKmh=UI.gpsPos.speed*3.6;
+  } else if(last){
+    const dt=(now-last.ts)/3600000;
+    if(dt>0)speedKmh=Math.abs(dist-last.dist)/dt;
+  }
+  const isStopped=speedKmh!==null&&speedKmh<ADAPTIVE_MIN_SPEED_KMH;
+
+  // Add sample if clean
+  if(!isSteep&&!isStopped){
+    UI._adaptiveWindow.push({ts:now,dist});
+    // Trim window to last 60 min
+    const cutoff=now-60*60*1000;
+    UI._adaptiveWindow=UI._adaptiveWindow.filter(s=>s.ts>=cutoff);
+  }
+
+  // Only calibrate if cooldown has passed
+  const lastCal=UI._lastAdaptiveCal||0;
+  if((now-lastCal)<ADAPTIVE_COOLDOWN_MS)return;
+
+  // Need minimum window duration
+  const win=UI._adaptiveWindow;
+  if(win.length<2)return;
+  const winDuration=win[win.length-1].ts-win[0].ts;
+  if(winDuration<ADAPTIVE_WINDOW_MIN_MS)return;
+
+  // Compute actual km/h over clean window
+  const actualKmh=(win[win.length-1].dist-win[0].dist)/(winDuration/3600000);
+  if(actualKmh<1)return; // sanity check
+
+  // Compute expected km/h at current timeFactor
+  const estTotal=r.estDuration||naismith(r.points,r.totalDist);
+  if(!estTotal)return;
+  const expectedKmh=r.totalDist/(estTotal*r.timeFactor);
+  if(expectedKmh<0.5)return;
+
+  // Ratio: if actual is slower, factor needs to increase (takes longer)
+  const ratio=expectedKmh/actualKmh;
+  const newFactor=r.timeFactor*ADAPTIVE_BLEND*ratio+r.timeFactor*(1-ADAPTIVE_BLEND);
+
+  // Apply hard cap relative to baseTimeFactor
+  const base=r.baseTimeFactor||1.0;
+  const capped=Math.max(base*(1-ADAPTIVE_MAX_DRIFT),Math.min(base*(1+ADAPTIVE_MAX_DRIFT),newFactor));
+  const rounded=Math.round(capped*100)/100;
+  if(rounded===r.timeFactor)return; // no change
+
+  const oldFactor=r.timeFactor;
+  r.timeFactor=rounded;
+  UI._lastAdaptiveCal=now;
+  patchSpeedFactor(r);
+  saveAll();
+
+  // Warn if drifting significantly from base
+  const drift=Math.abs(rounded-base)/base;
+  const pct=Math.round((rounded-oldFactor)/oldFactor*100);
+  const dir=rounded>oldFactor?'slower':'faster';
+  const msg=drift>=ADAPTIVE_WARN_DRIFT
+    ?`⚠️ Speed adjusted ${Math.abs(pct)}% ${dir} — significant drift from your baseline. Check conditions.`
+    :`🔄 Speed adjusted ${Math.abs(pct)}% ${dir} based on recent riding pace.`;
+  // Surface as a non-blocking banner on the live tab
+  UI._adaptiveMsg={msg,ts:now};
+  if(UI.tab==='live')renderKeepScroll();
 }
 function updateGPSPill(){
   const el=document.getElementById('gpspill');if(!el)return;
@@ -3901,6 +4007,16 @@ function tLiveShell(r){
         })()}
       </div>
       <div id="live-weather-bar-wrap">${weatherBarHTML()}</div>
+      ${(()=>{
+        if(!UI._adaptiveMsg)return'';
+        const age=Date.now()-UI._adaptiveMsg.ts;
+        if(age>10*60*1000)return''; // dismiss after 10 min
+        const isWarn=UI._adaptiveMsg.msg.startsWith('⚠️');
+        return`<div id="adaptive-msg-bar" style="padding:7px 12px;font-size:14px;font-family:var(--font);line-height:1.4;display:flex;align-items:center;justify-content:space-between;gap:8px;background:${isWarn?'rgba(251,191,36,0.12)':'rgba(96,165,250,0.1)'};border-bottom:1px solid ${isWarn?'rgba(251,191,36,0.35)':'rgba(96,165,250,0.25)'};color:${isWarn?'var(--amber)':'var(--blue)'};">
+          <span>${UI._adaptiveMsg.msg}</span>
+          <button class="btn btn-sm" id="adaptive-msg-dismiss" style="flex-shrink:0;font-size:12px;padding:2px 8px;">✕</button>
+        </div>`;
+      })()}
       ${buildLiveStrip(r,liveDist,sdt)}
       <div class="live-stop-list" id="live-stop-list">
         ${stopListHtml}
@@ -4089,7 +4205,11 @@ function tRoutes(r){
       </button>
     </div>
     <p style="font-size:15px;color:var(--text3);margin-top:4px;">Adjust if you expect to ride slower or faster than the estimates. This is especially important if the upload has no times and you are relying on estimates from this app.</p>
-
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:15px;color:var(--text2);">
+      <input type="checkbox" id="adaptive-speed-chk" ${r.adaptiveSpeed?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+      <span>Adaptive speed — auto-adjust from GPS while riding</span>
+    </label>
+    ${r.adaptiveSpeed?`<p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">Compares your actual pace to estimates every 30 min and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Disable to lock the factor.</p>`:''}
   </div>
   <div class="card">
     <div class="secrow"><div class="ctitle">Hike-a-bike Sections</div>
@@ -5848,7 +5968,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const step=Math.max(0.01,0.25/r.estDuration);
     r.timeFactor=Math.max(0.25,Math.min(4.0,r.timeFactor+(faster?-step:step)));
     r.timeFactor=Math.round(r.timeFactor*100)/100;
+    // Manual adjust also updates baseline so adaptive cap moves with it
+    if(r.adaptiveSpeed)r.baseTimeFactor=r.timeFactor;
     patchSpeedFactor(r);saveAll();return;
+  }
+  if(e.target.closest('#adaptive-msg-dismiss')){
+    UI._adaptiveMsg=null;renderKeepScroll();return;
   }
 
   if(e.target.closest('#alert-ok')){
@@ -6012,6 +6137,15 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     if(UI.keepScreenOn&&UI.gpsActive)requestWakeLock();
     else releaseWakeLock();
     saveAll();return;
+  }
+  if(e.target.id==='adaptive-speed-chk'){
+    const r=cur();if(!r)return;
+    r.adaptiveSpeed=e.target.checked;
+    if(r.adaptiveSpeed){
+      r.baseTimeFactor=r.timeFactor;
+      UI._adaptiveWindow=[];UI._lastAdaptiveCal=0;
+    }
+    saveAll();render();return;
   }
   if(e.target.classList.contains('gps-zoom-opt')){
     UI.gpsZoom=parseFloat(e.target.value);
