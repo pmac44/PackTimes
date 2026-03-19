@@ -298,7 +298,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="field"><label class="lbl">Type</label>
       <select id="m-type">
-        <option value="sleep">😴 Sleep</option>
+        <option value="sleep">😴 Bivi</option>
         <option value="rest">🪑 Rest</option>
         <option value="water">💧 Water</option>
         <option value="food">🍴 Food</option>
@@ -319,7 +319,7 @@ select option{background:var(--bg3);}
       <span id="m-dist-val" style="display:none;"></span>
     </div>
     <div id="m-sleep-row" style="display:none;" class="field">
-      <label class="lbl" id="m-sleep-lbl">Sleep</label>
+      <label class="lbl" id="m-sleep-lbl">Bivi</label>
       <div style="display:flex;gap:4px;margin-bottom:6px;">
         <button class="btn btn-sm" id="m-sleep-mode-dur" style="flex:1;font-size:13px;">⏱ Duration</button>
         <button class="btn btn-sm" id="m-sleep-mode-wake" style="flex:1;font-size:13px;">⏰ Wake at</button>
@@ -3404,7 +3404,7 @@ const LAYER_TYPES=[
   {type:'police',col:'#3b82f6',label:'Police'},
   {type:'fire',col:'#ef4444',label:'Fire stn'},
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
-  {type:'sleep',col:'#b39ddb',label:'Sleep'},
+  {type:'sleep',col:'#b39ddb',label:'Bivi'},
 ];
 function sortedLayers(r){
   const PRIORITY=['town','weather','sleep','water','kmmarkers','turns'];
@@ -4008,7 +4008,7 @@ function tRoutes(r){
       </div>
     </div>
     ${totalSleepH>0||totalH?`<div style="display:flex;gap:10px;font-size:13px;color:var(--text3);font-family:var(--font);margin-bottom:10px;">
-      ${totalSleepH>0?`<span style="color:#b39ddb;">😴 +${totalSleepH.toFixed(1)}h sleep</span>`:''}
+      ${totalSleepH>0?`<span style="color:#b39ddb;">😴 +${totalSleepH.toFixed(1)}h bivi</span>`:''}
       ${totalH?`<span id="rt-total">≈ <span style="color:var(--text2);">${Math.round(totalH)}h</span> total</span>`:''}
     </div>`:''}
     ${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():0;const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;if(nights>0&&sleepStops<nights){const missing=nights-sleepStops;return`<div style="font-size:12px;color:rgba(179,157,219,0.7);font-family:var(--font);margin-bottom:8px;">😴 ${sleepStops} of ${nights} nights planned — ${missing} unplanned</div>`;}return'';})()}
@@ -4224,7 +4224,7 @@ function stopRow(s,r,sdt){
   const eta=etaAt(s.dist,r),day=dayOff(eta,sdt),st=shopSt(s,r);
   const stEl=st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':'';
   const ohHint=s.ohRaw?` · <span style="color:var(--text3);font-size:16px;">${s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw}</span>`:'';
-  const sleepBadge=s.type==='sleep'?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH||10}h sleep</span>`:s.type==='rest'?`<span style="color:#94856a;font-size:15px;font-family:var(--font);">🪑 ${s.sleepH||1}h rest</span>`:
+  const sleepBadge=s.type==='sleep'?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH||10}h bivi</span>`:s.type==='rest'?`<span style="color:#94856a;font-size:15px;font-family:var(--font);">🪑 ${s.sleepH||1}h rest</span>`:
     '';
   const orBadge=s.offRouteM?` <span style="font-size:16px;color:var(--text3);font-family:var(--font);">(${s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km'} off route)</span>`:'';
   const autoBadge=s.auto?`<span style="font-size:12px;color:var(--text3);font-family:var(--font);background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:0 4px;margin-left:3px;">OSM</span>`:'';
@@ -4782,7 +4782,7 @@ function tPlan(r){
       const chipCluster=chipStops.length?{...cl,stops:chipStops}:null;
       sleepStops.forEach((head,i)=>{
         nodeList.push({
-          name:head.sleepAt?'Sleep at '+head.name:head.name,
+          name:head.sleepAt?'Bivi at '+head.name:head.name,
           dist:head.dist,distEnd:head.dist,
           cluster:i===0?chipCluster:null, // chips only on first sleep node
           isStart:false,isSleep:true,sleepStop:head
@@ -4893,7 +4893,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Sleep stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
             +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
             +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
@@ -5015,7 +5015,7 @@ function tPlan(r){
 
   const summaryParts=[];
   if(adjDur)summaryParts.push('<span>🚴 '+fmtHM(adjDur)+' riding</span>');
-  if(totalSleepH)summaryParts.push('<span style="color:#b39ddb;">😴 '+totalSleepH.toFixed(1)+'h sleep</span>');
+  if(totalSleepH)summaryParts.push('<span style="color:#b39ddb;">😴 '+totalSleepH.toFixed(1)+'h bivi</span>');
   // Total time
   if(adjDur&&totalSleepH){
     const totalH=adjDur+totalSleepH+totalMealHours(r||cur());
@@ -5028,10 +5028,10 @@ function tPlan(r){
   let sleepExtra='';
   if(nights>0&&totalSleepH){
     const avgSleep=(totalSleepH/sleepStops).toFixed(1);
-    sleepExtra+='<div style="font-size:15px;color:#b39ddb;margin-top:6px;">avg '+avgSleep+'h per sleep stop · '+nights+' night'+(nights!==1?'s':'')+'</div>';
+    sleepExtra+='<div style="font-size:15px;color:#b39ddb;margin-top:6px;">avg '+avgSleep+'h per bivi · '+nights+' night'+(nights!==1?'s':'')+'</div>';
     if(sleepStops<nights){
       const missing=nights-sleepStops;
-      sleepExtra+='<div style="font-size:14px;color:rgba(179,157,219,0.7);margin-top:3px;">😴 '+sleepStops+' of '+nights+' nights have a sleep stop — '+missing+' unplanned</div>';
+      sleepExtra+='<div style="font-size:14px;color:rgba(179,157,219,0.7);margin-top:3px;">😴 '+sleepStops+' of '+nights+' nights have a bivi — '+missing+' unplanned</div>';
     }
   }
 
@@ -5041,7 +5041,7 @@ function tPlan(r){
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
-        +'<button class="btn btn-sm'+( UI.planSleepOnly?' btn-p':'')+'" id="btn-plan-sleep-filter" style="font-size:13px;" title="Show sleep stops only">😴</button>'
+        +'<button class="btn btn-sm'+( UI.planSleepOnly?' btn-p':'')+'" id="btn-plan-sleep-filter" style="font-size:13px;" title="Show bivi stops only">😴</button>'
         +(UI.planHidePassed?'<button class="btn btn-sm btn-p" id="btn-plan-hide-passed" style="font-size:13px;" title="Hide passed stops">✓ Hide passed</button>':'<button class="btn btn-sm" id="btn-plan-hide-passed" style="font-size:13px;" title="Hide passed stops">✓ Hide passed</button>')
         +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;">🖨️ Print</button>'
       +'</div>'
@@ -5078,7 +5078,7 @@ function tPlan(r){
           +'<span style="'+accent+'">'+r.totalDist.toFixed(1)+' km</span>'
           +(adjDur?'<br><span style="'+accent+'">'+totRideHM+(totSpd?' · '+totSpd+' km/h':'')+'</span>':'')
           +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
-          +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+totalSleepH.toFixed(1)+'h sleep</span>':'')
+          +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+totalSleepH.toFixed(1)+'h bivi</span>':'')
           +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
           +(adjDur?(()=>{
             const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
