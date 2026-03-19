@@ -1782,8 +1782,11 @@ function drawMap(cvs,r,opts){
   const dc={food:'#fbbf24',water:'#60a5fa',sleep:'#b39ddb',rest:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
   r.stops.forEach(s=>{
     const isSleepRelated=s.type==='sleep'||s.sleepAt;
-    const isHidden=((s.type==='rest'?UI.hiddenMapTypes.has('rest'):UI.hiddenMapTypes.has(s.type)))&&(cvs.id==='desktop-map'||cvs.id==='stops-map')
-      &&!(isSleepRelated&&!UI.hiddenMapTypes.has('allsleep')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'));
+    const isOnMap=cvs.id==='desktop-map'||cvs.id==='stops-map';
+    const hiddenByType=((s.type==='rest'?UI.hiddenMapTypes.has('rest'):UI.hiddenMapTypes.has(s.type)))&&isOnMap
+      &&!(isSleepRelated&&!UI.hiddenMapTypes.has('allsleep')&&isOnMap);
+    const savedByMission=isOnMap&&!UI.hiddenMapTypes.has('mission')&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
+    const isHidden=hiddenByType&&!savedByMission;
     const isHighlighted=opts.highlightId&&String(opts.highlightId)===String(s.id);
     // Skip hidden stops unless they are highlighted
     if(isHidden&&!isHighlighted)return;
