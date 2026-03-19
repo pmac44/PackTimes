@@ -5557,31 +5557,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const r2=cur();if(!r2)return;
     const allTypes=sortedLayers(r2).map(t=>t.type);
     const allHidden=allTypes.every(t=>UI.hiddenMapTypes.has(t));
-    if(allHidden){
-      // Show all — clear hidden set
-      allTypes.forEach(t=>UI.hiddenMapTypes.delete(t));
-    } else {
-      // Hide all
-      allTypes.forEach(t=>UI.hiddenMapTypes.add(t));
-    }
-    // Update All dot
-    const allDot=document.querySelector('#mob-layer-all circle');
-    const allEl=document.getElementById('mob-layer-all');
-    const nowAllHidden=allTypes.every(t=>UI.hiddenMapTypes.has(t));
-    if(allDot){allDot.setAttribute('fill',nowAllHidden?'none':'#fff');allDot.setAttribute('stroke','#fff');}
-    if(allEl){allEl.style.opacity=nowAllHidden?'0.45':'1';}
-    // Update all individual dots
-    document.querySelectorAll('.mob-layer-btn').forEach(btn=>{
-      const t=btn.dataset.ltype;
-      const circle=btn.querySelector('circle');
-      if(!circle)return;
-      const types={town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',wc:'#2dd4bf',stockwater:'#94a3b8',food:'#fbbf24',fuel:'#f97316',shop:'#c084fc',pub:'#f59e0b',camp:'#4a7c59',hut:'#c8a96e',accom:'#c084fc',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',peak:'#94a3b8',turns:'rgba(74,222,128,0.8)',kmmarkers:'rgba(255,255,255,0.7)',sleep:'#b39ddb'};
-      const col=types[t]||'#fff';
-      const hidden=UI.hiddenMapTypes.has(t);
-      circle.setAttribute('fill',hidden?'none':col);
-      circle.setAttribute('stroke',hidden?col:'#0a0f0a');
-    });
-    redrawMap('stops-map');
+    if(allHidden){allTypes.forEach(t=>UI.hiddenMapTypes.delete(t));}
+    else{allTypes.forEach(t=>UI.hiddenMapTypes.add(t));}
+    renderKeepScroll();redrawMap('stops-map');
     return;
   }
   // Mobile layer toggle dots on stops map
@@ -5590,24 +5568,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const t=mob.dataset.ltype;
     if(UI.hiddenMapTypes.has(t))UI.hiddenMapTypes.delete(t);
     else UI.hiddenMapTypes.add(t);
-    const svg=mob.querySelector('circle');
-    const types={town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',wc:'#2dd4bf',stockwater:'#94a3b8',food:'#fbbf24',fuel:'#f97316',shop:'#c084fc',pub:'#f59e0b',camp:'#4a7c59',hut:'#c8a96e',accom:'#c084fc',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',peak:'#94a3b8',turns:'rgba(74,222,128,0.8)',kmmarkers:'rgba(255,255,255,0.7)',sleep:'#b39ddb'};
-    if(svg){
-      const col=types[t]||'#fff';
-      const hidden=UI.hiddenMapTypes.has(t);
-      svg.setAttribute('fill',hidden?'none':col);
-      svg.setAttribute('stroke',hidden?col:'#0a0f0a');
-    }
-    const r2=cur();
-    if(r2){
-      const allTypes=sortedLayers(r2).map(t=>t.type);
-      const allHidden=allTypes.every(t=>UI.hiddenMapTypes.has(t));
-      const allDot=document.querySelector('#mob-layer-all circle');
-      const allEl=document.getElementById('mob-layer-all');
-      if(allDot){allDot.setAttribute('fill',allHidden?'none':'#fff');allDot.setAttribute('stroke','#fff');}
-      if(allEl){allEl.style.opacity=allHidden?'0.45':'1';}
-    }
-    redrawMap('stops-map');
+    renderKeepScroll();redrawMap('stops-map');
     return;
   }
   // Direct unsleep from mission tile — now handled via sleep picker
