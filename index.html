@@ -442,7 +442,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(['weather']),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:100};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -489,7 +489,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -512,6 +512,7 @@ async function loadAll(){
       if(prefs.offRouteSecs!==undefined)UI.offRouteSecs=prefs.offRouteSecs;
       if(prefs.searchRadiusKm!==undefined)UI.searchRadiusKm=prefs.searchRadiusKm;
       if(prefs.gpsZoom!==undefined)UI.gpsZoom=prefs.gpsZoom;
+      if(prefs.weatherSpacingKm!==undefined)UI.weatherSpacingKm=prefs.weatherSpacingKm;
     }
     // Restore sun cache
     const sc=await DB.getKV('sunCache').catch(()=>null);
@@ -1724,6 +1725,21 @@ function drawMap(cvs,r,opts){
       ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1;ctx.stroke();
       ctx.restore();
     });
+  }
+
+  // Weather dots — only on stops-map and desktop-map when weather layer is visible
+  if((cvs.id==='stops-map'||cvs.id==='desktop-map')&&!UI.hiddenMapTypes.has('weather')){
+    const sdt=startDT(r);
+    const spacingKm=UI.weatherSpacingKm||100;
+    const isDesktop=cvs.id==='desktop-map';
+    for(let dist=0;dist<=r.totalDist;dist+=spacingKm){
+      const p=r.points[cidx(r,dist)];
+      if(!p)continue;
+      const eta=sdt?etaAt(dist,r):null;
+      const w=weatherAtEta(p.lat,p.lon,eta);
+      if(!w)continue;
+      drawWeatherDot(ctx,px(p.lon),py(p.lat)-20,w,mapFontSm,isDesktop);
+    }
   }
 
   const flag=(i,col,lbl)=>{const p=pts[i];
@@ -3374,6 +3390,7 @@ const LAYER_TYPES=[
   {type:'fire',col:'#ef4444',label:'Fire stn'},
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
   {type:'sleep',col:'#b39ddb',label:'Sleep'},
+  {type:'weather',col:'#60a5fa',label:'Weather'},
 ];
 function sortedLayers(r){
   const PRIORITY=['town','kmmarkers','turns'];
@@ -3382,6 +3399,7 @@ function sortedLayers(r){
   const present=new Set(r?r.stops.map(s=>s.type):[]);
   if(r&&r.turns&&r.turns.length)present.add('turns');
   present.add('kmmarkers');
+  if(r&&r.points.length)present.add('weather'); // always show weather layer toggle when route loaded
   return LAYER_TYPES.filter(t=>present.has(t.type)).sort((a,b)=>{
     const ai=PRIORITY.indexOf(a.type),bi=PRIORITY.indexOf(b.type);
     if(ai>=0&&bi>=0)return ai-bi;
@@ -4079,6 +4097,16 @@ function tSettings(r){
     </div>
   </div>
   <div class="card">
+    <div class="ctitle">Weather Map Spacing</div>
+    <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:10px;">How far apart weather markers appear on the route map. Closer spacing gives more detail in mountain terrain. Weather is shown at your predicted ETA at each point — enable the Weather layer on the Stops tab to see it.</p>
+    <div class="field">
+      <label class="lbl">Spacing — <span id="weather-spacing-val">${UI.weatherSpacingKm||100}km</span></label>
+      <input type="range" id="weather-spacing-sl" min="50" max="200" step="25" value="${UI.weatherSpacingKm||100}" style="width:100%;accent-color:var(--accent);">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50km</span><span>100km</span><span>150km</span><span>200km</span></div>
+    </div>
+    <p style="font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5;">Forecasts beyond 4 days are shown faded — accuracy reduces with time. Data from Open-Meteo (free, no account needed).</p>
+  </div>
+  <div class="card">
     <div class="ctitle">OSM Search Defaults</div>
     <p style="font-size:15px;color:var(--text2);margin-bottom:10px;">Choose which stop types to search for by default. Changes apply immediately on the Stops tab.</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
@@ -4311,27 +4339,27 @@ function isSignificantWeatherChange(current,next3h){
   return null;
 }
 
-async function fetchWeather(lat,lon){
+async function fetchWeather(lat,lon,days){
+  days=days||2;
   const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
   const cached=_weatherCache[key];
-  // Re-fetch if older than 30 minutes
   if(cached&&(Date.now()-cached.fetchedAt)<30*60*1000)return cached;
   try{
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&current_weather=true&hourly=temperature_2m,windspeed_10m,winddirection_10m,weathercode&forecast_days=2&timezone=auto`;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&current_weather=true&hourly=temperature_2m,windspeed_10m,winddirection_10m,weathercode,precipitation_probability&forecast_days=${days}&timezone=auto`;
     const res=await fetch(url);
     const j=await res.json();
     if(!j.current_weather)return null;
     const cw=j.current_weather;
-    // Find current hour index in hourly
     const times=j.hourly.time;
     const nowISO=cw.time;
-    const idx=times.findIndex(t=>t===nowISO);
-    const hourly=(j.hourly.time||[]).slice(idx>0?idx:0,idx>0?idx+6:6).map((t,i)=>({
+    const idx=Math.max(0,times.findIndex(t=>t===nowISO));
+    const hourly=(j.hourly.time||[]).map((t,i)=>({
       time:t,
-      temp:j.hourly.temperature_2m[idx+i],
-      windspeed:j.hourly.windspeed_10m[idx+i],
-      winddeg:j.hourly.winddirection_10m[idx+i],
-      code:j.hourly.weathercode[idx+i]
+      temp:j.hourly.temperature_2m[i],
+      windspeed:j.hourly.windspeed_10m[i],
+      winddeg:j.hourly.winddirection_10m[i],
+      code:j.hourly.weathercode[i],
+      precip:j.hourly.precipitation_probability[i]
     }));
     const result={
       fetchedAt:Date.now(),
@@ -4339,7 +4367,6 @@ async function fetchWeather(lat,lon){
       hourly
     };
     _weatherCache[key]=result;
-    // Persist to kv (serialisable — no Date objects)
     DB.setKV('weatherCache',_weatherCache).catch(()=>{});
     return result;
   }catch(e){return null;}
@@ -4347,25 +4374,91 @@ async function fetchWeather(lat,lon){
 
 function ensureWeatherCache(r){
   if(!r.points.length)return;
-  // Use GPS position if active, else route midpoint
-  let lat,lon;
-  if(UI.gpsDistKm!==null){
-    const p=r.points[cidx(r,UI.gpsDistKm)];
-    lat=p.lat;lon=p.lon;
-  } else {
-    const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
-    lat=(Math.min(...lats)+Math.max(...lats))/2;
-    lon=(Math.min(...lons)+Math.max(...lons))/2;
-  }
-  const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
-  const cached=_weatherCache[key];
-  if(cached&&(Date.now()-cached.fetchedAt)<30*60*1000)return; // fresh enough
+  const sdt=startDT(r);
+  const spacingKm=UI.weatherSpacingKm||100;
+  // Build list of sample points: GPS position + route samples every spacingKm
+  const sampleDists=[];
+  // Always include current position
+  if(UI.gpsDistKm!==null)sampleDists.push(UI.gpsDistKm);
+  // Sample every spacingKm along route
+  for(let d=0;d<=r.totalDist;d+=spacingKm)sampleDists.push(d);
+  // Deduplicate and get lat/lon for each
+  const seen=new Set();
+  const toFetch=[];
+  sampleDists.forEach(dist=>{
+    const p=r.points[cidx(r,dist)];
+    if(!p)return;
+    const key=`${p.lat.toFixed(2)},${p.lon.toFixed(2)}`;
+    if(seen.has(key))return;
+    seen.add(key);
+    const cached=_weatherCache[key];
+    if(cached&&(Date.now()-cached.fetchedAt)<30*60*1000)return; // fresh
+    // Determine forecast_days needed based on ETA at this point
+    const eta=sdt?etaAt(dist,r):null;
+    const daysAhead=eta?Math.ceil((eta-new Date())/86400000)+1:2;
+    toFetch.push({lat:p.lat,lon:p.lon,days:Math.min(Math.max(daysAhead,2),7)});
+  });
+  if(!toFetch.length)return;
   if(_weatherFetching)return;
   _weatherFetching=true;
-  fetchWeather(lat,lon).then(()=>{_weatherFetching=false;render();}).catch(()=>{_weatherFetching=false;});
+  Promise.all(toFetch.map(({lat,lon,days})=>fetchWeather(lat,lon,days)))
+    .then(()=>{_weatherFetching=false;render();})
+    .catch(()=>{_weatherFetching=false;});
 }
 
-function weatherBarHTML(){
+function weatherAtEta(lat,lon,eta){
+  if(!eta)return null;
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const w=_weatherCache[key];
+  if(!w||!w.hourly||!w.hourly.length)return null;
+  // Find the hourly entry closest to the ETA
+  const etaISO=eta.toISOString().slice(0,13); // 'YYYY-MM-DDTHH'
+  let best=w.hourly[0],bestDiff=Infinity;
+  w.hourly.forEach(h=>{
+    const diff=Math.abs(new Date(h.time)-eta);
+    if(diff<bestDiff){bestDiff=diff;best=h;}
+  });
+  // If forecast is >4 days out, flag as low confidence
+  const daysOut=(eta-Date.now())/86400000;
+  return{...best,lowConfidence:daysOut>4};
+}
+
+function wmoIsRainy(code){return code>=51;}
+function wmoIsStorm(code){return code>=80;}
+
+// Draw weather dot on canvas at a route point
+function drawWeatherDot(ctx,x,y,w,mapFontSm,isDesktop){
+  if(!w)return;
+  const code=w.code||0;
+  const isRain=wmoIsRainy(code);
+  const isStorm=wmoIsStorm(code);
+  const alpha=w.lowConfidence?0.5:1;
+  const fontSize=isDesktop?12:10;
+  ctx.globalAlpha=alpha;
+  // Background pill
+  const pillW=isDesktop?54:44,pillH=isDesktop?22:18;
+  ctx.fillStyle=isStorm?'rgba(71,85,105,0.92)':isRain?'rgba(30,58,138,0.88)':'rgba(10,15,10,0.85)';
+  const r2=pillH/2;const x2=x-pillW/2,y2=y-pillH/2;
+  ctx.beginPath();ctx.moveTo(x2+r2,y2);ctx.lineTo(x2+pillW-r2,y2);ctx.arcTo(x2+pillW,y2,x2+pillW,y2+r2,r2);ctx.lineTo(x2+pillW,y2+pillH-r2);ctx.arcTo(x2+pillW,y2+pillH,x2+pillW-r2,y2+pillH,r2);ctx.lineTo(x2+r2,y2+pillH);ctx.arcTo(x2,y2+pillH,x2,y2+pillH-r2,r2);ctx.lineTo(x2,y2+r2);ctx.arcTo(x2,y2,x2+r2,y2,r2);ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle=isStorm?'#fbbf24':isRain?'#60a5fa':'rgba(255,255,255,0.2)';
+  ctx.lineWidth=isStorm?1.5:1;ctx.stroke();
+  // Condition symbol — simple reliable canvas text
+  const sym=isStorm?'!':isRain?'~':code<=2?'+':code<=3?'~':'-';
+  const symCol=isStorm?'#fbbf24':isRain?'#93c5fd':'#94a3b8';
+  ctx.font=`bold ${fontSize+2}px DM Mono,monospace`;
+  ctx.fillStyle=symCol;ctx.textAlign='left';ctx.textBaseline='middle';
+  ctx.fillText(sym,x-pillW/2+5,y);
+  // Temperature
+  if(w.temp!=null){
+    ctx.font=`bold ${fontSize}px DM Mono,monospace`;
+    ctx.fillStyle=isRain?'#93c5fd':'#e2e8f0';
+    ctx.textAlign='right';
+    ctx.fillText(Math.round(w.temp)+'°',x+pillW/2-3,y);
+  }
+  ctx.globalAlpha=1;
+  ctx.textAlign='left'; // reset
+}
   // Find best cached weather entry (prefer GPS position key)
   const keys=Object.keys(_weatherCache);
   if(!keys.length)return'';
@@ -5768,7 +5861,12 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     const v=document.getElementById('turn-alert-m-val');
     if(v)v.textContent=UI.turnAlertM+'m';
     return;}
-  if(e.target.id==='offroute-sl'){
+  if(e.target.id==='weather-spacing-sl'){
+    UI.weatherSpacingKm=+e.target.value;
+    const v=document.getElementById('weather-spacing-val');
+    if(v)v.textContent=UI.weatherSpacingKm+'km';
+    saveAll();return;}
+
     UI.offRouteM=+e.target.value;
     const v=document.getElementById('offroute-m-val');
     if(v)v.textContent=UI.offRouteM+'m';
