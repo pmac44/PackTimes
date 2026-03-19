@@ -493,6 +493,13 @@ async function loadAll(){
     UI.dbxToken=await DB.getKV('dbxToken')||null;
     UI.dbxRefreshToken=await DB.getKV('dbxRefreshToken')||null;
     UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
+    // Restore sun cache
+    const sc=await DB.getKV('sunCache').catch(()=>null);
+    if(sc){
+      Object.entries(sc).forEach(([k,v])=>{
+        try{_sunCache[k]={sunrise:new Date(v.sunrise),sunset:new Date(v.sunset),dawn:new Date(v.dawn),dusk:new Date(v.dusk)};}catch(e){}
+      });
+    }
   }catch(e){ROUTES=[];CUR=-1;}
 }
 
@@ -3308,6 +3315,8 @@ function _render(){
   const r=cur();
   document.getElementById('hroute').textContent=r?r.name:'';
   updateGPSPill();
+  // Always ensure sun cache is populated for current route
+  if(r)ensureSunCache(r);
   const wrap=document.getElementById('content-wrap');
   try{
 
@@ -4176,6 +4185,35 @@ function stopChip(s,r){
 // ─── Sunrise/sunset cache and fetch ───
 const _sunCache={}; // key = 'lat,lon,date' → {sunrise, sunset} as Date objects
 
+function ensureSunCache(r){
+  const sdt=startDT(r);
+  if(!sdt||!r.points.length)return;
+  const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
+  const midLat=(lats.reduce((a,b)=>a<b?a:b,Infinity)+lats.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+  const midLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+  const finEtaTmp=etaAt(r.totalDist,r);
+  const days=finEtaTmp?Math.ceil((finEtaTmp-sdt)/86400000)+1:3;
+  const missingDays=[];
+  for(let d=0;d<days;d++){
+    const dt=new Date(sdt.getTime()+d*86400000);
+    const dateStr=dt.toLocaleDateString('en-CA');
+    const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`;
+    if(!_sunCache[key])missingDays.push(dateStr);
+  }
+  if(missingDays.length){
+    Promise.all(missingDays.map(d=>fetchSunTimes(midLat,midLon,d)))
+      .then(()=>{
+        // Persist updated cache to kv store
+        const serialisable={};
+        Object.entries(_sunCache).forEach(([k,v])=>{
+          serialisable[k]={sunrise:v.sunrise.toISOString(),sunset:v.sunset.toISOString(),dawn:v.dawn.toISOString(),dusk:v.dusk.toISOString()};
+        });
+        DB.setKV('sunCache',serialisable).catch(()=>{});
+        renderKeepScroll();
+      });
+  }
+}
+
 async function fetchSunTimes(lat,lon,dateStr){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${dateStr}`;
   if(_sunCache[key])return _sunCache[key];
@@ -4292,25 +4330,8 @@ function tPlan(r){
   if(!r.stops.length) return header+'<div class="banner info"><span>📊</span><span>Add stops on the Stops tab to see your plan.</span></div>';
   const unstarredCount=r.stops.filter(s=>s.starred===false&&s.type!=='sleep'&&s.type!=='rest').length;
 
-  // Fetch sun times for route midpoint if not cached — re-render when done
-  if(sdt&&r.points.length){
-    const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
-    const midLat=(lats.reduce((a,b)=>a<b?a:b,Infinity)+lats.reduce((a,b)=>a>b?a:b,-Infinity))/2;
-    const midLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
-    const finEtaTmp=etaAt(r.totalDist,r);
-    const days=finEtaTmp?Math.ceil((finEtaTmp-sdt)/86400000)+1:3;
-    const missingDays=[];
-    for(let d=0;d<days;d++){
-      const dt=new Date(sdt.getTime()+d*86400000);
-      const dateStr=dt.toLocaleDateString('en-CA'); // local date = correct day for sun API request
-      const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`;
-      if(!_sunCache[key])missingDays.push(dateStr);
-    }
-    if(missingDays.length){
-      Promise.all(missingDays.map(d=>fetchSunTimes(midLat,midLon,d)))
-        .then(()=>renderKeepScroll());
-    }
-  }
+  // Ensure sun times are fetched/cached for this route
+  ensureSunCache(r);
 
   const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
   const clusters=clusterStops(planStops);
