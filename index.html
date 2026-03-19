@@ -1898,7 +1898,8 @@ function peekLiveStop(s,r){
   const viewW=window.innerWidth;
 const _sb=document.getElementById('desktop-sidebar');
 const stripH=IS_DESKTOP()?0:(document.getElementById('live-next-strip')?.offsetHeight||120);
-const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH));
+const weatherBarH=IS_DESKTOP()?0:(document.getElementById('live-weather-bar-wrap')?.offsetHeight||0);
+const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH-weatherBarH));
   // Anchor: 65% down — GPS position sits lower, more road visible ahead
   const anchor=0.65;
 
