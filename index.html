@@ -3284,7 +3284,8 @@ function liveStripIcons(s){
   const icons=[];
   const waterTypes=new Set(['water','food','shop','town','accom','pub','fuel']);
   if(waterTypes.has(s.type))icons.push(STRIP_ICON_WATER);
-  if(s.type==='food'||s.type==='shop'||s.type==='town')icons.push(STRIP_ICON_SHOP);
+  const resupplyTypes=new Set(['shop','pub','fuel','town','accom']);
+  if(resupplyTypes.has(s.type)||(s.type==='food'&&s.ohRaw))icons.push(STRIP_ICON_SHOP);
   if(s.meals&&s.meals.length)icons.push(STRIP_ICON_FOOD);
   if(s.type==='sleep'||s.sleepAt)icons.push(STRIP_ICON_SLEEP);
   // Deduplicate
