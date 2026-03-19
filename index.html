@@ -3983,20 +3983,20 @@ function tRoutes(r){
       </div>
     </div>
     <div style="height:1px;background:var(--border);margin-bottom:12px;"></div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">
-      <div style="text-align:center;">
-        <div style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${r.totalDist.toFixed(0)}<span style="font-size:12px;color:var(--text3);margin-left:2px;">km</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
+        <div style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${r.totalDist.toFixed(0)}<span style="font-size:13px;color:var(--text3);margin-left:3px;">km</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:1px;">distance</div>
       </div>
-      <div style="text-align:center;">
-        <div style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${(elevGain(r.points)/1000).toFixed(1)}<span style="font-size:12px;color:var(--text3);margin-left:2px;">km</span></div>
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
+        <div style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${(elevGain(r.points)/1000).toFixed(1)}<span style="font-size:13px;color:var(--text3);margin-left:3px;">km</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:1px;">climbing</div>
       </div>
-      <div style="text-align:center;">
-        <div id="rt-avgspd" style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${avgSpd||'—'}<span style="font-size:12px;color:var(--text3);margin-left:2px;">${avgSpd?'km/h':''}</span></div>
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
+        <div id="rt-avgspd" style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${avgSpd||'—'}<span style="font-size:13px;color:var(--text3);margin-left:3px;">${avgSpd?'km/h':''}</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:1px;">avg speed</div>
       </div>
-      <div style="text-align:center;">${r.totalDist>0?(()=>{const g=elevGain(r.points)/r.totalDist/10;const col=g<1?'#60a5fa':g<2?'#fbbf24':'#f87171';const desc=g<1?'flat':g<2?'hilly':'steep';return`<div style="font-family:var(--font);font-size:20px;font-weight:500;color:${col};">${g.toFixed(1)}<span style="font-size:12px;margin-left:1px;">%</span></div><div style="font-size:11px;color:${col};margin-top:1px;">${desc}</div>`;})():`<div style="font-family:var(--font);font-size:20px;color:var(--accent);">—</div><div style="font-size:11px;color:var(--text3);">gradient</div>`}</div>
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">${r.totalDist>0?(()=>{const g=elevGain(r.points)/r.totalDist/10;const col=g<1?'#60a5fa':g<2?'#fbbf24':'#f87171';const desc=g<1?'flat':g<2?'hilly':'steep';return`<div style="font-family:var(--font);font-size:20px;font-weight:500;color:${col};">${g.toFixed(1)}<span style="font-size:13px;margin-left:1px;">%</span></div><div style="font-size:11px;color:${col};margin-top:1px;">${desc} gradient</div>`;})():`<div style="font-family:var(--font);font-size:20px;color:var(--accent);">—</div><div style="font-size:11px;color:var(--text3);margin-top:1px;">avg gradient</div>`}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
       <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
