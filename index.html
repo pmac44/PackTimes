@@ -73,14 +73,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 .live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
 .live-next-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 10px;}
-.live-next-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);}
+.live-next-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);}
 .live-next-row:last-child{border-bottom:none;}
-.live-next-icons{display:flex;gap:3px;align-items:center;flex-shrink:0;}
-.live-next-name{flex:1;min-width:0;font-size:18px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.live-next-icons{display:flex;gap:4px;align-items:center;flex-shrink:0;}
+.live-next-name{flex:1;min-width:0;font-size:18px;font-weight:500;color:var(--text);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .live-next-right{text-align:right;flex-shrink:0;}
-.live-next-km{font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);}
-.live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;}
-.live-next-in{font-size:14px;color:var(--text2);font-family:var(--font);margin-top:1px;}
+.live-next-km{font-size:16px;font-weight:500;color:var(--accent);font-family:var(--font);}
+.live-next-eta{font-size:13px;color:var(--text3);font-family:var(--font);margin-top:1px;}
+.live-next-in{font-size:20px;font-weight:600;color:var(--accent);font-family:var(--font);}
 .turn-popup{position:absolute;top:64px;left:8px;right:8px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;}
 .turn-arrow{font-size:42px;line-height:1;flex-shrink:0;}
 .turn-info{flex:1;min-width:0;}
@@ -3257,20 +3257,19 @@ function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_r
 
 // Expand/collapse icons for stops map
 // SVG icons for live next strip — 16px, coloured
-const STRIP_ICON_SLEEP='<svg width="18" height="18" viewBox="0 0 24 24" fill="#b39ddb" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
-const STRIP_ICON_WATER='<svg width="18" height="18" viewBox="0 0 24 24" fill="#60a5fa" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg>';
-const STRIP_ICON_FOOD='<svg width="16" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>';
-const STRIP_ICON_SHOP='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>';
-const STRIP_ICON_STAR='<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+const STRIP_ICON_SLEEP='<svg width="28" height="28" viewBox="0 0 24 24" fill="#b39ddb" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const STRIP_ICON_WATER='<svg width="28" height="28" viewBox="0 0 24 24" fill="#60a5fa" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg>';
+const STRIP_ICON_FOOD='<svg width="24" height="28" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>';
+const STRIP_ICON_SHOP='<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>';
+const STRIP_ICON_STAR='<svg width="26" height="26" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
 
 // Build icon cluster for a stop in the live strip
 function liveStripIcons(s){
   const icons=[];
-  if(s.type==='sleep'||s.sleepAt)icons.push(STRIP_ICON_SLEEP);
   if(s.type==='water')icons.push(STRIP_ICON_WATER);
-  if(s.type==='food')icons.push(STRIP_ICON_FOOD);
-  if(s.type==='shop'||s.type==='town')icons.push(STRIP_ICON_SHOP);
+  if(s.type==='food'||s.type==='shop'||s.type==='town')icons.push(STRIP_ICON_SHOP);
   if(s.meals&&s.meals.length)icons.push(STRIP_ICON_FOOD);
+  if(s.type==='sleep'||s.sleepAt)icons.push(STRIP_ICON_SLEEP);
   // Deduplicate
   const seen=new Set();
   return icons.filter(i=>{if(seen.has(i))return false;seen.add(i);return true;}).join('');
@@ -3310,9 +3309,9 @@ function buildLiveStrip(r,liveDist,sdt){
       <div class="live-next-icons">${icons||STRIP_ICON_STAR}</div>
       <div class="live-next-name">${s.name}${openBadge}</div>
       <div class="live-next-right">
+        ${inStr?`<div class="live-next-in">in ${inStr}</div>`:''}
         <div class="live-next-km">${dt}<span style="font-size:11px;color:var(--text3);margin-left:2px;">km</span></div>
         <div class="live-next-eta">${timeStr}</div>
-        ${inStr?`<div class="live-next-in">in ${inStr}</div>`:''}
       </div>
     </div>`;
   }).join('');
