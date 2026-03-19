@@ -3962,48 +3962,53 @@ function tRoutes(r){
   const totalH=adjDur?adjDur+totalSleepH+totalMealH:null;
   const finEta=sdt&&adjDur?new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000):null;
   return routeList+`
-  <div class="card">
-    <div class="startbar" style="margin-top:0;">
-      <div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;">
-        <span class="startbar-lbl">🚦</span>
-        <span class="startbar-lbl">Start</span>
+  <div class="card" style="padding:14px;">
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;width:46px;flex-shrink:0;">Start</span>
+        <input type="date" value="${r.startDate||''}" id="inp-date" style="flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--accent);font-family:var(--font);font-size:15px;font-weight:500;padding:5px 7px;cursor:pointer;color-scheme:dark;">
+        <input type="time" value="${r.startTime||''}" id="inp-time" style="width:86px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--accent);font-family:var(--font);font-size:15px;font-weight:500;padding:5px 7px;cursor:pointer;color-scheme:dark;">
       </div>
-      <div style="display:flex;gap:6px;align-items:center;flex:1;">
-        <input type="date" value="${r.startDate||''}" id="inp-date" style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:16px;padding:5px 8px;cursor:pointer;flex:1;min-width:0;">
-        <input type="time" value="${r.startTime||''}" id="inp-time" style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:16px;padding:5px 8px;cursor:pointer;width:90px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;width:46px;flex-shrink:0;">Finish</span>
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 7px;flex:1;">
+          ${adjDur?`<span id="rt-finish" style="font-family:var(--font);font-size:15px;font-weight:500;color:var(--accent);">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000))}</span>`:`<span style="font-size:14px;color:var(--text3);">Set start date →</span>`}
+        </div>
       </div>
     </div>
-    ${adjDur?`<div class="startbar"><div style="display:flex;align-items:center;gap:8px;width:90px;flex-shrink:0;"><span class="startbar-lbl">🏁</span><span class="startbar-lbl">Finish</span></div><span class="startbar-val" id="rt-finish" style="padding-left:8px;">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000))}</span></div>`:''}
-  </div>
-  <div class="card">
-    <div class="ctitle">Route Summary</div>
-    <div class="srow" style="grid-template-columns:repeat(4,1fr);">
-      <div class="sbox"><div class="sval">${r.totalDist.toFixed(0)}</div><div class="slbl">km</div></div>
-      <div class="sbox"><div class="sval">${elevGain(r.points).toLocaleString()}</div><div class="slbl">m gain</div></div>
-      <div class="sbox"><div class="sval" id="rt-avgspd">${avgSpd||'—'}</div><div class="slbl">km/h avg</div></div>
-      <div class="sbox">${r.totalDist>0?(()=>{const g=elevGain(r.points)/r.totalDist/10;const col=g<1?'#60a5fa':g<2?'#fbbf24':'#f87171';const desc=g<1?'flat':g<2?'moderate':'steep';return`<div class="sval" style="color:${col};">${g.toFixed(1)}%</div><div class="slbl" style="color:${col};">avg · ${desc}</div>`;})():'<div class="sval">—</div><div class="slbl">avg gradient</div>'}</div>
+    <div style="height:1px;background:var(--border);margin-bottom:12px;"></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">
+      <div style="text-align:center;">
+        <div style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${r.totalDist.toFixed(0)}<span style="font-size:12px;color:var(--text3);margin-left:2px;">km</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:1px;">distance</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${(elevGain(r.points)/1000).toFixed(1)}<span style="font-size:12px;color:var(--text3);margin-left:2px;">km</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:1px;">climbing</div>
+      </div>
+      <div style="text-align:center;">
+        <div id="rt-avgspd" style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${avgSpd||'—'}<span style="font-size:12px;color:var(--text3);margin-left:2px;">${avgSpd?'km/h':''}</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:1px;">avg speed</div>
+      </div>
+      <div style="text-align:center;">${r.totalDist>0?(()=>{const g=elevGain(r.points)/r.totalDist/10;const col=g<1?'#60a5fa':g<2?'#fbbf24':'#f87171';const desc=g<1?'flat':g<2?'hilly':'steep';return`<div style="font-family:var(--font);font-size:20px;font-weight:500;color:${col};">${g.toFixed(1)}<span style="font-size:12px;margin-left:1px;">%</span></div><div style="font-size:11px;color:${col};margin-top:1px;">${desc}</div>`;})():`<div style="font-family:var(--font);font-size:20px;color:var(--accent);">—</div><div style="font-size:11px;color:var(--text3);">gradient</div>`}</div>
     </div>
-    <div class="srow" style="grid-template-columns:1fr 1fr;margin-top:7px;">
-      <div class="sbox"><div class="sval" id="rt-riding" style="font-size:18px;color:#60a5fa;">${adjDur?fmtHM(adjDur):'—'}</div><div class="slbl" style="color:#60a5fa;">riding</div></div>
-      <div class="sbox">${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;const sleepH=totalSleepHours(r);return nights>0?`<div class="sval" style="color:#b39ddb;">${(sleepH/nights).toFixed(1)}h</div><div class="slbl" style="color:#b39ddb;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:'<div class="sval" style="color:#b39ddb;">—</div><div class="slbl" style="color:#b39ddb;">sleep/night</div>';})()}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
+        <div id="rt-riding" style="font-family:var(--font);font-size:18px;font-weight:500;color:#60a5fa;">${adjDur?fmtHM(adjDur):'—'}</div>
+        <div style="font-size:11px;color:#60a5fa;margin-top:1px;">riding time</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
+        ${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;const sleepH=totalSleepHours(r);return nights>0?`<div style="font-family:var(--font);font-size:18px;font-weight:500;color:#b39ddb;">${(sleepH/nights).toFixed(1)}<span style="font-size:12px;margin-left:2px;">h</span></div><div style="font-size:11px;color:#b39ddb;margin-top:1px;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:`<div style="font-family:var(--font);font-size:18px;font-weight:500;color:#b39ddb;">—</div><div style="font-size:11px;color:#b39ddb;margin-top:1px;">sleep/night</div>`;})()}
+      </div>
     </div>
-    <div id="rt-sleeprow" style="margin-top:8px;display:flex;gap:12px;font-size:16px;color:var(--text3);font-family:var(--font);"${totalSleepH>0?'':' hidden'}>
-      <span>😴 +${totalSleepH.toFixed(1)}h sleep</span>
-      ${totalH?`<span id="rt-total" style="color:#b39ddb;">≈ ${Math.round(totalH)}h total</span>`:'<span id="rt-total"></span>'}
-    </div>
-    ${(()=>{
-      const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():0;
-      const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;
-      if(nights>0&&sleepStops<nights){
-        const missing=nights-sleepStops;
-        return `<div style="margin-top:6px;font-size:14px;color:rgba(179,157,219,0.7);font-family:var(--font);">😴 ${sleepStops} of ${nights} nights have a sleep stop planned — ${missing} unplanned</div>`;
-      }
-      return '';
-    })()}
-    <div style="margin-top:10px;">
-      <canvas id="elev-cvs" style="height:56px;border-radius:5px;background:#0d1a0d;"></canvas>
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-top:2px;">
-        <span>0km</span><span>elevation</span><span>${r.totalDist.toFixed(0)}km</span></div>
+    ${totalSleepH>0||totalH?`<div style="display:flex;gap:10px;font-size:13px;color:var(--text3);font-family:var(--font);margin-bottom:10px;">
+      ${totalSleepH>0?`<span style="color:#b39ddb;">😴 +${totalSleepH.toFixed(1)}h sleep</span>`:''}
+      ${totalH?`<span id="rt-total">≈ <span style="color:var(--text2);">${Math.round(totalH)}h</span> total</span>`:''}
+    </div>`:''}
+    ${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():0;const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;if(nights>0&&sleepStops<nights){const missing=nights-sleepStops;return`<div style="font-size:12px;color:rgba(179,157,219,0.7);font-family:var(--font);margin-bottom:8px;">😴 ${sleepStops} of ${nights} nights planned — ${missing} unplanned</div>`;}return'';})()}
+    <canvas id="elev-cvs" style="height:52px;border-radius:5px;background:#0d1a0d;display:block;width:100%;"></canvas>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);font-family:var(--font);margin-top:2px;">
+      <span>0km</span><span>elevation</span><span>${r.totalDist.toFixed(0)}km</span>
     </div>
   </div>
   <div class="card">
