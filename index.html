@@ -4497,6 +4497,24 @@ function drawWeatherDot(ctx,x,y,w,mapFontSm,isDesktop){
   ctx.globalAlpha=1;ctx.textAlign='left';
 }
 
+let _weatherExpanded=false;
+let _weatherCollapseTimer=null;
+
+function weatherPillHTML(code,temp,label){
+  const isStorm=wmoIsStorm(code);
+  const isHeavyRain=code>=65&&code<80;
+  const isRain=wmoIsRainy(code)&&!isStorm;
+  const isCloud=code>=3&&code<51;
+  const bg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(120,70,0,1)';
+  const tc=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fef3c7';
+  return`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
+    <div style="background:${bg};border-radius:4px;padding:2px 6px;min-width:36px;text-align:center;">
+      <span style="font-size:13px;font-weight:600;color:${tc};">${Math.round(temp)}°</span>
+    </div>
+    <div style="font-size:10px;color:var(--text3);font-family:var(--font);">${label}</div>
+  </div>`;
+}
+
 function weatherBarHTML(){
   const keys=Object.keys(_weatherCache);
   if(!keys.length)return'';
@@ -4506,12 +4524,10 @@ function weatherBarHTML(){
   const c=w.current;
   const next3h=w.hourly?w.hourly.slice(1,4):[];
   const alert=isSignificantWeatherChange(c,next3h);
-  // Temperature in 3h — more meaningful than 1h for planning stops
   const temp3h=next3h.length?next3h[next3h.length-1].temp:null;
   const tempDrop=temp3h!==null?Math.round(temp3h)-Math.round(c.temp):0;
   const showTrend=Math.abs(tempDrop)>=2;
   const trendCol=tempDrop<=-4?'#93c5fd':tempDrop<=-2?'#bfdbfe':tempDrop>=2?'#fca5a5':'var(--text3)';
-  // Condition colour matching map pills
   const code=c.code||0;
   const isStorm=wmoIsStorm(code);
   const isHeavyRain=code>=65&&code<80;
@@ -4520,14 +4536,86 @@ function weatherBarHTML(){
   const condBg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(120,70,0,1)';
   const condText=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fef3c7';
   const condLabel=isStorm?'Storm':isHeavyRain?'Heavy rain':isRain?'Rain':isCloud?'Cloud':'Clear';
-  return`<div id="live-weather-bar" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg2);border-top:1px solid var(--border);font-family:var(--font);flex-shrink:0;">
-    <div style="background:${condBg};border-radius:5px;padding:3px 8px;flex-shrink:0;">
-      <span style="font-size:15px;font-weight:600;color:${condText};">${Math.round(c.temp)}°</span>
+
+  // Expanded panel — hourly forecast + extra details
+  let expandedHTML='';
+  if(_weatherExpanded&&w.hourly&&w.hourly.length){
+    // Hourly chips — next 8 hours
+    const hours=w.hourly.slice(0,8);
+    const hourChips=hours.map(h=>{
+      const t=new Date(h.time);
+      const lbl=t.getHours().toString().padStart(2,'0')+':00';
+      return weatherPillHTML(h.code,h.temp,lbl);
+    }).join('');
+
+    // Tonight's low
+    const tonight=w.hourly.filter(h=>{
+      const t=new Date(h.time);
+      return t.getHours()>=18||t.getHours()<=6;
+    });
+    const tonightLow=tonight.length?Math.min(...tonight.map(h=>h.temp)):null;
+    const lowWarning=tonightLow!==null&&tonightLow<10;
+
+    // Rain probability next 3h
+    const rainProb=next3h.length&&next3h[0].precip!=null
+      ?Math.round(Math.max(...next3h.map(h=>h.precip||0)))
+      :null;
+
+    // Wind relative to route bearing
+    const r2=cur();
+    let windRelHTML='';
+    if(r2&&UI.gpsDistKm!==null){
+      const idx=cidx(r2,UI.gpsDistKm);
+      const next=r2.points[Math.min(idx+5,r2.points.length-1)];
+      const cur2=r2.points[idx];
+      if(next&&cur2){
+        const routeBearing=Math.atan2(next.lon-cur2.lon,next.lat-cur2.lat)*180/Math.PI;
+        const windDeg=c.winddeg||0;
+        const diff=((windDeg-routeBearing+360)%360);
+        const rel=diff<45||diff>315?'Tailwind 🙌':diff<135?'Crosswind ↔':diff<225?'Headwind 😬':'Crosswind ↔';
+        windRelHTML=`<span style="font-size:13px;color:var(--text2);">${rel}</span>`;
+      }
+    }
+
+    // Sunrise/sunset from sun cache
+    let sunHTML='';
+    if(r2&&r2.points.length){
+      const lats=r2.points.map(p=>p.lat),lons=r2.points.map(p=>p.lon);
+      const midLat=(Math.min(...lats)+Math.max(...lats))/2;
+      const midLon=(Math.min(...lons)+Math.max(...lons))/2;
+      const now=new Date();
+      const dateStr=now.toLocaleDateString('en-CA');
+      const sun=_sunCache[`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`];
+      if(sun){
+        const fmt=d=>`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+        sunHTML=`<span style="font-size:13px;color:var(--text3);">🌅 ${fmt(sun.sunrise)} · 🌇 ${fmt(sun.sunset)}</span>`;
+      }
+    }
+
+    expandedHTML=`
+    <div style="border-top:1px solid var(--border);padding:8px 10px 6px;">
+      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">${hourChips}</div>
     </div>
-    <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
-    ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
-    <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
-    ${alert?`<div style="margin-left:auto;font-size:12px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);border-radius:4px;padding:2px 6px;animation:pulse 1.4s infinite;">⚠ ${alert}</div>`:''}
+    <div style="border-top:1px solid var(--border);padding:6px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      ${rainProb!=null?`<span style="font-size:13px;color:${rainProb>50?'#93c5fd':'var(--text3)'};">💧 ${rainProb}% rain</span>`:''}
+      ${lowWarning?`<span style="font-size:13px;color:#93c5fd;">🥶 Low ${Math.round(tonightLow)}° tonight</span>`:(tonightLow!=null?`<span style="font-size:13px;color:var(--text3);">Low ${Math.round(tonightLow)}° tonight</span>`:'')}
+      ${windRelHTML}
+      ${sunHTML}
+      <span style="margin-left:auto;font-size:11px;color:var(--text3);">tap to close</span>
+    </div>`;
+  }
+
+  return`<div id="live-weather-bar" style="background:var(--bg2);border-top:1px solid var(--border);font-family:var(--font);cursor:pointer;-webkit-tap-highlight-color:transparent;">
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;">
+      <div style="background:${condBg};border-radius:5px;padding:3px 8px;flex-shrink:0;">
+        <span style="font-size:15px;font-weight:600;color:${condText};">${Math.round(c.temp)}°</span>
+      </div>
+      <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
+      ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
+      <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
+      ${alert?`<div style="margin-left:auto;font-size:12px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);border-radius:4px;padding:2px 6px;animation:pulse 1.4s infinite;">⚠ ${alert}</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">${_weatherExpanded?'▲':'▼'}</div>`}
+    </div>
+    ${expandedHTML}
   </div>`;
 }
 
@@ -5682,6 +5770,27 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(ls&&UI.tab==='live'&&r){
     const s=r.stops.find(s=>String(s.id)===String(ls.dataset.sid));
     if(s)peekLiveStop(s,r);
+    return;
+  }
+  // Tap weather bar → expand/collapse
+  if(e.target.closest('#live-weather-bar')&&UI.tab==='live'){
+    _weatherExpanded=!_weatherExpanded;
+    // Clear any existing auto-collapse timer
+    if(_weatherCollapseTimer){clearTimeout(_weatherCollapseTimer);_weatherCollapseTimer=null;}
+    const wb=document.getElementById('live-weather-bar-wrap');
+    if(wb)wb.innerHTML=weatherBarHTML();
+    // Resize map to account for new bar height
+    const r2=cur();if(r2)initLiveMap(r2);
+    // Auto-collapse after 15s if expanded
+    if(_weatherExpanded){
+      _weatherCollapseTimer=setTimeout(()=>{
+        _weatherExpanded=false;
+        _weatherCollapseTimer=null;
+        const wb2=document.getElementById('live-weather-bar-wrap');
+        if(wb2)wb2.innerHTML=weatherBarHTML();
+        const r3=cur();if(r3)initLiveMap(r3);
+      },15000);
+    }
     return;
   }
   // Tap summary card (next stop/water/food) → peek map for 5s
