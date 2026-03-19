@@ -299,7 +299,7 @@ select option{background:var(--bg3);}
     <div class="field"><label class="lbl">Type</label>
       <select id="m-type">
         <option value="sleep">😴 Bivi</option>
-        <option value="rest">🪑 Rest</option>
+        <option value="rest">🍫 Snack Stop</option>
         <option value="water">💧 Water</option>
         <option value="food">🍴 Food</option>
         <option value="shop">🛒 Shop</option>
@@ -320,13 +320,13 @@ select option{background:var(--bg3);}
     </div>
     <div id="m-sleep-row" style="display:none;" class="field">
       <label class="lbl" id="m-sleep-lbl">Bivi</label>
-      <div style="display:flex;gap:4px;margin-bottom:6px;">
+      <div id="m-sleep-mode-btns" style="display:flex;gap:4px;margin-bottom:6px;">
         <button class="btn btn-sm" id="m-sleep-mode-dur" style="flex:1;font-size:13px;">⏱ Duration</button>
         <button class="btn btn-sm" id="m-sleep-mode-wake" style="flex:1;font-size:13px;">⏰ Wake at</button>
       </div>
       <div id="m-sleep-dur-row" style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:14px;color:#b39ddb;">😴 Hours:</span>
-        <input type="number" id="m-sleep" value="10" min="0.5" max="24" step="0.5" style="width:60px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);">
+        <span style="font-size:14px;color:#b39ddb;" id="m-sleep-dur-icon">😴 Hours:</span>
+        <input type="number" id="m-sleep" value="10" min="0.25" max="24" step="0.25" style="width:60px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);">
       </div>
       <div id="m-sleep-wake-row" style="display:none;align-items:center;gap:6px;">
         <span style="font-size:14px;color:#b39ddb;">⏰ Wake:</span>
@@ -754,7 +754,7 @@ function startDT(r){
 }
 // Get effective sleep hours for a stop — handles fixed departure time
 function sleepHoursFor(s,arrivalEta){
-  if(s.type==='rest')return s.sleepH||1;
+  if(s.type==='rest')return s.sleepH||0.25;
   if(!s.departTime)return s.sleepH||(s.sleepAt?10:10);
   // Fixed wake time mode — calculate hours from arrival to next occurrence of wakeTime
   const [dh,dm]=s.departTime.split(':').map(Number);
@@ -826,7 +826,7 @@ function etaAt(distKm,r){
         const arrivalEta=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
         sleepOffset+=sleepHoursFor(s,arrivalEta);
       } else {
-        sleepOffset+=s.sleepH||(s.type==='rest'?1:10);
+        sleepOffset+=s.sleepH||(s.type==='rest'?0.25:10);
       }
     }
     // After-sleep meals (only relevant if stop has sleep)
@@ -848,9 +848,9 @@ function capName(s){if(!s)return s;return s.charAt(0).toUpperCase()+s.slice(1);}
 function addStop(r,dist,type,name,opts){
   opts=opts||{};
   r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:capName(name||(type+' stop')),
-    sleepH:opts.sleepH||10,departTime:opts.departTime||null,
+    sleepH:opts.sleepH!==undefined?opts.sleepH:(type==='rest'?0.25:10),departTime:opts.departTime||null,
     ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
-    icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
+    icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🍫',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
     auto:opts.auto||false,
     starred:opts.starred!==undefined?opts.starred:(type==='town'?true:!opts.auto),
     crossing:opts.crossing||false,
@@ -2477,10 +2477,32 @@ function updateModalFields(){
   const t=document.getElementById('m-type').value;
   const isHike=t==='hike';
   const isSleep=t==='sleep'||t==='rest';
+  const isSnack=t==='rest';
   const hasOH=OH_TYPES.has(t);
   document.getElementById('m-sleep-row').style.display=isSleep?'block':'none';
   document.getElementById('m-hike-row').style.display='none'; // hike opens pace modal directly
   document.getElementById('m-hours-row').style.display=(!isSleep&&!isHike)?'block':'none';
+  // Snack stop: duration only, no wake toggle, 15min default
+  const modeBtns=document.getElementById('m-sleep-mode-btns');
+  const durIcon=document.getElementById('m-sleep-dur-icon');
+  const sleepInp=document.getElementById('m-sleep');
+  const lbl=document.getElementById('m-sleep-lbl');
+  if(isSnack){
+    if(modeBtns)modeBtns.style.display='none';
+    // Force back to duration mode
+    document.getElementById('m-sleep-dur-row').style.display='flex';
+    document.getElementById('m-sleep-wake-row').style.display='none';
+    document.getElementById('m-sleep-mode-dur').classList.add('btn-p');
+    document.getElementById('m-sleep-mode-wake').classList.remove('btn-p');
+    if(durIcon)durIcon.textContent='🍫 Duration (hrs):';
+    if(sleepInp){sleepInp.value=0.25;sleepInp.step=0.25;sleepInp.min=0.25;}
+    if(lbl)lbl.textContent='Snack Stop';
+  } else {
+    if(modeBtns)modeBtns.style.display='flex';
+    if(durIcon)durIcon.textContent='😴 Hours:';
+    if(sleepInp){sleepInp.value=10;sleepInp.step=0.5;sleepInp.min=0.5;}
+    if(lbl)lbl.textContent='Sleep';
+  }
   // Set default hours checkbox state based on type
   const hasHoursChk=document.getElementById('m-has-hours');
   if(hasHoursChk){
@@ -2499,9 +2521,6 @@ function updateModalFields(){
 }
 document.getElementById('m-type').addEventListener('change',()=>{
   updateModalFields();
-  const t=document.getElementById('m-type').value;
-  const lbl=document.getElementById('m-sleep-lbl');
-  if(lbl)lbl.textContent=t==='rest'?'Rest':'Sleep';
 });
 // Sleep mode toggle in add stop modal
 document.getElementById('m-sleep-mode-dur').addEventListener('click',()=>{
@@ -2664,8 +2683,18 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
     const openT=document.getElementById('m-open').value,closeT=document.getElementById('m-close').value;
     if(openT&&closeT){ohRaw=openT+'-'+closeT;ohRules=parseOH(ohRaw);}
   }
-  addStop(r,dist,t,name||(t.charAt(0).toUpperCase()+t.slice(1)+' at '+dist.toFixed(1)+'km'),{sleepH,departTime,ohRaw,ohRules});
+  const stopName=name||(t==='rest'?'Snack Stop':(t.charAt(0).toUpperCase()+t.slice(1)))+' at '+dist.toFixed(1)+'km';
+  addStop(r,dist,t,stopName,{sleepH,departTime,ohRaw,ohRules});
+  // Capture the newly added stop's id before render
+  const newSnackId=(t==='rest')?r.stops.slice().reverse().find(s=>s.type==='rest'&&s.dist===dist)?.id:null;
   saveAll();closeModal();render();
+  // Auto-open food picker for snack stops
+  if(newSnackId){
+    setTimeout(()=>{
+      const btn=document.querySelector(`.food-at-stop[data-sid="${newSnackId}"]`);
+      if(btn)btn.click();
+    },120);
+  }
 });
 
 // ═══════════════════════════════════════════
@@ -3245,7 +3274,7 @@ function importPlan(jsonStr,r){
     if(existingIds.has(s.id))return;
     r.stops.push({...s,
       ohRules:s.ohRaw?parseOH(s.ohRaw):null,
-      icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🪑',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[s.type]||'📍'
+      icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🍫',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[s.type]||'📍'
     });
   });
   r.stops.sort((a,b)=>a.dist-b.dist);
@@ -3740,7 +3769,7 @@ function tLiveShell(r){
         const depart=s.type==='sleep'&&eta?new Date(eta.getTime()+(s.sleepH||10)*3600000):null;
         const departDay=depart&&sdt?dayOff(depart,sdt):'';
         const crossingBadge='';
-        const restBadge=s.type==='rest'?`<div style="font-size:14px;color:#94856a;">🪑 ${s.sleepH||1}h rest</div>`:'';
+        const restBadge=s.type==='rest'?`<div style="font-size:14px;color:#94856a;">🍫 ${s.sleepH<=0.5?(s.sleepH*60|0)+'min':(s.sleepH||0.25)+'h'} snack stop</div>`:'';
         const orBadge=s.offRouteM?' <span style="font-size:16px;color:var(--text3);">('+( s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km')+' off route)</span>':'';
         const st=shopSt(s,r);
         const hasSt=s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='hut';
@@ -4236,7 +4265,7 @@ function stopRow(s,r,sdt){
   const eta=etaAt(s.dist,r),day=dayOff(eta,sdt),st=shopSt(s,r);
   const stEl=st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':'';
   const ohHint=s.ohRaw?` · <span style="color:var(--text3);font-size:16px;">${s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw}</span>`:'';
-  const sleepBadge=s.type==='sleep'?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH||10}h bivi</span>`:s.type==='rest'?`<span style="color:#94856a;font-size:15px;font-family:var(--font);">🪑 ${s.sleepH||1}h rest</span>`:
+  const sleepBadge=s.type==='sleep'?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH||10}h bivi</span>`:s.type==='rest'?`<span style="color:#94856a;font-size:15px;font-family:var(--font);">🍫 ${s.sleepH<=0.5?(s.sleepH*60|0)+'min':(s.sleepH||0.25)+'h'} snack</span>`:
     '';
   const orBadge=s.offRouteM?` <span style="font-size:16px;color:var(--text3);font-family:var(--font);">(${s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km'} off route)</span>`:'';
   const autoBadge=s.auto?`<span style="font-size:12px;color:var(--text3);font-family:var(--font);background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:0 4px;margin-left:3px;">OSM</span>`:'';
@@ -4871,7 +4900,7 @@ function tPlan(r){
       const wakeDay=wake&&sdt?dayOff(wake,sdt):'';
       const departDay=depart&&sdt?dayOff(depart,sdt):'';
       const col=s.type==='rest'?'#94856a':'#b39ddb';
-      const icon=s.type==='rest'?'🪑':'😴';
+      const icon=s.type==='rest'?'🍫':'😴';
       const fmtChip=m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;display:inline-block;margin:2px 2px 2px 0;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier'}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
       const row=(label,val,color)=>`<div style="display:flex;align-items:baseline;gap:6px;margin-top:4px;font-family:var(--font);font-size:15px;"><span style="color:var(--text3);min-width:52px;">${label}</span><span style="color:${color||'var(--text)'};">${val}</span></div>`;
       sleepDiv='<div style="margin-top:8px;">'
@@ -4905,7 +4934,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🪑 Rest stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🍫 Snack Stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
             +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
             +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
@@ -5673,7 +5702,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       const picker=document.createElement('div');
       picker.className='food-picker';
       picker.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:6px;padding:10px 12px;background:var(--card);border-radius:8px;border:1px solid rgba(251,191,36,0.5);box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:260px;';
-      const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+      const hasSleep=(s.type==='sleep'||s.sleepAt)&&s.type!=='rest';
       const renderPicker=()=>{
         picker.innerHTML=`
           <div style="font-size:13px;color:#fbbf24;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;display:flex;align-items:center;gap:5px;">${ICON_FOOD} Food at this stop</div>
