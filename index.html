@@ -3219,14 +3219,15 @@ function scrollTileToTop(tile){
 }
 function renderKeepScroll(anchorSid){
   const wrap=document.getElementById('content-wrap');
-  const scrollTop=wrap?wrap.scrollTop:0;
+  const scroller=wrap?wrap.querySelector('.content'):null;
+  const scrollTop=scroller?scroller.scrollTop:0;
   // Anchor-based: find the mission-node's top offset relative to scroller before render
   const anchorEl=anchorSid?Array.from(document.querySelectorAll('.mission-node')).find(el=>el.dataset.sid===String(anchorSid)):null;
-  const anchorOffsetBefore=anchorEl?(anchorEl.getBoundingClientRect().top-(wrap?wrap.getBoundingClientRect().top:0)):null;
+  const anchorOffsetBefore=anchorEl&&scroller?(anchorEl.getBoundingClientRect().top-scroller.getBoundingClientRect().top):null;
   render();
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
-      const w=document.getElementById('content-wrap');
+      const w=wrap?wrap.querySelector('.content'):null;
       if(!w)return;
       if(anchorSid&&anchorOffsetBefore!==null){
         const newEl=Array.from(document.querySelectorAll('.mission-node')).find(el=>el.dataset.sid===String(anchorSid));
