@@ -1412,6 +1412,7 @@ let _tileMode=1; // 0=off 1=OSM 2=SAT 3=CyclOSM 4=Topo
 const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}','https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png','https://tile.opentopomap.org/{z}/{x}/{y}.png'];
 // Tile cache: key = 'mode/z/x/y'
 const _tileCache={};
+let _mapDragging=false;
 const OSM_URL='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 // Convert lon/lat to OSM tile x,y at zoom z
 function lonLatToTile(lon,lat,z){
@@ -1431,7 +1432,7 @@ function getTile(z,x,y,redrawId){
   const img=new Image();
   img.crossOrigin='anonymous';
   _tileCache[key]='loading';
-  img.onload=()=>{_tileCache[key]=img;if(redrawId)redrawMap(redrawId);};
+  img.onload=()=>{_tileCache[key]=img;if(redrawId&&!_mapDragging)redrawMap(redrawId);};
   img.onerror=()=>{_tileCache[key]='error';};
   const tileUrl=TILE_URLS[_tileMode]||OSM_URL;
   img.src=tileUrl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
@@ -1548,6 +1549,9 @@ function drawMap(cvs,r,opts){
   const cpx=W/2,cpy=H*(!_wasFit&&id==='desktop-map'?anchor:id==='desktop-map'?visibleMidY:anchor);
   const px=lon=>cpx+(lon-cLon)*kx*scale;
   const py=lat=>cpy-(lat-cLat)*ky*scale;
+
+  // Store projection for hit-testing immediately — before tile loads so clicks work right away
+  cvs._px=px;cvs._py=py;cvs._pts=pts;cvs._kx=kx;cvs._ky=ky;cvs._scale=scale;cvs._cLon=cLon;cvs._cLat=cLat;cvs._W=W;cvs._H=H;cvs._anchor=anchor;
 
   // Rotate to face direction of travel if heading available
   const heading=opts.rotate&&UI.gpsHeading!=null?UI.gpsHeading:null;
@@ -1827,9 +1831,6 @@ function drawMap(cvs,r,opts){
     ctx.strokeStyle='#f87171';ctx.lineWidth=2.5;ctx.stroke();
   }
 
-  // Store for hit-testing
-  cvs._px=px;cvs._py=py;cvs._pts=pts;cvs._kx=kx;cvs._ky=ky;cvs._scale=scale;cvs._cLon=cLon;cvs._cLat=cLat;cvs._W=W;cvs._H=H;cvs._anchor=anchor;
-
   // Restore rotation transform and draw north arrow
   if(heading!==null){
     ctx.restore();
@@ -1985,6 +1986,7 @@ function attachMap(cvs,tapCb){
   // ── Pan support (single finger drag / mouse drag) ──
   let _drag=null;
   const dragStart=(x,y)=>{
+    _mapDragging=true;
     // Always capture the current rendered centre (cvs._cLon/Lat is set by drawMap)
     const cx=cvs._cLon!==undefined?cvs._cLon:0;
     const cy=cvs._cLat!==undefined?cvs._cLat:0;
@@ -2002,6 +2004,7 @@ function attachMap(cvs,tapCb){
     redrawMap(id);
   };
   const dragEnd=(x,y,tapCb)=>{
+    _mapDragging=false;
     if(!_drag)return;
     const wasTap=!_drag.moved;
     _drag=null;
