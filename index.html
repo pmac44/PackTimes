@@ -3407,7 +3407,7 @@ const LAYER_TYPES=[
   {type:'sleep',col:'#b39ddb',label:'Sleep'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['town','kmmarkers','turns'];
+  const PRIORITY=['town','weather','kmmarkers','turns'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
