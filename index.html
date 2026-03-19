@@ -3308,6 +3308,7 @@ function buildLiveStrip(r,liveDist,sdt){
   add(ahead.find(s=>waterTypes.has(s.type)));
   add(ahead.find(s=>s.type==='food'||s.type==='shop')); // resupply — buy food here
   add(ahead.find(s=>s.meals&&s.meals.length));           // eat stop — carrying food
+  rows.sort((a,b)=>a.dist-b.dist); // always show in distance order
   const now=etaAt(liveDist,r)||sdt||new Date(); // always use route time, never wall clock
   const html=rows.map(s=>{
     const eta=etaAt(s.dist,r);
