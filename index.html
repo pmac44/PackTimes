@@ -1530,9 +1530,8 @@ function drawMap(cvs,r,opts){
     ctx.fillStyle='#0d1a0d';ctx.fillRect(0,0,W,H);
   }
 
-  // Route line
-  // Day/night coloured route line for desktop map
-  if(id==='desktop-map'&&startDT(r)&&Object.keys(_sunCache).length){
+  // Day/night coloured route line — all maps when sun data and start time available
+  if(startDT(r)&&Object.keys(_sunCache).length){
     const sdt=startDT(r);
     const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
     const midLat=(Math.min(...lats)+Math.max(...lats))/2;
