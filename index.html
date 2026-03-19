@@ -4459,6 +4459,8 @@ function drawWeatherDot(ctx,x,y,w,mapFontSm,isDesktop){
   ctx.globalAlpha=1;
   ctx.textAlign='left'; // reset
 }
+
+function weatherBarHTML(){
   // Find best cached weather entry (prefer GPS position key)
   const keys=Object.keys(_weatherCache);
   if(!keys.length)return'';
@@ -5866,7 +5868,7 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     const v=document.getElementById('weather-spacing-val');
     if(v)v.textContent=UI.weatherSpacingKm+'km';
     saveAll();return;}
-
+  if(e.target.id==='offroute-sl'){
     UI.offRouteM=+e.target.value;
     const v=document.getElementById('offroute-m-val');
     if(v)v.textContent=UI.offRouteM+'m';
