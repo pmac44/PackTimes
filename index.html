@@ -3206,7 +3206,7 @@ const TABS=[
   {id:'settings',icon:'⚙',label:'Settings'},
 ];
 
-let _rf=false;
+let _rf=false,_afterRender=null;
 
 // Scroll a tile to the top of its scroll container
 function scrollTileToTop(tile){
@@ -3241,7 +3241,7 @@ function renderKeepScroll(anchorSid){
     });
   });
 }
-function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();});}
+function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();if(_afterRender){_afterRender();_afterRender=null;}});}
 
 // Expand/collapse icons for stops map
 // Fork & knife food icon — use currentColor so context controls colour
@@ -5462,7 +5462,14 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(mu&&r){
     const sid=mu.dataset.sid;
     UI.planEditCluster=UI.planEditCluster===sid?null:sid;
-    renderKeepScroll(sid);return;
+    const scroller=document.getElementById('content-wrap')?.querySelector('.content');
+    const st=scroller?scroller.scrollTop:0;
+    _afterRender=()=>{
+      const w=document.getElementById('content-wrap')?.querySelector('.content');
+      if(w)w.scrollTop=st;
+    };
+    render();
+    return;
   }
   const cu=e.target.closest('.cluster-unstar-stop');
   if(cu&&r){
