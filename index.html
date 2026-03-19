@@ -1375,8 +1375,8 @@ const _ms={};
 function ms(id){if(!_ms[id])_ms[id]={zoom:1,cx:null,cy:null};return _ms[id];}
 
 // Tile overlay mode (shared across all maps)
-let _tileMode=1; // 0=off 1=OSM 2=SAT
-const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'];
+let _tileMode=1; // 0=off 1=OSM 2=SAT 3=CyclOSM 4=Topo
+const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}','https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png','https://tile.opentopomap.org/{z}/{x}/{y}.png'];
 // Tile cache: key = 'mode/z/x/y'
 const _tileCache={};
 const OSM_URL='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -2105,7 +2105,7 @@ function mapCtrlHTML(mapId,showGPS){
   return`<div class="map-ctrl" style="${pos}">
     ${expandBtn}
     <button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
-    <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle satellite tiles" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["OSM","SAT","off"][_tileMode]}</button>
+    <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${showGPS?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:''}
     ${mapId==='live-map'?gpsBtn:''}
   </div>`;
@@ -2146,10 +2146,10 @@ document.addEventListener('click',e=>{
   }
   const tm=e.target.closest('[data-tilemap]');
   if(tm){
-    _tileMode=(_tileMode+1)%3;
+    _tileMode=(_tileMode+1)%5;
     // Update all tile toggle button styles on the page
     document.querySelectorAll('[data-tilemap]').forEach(btn=>{
-      const labels=['OSM','SAT','off'];
+      const labels=['off','OSM','SAT','Cycle','Topo'];
       btn.textContent=labels[_tileMode];
       btn.style.color=_tileMode>0?'var(--accent)':'';
       btn.style.borderColor=_tileMode>0?'var(--accent3)':'';
@@ -2263,7 +2263,7 @@ function openPaceModal(editIdx,startDist){
     setTimeout(()=>{
       // Sync tile button label
       const tb=document.getElementById('pace-tile-btn');
-      if(tb)tb.textContent=['OSM','SAT','off'][_tileMode];
+      if(tb)tb.textContent=['off','OSM','SAT','Cycle','Topo'][_tileMode];
       // Fit to route extents
       const state=ms('pace-map');
       state.zoom=null;state.cx=null;state.cy=null;
@@ -2643,7 +2643,7 @@ function renderDesktopMap(){
   const cvs=document.getElementById('desktop-map');if(!cvs)return;
   // Update tile button text
   const tb=document.getElementById('desktop-tile-btn');
-  if(tb)tb.textContent=['OSM','SAT','off'][_tileMode];
+  if(tb)tb.textContent=['off','OSM','SAT','Cycle','Topo'][_tileMode];
   // Size canvas to its container
   const pane=document.getElementById('desktop-map-pane');
   const pw=pane.offsetWidth,ph=pane.offsetHeight;
