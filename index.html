@@ -3518,15 +3518,15 @@ function tStopsShell(r){
           ${(()=>{
             const filtered=sortedLayers(r);
             const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
-            const allDot=`<div id="mob-layer-all" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:1px 0;margin-bottom:4px;opacity:${allHidden?0.45:1};">
+            const allDot=`<div id="mob-layer-all" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;margin-bottom:4px;opacity:${allHidden?0.45:1};background:rgba(0,0,0,0.52);border-radius:20px;">
               <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${allHidden?'none':'#fff'}" stroke="#fff" stroke-width="1.4"/></svg>
-              <span class="mob-layer-lbl" style="font-size:12px;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;font-family:var(--font);">All</span>
+              <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">All</span>
             </div>`;
             const dotHTML=t=>{
               const hidden=UI.hiddenMapTypes.has(t.type);
-              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:1px 0;">
-                <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#0a0f0a'}" stroke-width="1.4"/></svg>
-                <span class="mob-layer-lbl" style="font-size:12px;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;font-family:var(--font);">${t.label}</span>
+              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;background:rgba(0,0,0,0.52);border-radius:20px;opacity:${hidden?0.45:1};">
+                <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#fff'}" stroke-width="1.4"/></svg>
+                <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">${t.label}</span>
               </div>`;
             };
             return allDot+filtered.map(dotHTML).join('');
