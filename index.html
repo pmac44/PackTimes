@@ -1852,8 +1852,8 @@ function peekLiveStop(s,r){
 const _sb=document.getElementById('desktop-sidebar');
 const stripH=IS_DESKTOP()?0:(document.getElementById('live-next-strip')?.offsetHeight||120);
 const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH));
-  // Anchor: centre of map
-  const anchor=0.5;
+  // Anchor: 65% down — GPS position sits lower, more road visible ahead
+  const anchor=0.65;
 
   // Scroll to top instantly
   const scroller=document.getElementById('live-scroller');
@@ -1897,10 +1897,10 @@ function redrawMap(id){
   if(isLive&&_livePeekTimer){
     // During peek: redraw at peek position (not GPS-following)
     const state=ms('live-map');
-    drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:state._peekAnchor||0.4,rotate:true,highlightId:_highlightStopId});
+    drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:state._peekAnchor||0.65,rotate:true,highlightId:_highlightStopId});
     return;
   }
-  drawMap(cvs,r,{showGPS:isLive,followGPS:false,anchor:isLive?0.5:0.5,highlightId:_highlightStopId});
+  drawMap(cvs,r,{showGPS:isLive,followGPS:false,anchor:isLive?0.65:0.5,highlightId:_highlightStopId});
   if(IS_DESKTOP())renderDesktopMap();
 }
 
@@ -3836,7 +3836,7 @@ function initLiveMap(r){
       const lo=document.getElementById('live-scroller');
       if(lo)lo.style.height=Math.max(mapH+200,viewH-tabsH)+'px';
     }
-    if(!_livePeekTimer)drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.5,rotate:true});
+    if(!_livePeekTimer)drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
   };
   sizeLiveMap();
   // Re-size when address bar retracts/appears
@@ -5036,7 +5036,7 @@ function updateLive(){
         state.zoom=zoomForKmWidth('live-map',0.3);
         state._autoZoomed=true;
       }
-      drawMap(mc,r,{showGPS:true,followGPS:true,anchor:0.5,rotate:true});
+      drawMap(mc,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
     }
   }
 }
