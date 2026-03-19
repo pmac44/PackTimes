@@ -2142,7 +2142,7 @@ function hitTest(cvs,cx,cy,cb){
 function mapCtrlHTML(mapId,showGPS){
   const isStopsMobile=mapId==='stops-map'&&!IS_DESKTOP();
   const isLiveMobile=mapId==='live-map'&&!IS_DESKTOP();
-  const pos=(isStopsMobile||isLiveMobile)?`top:auto;bottom:${isLiveMobile?52:8}px;right:8px;left:auto;transform:none;`:'';
+  const pos=(isStopsMobile||isLiveMobile)?'top:auto;bottom:8px;right:8px;left:auto;transform:none;':'';
   const btnSize=isLiveMobile?'width:48px;height:48px;font-size:22px;':'';
   const gpsBtn=UI.gpsActive?
     `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
@@ -3807,7 +3807,6 @@ function tLiveShell(r){
         <canvas id="live-map"></canvas>
         ${mapCtrlHTML('live-map',true)}
         ${progressOverlay}
-        <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:9;">${weatherBarHTML()}</div>
         <div id="alert-overlay">
           <div id="alert-box">
             <div id="alert-ico">📍</div>
@@ -3838,6 +3837,7 @@ function tLiveShell(r){
           </div>`;
         })()}
       </div>
+      <div id="live-weather-bar-wrap">${weatherBarHTML()}</div>
       ${buildLiveStrip(r,liveDist,sdt)}
       <div class="live-stop-list" id="live-stop-list">
         ${stopListHtml}
@@ -3872,8 +3872,10 @@ function initLiveMap(r){
     } else {
       const ideal=Math.round(viewW*20/9);
       const strip=document.getElementById('live-next-strip');
-      const stripH=strip?strip.offsetHeight:120; // fallback ~3 rows
-      const avail=viewH-tabsH-stripH;
+      const stripH=strip?strip.offsetHeight:120;
+      const weatherBar=document.getElementById('live-weather-bar-wrap');
+      const weatherBarH=weatherBar?weatherBar.offsetHeight:0;
+      const avail=viewH-tabsH-stripH-weatherBarH;
       mapH=Math.min(ideal,Math.max(200,avail));
     }
     mapSection.style.height=mapH+'px';
@@ -4491,32 +4493,36 @@ function drawWeatherDot(ctx,x,y,w,mapFontSm,isDesktop){
 }
 
 function weatherBarHTML(){
-  // Find best cached weather entry (prefer GPS position key)
   const keys=Object.keys(_weatherCache);
   if(!keys.length)return'';
-  // Use most recently fetched
   const key=keys.reduce((a,b)=>(_weatherCache[a].fetchedAt>_weatherCache[b].fetchedAt?a:b));
   const w=_weatherCache[key];
   if(!w||!w.current)return'';
   const c=w.current;
-  const next3h=w.hourly?w.hourly.slice(1,4):null;
+  const next3h=w.hourly?w.hourly.slice(1,4):[];
   const alert=isSignificantWeatherChange(c,next3h);
-  const next1h=w.hourly&&w.hourly[1];
-  const tempChange=next1h?Math.round(next1h.temp)-Math.round(c.temp):0;
-  const tempTrend=tempChange>1?'↑':tempChange<-1?'↓':'';
-  return`<div id="live-weather-bar" style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:rgba(10,15,10,0.82);border-top:1px solid rgba(255,255,255,0.08);font-family:var(--font);">
-    <div style="display:flex;align-items:center;gap:5px;flex:1;">
-      ${wmoIcon(c.code)}
-      <span style="font-size:16px;font-weight:600;color:var(--text);">${Math.round(c.temp)}°</span>
-      <span style="font-size:13px;color:var(--text3);">${tempTrend}</span>
-      <span style="display:inline-flex;align-items:center;gap:2px;font-size:13px;color:var(--text3);">${windArrow(c.winddeg)}${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span>
+  // Temperature in 3h — more meaningful than 1h for planning stops
+  const temp3h=next3h.length?next3h[next3h.length-1].temp:null;
+  const tempDrop=temp3h!==null?Math.round(temp3h)-Math.round(c.temp):0;
+  const showTrend=Math.abs(tempDrop)>=2;
+  const trendCol=tempDrop<=-4?'#93c5fd':tempDrop<=-2?'#bfdbfe':tempDrop>=2?'#fca5a5':'var(--text3)';
+  // Condition colour matching map pills
+  const code=c.code||0;
+  const isStorm=wmoIsStorm(code);
+  const isHeavyRain=code>=65&&code<80;
+  const isRain=wmoIsRainy(code)&&!isStorm;
+  const isCloud=code>=3&&code<51;
+  const condBg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(120,70,0,1)';
+  const condText=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fef3c7';
+  const condLabel=isStorm?'Storm':isHeavyRain?'Heavy rain':isRain?'Rain':isCloud?'Cloud':'Clear';
+  return`<div id="live-weather-bar" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg2);border-top:1px solid var(--border);font-family:var(--font);flex-shrink:0;">
+    <div style="background:${condBg};border-radius:5px;padding:3px 8px;flex-shrink:0;">
+      <span style="font-size:15px;font-weight:600;color:${condText};">${Math.round(c.temp)}°</span>
     </div>
-    ${next1h?`<div style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text3);">
-      <span style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;">+1h</span>
-      ${wmoIcon(next1h.code)}
-      <span>${Math.round(next1h.temp)}°</span>
-    </div>`:''}
-    ${alert?`<div style="font-size:12px;color:#fbbf24;font-weight:600;animation:pulse 1.4s infinite;">⚠ ${alert}</div>`:''}
+    <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
+    ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
+    <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
+    ${alert?`<div style="margin-left:auto;font-size:12px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);border-radius:4px;padding:2px 6px;animation:pulse 1.4s infinite;">⚠ ${alert}</div>`:''}
   </div>`;
 }
 
