@@ -4507,11 +4507,11 @@ function weatherPillHTML(code,temp,label){
   const isCloud=code>=3&&code<51;
   const bg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(120,70,0,1)';
   const tc=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fef3c7';
-  return`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;">
-    <div style="background:${bg};border-radius:4px;padding:2px 6px;min-width:36px;text-align:center;">
-      <span style="font-size:13px;font-weight:600;color:${tc};">${Math.round(temp)}°</span>
+  return`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
+    <div style="background:${bg};border-radius:6px;padding:5px 10px;min-width:48px;text-align:center;">
+      <span style="font-size:17px;font-weight:600;color:${tc};">${Math.round(temp)}°</span>
     </div>
-    <div style="font-size:10px;color:var(--text3);font-family:var(--font);">${label}</div>
+    <div style="font-size:13px;color:var(--text2);font-family:var(--font);font-weight:500;">${label}</div>
   </div>`;
 }
 
@@ -4573,7 +4573,7 @@ function weatherBarHTML(){
         const windDeg=c.winddeg||0;
         const diff=((windDeg-routeBearing+360)%360);
         const rel=diff<45||diff>315?'Tailwind 🙌':diff<135?'Crosswind ↔':diff<225?'Headwind 😬':'Crosswind ↔';
-        windRelHTML=`<span style="font-size:13px;color:var(--text2);">${rel}</span>`;
+        windRelHTML=`<span style="font-size:15px;color:var(--text2);">${rel}</span>`;
       }
     }
 
@@ -4588,20 +4588,20 @@ function weatherBarHTML(){
       const sun=_sunCache[`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`];
       if(sun){
         const fmt=d=>`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-        sunHTML=`<span style="font-size:13px;color:var(--text3);">🌅 ${fmt(sun.sunrise)} · 🌇 ${fmt(sun.sunset)}</span>`;
+        sunHTML=`<span style="font-size:15px;color:var(--text2);">🌅 ${fmt(sun.sunrise)} · 🌇 ${fmt(sun.sunset)}</span>`;
       }
     }
 
     expandedHTML=`
-    <div style="border-top:1px solid var(--border);padding:8px 10px 6px;">
-      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">${hourChips}</div>
+    <div style="border-top:1px solid var(--border);padding:10px 10px 8px;">
+      <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">${hourChips}</div>
     </div>
-    <div style="border-top:1px solid var(--border);padding:6px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-      ${rainProb!=null?`<span style="font-size:13px;color:${rainProb>50?'#93c5fd':'var(--text3)'};">💧 ${rainProb}% rain</span>`:''}
-      ${lowWarning?`<span style="font-size:13px;color:#93c5fd;">🥶 Low ${Math.round(tonightLow)}° tonight</span>`:(tonightLow!=null?`<span style="font-size:13px;color:var(--text3);">Low ${Math.round(tonightLow)}° tonight</span>`:'')}
+    <div style="border-top:1px solid var(--border);padding:8px 10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+      ${rainProb!=null?`<span style="font-size:15px;color:${rainProb>50?'#93c5fd':'var(--text2)'};">💧 ${rainProb}% rain</span>`:''}
+      ${lowWarning?`<span style="font-size:15px;color:#93c5fd;">🥶 Low ${Math.round(tonightLow)}° tonight</span>`:(tonightLow!=null?`<span style="font-size:15px;color:var(--text2);">Low ${Math.round(tonightLow)}° tonight</span>`:'')}
       ${windRelHTML}
       ${sunHTML}
-      <span style="margin-left:auto;font-size:11px;color:var(--text3);">tap to close</span>
+      <span style="margin-left:auto;font-size:13px;color:var(--text3);">▲ tap to close</span>
     </div>`;
   }
 
