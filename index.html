@@ -3281,20 +3281,21 @@ function buildLiveStrip(r,liveDist,sdt){
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt;
   const ahead=r.stops.filter(s=>s.dist>liveDist&&starred(s));
   if(!ahead.length)return'<div class="live-next-strip"><div class="live-next-row" style="justify-content:center;color:var(--accent);font-size:14px;">🏁 All stops passed</div></div>';
-  // Collect distinct upcoming stops — next stop, next sleep, next water, next food — deduplicated by id
+  // Collect distinct upcoming stops — deduplicated by id
   const seen=new Set();
   const rows=[];
   const add=s=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);}};
   add(ahead[0]); // next stop always first
   add(ahead.find(s=>s.type==='sleep'||s.sleepAt));
   add(ahead.find(s=>s.type==='water'));
-  add(ahead.find(s=>s.type==='food'||s.type==='shop'));
+  add(ahead.find(s=>s.type==='food'||s.type==='shop')); // resupply — buy food here
+  add(ahead.find(s=>s.meals&&s.meals.length));           // eat stop — carrying food
+  const now=etaAt(liveDist,r)||sdt||new Date(); // always use route time, never wall clock
   const html=rows.map(s=>{
     const eta=etaAt(s.dist,r);
     const dt=(s.dist-liveDist).toFixed(1);
     const day=sdt&&eta?dayOff(eta,sdt):'';
     const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
-    const now=(UI.gpsDistKm!==null&&r)?etaAt(UI.gpsDistKm,r):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
     const remMs=eta&&now?(eta-now):null;
     const remH=remMs?remMs/3600000:null;
     const inStr=remH!==null&&remH>0
