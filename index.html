@@ -2142,7 +2142,7 @@ function hitTest(cvs,cx,cy,cb){
 function mapCtrlHTML(mapId,showGPS){
   const isStopsMobile=mapId==='stops-map'&&!IS_DESKTOP();
   const isLiveMobile=mapId==='live-map'&&!IS_DESKTOP();
-  const pos=(isStopsMobile||isLiveMobile)?'top:auto;bottom:8px;right:8px;left:auto;transform:none;':'';
+  const pos=(isStopsMobile||isLiveMobile)?`top:auto;bottom:${isLiveMobile?52:8}px;right:8px;left:auto;transform:none;`:'';
   const btnSize=isLiveMobile?'width:48px;height:48px;font-size:22px;':'';
   const gpsBtn=UI.gpsActive?
     `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
@@ -2733,6 +2733,14 @@ function renderDesktopMap(){
           <svg width="30" height="6" style="margin-left:4px;"><line x1="0" y1="3" x2="30" y2="3" stroke="rgba(8,18,45,0.95)" stroke-width="2.5"/><line x1="0" y1="3" x2="30" y2="3" stroke="rgba(40,50,120,0.7)" stroke-width="2.5"/></svg>
           <span style="font-size:10px;color:rgba(255,255,255,0.4);font-family:var(--font);">night</span>
         </div>
+      </div>`:'')
+      +(!UI.hiddenMapTypes.has('weather')?`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);margin-bottom:3px;line-height:1.5;">Weather at ETA · faded = low confidence (4+ days)</div>
+        ${[['rgba(161,98,7,0.88)','rgba(251,191,36,0.6)','#fef3c7','Sun'],['rgba(71,85,105,0.88)','rgba(148,163,184,0.4)','#e2e8f0','Cloud'],['rgba(37,99,235,0.88)','rgba(147,197,253,0.5)','#bfdbfe','Rain'],['rgba(30,64,175,0.92)','rgba(147,197,253,0.6)','#bfdbfe','Heavy'],['rgba(91,33,182,0.92)','rgba(196,181,253,0.8)','#ddd6fe','Storm !']].map(([bg,border,tc,lbl])=>`
+          <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;">
+            <div style="background:${bg};border:1px solid ${border};border-radius:4px;padding:1px 5px;font-size:9px;font-family:var(--font);color:${tc};min-width:24px;text-align:center;">18°</div>
+            <span style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);">${lbl}</span>
+          </div>`).join('')}
       </div>`:'');
     }
   }
@@ -4430,34 +4438,56 @@ function wmoIsStorm(code){return code>=80;}
 function drawWeatherDot(ctx,x,y,w,mapFontSm,isDesktop){
   if(!w)return;
   const code=w.code||0;
-  const isRain=wmoIsRainy(code);
   const isStorm=wmoIsStorm(code);
-  const alpha=w.lowConfidence?0.5:1;
+  const isHeavyRain=code>=65&&code<80;
+  const isRain=wmoIsRainy(code)&&!isStorm;
+  const isCloud=code>=3&&code<51;
+  const alpha=w.lowConfidence?0.45:1;
   const fontSize=isDesktop?12:10;
+  // Colour palette — instinctive
+  const pillBg=isStorm?'rgba(91,33,182,0.92)':      // purple — danger
+               isHeavyRain?'rgba(30,64,175,0.92)':  // dark blue — heavy rain
+               isRain?'rgba(37,99,235,0.88)':        // blue — rain
+               isCloud?'rgba(71,85,105,0.88)':       // grey — cloud
+               'rgba(161,98,7,0.88)';                // amber/gold — sun
+  const pillBorder=isStorm?'rgba(196,181,253,0.8)':
+                   isHeavyRain?'rgba(147,197,253,0.6)':
+                   isRain?'rgba(147,197,253,0.5)':
+                   isCloud?'rgba(148,163,184,0.4)':
+                   'rgba(251,191,36,0.6)';
+  const textCol=isStorm?'#ddd6fe':
+                isHeavyRain||isRain?'#bfdbfe':
+                isCloud?'#e2e8f0':
+                '#fef3c7';
   ctx.globalAlpha=alpha;
-  // Background pill
-  const pillW=isDesktop?54:44,pillH=isDesktop?22:18;
-  ctx.fillStyle=isStorm?'rgba(71,85,105,0.92)':isRain?'rgba(30,58,138,0.88)':'rgba(10,15,10,0.85)';
-  const r2=pillH/2;const x2=x-pillW/2,y2=y-pillH/2;
-  ctx.beginPath();ctx.moveTo(x2+r2,y2);ctx.lineTo(x2+pillW-r2,y2);ctx.arcTo(x2+pillW,y2,x2+pillW,y2+r2,r2);ctx.lineTo(x2+pillW,y2+pillH-r2);ctx.arcTo(x2+pillW,y2+pillH,x2+pillW-r2,y2+pillH,r2);ctx.lineTo(x2+r2,y2+pillH);ctx.arcTo(x2,y2+pillH,x2,y2+pillH-r2,r2);ctx.lineTo(x2,y2+r2);ctx.arcTo(x2,y2,x2+r2,y2,r2);ctx.closePath();
+  const pillW=isDesktop?(isStorm?52:46):isStorm?42:36;
+  const pillH=isDesktop?20:16;
+  const r2=pillH/2,x2=x-pillW/2,y2=y-pillH/2;
+  ctx.fillStyle=pillBg;
+  ctx.beginPath();
+  ctx.moveTo(x2+r2,y2);ctx.lineTo(x2+pillW-r2,y2);
+  ctx.arcTo(x2+pillW,y2,x2+pillW,y2+r2,r2);
+  ctx.lineTo(x2+pillW,y2+pillH-r2);
+  ctx.arcTo(x2+pillW,y2+pillH,x2+pillW-r2,y2+pillH,r2);
+  ctx.lineTo(x2+r2,y2+pillH);
+  ctx.arcTo(x2,y2+pillH,x2,y2+pillH-r2,r2);
+  ctx.lineTo(x2,y2+r2);
+  ctx.arcTo(x2,y2,x2+r2,y2,r2);
+  ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle=isStorm?'#fbbf24':isRain?'#60a5fa':'rgba(255,255,255,0.2)';
-  ctx.lineWidth=isStorm?1.5:1;ctx.stroke();
-  // Condition symbol — simple reliable canvas text
-  const sym=isStorm?'!':isRain?'~':code<=2?'+':code<=3?'~':'-';
-  const symCol=isStorm?'#fbbf24':isRain?'#93c5fd':'#94a3b8';
-  ctx.font=`bold ${fontSize+2}px DM Mono,monospace`;
-  ctx.fillStyle=symCol;ctx.textAlign='left';ctx.textBaseline='middle';
-  ctx.fillText(sym,x-pillW/2+5,y);
-  // Temperature
-  if(w.temp!=null){
-    ctx.font=`bold ${fontSize}px DM Mono,monospace`;
-    ctx.fillStyle=isRain?'#93c5fd':'#e2e8f0';
-    ctx.textAlign='right';
-    ctx.fillText(Math.round(w.temp)+'°',x+pillW/2-3,y);
+  ctx.strokeStyle=pillBorder;ctx.lineWidth=1;ctx.stroke();
+  // Temperature + storm marker
+  ctx.font=`bold ${fontSize}px DM Mono,monospace`;
+  ctx.fillStyle=textCol;
+  ctx.textBaseline='middle';
+  if(isStorm){
+    ctx.textAlign='left';ctx.fillText('!',x2+5,y);
+    ctx.textAlign='right';ctx.fillText(Math.round(w.temp)+'°',x2+pillW-3,y);
+  } else {
+    ctx.textAlign='center';
+    ctx.fillText(Math.round(w.temp)+'°',x,y);
   }
-  ctx.globalAlpha=1;
-  ctx.textAlign='left'; // reset
+  ctx.globalAlpha=1;ctx.textAlign='left';
 }
 
 function weatherBarHTML(){
