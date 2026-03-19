@@ -5317,7 +5317,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const s=r.stops.find(x=>String(x.id)===String(sid));
     if(s){
       s.starred=s.starred===false?true:false;
-      ss.textContent=s.starred!==false?'⭐':'☆';
+      const isStarred=s.starred!==false;
+      ss.innerHTML=isStarred
+        ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'
+        :'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+      ss.style.borderColor=isStarred?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.22)';
+      ss.style.color=isStarred?'#fbbf24':'rgba(255,255,255,0.85)';
       saveAll();
     }
     return;
