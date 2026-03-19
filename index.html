@@ -3819,7 +3819,9 @@ function initLiveMap(r){
       }
     } else {
       const ideal=Math.round(viewW*20/9);
-      const avail=viewH-tabsH;
+      const strip=document.getElementById('live-next-strip');
+      const stripH=strip?strip.offsetHeight:120; // fallback ~3 rows
+      const avail=viewH-tabsH-stripH;
       mapH=Math.min(ideal,Math.max(200,avail));
     }
     mapSection.style.height=mapH+'px';
