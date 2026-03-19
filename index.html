@@ -442,7 +442,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -489,6 +489,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -500,6 +501,18 @@ async function loadAll(){
     UI.dbxToken=await DB.getKV('dbxToken')||null;
     UI.dbxRefreshToken=await DB.getKV('dbxRefreshToken')||null;
     UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
+    // Restore UI prefs
+    const prefs=await DB.getKV('uiPrefs').catch(()=>null);
+    if(prefs){
+      if(prefs.turnAudio!==undefined)UI.turnAudio=prefs.turnAudio;
+      if(prefs.keepScreenOn!==undefined)UI.keepScreenOn=prefs.keepScreenOn;
+      if(prefs.alertKm!==undefined)UI.alertKm=prefs.alertKm;
+      if(prefs.turnAlertM!==undefined)UI.turnAlertM=prefs.turnAlertM;
+      if(prefs.offRouteM!==undefined)UI.offRouteM=prefs.offRouteM;
+      if(prefs.offRouteSecs!==undefined)UI.offRouteSecs=prefs.offRouteSecs;
+      if(prefs.searchRadiusKm!==undefined)UI.searchRadiusKm=prefs.searchRadiusKm;
+      if(prefs.gpsZoom!==undefined)UI.gpsZoom=prefs.gpsZoom;
+    }
     // Restore sun cache
     const sc=await DB.getKV('sunCache').catch(()=>null);
     if(sc){
@@ -4045,6 +4058,17 @@ function tSettings(r){
     <p style="font-size:16px;color:var(--text3);margin-top:4px;">Speed factor is on the Route tab.</p>
   </div>
   <div class="card">
+    <div class="ctitle">GPS Map Zoom</div>
+    <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">How much of the map is visible when GPS is active and you're moving. Tighter zoom shows more detail — essential for off-road trails where you can easily miss a junction. Wider zoom gives more context ahead.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${[['0.1','100m — very tight, individual trail junctions'],['0.15','150m — tight, good for singletrack'],['0.2','200m — standard cycling GPS (Garmin default)'],['0.3','300m — wider, good for roads'],['0.5','500m — overview, open terrain']].map(([val,desc])=>`
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:16px;padding:6px 8px;border-radius:7px;border:1px solid ${String(UI.gpsZoom)===val?'var(--accent)':'var(--border)'};background:${String(UI.gpsZoom)===val?'rgba(74,222,128,0.07)':'var(--bg3)'};">
+          <input type="radio" name="gps-zoom" class="gps-zoom-opt" value="${val}" ${String(UI.gpsZoom)===val?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);margin-top:2px;flex-shrink:0;">
+          <span><span style="font-family:var(--font);font-weight:500;color:var(--text);">${desc.split('—')[0].trim()}</span><span style="color:var(--text3);"> — ${desc.split('—')[1].trim()}</span></span>
+        </label>`).join('')}
+    </div>
+  </div>
+  <div class="card">
     <div class="ctitle">OSM Search Defaults</div>
     <p style="font-size:15px;color:var(--text2);margin-bottom:10px;">Choose which stop types to search for by default. Changes apply immediately on the Stops tab.</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
@@ -4178,7 +4202,7 @@ function stopRow(s,r,sdt){
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="${s.starred!==false?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);'}">${s.starred!==false?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
         ${s.type!=='sleep'&&s.type!=='rest'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);'}">${s.sleepAt?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
         <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="${s.meals&&s.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);'}"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>
-        <button class="btn btn-sm rename-stop" data-sid="${s.id}" title="Edit" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);">${ICON_EDIT}</button>
+        <button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);">${ICON_EDIT}</button>
         ${(()=>{const lat=s.lat||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lat;const lon=s.lon||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lon;return lat&&lon?`<a href="https://maps.google.com/?q=${lat.toFixed(5)},${lon.toFixed(5)}" target="_blank" class="btn btn-sm" title="Open in Google Maps" style="text-decoration:none;font-size:13px;font-family:var(--font);font-weight:600;padding:0 8px;">MAP</a>`:'';})()}
         ${isTown?'':`<button class="btn btn-r btn-sm del-stop" data-sid="${s.id}" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.5" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`}
       </div>
@@ -5033,7 +5057,7 @@ function updateLive(){
       // Auto-zoom to riding level on first motion only — don't override user zoom
       const state=ms('live-map');
       if(UI.gpsPos&&UI.gpsPos.speed!=null&&UI.gpsPos.speed>0.3&&!state._autoZoomed&&!state._userZoomed){
-        state.zoom=zoomForKmWidth('live-map',0.3);
+        state.zoom=zoomForKmWidth('live-map',UI.gpsZoom||0.15);
         state._autoZoomed=true;
       }
       drawMap(mc,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
@@ -5590,6 +5614,10 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     if(UI.keepScreenOn&&UI.gpsActive)requestWakeLock();
     else releaseWakeLock();
     saveAll();return;
+  }
+  if(e.target.classList.contains('gps-zoom-opt')){
+    UI.gpsZoom=parseFloat(e.target.value);
+    saveAll();render();return;
   }
 });
 
