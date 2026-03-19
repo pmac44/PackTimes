@@ -3219,19 +3219,18 @@ function scrollTileToTop(tile){
 }
 function renderKeepScroll(anchorSid){
   const wrap=document.getElementById('content-wrap');
-  // If we have a specific element to anchor to, use it — more reliable when content height changes
-  const anchorEl=anchorSid?document.querySelector(`[data-sid="${anchorSid}"]`)?.closest('.mission-node'):null;
-  const anchorOffsetBefore=anchorEl?(anchorEl.getBoundingClientRect().top-(wrap?wrap.getBoundingClientRect().top:0)):null;
   const scrollTop=wrap?wrap.scrollTop:0;
+  // Anchor-based: find the mission-node's top offset relative to scroller before render
+  const anchorEl=anchorSid?Array.from(document.querySelectorAll('.mission-node')).find(el=>el.dataset.sid===String(anchorSid)):null;
+  const anchorOffsetBefore=anchorEl?(anchorEl.getBoundingClientRect().top-(wrap?wrap.getBoundingClientRect().top:0)):null;
   render();
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
       const w=document.getElementById('content-wrap');
       if(!w)return;
-      if(anchorSid){
-        // Find the element in the new render and restore its visual position
-        const newEl=document.querySelector(`[data-sid="${anchorSid}"]`)?.closest('.mission-node');
-        if(newEl&&anchorOffsetBefore!==null){
+      if(anchorSid&&anchorOffsetBefore!==null){
+        const newEl=Array.from(document.querySelectorAll('.mission-node')).find(el=>el.dataset.sid===String(anchorSid));
+        if(newEl){
           const newOffset=newEl.getBoundingClientRect().top-w.getBoundingClientRect().top;
           w.scrollTop+=newOffset-anchorOffsetBefore;
           return;
