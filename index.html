@@ -4123,7 +4123,7 @@ function tLiveShell(r){
 
   // Build stop list (upcoming + passed faded, exclude those shown in summary)
   const stopListHtml=(()=>{
-    if(!r.stops.length)return'';
+    if(!r.stops.length&&!(r.paceSegs&&r.paceSegs.length))return'';
     const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
   const clusters=clusterStops(planStops);
     let html='';
@@ -4132,24 +4132,56 @@ function tLiveShell(r){
     html+=`<div class="card" style="padding:10px 12px;">
       <div class="prog" style="margin-top:0;"><div class="progf" id="live-progf2" style="width:${(prog*100).toFixed(1)}%"></div></div>
     </div>`;
+    // Build a flat list of stop tiles and hike-a-bike tiles, sorted by distance
+    const liveTiles=[];
     clusters.forEach(cl=>{
-      if(cl.stops.length>1){
-        html+='<div style="display:flex;align-items:center;gap:6px;margin:4px 0 2px;">'
-          +'<div style="width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0;"></div>'
-          +'<span style="font-size:16px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);">'+cl.name+' cluster · '+cl.stops.length+' stops</span>'
-          +'<div style="flex:1;height:1px;background:var(--border);"></div>'
-          +'</div>';
-      }
       cl.stops.forEach(s=>{
-        const eta=etaAt(s.dist,r),passed=liveDist>s.dist;
-        if(passed)return;
+        if(liveDist>s.dist)return;
         if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest')return;
+        liveTiles.push({_type:'stop',dist:s.dist,s,cl});
+      });
+    });
+    (r.paceSegs||[]).forEach(seg=>{
+      if(liveDist>seg.to)return; // fully passed
+      liveTiles.push({_type:'hike',dist:seg.from,seg});
+    });
+    liveTiles.sort((a,b)=>a.dist-b.dist);
+    liveTiles.forEach(tile=>{
+      if(tile._type==='hike'){
+        const seg=tile.seg;
+        const etaFrom=etaAt(seg.from,r),etaTo=etaAt(seg.to,r);
+        const dayFrom=sdt&&etaFrom?dayOff(etaFrom,sdt):'';
+        const dayTo=sdt&&etaTo?dayOff(etaTo,sdt):'';
+        const lenKm=(seg.to-seg.from).toFixed(1);
+        const durMs=etaTo&&etaFrom?etaTo-etaFrom:null;
+        const durH=durMs?durMs/3600000:null;
+        const durStr=durH!==null?(durH<1?Math.round(durH*60)+'min':Math.floor(durH)+'h'+(Math.round((durH%1)*60)>0?' '+Math.round((durH%1)*60)+'m':'')):'';
+        const inProgress=liveDist>=seg.from&&liveDist<=seg.to;
+        html+=`<div class="si" style="background:rgba(249,115,22,0.15);border-color:rgba(249,115,22,0.55);">
+          <div style="width:8px;height:8px;border-radius:2px;background:#f97316;margin-top:4px;flex-shrink:0;"></div>
+          <div class="si-inf">
+            <div class="si-name" style="color:#fdba74;">🥾 ${seg.name||'Hike-a-bike'}${inProgress?' <span style="font-size:13px;color:#f97316;">(in progress)</span>':''}</div>
+            <div class="si-meta">${seg.from.toFixed(1)}–${seg.to.toFixed(1)} km · ${lenKm} km section</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-family:var(--font);font-size:15px;font-weight:500;color:#f97316;">${(dayFrom?dayFrom.trim()+' ':'')+fmtT(etaFrom)}</div>
+            ${durStr?`<div style="font-size:13px;color:var(--text3);font-family:var(--font);">~${durStr}</div>`:''}
+          </div>
+        </div>`;
+      } else {
+        const {s,cl}=tile;
+        if(cl.stops.length>1&&cl.stops[0]===s){
+          html+='<div style="display:flex;align-items:center;gap:6px;margin:4px 0 2px;">'
+            +'<div style="width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0;"></div>'
+            +'<span style="font-size:16px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);">'+cl.name+' cluster · '+cl.stops.length+' stops</span>'
+            +'<div style="flex:1;height:1px;background:var(--border);"></div>'
+            +'</div>';
+        }
+        const eta=etaAt(s.dist,r);
         const day=sdt&&eta?dayOff(eta,sdt):'';
         const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
         const depart=s.type==='sleep'&&eta?new Date(eta.getTime()+(s.sleepH||10)*3600000):null;
         const departDay=depart&&sdt?dayOff(depart,sdt):'';
-        const crossingBadge='';
-        const restBadge=s.type==='rest'?`<div style="font-size:14px;color:#94856a;">🍫 ${s.sleepH<=0.5?(s.sleepH*60|0)+'min':(s.sleepH||0.25)+'h'} snack stop</div>`:'';
         const orBadge=s.offRouteM?' <span style="font-size:16px;color:var(--text3);">('+( s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km')+' off route)</span>':'';
         const st=shopSt(s,r);
         const hasSt=s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='hut';
@@ -4157,17 +4189,16 @@ function tLiveShell(r){
           hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':''):'';
         const ohHint=s.ohRaw?' · <span style="color:var(--text3);font-size:16px;">'+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
-        html+=`<div class="si live-stop" data-sid="${s.id}" style="${passed?'display:none;':''}${tileBg}">
+        html+=`<div class="si live-stop" data-sid="${s.id}" style="${tileBg}">
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
-            <div class="si-name">${passed?'✓ ':''}${s.name}${orBadge}</div>
+            <div class="si-name">${s.name}${orBadge}</div>
             <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.crossing?'crossing':s.type}">${s.crossing?'waterway':s.type}</span>${ohHint}</div>
             ${stEl?`<div class="si-st">${stEl}</div>`:''}
-
           </div>
           <div class="si-time" id="eta-${s.id}">${timeStr}${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}</div>
         </div>`;
-      });
+      }
     });
     if(UI.gpsActive&&!IS_DESKTOP()){
       html+=`<div class="card" style="border-color:rgba(248,113,113,.25);">
@@ -5257,9 +5288,15 @@ function tPlan(r){
   // Sleep-only filter — keep start, finish and sleep nodes only
   const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:null;
   const filteredList=UI.planSleepOnly?nodeList.filter(n=>n.isSleep):nodeList;
+  // Hike-a-bike nodes are always in the mission list regardless of filters
+  const hikeNodes=(r.paceSegs||[]).map(seg=>({
+    name:'🥾 '+(seg.name||'Hike-a-bike'),
+    dist:seg.from,distEnd:seg.to,
+    isStart:false,isSleep:false,isFinish:false,isHike:true,hikeSeg:seg,cluster:null
+  }));
   const nodes=[
     {name:'Start 🚩',dist:0,distEnd:0,isStart:true,cluster:null},
-    ...filteredList,
+    ...[...filteredList,...hikeNodes].sort((a,b)=>a.dist-b.dist),
     {name:'Finish 🏁',dist:r.totalDist,distEnd:r.totalDist,isFinish:true,cluster:null},
   ];
 
@@ -5282,6 +5319,40 @@ function tPlan(r){
   let rows='';
   for(let i=0;i<nodes.length;i++){
     const node=nodes[i];
+    // Hike-a-bike node — render its own distinct tile and continue
+    if(node.isHike){
+      const seg=node.hikeSeg;
+      const etaFrom=etaAt(seg.from,r),etaTo=etaAt(seg.to,r);
+      const dayFrom=etaFrom&&sdt?dayOff(etaFrom,sdt).trim():'';
+      const dayTo=etaTo&&sdt?dayOff(etaTo,sdt).trim():'';
+      const lenKm=(seg.to-seg.from).toFixed(1);
+      const durMs=etaTo&&etaFrom?etaTo-etaFrom:null;
+      const durH=durMs?durMs/3600000:null;
+      const durStr=durH!==null?(durH<1?Math.round(durH*60)+'min':Math.floor(durH)+'h'+(Math.round((durH%1)*60)>0?' '+Math.round((durH%1)*60)+'m':'')):'';
+      const isLast=i===nodes.length-1;
+      const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--border2);margin-top:2px;"></div>';
+      rows+='<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:2px;">'
+        +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;padding-top:2px;">'
+          +'<div style="width:12px;height:12px;border-radius:2px;background:#f97316;flex-shrink:0;"></div>'
+          +spine
+        +'</div>'
+        +'<div class="mission-node" data-dist="'+seg.from.toFixed(2)+'" style="flex:1;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.55);border-radius:8px;padding:8px 10px;margin-bottom:4px;">'
+          +'<div style="font-size:13px;color:#f97316;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🥾 Hike-a-bike</div>'
+          +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
+            +'<div style="flex:1;min-width:0;">'
+              +'<div style="font-size:18px;font-weight:500;color:#fdba74;line-height:1.35;">'+(seg.name||'Hike-a-bike section')+'</div>'
+              +'<div style="font-size:15px;color:var(--text3);font-family:var(--font);margin-top:1px;">'+seg.from.toFixed(1)+'–'+seg.to.toFixed(1)+' km · '+lenKm+' km</div>'
+              +'<div style="font-family:var(--font);font-size:16px;margin-top:4px;">'
+                +'<span style="color:var(--text3);">Start </span><span style="color:#f97316;">'+(dayFrom?dayFrom+' ':'')+fmtT(etaFrom)+'</span>'
+                +(etaTo?'  <span style="color:var(--text3);">End </span><span style="color:#f97316;">'+(dayTo?dayTo+' ':'')+fmtT(etaTo)+'</span>':'')
+              +'</div>'
+              +(durStr?'<div style="font-size:14px;color:var(--text3);margin-top:2px;">~'+durStr+' walking</div>':'')
+            +'</div>'
+          +'</div>'
+        +'</div>'
+      +'</div>';
+      continue;
+    }
     const eta=node.isStart?sdt:node.isFinish?finEta:etaAt(node.dist,r);
     const _rawDay=eta&&sdt?dayOff(eta,sdt):'';const dayStr=_rawDay?_rawDay.trim():'';
     const isLast=i===nodes.length-1;
@@ -5823,15 +5894,47 @@ function updateLive(){
       // Rebuild the stop list HTML
       const newHtml=(()=>{
         const planStops=r2.stops.filter(s=>starred(s));
-        if(!planStops.length)return'';
-        return planStops.map(s=>{
-          const passed=UI.gpsDistKm!==null&&s.dist<liveDist;
-          if(passed)return''; // hide passed stops
+        const upcomingHikes=(r2.paceSegs||[]).filter(seg=>liveDist<=seg.to);
+        if(!planStops.length&&!upcomingHikes.length)return'';
+        const now=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+        const liveTiles2=[];
+        planStops.forEach(s=>{
+          if(UI.gpsDistKm!==null&&s.dist<liveDist)return;
+          liveTiles2.push({_type:'stop',dist:s.dist,s});
+        });
+        upcomingHikes.forEach(seg=>{liveTiles2.push({_type:'hike',dist:seg.from,seg});});
+        liveTiles2.sort((a,b)=>a.dist-b.dist);
+        return liveTiles2.map(tile=>{
+          if(tile._type==='hike'){
+            const seg=tile.seg;
+            const etaFrom=etaAt(seg.from,r2),etaTo=etaAt(seg.to,r2);
+            const dayFrom=sdt?dayOff(etaFrom,sdt):'';
+            const lenKm=(seg.to-seg.from).toFixed(1);
+            const durMs=etaTo&&etaFrom?etaTo-etaFrom:null;
+            const durH=durMs?durMs/3600000:null;
+            const durStr=durH!==null?(durH<1?Math.round(durH*60)+'min':Math.floor(durH)+'h'+(Math.round((durH%1)*60)>0?' '+Math.round((durH%1)*60)+'m':'')):'';
+            const inProgress=liveDist>=seg.from&&liveDist<=seg.to;
+            const remMs2=etaFrom?etaFrom-now:null;
+            const remH2=remMs2?remMs2/3600000:null;
+            const remStr2=remH2!==null&&remH2>0?(remH2<1?Math.round(remH2*60)+'min':Math.floor(remH2)+'h'+(Math.round((remH2%1)*60)>0?' '+Math.round((remH2%1)*60)+'m':'')):'';
+            return`<div class="si" style="background:rgba(249,115,22,0.15);border-color:rgba(249,115,22,0.55);">
+              <div style="width:8px;height:8px;border-radius:2px;background:#f97316;margin-top:4px;flex-shrink:0;"></div>
+              <div class="si-inf">
+                <div class="si-name" style="color:#fdba74;">🥾 ${seg.name||'Hike-a-bike'}${inProgress?' <span style="font-size:13px;color:#f97316;">(in progress)</span>':''}</div>
+                <div class="si-meta">${seg.from.toFixed(1)}–${seg.to.toFixed(1)} km · ${lenKm} km</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0;">
+                <div style="font-family:var(--font);font-size:15px;font-weight:500;color:#f97316;">${(dayFrom?dayFrom.trim()+' ':'')+fmtT(etaFrom)}</div>
+                ${durStr?`<div style="font-size:13px;color:var(--text3);font-family:var(--font);">~${durStr}</div>`:''}
+                ${remStr2&&!inProgress?`<div style="font-size:14px;font-weight:600;color:#f97316;font-family:var(--font);">in ${remStr2}</div>`:''}
+              </div>
+            </div>`;
+          }
+          const s=tile.s;
           const eta=etaAt(s.dist,r2);
           const day=sdt?dayOff(eta,sdt):'';
           const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
           const dt=(s.dist-liveDist).toFixed(1);
-          const now=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
           const remMs=eta?eta-now:null;
           const remH=remMs?remMs/3600000:null;
           const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
