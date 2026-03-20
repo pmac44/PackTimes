@@ -443,7 +443,8 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25};
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -3962,6 +3963,13 @@ function tLiveShell(r){
 
   // Compact progress strip for top of map
   const finDay=sdt&&finEta?dayOff(finEta,sdt):'';
+  const powerPill=`<div style="flex:1;background:rgba(10,15,10,0.72);border:1px solid ${UI.powerConnected?'rgba(251,191,36,0.4)':'rgba(255,255,255,0.12)'};border-radius:7px;padding:4px 8px;text-align:center;cursor:pointer;" id="live-power-pill">
+      <div style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;">watts</div>
+      ${UI.powerConnected
+        ?`<div style="font-size:17px;font-weight:600;color:#fbbf24;font-family:var(--font);" id="live-power-val">${UI.powerWatts!==null?UI.powerWatts+'w':'—'}</div>
+           ${UI.powerCadence!==null?`<div style="font-size:11px;color:var(--text3);font-family:var(--font);" id="live-cadence-val">${UI.powerCadence}rpm</div>`:'<div style="font-size:11px;color:var(--text3);" id="live-cadence-val"></div>'}`
+        :`<div style="font-size:13px;color:var(--text3);font-family:var(--font);">tap</div>`}
+    </div>`;
   const progressOverlay=`<div class="live-progress-bar">
     <div style="display:flex;gap:6px;">
       <div style="flex:1;background:rgba(10,15,10,0.72);border:1px solid rgba(255,255,255,0.12);border-radius:7px;padding:4px 8px;text-align:center;">
@@ -3976,6 +3984,7 @@ function tLiveShell(r){
         <div style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;">finish</div>
         <div style="font-size:17px;font-weight:600;" id="live-pct">${(finDay?finDay.trim()+' ':'')+fmtT(finEta)}</div>
       </div>
+      ${powerPill}
     </div>
     <div class="prog" style="margin-top:5px;height:3px;display:none;"><div class="progf" id="live-progf" style="width:${(prog*100).toFixed(1)}%"></div></div>
   </div>`;
@@ -5925,6 +5934,11 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Tap weather bar → expand/collapse
+  if(e.target.closest('#live-power-pill')&&UI.tab==='live'){
+    if(UI.powerConnected)disconnectPowerMeter();
+    else connectPowerMeter();
+    return;
+  }
   if(e.target.closest('#live-weather-bar')&&UI.tab==='live'){
     _weatherExpanded=!_weatherExpanded;
     // Clear any existing auto-collapse timer
@@ -6358,6 +6372,100 @@ function loadDemo(){
   addStop(r,268,'town','Locarno');
   ROUTES.push(r);CUR=ROUTES.length-1;UI.tab='routes';
   saveAll();render();
+}
+
+// ═══════════════════════════════════════════
+//  POWER METER (BLE Cycling Power Service)
+// ═══════════════════════════════════════════
+const CYCLING_POWER_SERVICE    = 0x1818;
+const CYCLING_POWER_MEASUREMENT= 0x2A63;
+let _powerDevice=null,_powerChar=null;
+// Rolling 3s average
+const _powerWindow=[];
+const POWER_SMOOTH_MS=3000;
+
+function _parsePowerMeasurement(buf){
+  const view=new DataView(buf);
+  const flags=view.getUint16(0,true);
+  const watts=view.getInt16(2,true);
+  // Cadence: present if bit 4 set (Wheel Revolution Data present shifts offset)
+  // Bit 4 = Wheel Revolution Data Present, bit 5 = Crank Revolution Data Present
+  let cadence=null;
+  if(flags&(1<<4)){
+    // Wheel rev data: 4 bytes cumulative revs + 2 bytes event time = 6 bytes at offset 4
+    // Crank rev data follows if bit 5 set
+    if(flags&(1<<5)){
+      const crankRevs=view.getUint16(10,true);
+      const crankTime=view.getUint16(12,true); // 1/1024 s units
+      if(_powerChar._lastCrankRevs!==undefined){
+        const dRevs=(crankRevs-_powerChar._lastCrankRevs+65536)%65536;
+        const dTime=(crankTime-_powerChar._lastCrankTime+65536)%65536;
+        if(dTime>0)cadence=Math.round(dRevs/(dTime/1024)*60);
+      }
+      _powerChar._lastCrankRevs=crankRevs;_powerChar._lastCrankTime=crankTime;
+    }
+  } else if(flags&(1<<5)){
+    // Crank revolution data at offset 4
+    const crankRevs=view.getUint16(4,true);
+    const crankTime=view.getUint16(6,true);
+    if(_powerChar._lastCrankRevs!==undefined){
+      const dRevs=(crankRevs-_powerChar._lastCrankRevs+65536)%65536;
+      const dTime=(crankTime-_powerChar._lastCrankTime+65536)%65536;
+      if(dTime>0)cadence=Math.round(dRevs/(dTime/1024)*60);
+    }
+    _powerChar._lastCrankRevs=crankRevs;_powerChar._lastCrankTime=crankTime;
+  }
+  return{watts,cadence};
+}
+
+async function connectPowerMeter(){
+  if(!navigator.bluetooth){
+    alert('Web Bluetooth is not supported in this browser. Use Chrome on Android or desktop.');
+    return;
+  }
+  try{
+    _powerDevice=await navigator.bluetooth.requestDevice({
+      filters:[{services:[CYCLING_POWER_SERVICE]}],
+      optionalServices:[CYCLING_POWER_SERVICE]
+    });
+    _powerDevice.addEventListener('gattserverdisconnected',()=>{
+      UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerDeviceName=null;
+      _powerChar=null;
+      if(UI.tab==='live')renderKeepScroll();
+    });
+    const server=await _powerDevice.gatt.connect();
+    const service=await server.getPrimaryService(CYCLING_POWER_SERVICE);
+    _powerChar=await service.getCharacteristic(CYCLING_POWER_MEASUREMENT);
+    _powerChar._lastCrankRevs=undefined;_powerChar._lastCrankTime=undefined;
+    await _powerChar.startNotifications();
+    _powerChar.addEventListener('characteristicvaluechanged',e=>{
+      const{watts,cadence}=_parsePowerMeasurement(e.target.value.buffer);
+      const now=Date.now();
+      _powerWindow.push({watts,ts:now});
+      // Trim to smoothing window
+      while(_powerWindow.length&&now-_powerWindow[0].ts>POWER_SMOOTH_MS)_powerWindow.shift();
+      const avg=Math.round(_powerWindow.reduce((a,b)=>a+b.watts,0)/_powerWindow.length);
+      UI.powerWatts=avg;
+      if(cadence!==null&&cadence>=0&&cadence<250)UI.powerCadence=cadence;
+      // Patch power pill directly without full re-render
+      const pw=document.getElementById('live-power-val');
+      const pc=document.getElementById('live-cadence-val');
+      if(pw)pw.textContent=avg+'w';
+      if(pc&&UI.powerCadence!==null)pc.textContent=UI.powerCadence+'rpm';
+    });
+    UI.powerConnected=true;
+    UI.powerDeviceName=_powerDevice.name||'Power meter';
+    if(UI.tab==='live')renderKeepScroll();
+  }catch(e){
+    if(e.name!=='NotFoundError')alert('Could not connect: '+e.message);
+  }
+}
+
+function disconnectPowerMeter(){
+  if(_powerDevice&&_powerDevice.gatt.connected)_powerDevice.gatt.disconnect();
+  UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerDeviceName=null;
+  _powerChar=null;_powerWindow.length=0;
+  if(UI.tab==='live')renderKeepScroll();
 }
 
 // ═══════════════════════════════════════════
