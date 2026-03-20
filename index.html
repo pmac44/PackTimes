@@ -5796,7 +5796,7 @@ function tPlan(r){
     }
   }
 
-  return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;">⭐ Showing starred stops only · ${unstarredCount} unstarred stop${unstarredCount!==1?'s':''} hidden</div>`:'')
+  return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;">Starred stops appear here</div>`:'')
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
     +'<div class="card" style="padding:14px 12px;">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
