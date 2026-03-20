@@ -505,6 +505,7 @@ const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
+  helloExpanded:null,helloDetailOpen:false,
   powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -4381,10 +4382,46 @@ function initLiveMap(r){
 function tRoutes(r){
   const routeMgmtExpanded=UI.routeMgmtExpanded!==false; // default open, collapses when route loaded
   const actuallyExpanded=!r||routeMgmtExpanded; // always open if no route loaded
+  // Hello box: default open when no route loaded, closed once a route is present
+  const helloOpen=UI.helloExpanded!==null?UI.helloExpanded:!r;
+  const helloBox=`
+  <div class="card" style="padding:${helloOpen?'14px 12px':'10px 12px'};">
+    <div id="hello-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${helloOpen?'margin-bottom:12px;':''}">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:16px;color:var(--text3);">${helloOpen?'▼':'▶'}</span>
+        <span class="ctitle" style="margin-bottom:0;">Hello!</span>
+      </div>
+    </div>
+    ${helloOpen?`
+    <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">PackTimes helps you plan adventure rides where water, food and sleep actually matter.</p>
+    <ul style="font-size:16px;color:var(--text2);line-height:1.8;margin:0 0 12px 0;padding-left:18px;">
+      <li>Load a route, search for stops from OpenStreetMap along it, or manually add your own</li>
+      <li>Star the stops you want on your Mission list</li>
+      <li>Add sleep where you see the route line go dark, unless you're riding into the night!</li>
+      <li>Add food to stops and nominate where you got it from to build a supply plan</li>
+      <li>Ride the route and see the next stops coming up and when you will get there</li>
+      <li>Get weather and ride data such as power and heart rate as you ride</li>
+    </ul>
+    <div id="hello-more-wrap">
+      <div id="hello-more-toggle" style="font-size:15px;color:var(--accent);cursor:pointer;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+        <span style="font-size:13px;color:var(--text3);">${UI.helloDetailOpen?'▼':'▶'}</span>
+        <span>More detail</span>
+      </div>
+      ${UI.helloDetailOpen?`
+      <div style="font-size:15px;color:var(--text2);line-height:1.7;display:flex;flex-direction:column;gap:10px;">
+        <p>You upload a route from an app such as RWGPS, Komoot, Strava, or Garmin Connect. Ideally the route will have timestamps based on your personal speed and turn information for navigation alerts. These timestamps drive every ETA, sleep window and food timing in your plan — so the closer they match your actual pace, the more reliable your plan will be. If the route has no timestamps, PackTimes can estimate them. The Speed Factor adjuster and Adaptive Speed will help dial in the estimates as you ride, but starting with realistic numbers makes a real difference.</p>
+        <p>Routes are commonly shared as GPX files, but TCX files are more likely to carry time and turn data.</p>
+        <p>With your route loaded, search OpenStreetMap for stops along the way and star the ones you want in your Mission list. You can manually add stops too. Assign sleep and food to stops and your ETAs will adjust accordingly. The route line changes from blue to black to show day and night segments, based on your start date, time and pace. The food planner will guide you on when to buy ahead for stops further down the route.</p>
+        <p>When riding, you get a live GPS map and a list of upcoming water, food and sleep stops with arrival estimates. Connect a power meter or heart rate monitor to track effort alongside your progress.</p>
+      </div>`:''}
+    </div>
+    `:''}
+  </div>`;
   const routeList=`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>
+  ${helloBox}
   <div class="card" style="padding:${actuallyExpanded?'14px 12px':'10px 12px'};">
     <div id="route-mgmt-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${actuallyExpanded?'margin-bottom:10px;':''}">
       <div style="display:flex;align-items:center;gap:8px;">
@@ -6429,6 +6466,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-sim-pause')){simPause();return;}
   if(e.target.closest('#btn-sim-stop')){simStop();return;}
   if(e.target.closest('#route-mgmt-hdr')){UI.routeMgmtExpanded=!UI.routeMgmtExpanded;render();return;}
+  if(e.target.closest('#hello-hdr')){UI.helloExpanded=!(UI.helloExpanded!==null?UI.helloExpanded:!cur());render();return;}
+  if(e.target.closest('#hello-more-toggle')){UI.helloDetailOpen=!UI.helloDetailOpen;render();return;}
   const settingsHdr=e.target.closest('[id^="settings-hdr-"]');
   if(settingsHdr){const key=settingsHdr.id.replace('settings-hdr-','');if(UI.settingsExp.hasOwnProperty(key)){UI.settingsExp[key]=!UI.settingsExp[key];render();return;}}
   if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
