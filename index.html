@@ -902,6 +902,7 @@ function etaAt(distKm,r){
 }
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
 function fmtDT(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
+function fmtDTY(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
 function fmtHM(h){if(!h)return'—';const hh=Math.floor(h),mm=Math.round((h-hh)*60);return hh+'h'+(mm>0?' '+mm+'m':'');}
 function dayOff(d,b){if(!d||!b)return'';const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];return ' '+days[d.getDay()];}
 
@@ -4312,55 +4313,68 @@ function tRoutes(r){
   const finEta=sdt&&adjDur?new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000):null;
   return routeList+`
   <div class="card" style="padding:14px;">
-    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;width:46px;flex-shrink:0;">Start</span>
-        <button id="btn-open-dt-picker" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--accent);font-family:var(--font);font-size:15px;font-weight:500;padding:5px 10px;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;-webkit-tap-highlight-color:transparent;">
-          <span>${r.startDate&&r.startTime?(()=>{const d=new Date(r.startDate+'T'+r.startTime);return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+' · '+r.startTime;})():'Tap to set start'}</span>
-          ${ICON_EDIT}
-        </button>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;width:46px;flex-shrink:0;">Finish</span>
-        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 7px;flex:1;">
-          ${adjDur?`<span id="rt-finish" style="font-family:var(--font);font-size:15px;font-weight:500;color:var(--accent);">${fmtDT(new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000))}</span>`:`<span style="font-size:14px;color:var(--text3);">Set start date →</span>`}
-        </div>
-      </div>
-    </div>
+    <div class="ctitle" style="margin-bottom:10px;">Route</div>
+    ${(()=>{
+      const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
+      const accent='font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);';
+      const startStr=r.startDate&&r.startTime?fmtDTY(new Date(r.startDate+'T'+r.startTime)):null;
+      const finishStr=adjDur&&sdt?fmtDTY(new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000)):null;
+      return'<div style="margin-bottom:12px;">'
+        +'<div style="flex:1;padding:4px 0;">'
+          +'<span style="'+lbl+'">Start</span>'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+            +'<span style="'+accent+'">'+(startStr||'<span style="font-size:15px;color:var(--text3);">Not set</span>')+'</span>'
+            +'<button id="btn-open-dt-picker" style="background:none;border:none;cursor:pointer;padding:4px;color:rgba(255,255,255,0.5);flex-shrink:0;display:inline-flex;align-items:center;-webkit-tap-highlight-color:transparent;">'+ICON_EDIT+'</button>'
+          +'</div>'
+          +'<span style="'+lbl+'margin-top:10px;">Finish</span>'
+          +(finishStr?`<span style="font-size:18px;font-weight:600;color:var(--text2);font-family:var(--font);" id="rt-finish">${finishStr}</span>`:'<span style="font-size:15px;color:var(--text3);">Set start date →</span>')
+        +'</div>'
+      +'</div>';
+    })()}
     <div style="height:1px;background:var(--border);margin-bottom:12px;"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
-        <div style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${r.totalDist.toFixed(0)}<span style="font-size:13px;color:var(--text3);margin-left:3px;">km</span></div>
-        <div style="font-size:11px;color:var(--text3);margin-top:1px;">distance</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
-        <div style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${(elevGain(r.points)/1000).toFixed(1)}<span style="font-size:13px;color:var(--text3);margin-left:3px;">km</span></div>
-        <div style="font-size:11px;color:var(--text3);margin-top:1px;">climbing</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
-        <div id="rt-avgspd" style="font-family:var(--font);font-size:20px;font-weight:500;color:var(--accent);">${avgSpd||'—'}<span style="font-size:13px;color:var(--text3);margin-left:3px;">${avgSpd?'km/h':''}</span></div>
-        <div style="font-size:11px;color:var(--text3);margin-top:1px;">avg speed</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">${r.totalDist>0?(()=>{const g=elevGain(r.points)/r.totalDist/10;const col=g<1?'#60a5fa':g<2?'#fbbf24':'#f87171';const desc=g<1?'flat':g<2?'hilly':'steep';return`<div style="font-family:var(--font);font-size:20px;font-weight:500;color:${col};">${g.toFixed(1)}<span style="font-size:13px;margin-left:1px;">%</span></div><div style="font-size:11px;color:${col};margin-top:1px;">${desc} gradient</div>`;})():`<div style="font-family:var(--font);font-size:20px;color:var(--accent);">—</div><div style="font-size:11px;color:var(--text3);margin-top:1px;">avg gradient</div>`}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
-      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
-        <div id="rt-riding" style="font-family:var(--font);font-size:18px;font-weight:500;color:#60a5fa;">${adjDur?fmtHM(adjDur):'—'}</div>
-        <div style="font-size:11px;color:#60a5fa;margin-top:1px;">riding time</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:7px;padding:8px 10px;border:1px solid var(--border);">
-        ${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;const sleepH=totalSleepHours(r);return nights>0?`<div style="font-family:var(--font);font-size:18px;font-weight:500;color:#b39ddb;">${(sleepH/nights).toFixed(1)}<span style="font-size:12px;margin-left:2px;">h</span></div><div style="font-size:11px;color:#b39ddb;margin-top:1px;">sleep/night · ${nights} night${nights!==1?'s':''}</div>`:`<div style="font-family:var(--font);font-size:18px;font-weight:500;color:#b39ddb;">—</div><div style="font-size:11px;color:#b39ddb;margin-top:1px;">sleep/night</div>`;})()}
-      </div>
-    </div>
-    ${totalSleepH>0||totalH?`<div style="display:flex;gap:10px;font-size:13px;color:var(--text3);font-family:var(--font);margin-bottom:10px;">
-      ${totalSleepH>0?`<span style="color:#b39ddb;">😴 +${totalSleepH.toFixed(1)}h bivi</span>`:''}
-      ${totalH?`<span id="rt-total">≈ <span style="color:var(--text2);">${Math.round(totalH)}h</span> total</span>`:''}
-    </div>`:''}
-    ${(()=>{const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():0;const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;if(nights>0&&sleepStops<nights){const missing=nights-sleepStops;return`<div style="font-size:12px;color:rgba(179,157,219,0.7);font-family:var(--font);margin-bottom:8px;">😴 ${sleepStops} of ${nights} nights planned — ${missing} unplanned</div>`;}return'';})()}
-    <canvas id="elev-cvs" style="height:52px;border-radius:5px;background:#0d1a0d;display:block;width:100%;"></canvas>
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);font-family:var(--font);margin-top:2px;">
-      <span>0km</span><span>elevation</span><span>${r.totalDist.toFixed(0)}km</span>
-    </div>
+    ${(()=>{
+      const accent='font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);';
+      const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
+      const totalGain=elevGain(r.points);
+      const avgGainPerKm=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
+      const totRideH=Math.floor(adjDur||0),totRideM=Math.round(((adjDur||0)-totRideH)*60);
+      const totRideHM=adjDur?totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':''):'—';
+      const totSpd=(adjDur&&adjDur>0.1)?(r.totalDist/adjDur).toFixed(1):null;
+      const totalH=(adjDur||0)+totalSleepH+totalMealH;
+      const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
+      const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
+      const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():0;
+      const avgSleepPerNight=nights>0?(totalSleepH/nights).toFixed(1):null;
+      const dayCount=nights?nights+1:1;
+      const avgDist=(r.totalDist/dayCount).toFixed(1);
+      const avgRideH=(adjDur||0)/dayCount;
+      const arh=Math.floor(avgRideH),arm=Math.round((avgRideH-arh)*60);
+      const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
+      const avgSpd2=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
+      const avgGain=Math.round(totalGain/dayCount);
+      const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;
+      const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:var(--border2);"></div></div>';
+      return'<div style="margin-top:0;">'
+        +'<div style="flex:1;padding:4px 0;">'
+          +(dayCount>1?'<div style="'+lbl+'">Daily average · '+dayCount+' day'+(dayCount!==1?'s':'')+'</div>'
+            +'<span style="'+accent+'">'+avgDist+' km</span>'
+            +(adjDur?'<br><span style="'+accent+'">'+avgRideHM+(avgSpd2?' · '+avgSpd2+' km/h':'')+'</span>':'')
+            +(avgGain?'<br><span style="'+accent+'">'+avgGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':''):'')
+          +'<div style="'+lbl+'margin-top:'+( dayCount>1?'12':'0')+'px;">Totals</div>'
+          +'<span style="'+accent+'">'+r.totalDist.toFixed(1)+' km</span>'
+          +(adjDur?'<br><span style="'+accent+'">'+totRideHM+(totSpd?' · '+totSpd+' km/h':'')+'</span>':'')
+          +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
+          +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+totalSleepH.toFixed(1)+'h bivi</span>':'')
+          +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
+          +(adjDur?(()=>{
+            const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
+            const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
+            return'<br><span style="'+accent+'color:var(--text2);" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>';
+          })():'')
+          +(sleepStops<nights&&nights>0?'<br><span style="font-size:14px;color:rgba(179,157,219,0.7);">😴 '+sleepStops+' of '+nights+' nights planned — '+(nights-sleepStops)+' unplanned</span>':'')
+        +'</div>'
+      +'</div>';
+    })()}
   </div>
   <div class="card">
     <div class="ctitle">Speed Factor</div>
@@ -5642,19 +5656,13 @@ function patchSpeedFactor(r){
   if(d)d.textContent=factorDesc(r.timeFactor);
   if(r.estDuration&&r.totalDist){
     const adj=r.estDuration*r.timeFactor;
-    const spd=(r.totalDist/adj).toFixed(1);
-    const vs=document.getElementById('rt-avgspd'),vr=document.getElementById('rt-riding');
-    if(vs)vs.textContent=spd;if(vr){vr.textContent=fmtHM(adj);vr.style.color='#60a5fa';}
     const sleepH=totalSleepHours(r);
-    const vt=document.getElementById('rt-total'),sr=document.getElementById('rt-sleeprow');
-    if(sleepH>0){
-      if(sr)sr.removeAttribute('hidden');
-      if(vt){vt.textContent='≈ '+Math.round(adj+sleepH)+'h total';vt.style.color='#b39ddb';}
-    }
-    // Update finish time dynamically
+    const totalMealH=totalMealHours(r);
+    const vt=document.getElementById('rt-total');
+    if(vt)vt.textContent=Math.round(adj+sleepH+totalMealH)+'h';
     const sdt=startDT(r);
     const vf=document.getElementById('rt-finish');
-    if(vf&&sdt)vf.textContent=fmtDT(new Date(sdt.getTime()+(adj+sleepH)*3600000));
+    if(vf&&sdt)vf.textContent=fmtDTY(new Date(sdt.getTime()+(adj+sleepH+totalMealH)*3600000));
   }
 }
 
