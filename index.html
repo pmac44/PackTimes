@@ -5884,7 +5884,12 @@ function tFood(r){
   const lbl='font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;margin-top:12px;';
 
   if(!allMeals.length){
-    return'<div style="padding:6px 4px 8px;display:flex;align-items:flex-start;gap:6px;color:var(--text3);font-size:16px;"><span>💡</span><span>Add food to a stop on the Mission or Stops tab using the '+ICON_FOOD_BTN+' button, nominate where you got it from, and it will appear here.</span></div>'
+    return'<div style="padding:6px 4px 8px;color:var(--text2);font-size:15px;line-height:1.7;">'
+      +'<p style="margin-bottom:8px;">The food planner helps you manage eating on long rides where you need to buy food at one place and carry it to eat somewhere else later.</p>'
+      +'<p style="margin-bottom:8px;">Use the '+ICON_FOOD_BTN+' button on a stop in the Mission or Stops tab to add food and nominate where you\'ll buy it — at that stop, carried from an earlier one, or packed from the start.</p>'
+      +'<p style="margin-bottom:8px;">The planner then builds a list showing what to pick up at each resupply point and what you\'ll be carrying forward. While riding, the next food action appears in the strip at the top of the Ride tab, and a proximity alert fires as you approach any stop with food assigned.</p>'
+      +'<p style="color:var(--text3);font-size:14px;">No food planned yet — add some using the button above.</p>'
+    +'</div>'
     +'<div class="card"><div style="font-size:16px;color:var(--text3);text-align:center;padding:16px 0;">No food planned yet.<br><span style="font-size:14px;">Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add food.</span></div></div>';
   }
 
@@ -5964,7 +5969,7 @@ function tFood(r){
     if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
   });
 
-  return'<div style="padding:6px 4px 2px;display:flex;align-items:flex-start;gap:6px;color:var(--text3);font-size:16px;"><span>💡</span><span>Add food to a stop on the Mission or Stops tab using the '+ICON_FOOD_BTN+' button, nominate where you got it from, and it will appear here.</span></div>'
+  return'<div style="padding:6px 4px 2px;color:var(--text2);font-size:15px;line-height:1.6;margin-bottom:4px;">What to pick up and carry at each stop. The next food action shows in the Ride tab strip, and a proximity alert fires as you approach stops with food assigned. Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add or edit food.</div>'
     +nextCard
     +'<div class="card">'
       +(fromStart.length?fmtGrouped(fromStart,'🎒 Carry from start'):'')
