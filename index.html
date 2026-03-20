@@ -4366,11 +4366,11 @@ function tRoutes(r){
           +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
           +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+totalSleepH.toFixed(1)+'h bivi</span>':'')
           +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
-          +(sleepStops<nights&&nights>0?'<br><span style="font-size:14px;color:rgba(179,157,219,0.7);">'+sleepStops+' of '+nights+' nights sleep planned — '+(nights-sleepStops)+' unplanned</span>':'')
+          +(nights>0?'<span style="font-size:14px;color:rgba(179,157,219,0.7);display:block;">'+sleepStops+' of '+nights+' nights sleep planned'+(sleepStops<nights?' — '+(nights-sleepStops)+' unplanned':'')+'</span>':'')
           +(adjDur?(()=>{
             const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
-            return'<br><span style="'+accent+'color:var(--text2);" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>';
+            return'<span style="'+accent+'color:var(--text2);display:block;margin-top:10px;" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>';
           })():'')
         +'</div>'
       +'</div>';
