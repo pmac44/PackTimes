@@ -4535,11 +4535,11 @@ function tRoutes(r){
     <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
     <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;">
       ${[
-        ['Route','Load a route file (GPX, TCX, KML or FIT), or search OpenStreetMap for stops along it'],
-        ['Plan','Star stops for your Mission list — add sleep and food to build your supply plan'],
+        ['Route','Load a route file (GPX, TCX, KML or FIT)'],
+        ['Plan','Search OpenStreetMap for stops along the route, or add your own — star the ones you want on your Mission list, add sleep and food to build your supply plan'],
         ['Night','The route line turns black where you\'ll be riding in the dark — plan sleep accordingly'],
         ['Ride','Live GPS map with upcoming water, food and sleep stops and arrival times'],
-        ['Data','Weather, power meter and heart rate visible as you ride'],
+        ['Data','Weather updates and data from connected sensors such as power and heart rate are visible as you ride'],
       ].map(([label,text])=>`
         <div style="display:flex;gap:8px;align-items:baseline;">
           <span style="font-size:12px;font-family:var(--font);font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;flex-shrink:0;min-width:44px;">${label}</span>
