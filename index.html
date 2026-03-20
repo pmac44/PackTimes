@@ -5682,11 +5682,14 @@ function tPlan(r){
               if(hasFood)warnings.push(s.meals.length+' food item'+(s.meals.length>1?'s':''));
               if(hasSleep)warnings.push('sleep');
               return'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:5px;">'
-                +'<div>'
+                +'<div style="flex:1;min-width:0;">'
                   +'<div style="font-size:15px;font-weight:600;color:var(--text);">'+s.name+'</div>'
                   +(warnings.length?'<div style="font-size:12px;color:var(--text3);">has: '+warnings.join(', ')+'</div>':'')
                 +'</div>'
-                +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
+                +'<div style="display:flex;gap:4px;flex-shrink:0;">'
+                  +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85);" title="Edit stop">'+ICON_EDIT+'</button>'
+                  +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
+                +'</div>'
               +'</div>';
             }).join('')
           +'</div>';
@@ -5699,11 +5702,14 @@ function tPlan(r){
             if(s.meals&&s.meals.length)warnings.push(s.meals.length+' food item'+(s.meals.length>1?'s':''));
             return'<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">'
               +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:5px;">'
-                +'<div>'
+                +'<div style="flex:1;min-width:0;">'
                   +'<div style="font-size:15px;font-weight:600;color:var(--text);">'+s.name+'</div>'
                   +(warnings.length?'<div style="font-size:12px;color:var(--text3);">has: '+warnings.join(', ')+'</div>':'')
                 +'</div>'
-                +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
+                +'<div style="display:flex;gap:4px;flex-shrink:0;">'
+                  +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85);" title="Edit stop">'+ICON_EDIT+'</button>'
+                  +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
+                +'</div>'
               +'</div>'
             +'</div>';
           })():'')
@@ -6673,8 +6679,40 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(cu&&r){
     const s=r.stops.find(x=>String(x.id)===String(cu.dataset.sid));
     if(s){
+      if(!confirm(`Remove "${s.name}" from the mission list?`))return;
       s.starred=false;
       saveAll();renderKeepScroll(cu.dataset.sid);
+    }
+    return;
+  }
+  // Edit a stop from within a cluster panel on the mission tab
+  const ce=e.target.closest('.cluster-edit-stop');
+  if(ce&&r){
+    const s=r.stops.find(x=>String(x.id)===String(ce.dataset.sid));
+    if(s){
+      const nm=document.getElementById('em-name');if(nm)nm.value=s.name;
+      const distSl=document.getElementById('em-dist');
+      const distLbl=document.getElementById('em-dist-lbl');
+      if(distSl){
+        const fine=5;
+        distSl.min=Math.max(0,s.dist-fine).toFixed(2);
+        distSl.max=Math.min(r.totalDist,s.dist+fine).toFixed(2);
+        distSl.step='0.05';
+        distSl.value=s.dist.toFixed(2);
+      }
+      if(distLbl)distLbl.textContent=s.dist.toFixed(2)+' km';
+      const distDisp=document.getElementById('em-dist-display');
+      if(distDisp)distDisp.textContent=s.dist.toFixed(2)+' km';
+      const noneChk=document.getElementById('em-oh-none');
+      if(noneChk)noneChk.checked=!s.ohRaw;
+      const openI=document.getElementById('em-open');
+      const closeI=document.getElementById('em-close');
+      if(s.ohRaw){
+        const m=s.ohRaw.match(/(\d{2}:\d{2})[^0-9]*(\d{2}:\d{2})/);
+        if(m&&openI&&closeI){openI.value=m[1];closeI.value=m[2];}
+      }
+      const modal=document.getElementById('edit-modal');
+      if(modal){modal.style.display='flex';modal.dataset.sid=s.id;}
     }
     return;
   }
@@ -6682,7 +6720,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-go-food')){UI.tab='food';render();return;}
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
-  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.cluster-edit-btn')&&!e.target.closest('.cluster-unstar-stop')){
+  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.cluster-edit-btn')&&!e.target.closest('.cluster-unstar-stop')&&!e.target.closest('.cluster-edit-stop')){
     const sid=mn.dataset.sid;
     if(sid){
       _highlightStopId=sid;
