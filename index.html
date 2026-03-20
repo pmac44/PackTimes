@@ -5802,7 +5802,7 @@ function tPlan(r){
     }
   }
 
-  return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;">Starred stops appear here</div>`:'')
+  return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;display:flex;align-items:center;gap:6px;"><span style="background:rgba(10,15,10,0.85);border:1px solid rgba(251,191,36,0.7);border-radius:6px;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span>Starred stops appear here</span></div>`:'')
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
     +'<div class="card" style="padding:14px 12px;">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
