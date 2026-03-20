@@ -222,7 +222,8 @@ select option{background:var(--bg3);}
             <option value="1000">1000×</option>
           </select>
           <button id="btn-sim-start" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--accent);border-color:rgba(74,222,128,.4);">▶ Play</button>
-          <button id="btn-sim-stop" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);display:none;">■ Stop</button>
+          <button id="btn-sim-pause" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--amber);border-color:rgba(251,191,36,.4);display:none;">⏸ Pause</button>
+          <button id="btn-sim-stop" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);">■ Stop</button>
       </div>
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
@@ -503,7 +504,7 @@ const newRoute=name=>({
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null};
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -1311,6 +1312,97 @@ function updateGPSPill(){
 //  RIDE SIMULATOR
 // ═══════════════════════════════════════════
 let _simPts=null,_simIdx=0,_simTimer=null;
+
+function simStart(){
+  const r=cur();
+  if(!r||!r.points.length){alert('No route loaded.');return;}
+  if(!r.hasTS){alert('Route needs timestamps. Upload a TCX with estimated times.');return;}
+  _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
+  if(!UI.simPaused){
+    const startDist=UI.gpsDistKm||0;
+    _simIdx=startDist>0?Math.max(0,r.points.findIndex(p=>p.dist>=startDist)):0;
+  }
+  UI.simPaused=false;
+  UI.gpsActive=true;
+  UI.alertedStops=new Set();
+  _offRouteStart=null;_offRouteAlerted=false;
+  const liveState=ms('live-map');
+  liveState._userZoomed=false;liveState._autoZoomed=false;
+  updateGPSPill();
+  function step(){
+    const speed=+(document.getElementById('sim-speed')?.value||20);
+    if(_simIdx>=_simPts.length){simStop();return;}
+    const p=_simPts[_simIdx];
+    let spd=null;
+    if(_simIdx>0){
+      const prev=_simPts[_simIdx-1];
+      const d=hav(prev,p)*1000;
+      spd=d/(1/speed);
+    }
+    UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
+    const r=cur();
+    if(r){const snap=snapTo(r,p.lat,p.lon);if(snap)UI.gpsDistKm=snap.dist;}
+    if(UI._alertStopDist!=null&&UI.gpsDistKm>UI._alertStopDist+0.1){
+      document.getElementById('alert-overlay').style.display='none';
+      UI._alertStopDist=null;
+    }
+    checkAlerts();
+    if(UI.tab==='live')updateLive();
+    else updateGPSPill();
+    if(IS_DESKTOP())renderDesktopMap();
+    const status=document.getElementById('sim-status');
+    if(status){
+      const distKm=UI.gpsDistKm?UI.gpsDistKm.toFixed(1)+'km':'—';
+      status.textContent=`Point ${_simIdx+1}/${_simPts.length} · ${distKm} along route`;
+    }
+    _simIdx++;
+    let delay=100;
+    if(_simIdx<_simPts.length){
+      const curr=_simPts[_simIdx-1],next=_simPts[_simIdx];
+      if(curr.time&&next.time){
+        const realMs=new Date(next.time)-new Date(curr.time);
+        if(realMs>0&&realMs<60000)delay=Math.max(30,realMs/speed);
+      }
+    }
+    _simTimer=setTimeout(step,delay);
+  }
+  step();
+  UI.simRunning=true;
+  _updateSimButtons();
+  if(UI.tab!=='live'){UI.tab='live';render();}
+}
+
+function simPause(){
+  if(!UI.simRunning)return;
+  if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
+  UI.simRunning=false;
+  UI.simPaused=true;
+  const status=document.getElementById('sim-status');
+  if(status)status.textContent='Paused — press ▶ to resume.';
+  _updateSimButtons();
+  if(IS_DESKTOP())renderDesktopMap();
+}
+
+function simStop(){
+  if(!UI.simRunning&&!_simTimer&&!UI.simPaused)return;
+  if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
+  UI.simRunning=false;
+  UI.simPaused=false;
+  _simIdx=0;
+  stopGPS();
+  const status=document.getElementById('sim-status');
+  if(status)status.textContent='Simulation stopped.';
+  _updateSimButtons();
+}
+
+function _updateSimButtons(){
+  const startBtn=document.getElementById('btn-sim-start');
+  const pauseBtn=document.getElementById('btn-sim-pause');
+  const stopBtn=document.getElementById('btn-sim-stop');
+  if(startBtn)startBtn.style.display=UI.simRunning?'none':'block';
+  if(pauseBtn)pauseBtn.style.display=UI.simRunning?'block':'none';
+  if(stopBtn){stopBtn.disabled=(!UI.simRunning&&!UI.simPaused);stopBtn.style.display='block';}
+}
 
 function simLoadGPX(txt){
   const doc=new DOMParser().parseFromString(txt,'text/xml');
@@ -2704,6 +2796,7 @@ document.getElementById('pace-modal-x').addEventListener('click',closePaceModal)
 // Desktop map overlay button listeners (outside content-wrap)
 document.addEventListener('click',e=>{
   if(e.target.closest('#btn-sim-start')&&!e.target.closest('#content-wrap')){simStart();}
+  if(e.target.closest('#btn-sim-pause')&&!e.target.closest('#content-wrap')){simPause();}
   if(e.target.closest('#btn-sim-stop')&&!e.target.closest('#content-wrap')){simStop();}
   if(e.target.closest('#desktop-gps-btn')){
     toggleGPS();
@@ -3073,9 +3166,11 @@ function renderDesktopMap(){
     const show=r&&r.hasTS&&UI.tab==='live'; // only on ride tab
     simCtrl.style.display=show?'flex':'none';
     const startBtn=document.getElementById('btn-sim-start');
+    const pauseBtn=document.getElementById('btn-sim-pause');
     const stopBtn=document.getElementById('btn-sim-stop');
     if(startBtn)startBtn.style.display=UI.simRunning?'none':'block';
-    if(stopBtn)stopBtn.style.display=UI.simRunning?'block':'none';
+    if(pauseBtn)pauseBtn.style.display=UI.simRunning?'block':'none';
+    if(stopBtn){stopBtn.disabled=(!UI.simRunning&&!UI.simPaused);stopBtn.style.display='block';}
     const sliderWrap=document.getElementById('desktop-sim-slider');
     if(sliderWrap)sliderWrap.style.display=show?'block':'none';
     const sl=document.getElementById('sim-sl');
@@ -4554,8 +4649,9 @@ function tSettings(r){
       </select>
     </div>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-sm btn-p" id="btn-sim-start" ${!r||!r.hasTS||UI.simRunning?'disabled':''}>▶ Simulate Route</button>
-      <button class="btn btn-sm btn-r" id="btn-sim-stop" ${UI.simRunning?'':'disabled'}>■ Stop</button>
+      <button class="btn btn-sm btn-p" id="btn-sim-start" ${!r||!r.hasTS||(UI.simRunning&&!UI.simPaused)?'disabled':''}>▶ ${UI.simPaused?'Resume':'Simulate Route'}</button>
+      <button class="btn btn-sm" id="btn-sim-pause" style="display:${UI.simRunning?'inline-block':'none'};border-color:rgba(251,191,36,.5);color:var(--amber);">⏸ Pause</button>
+      <button class="btn btn-sm btn-r" id="btn-sim-stop" ${UI.simRunning||UI.simPaused?'':'disabled'}>■ Stop</button>
     </div>
     ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">Route needs timestamps — upload a TCX with estimated times.</p>`:''}
     <div id="sim-status" style="font-size:14px;color:var(--text3);margin-top:6px;font-family:var(--font);"></div>
@@ -6209,6 +6305,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-dbx-disconnect')){UI.dbxToken=null;UI.dbxSavedAt=null;saveAll();render();return;}
   if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
   if(e.target.closest('#btn-sim-start')){simStart();return;}
+  if(e.target.closest('#btn-sim-pause')){simPause();return;}
   if(e.target.closest('#btn-sim-stop')){simStop();return;}
   if(e.target.closest('#route-mgmt-hdr')){UI.routeMgmtExpanded=!UI.routeMgmtExpanded;render();return;}
   if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
