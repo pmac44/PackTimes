@@ -2313,11 +2313,38 @@ function hitTest(cvs,cx,cy,cb){
           }
         } else {
           setTimeout(()=>{
-            const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
-            if(tile){
-              document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
-              tile.classList.add('hi');
-              scrollTileToTop(tile);
+            const isStarred=bestStop.starred!==false||bestStop.type==='sleep'||bestStop.type==='rest'||bestStop.sleepAt;
+            const needsReveal=UI.stopsShowStarred&&!isStarred;
+            if(needsReveal){
+              // Temporarily reveal this stop in the filtered list
+              if(_tempRevealTimer)clearTimeout(_tempRevealTimer);
+              UI._tempRevealId=bestStop.id;
+              renderKeepScroll();
+              // Scroll to it after render
+              setTimeout(()=>{
+                const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
+                if(tile){
+                  document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
+                  tile.classList.add('hi');
+                  scrollTileToTop(tile);
+                }
+              },50);
+              // After 4s, reapply filter unless it got starred
+              _tempRevealTimer=setTimeout(()=>{
+                _tempRevealTimer=null;
+                const r2=cur();
+                const s2=r2&&r2.stops.find(s=>String(s.id)===String(UI._tempRevealId));
+                const nowStarred=s2&&(s2.starred!==false||s2.type==='sleep'||s2.type==='rest'||s2.sleepAt);
+                UI._tempRevealId=null;
+                if(!nowStarred)renderKeepScroll();
+              },4000);
+            } else {
+              const tile=document.querySelector(`.tap-stop[data-sid="${bestStop.id}"]`);
+              if(tile){
+                document.querySelectorAll('.tap-stop').forEach(el=>el.classList.remove('hi'));
+                tile.classList.add('hi');
+                scrollTileToTop(tile);
+              }
             }
           },0);
         }
@@ -2944,6 +2971,7 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
 //  HIGHLIGHT STATE (stops page map)
 // ═══════════════════════════════════════════
 let _highlightStopId=null;
+let _tempRevealTimer=null;
 
 // ═══════════════════════════════════════════
 //  RENDER
@@ -4524,7 +4552,7 @@ function tSettings(r){
 // Render stops list grouped by cluster for the Stops tab
 function clusteredStopRows(r,sdt){
   if(!r.stops.length)return'';
-  const stops=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt):r.stops;
+  const stops=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt||String(s.id)===String(UI._tempRevealId)):r.stops;
   const clusters=clusterStops(stops);
   let html='';
   clusters.forEach(cl=>{
@@ -6042,6 +6070,11 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(s){
       s.starred=s.starred===false?true:false;
       const isStarred=s.starred!==false;
+      // If this was a temp-revealed stop and user starred it, cancel the timer
+      if(isStarred&&String(sid)===String(UI._tempRevealId)){
+        if(_tempRevealTimer){clearTimeout(_tempRevealTimer);_tempRevealTimer=null;}
+        UI._tempRevealId=null;
+      }
       ss.innerHTML=isStarred
         ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'
         :'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
