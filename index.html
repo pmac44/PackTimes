@@ -2657,13 +2657,13 @@ function openPaceModal(editIdx,startDist){
   _pace.editIdx=editIdx!==undefined?editIdx:-1;
   if(_pace.editIdx>=0){
     const seg=r.paceSegs[_pace.editIdx];
-    _pace.from=seg.from;_pace.to=seg.to;_pace.hours=seg.hours;_pace.step='to';
+    _pace.from=seg.from;_pace.to=seg.to;_pace.hours=seg.hours;_pace.step='to';_pace.lastAdjusted='from';
     const ni=document.getElementById('pace-name');if(ni)ni.value=seg.name||'';
   } else {
     _pace.from=startDist!=null?startDist:null;
     _pace.to=startDist!=null?Math.min(startDist+5,r.totalDist):null;
     _pace.hours=1;
-    _pace.step=startDist!=null?'to':'from';
+    _pace.step=startDist!=null?'to':'from';_pace.lastAdjusted='from';
     const ni=document.getElementById('pace-name');if(ni)ni.value='';
   }
   _updatePaceDisplay();
@@ -2679,10 +2679,11 @@ function openPaceModal(editIdx,startDist){
       if(_pace.step==='from'){
         _pace.from=d;
         _pace.to=d; // end defaults to same point so +/- starts from here
-        _pace.step='to';
+        _pace.step='to';_pace.lastAdjusted='from';
       } else {
         if(d>_pace.from)_pace.to=d;
         else{_pace.to=_pace.from;_pace.from=d;}
+        _pace.lastAdjusted='to';
       }
       _updatePaceDisplay();
       _redrawPaceMap();
@@ -2748,16 +2749,13 @@ function _redrawPaceMap(){
   if(!cvs||!r)return;
   cvs._paceFrom=_pace.from;cvs._paceTo=_pace.to;
   cvs._forcedH=200;
-  // Zoom to show the selected segment if both set
   const state=ms('pace-map');
-  if(_pace.from!==null&&_pace.to!==null){
-    const mid=(_pace.from+_pace.to)/2;
-    const pi=r.points.reduce((bi,p,i)=>Math.abs(p.dist-mid)<Math.abs(r.points[bi].dist-mid)?i:bi,0);
+  // Zoom to whichever endpoint was last adjusted (default to 'from' if neither yet)
+  const focusDist=(_pace.lastAdjusted==='to'&&_pace.to!==null)?_pace.to:(_pace.from!==null?_pace.from:null);
+  if(focusDist!==null){
+    const pi=r.points.reduce((bi,p,i)=>Math.abs(p.dist-focusDist)<Math.abs(r.points[bi].dist-focusDist)?i:bi,0);
     state.cx=r.points[pi].lon;state.cy=r.points[pi].lat;
-    state.zoom=zoomForKmWidth('pace-map',Math.max((_pace.to-_pace.from)*2,2),200);
-  } else if(_pace.from!==null){
-    const pi=r.points.reduce((bi,p,i)=>Math.abs(p.dist-_pace.from)<Math.abs(r.points[bi].dist-_pace.from)?i:bi,0);
-    state.cx=r.points[pi].lon;state.cy=r.points[pi].lat;
+    state.zoom=zoomForKmWidth('pace-map',0.6,200);
   }
   drawMap(cvs,r,{anchor:0.5,paceFrom:_pace.from,paceTo:_pace.to});
 }
@@ -2771,8 +2769,10 @@ function _redrawPaceMap(){
     const r=cur();if(!r)return;
     if(field==='from'){
       _pace.from=_pace.from===null?(r.totalDist/2):Math.max(0,Math.min(_pace.to!==null?_pace.to-STEP:r.totalDist,Math.round((_pace.from+delta)*100)/100));
+      _pace.lastAdjusted='from';
     } else if(field==='to'){
       _pace.to=_pace.to===null?(r.totalDist/2):Math.max(_pace.from!==null?_pace.from+STEP:0,Math.min(r.totalDist,Math.round((_pace.to+delta)*100)/100));
+      _pace.lastAdjusted='to';
     } else if(field==='time'){
       _pace.hours=Math.max(0.25,Math.round((_pace.hours+delta)*4)/4);
     }
