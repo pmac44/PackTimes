@@ -5146,8 +5146,7 @@ function tPlan(r){
   nodeList.sort((a,b)=>a.dist-b.dist);
   // Sleep-only filter — keep start, finish and sleep nodes only
   const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:null;
-  const filteredList=(UI.planSleepOnly?nodeList.filter(n=>n.isSleep):nodeList)
-    .filter(n=>!UI.planHidePassed||liveDist===null||n.dist>=liveDist);
+  const filteredList=UI.planSleepOnly?nodeList.filter(n=>n.isSleep):nodeList;
   const nodes=[
     {name:'Start 🚩',dist:0,distEnd:0,isStart:true,cluster:null},
     ...filteredList,
@@ -5241,7 +5240,7 @@ function tPlan(r){
         +'<div style="width:12px;height:12px;border-radius:50%;background:'+dotCol+';flex-shrink:0;"></div>'
         +spine
       +'</div>'
-      +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
+      +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
         +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🍫 Snack Stop</div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
             +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
@@ -5399,13 +5398,12 @@ function tPlan(r){
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
-        +'<button class="btn btn-sm'+( UI.planSleepOnly?' btn-p':'')+'" id="btn-plan-sleep-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;" title="Show bivi stops only">'
+        +'<button class="btn btn-sm" id="btn-plan-sleep-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planSleepOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show bivi stops only">'
         +(UI.planSleepOnly
           ?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
           :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')
         +'</button>'
-        +'<button class="btn btn-sm'+(UI.planHidePassed?' btn-p':'')+'" id="btn-plan-hide-passed" style="font-size:13px;" title="Show only upcoming stops">⏩ Ahead</button>'
-        +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;">🖨️ Print</button>'
+        +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;padding:4px 7px;">🖨️</button>'
       +'</div>'
       +'</div>'
       +rows
@@ -5814,6 +5812,23 @@ document.getElementById('tabs').addEventListener('click',e=>{
       if(sc)UI._stopsScrollSaved=sc.scrollTop;
     }
     UI.tab=b.dataset.tab;render();
+    // Auto-scroll mission list to current GPS position when opening plan tab
+    if(b.dataset.tab==='plan'&&UI.gpsDistKm!==null){
+      setTimeout(()=>{
+        const r=cur();if(!r)return;
+        const content=document.querySelector('.content');if(!content)return;
+        // Find the last mission node the rider has passed
+        const nodes=[...document.querySelectorAll('.mission-node')];
+        if(!nodes.length)return;
+        let lastPassed=null;
+        nodes.forEach(n=>{
+          const dist=parseFloat(n.dataset.dist);
+          if(!isNaN(dist)&&dist<=UI.gpsDistKm)lastPassed=n;
+        });
+        const target=lastPassed||nodes[0];
+        if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+      },120);
+    }
   }
 });
 
@@ -6206,8 +6221,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   if(e.target.closest('#btn-plan-sleep-filter')){
     UI.planSleepOnly=!UI.planSleepOnly;renderKeepScroll();return;}
-  if(e.target.closest('#btn-plan-hide-passed')){
-    UI.planHidePassed=!UI.planHidePassed;renderKeepScroll();return;}
   const mu=e.target.closest('.cluster-edit-btn');
   if(mu&&r){
     const sid=mu.dataset.sid;
