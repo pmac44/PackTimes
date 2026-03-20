@@ -3927,6 +3927,8 @@ function buildLiveStrip(r,liveDist,sdt){
 // Fork & knife food icon — use currentColor so context controls colour
 const ICON_FOOD=`<svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>`;
 const ICON_FOOD_BTN=`<span style="display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;padding:3px 5px;color:rgba(255,255,255,0.85);">${ICON_FOOD}</span>`;
+const ICON_MEAL=`<svg width="16" height="16" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M8 38 Q8 54 30 54 Q52 54 52 38"/><line x1="8" y1="38" x2="52" y2="38"/><path d="M18 30 Q15 23 18 16 Q21 9 18 3"/><path d="M30 30 Q27 23 30 16 Q33 9 30 3"/><path d="M42 30 Q39 23 42 16 Q45 9 42 3"/></svg>`;
+const ICON_SNACK=`<svg width="16" height="16" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M30 18 C14 18 4 28 4 40 C4 52 14 58 24 58 C27 58 30 56 30 56 C30 56 33 58 36 58 C46 58 56 52 56 40 C56 30 46 22 38 19 C35 23 31 25 27 23 C25 21 23 19 30 18 Z"/><path d="M30 18 C28 20 25 21 27 23 C31 25 35 23 38 19"/><path d="M24 18 C27 12 30 10 30 10"/><path d="M30 10 C32 5 40 3 42 8 C39 10 33 10 30 10"/></svg>`;
 // Pencil edit icon — white on dark, solid background applied by button style
 const ICON_EDIT=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 // X remove icon — white on dark, solid background applied by button style
@@ -5613,7 +5615,7 @@ function tPlan(r){
       const departDay=depart&&sdt?dayOff(depart,sdt):'';
       const col=s.type==='rest'?'#94856a':'#b39ddb';
       const icon=s.type==='rest'?'🍫':'😴';
-      const fmtChip=m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;display:inline-block;margin:2px 2px 2px 0;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier'}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
+      const fmtChip=m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;display:inline-block;margin:2px 2px 2px 0;">${m.type==='snack'?ICON_SNACK:ICON_MEAL} ${m.name||m.type} · ${m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier'}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
       const row=(label,val,color)=>`<div style="display:flex;align-items:baseline;gap:6px;margin-top:4px;font-family:var(--font);font-size:15px;"><span style="color:var(--text3);min-width:52px;">${label}</span><span style="color:${color||'var(--text)'};">${val}</span></div>`;
       sleepDiv='<div style="margin-top:8px;">'
         // 1. Arrive
@@ -5720,7 +5722,7 @@ function tPlan(r){
           const sorted=[...stopMeals].sort((a,b)=>(a.when==='after'?1:0)-(b.when==='after'?1:0));
           const srcLabel=m=>m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier';
           return'<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">'
-            +sorted.map(m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type} · ${srcLabel(m)}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`).join('')
+            +sorted.map(m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;">${m.type==='snack'?ICON_SNACK:ICON_MEAL} ${m.name||m.type} · ${srcLabel(m)}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`).join('')
             +'</div>';
         })())
       +'</div>'
@@ -5868,14 +5870,14 @@ function tFood(r){
   const sdt=startDT(r);
   const finEta=etaAt(r.totalDist,r);
   const allMeals=r.stops.flatMap(s=>(s.meals||[]).map(m=>({...m,stop:s})));
-  const fmtItem=m=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:14px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>`;
+  const fmtItem=m=>`<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:14px;">${m.type==='snack'?ICON_SNACK:ICON_MEAL} ${m.name||m.type}</span>`;
   const fmtGrouped=(items,titlePrefix)=>{
     const groups={};
     items.forEach(m=>{const k=(m.type||'meal')+'|'+(m.name||'');if(!groups[k])groups[k]={m,count:0};groups[k].count++;});
     const titleLine=titlePrefix?`<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">${titlePrefix}</div>`:'';
     const lines=Object.values(groups).map(({m,count})=>
       `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;">
-        <span style="padding:3px 10px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:16px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>
+        <span style="padding:3px 10px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:16px;">${m.type==='snack'?ICON_SNACK:ICON_MEAL} ${m.name||m.type}</span>
         ${`<span style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);">× ${count}</span>`}
       </div>`
     ).join('');
@@ -6452,8 +6454,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
             const isCarryOnly=false;
             return `<div class="food-item" style="display:flex;flex-direction:column;gap:4px;padding:6px 8px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:6px;">
               <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
-                <button class="btn btn-sm food-type-toggle${m.type==='meal'?' btn-p':''}" data-i="${i}" data-val="meal" style="font-size:13px;padding:2px 6px;">🍽️ Meal</button>
-                <button class="btn btn-sm food-type-toggle${m.type==='snack'?' btn-p':''}" data-i="${i}" data-val="snack" style="font-size:13px;padding:2px 6px;">🍫 Snack</button>
+                <button class="btn btn-sm food-type-toggle${m.type==='meal'?' btn-p':''}" data-i="${i}" data-val="meal" style="font-size:13px;padding:2px 6px;display:inline-flex;align-items:center;gap:4px;">${ICON_MEAL} Meal</button>
+                <button class="btn btn-sm food-type-toggle${m.type==='snack'?' btn-p':''}" data-i="${i}" data-val="snack" style="font-size:13px;padding:2px 6px;display:inline-flex;align-items:center;gap:4px;">${ICON_SNACK} Snack</button>
                 ${hasSleep&&!isCarryOnly?`<button class="btn btn-sm food-when-toggle${(m.when||'before')==='before'?' btn-p':''}" data-i="${i}" data-val="before" style="font-size:11px;padding:2px 4px;">Before sleep</button><button class="btn btn-sm food-when-toggle${m.when==='after'?' btn-p':''}" data-i="${i}" data-val="after" style="font-size:11px;padding:2px 4px;">After sleep</button>`:''}
                 <button class="btn btn-sm btn-r food-remove" data-i="${i}" style="padding:2px 6px;font-size:13px;margin-left:auto;">✕</button>
               </div>
