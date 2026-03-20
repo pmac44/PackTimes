@@ -4383,7 +4383,7 @@ function tRoutes(r){
         <span style="font-size:22px;">⬅</span><span style="font-size:16px;">Slower</span>
       </button>
       <div style="text-align:center;min-width:70px;">
-        <div class="sval" id="tf-val">${r.timeFactor.toFixed(2)} ×${r.estDuration&&r.totalDist?` <span style="font-size:16px;color:var(--text3);">(${(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1)} km/h avg)</span>`:''}</div>
+        <div class="sval" id="tf-val">${r.timeFactor.toFixed(2)} ×${r.estDuration&&r.totalDist?`<br><span style="font-size:16px;color:var(--text3);">(${(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1)} km/h avg)</span>`:''}</div>
         <div style="font-size:15px;color:var(--text3);margin-top:2px;" id="tf-desc">${factorDesc(r.timeFactor)}</div>
       </div>
       <button class="btn btn-sm" id="tf-faster" style="flex:1;justify-content:center;flex-direction:column;gap:1px;padding:6px 4px;">
@@ -5652,7 +5652,7 @@ function printMission(){
 
 function patchSpeedFactor(r){
   const v=document.getElementById('tf-val'),d=document.getElementById('tf-desc');
-  if(v)v.innerHTML=r.timeFactor.toFixed(2)+' ×'+(r.estDuration&&r.totalDist?` <span style="font-size:16px;color:var(--text3);">(${(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1)} km/h avg)</span>`:'');
+  if(v)v.innerHTML=r.timeFactor.toFixed(2)+' ×'+(r.estDuration&&r.totalDist?`<br><span style="font-size:16px;color:var(--text3);">(${(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1)} km/h avg)</span>`:'');
   if(d)d.textContent=factorDesc(r.timeFactor);
   if(r.estDuration&&r.totalDist){
     const adj=r.estDuration*r.timeFactor;
