@@ -4393,26 +4393,55 @@ function tRoutes(r){
       </div>
     </div>
     ${helloOpen?`
-    <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">PackTimes helps you plan adventure rides where water, food and sleep actually matter.</p>
-    <ul style="font-size:16px;color:var(--text2);line-height:1.8;margin:0 0 12px 0;padding-left:18px;">
-      <li>Load a route, search for stops from OpenStreetMap along it, or manually add your own</li>
-      <li>Star the stops you want on your Mission list</li>
-      <li>Add sleep where you see the route line go dark, unless you're riding into the night!</li>
-      <li>Add food to stops and nominate where you got it from to build a supply plan</li>
-      <li>Ride the route and see the next stops coming up and when you will get there</li>
-      <li>Get weather and ride data such as power and heart rate as you ride</li>
-    </ul>
+    <p style="font-size:17px;font-weight:600;color:var(--text);line-height:1.5;margin-bottom:10px;">PackTimes helps you plan and execute adventure rides where water, food and sleep actually matter.</p>
+    <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;">
+      ${[
+        ['Route','Load a GPX or TCX, or search OpenStreetMap for stops along it'],
+        ['Plan','Star stops for your Mission list — add sleep and food to build your supply plan'],
+        ['Night','The route line turns black where you\'ll be riding in the dark — plan sleep accordingly'],
+        ['Ride','Live GPS map with upcoming water, food and sleep stops and arrival times'],
+        ['Data','Weather, power meter and heart rate visible as you ride'],
+      ].map(([label,text])=>`
+        <div style="display:flex;gap:8px;align-items:baseline;">
+          <span style="font-size:12px;font-family:var(--font);font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;flex-shrink:0;min-width:44px;">${label}</span>
+          <span style="font-size:15px;color:var(--text2);line-height:1.5;">${text}</span>
+        </div>`).join('')}
+    </div>
+    <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
     <div id="hello-more-wrap">
-      <div id="hello-more-toggle" style="font-size:15px;color:var(--accent);cursor:pointer;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+      <div id="hello-more-toggle" style="font-size:15px;color:var(--accent);cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
         <span style="font-size:13px;color:var(--text3);">${UI.helloDetailOpen?'▼':'▶'}</span>
-        <span>More detail</span>
+        <span style="font-family:var(--font);font-size:13px;text-transform:uppercase;letter-spacing:.6px;">More detail</span>
       </div>
       ${UI.helloDetailOpen?`
-      <div style="font-size:15px;color:var(--text2);line-height:1.7;display:flex;flex-direction:column;gap:10px;">
-        <p>You upload a route from an app such as RWGPS, Komoot, Strava, or Garmin Connect. Ideally the route will have timestamps based on your personal speed and turn information for navigation alerts. These timestamps drive every ETA, sleep window and food timing in your plan — so the closer they match your actual pace, the more reliable your plan will be. If the route has no timestamps, PackTimes can estimate them. The Speed Factor adjuster and Adaptive Speed will help dial in the estimates as you ride, but starting with realistic numbers makes a real difference.</p>
-        <p>Routes are commonly shared as GPX files, but TCX files are more likely to carry time and turn data.</p>
-        <p>With your route loaded, search OpenStreetMap for stops along the way and star the ones you want in your Mission list. You can manually add stops too. Assign sleep and food to stops and your ETAs will adjust accordingly. The route line changes from blue to black to show day and night segments, based on your start date, time and pace. The food planner will guide you on when to buy ahead for stops further down the route.</p>
-        <p>When riding, you get a live GPS map and a list of upcoming water, food and sleep stops with arrival estimates. Connect a power meter or heart rate monitor to track effort alongside your progress.</p>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <div>
+          <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RWGPS, Komoot, Strava, or Garmin Connect.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">TCX files are more likely to carry timestamps and turn data than GPX.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Timestamps drive every ETA, sleep window and food timing in your plan — the closer they match your actual pace, the more reliable everything will be. If your file has no timestamps, PackTimes can estimate them; use the Speed Factor and Adaptive Speed to dial them in as you ride.</p>
+        </div>
+
+        <div style="border-top:1px solid var(--border);"></div>
+
+        <div>
+          <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Building your plan</div>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Search OpenStreetMap for stops and star the ones you want in your Mission list, or add stops manually.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Assign sleep and food to stops and ETAs adjust automatically.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">The route line shifts from blue to black to show day and night segments, based on your start date, time and pace.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">The food planner guides you on what to buy ahead for stops further down the route.</p>
+        </div>
+
+        <div style="border-top:1px solid var(--border);"></div>
+
+        <div>
+          <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Riding</div>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Live GPS map with your next water, food and sleep stops and arrival estimates.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Connect a power meter or heart rate monitor to track effort alongside your progress.</p>
+        </div>
+
       </div>`:''}
     </div>
     `:''}
