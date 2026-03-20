@@ -5876,7 +5876,7 @@ function tFood(r){
     const lines=Object.values(groups).map(({m,count})=>
       `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;">
         <span style="padding:3px 10px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;font-size:16px;">${m.type==='snack'?'🍫':'🍽️'} ${m.name||m.type}</span>
-        ${count>1?`<span style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);">×${count}</span>`:''}
+        ${`<span style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);">× ${count}</span>`}
       </div>`
     ).join('');
     return titleLine+lines;
@@ -5969,7 +5969,7 @@ function tFood(r){
     if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
   });
 
-  return'<div style="padding:6px 4px 2px;color:var(--text2);font-size:15px;line-height:1.6;margin-bottom:4px;">What to pick up and carry at each stop. The next food action shows in the Ride tab strip, and a proximity alert fires as you approach stops with food assigned. Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add or edit food.</div>'
+  return'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 12px;">What to pick up and carry at each stop — next food action shows in the Ride tab. Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add or edit food.</div>'
     +nextCard
     +'<div class="card">'
       +(fromStart.length?fmtGrouped(fromStart,'🎒 Carry from start'):'')
