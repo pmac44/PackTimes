@@ -661,6 +661,144 @@ function parseTCX(txt){
   });
   return{pts,hasTS,name,turns};
 }
+
+// ═══════════════════════════════════════════
+//  KML PARSE
+// ═══════════════════════════════════════════
+function parseKML(txt){
+  const doc=new DOMParser().parseFromString(txt,'text/xml');
+  // Try LineString / MultiGeometry coords first (route), then track points
+  const raw=[];
+  // Prefer track-style gx:coord or gx:Track elements
+  const gxCoords=doc.querySelectorAll('Track coord, gx\\:coord');
+  const gxWhens=doc.querySelectorAll('Track when, gx\\:when');
+  if(gxCoords.length>=2){
+    let hasTS=false;
+    gxCoords.forEach((c,i)=>{
+      const parts=c.textContent.trim().split(/\s+/);
+      if(parts.length<2)return;
+      const lon=+parts[0],lat=+parts[1],ele=parts[2]?+parts[2]:0;
+      if(isNaN(lat)||isNaN(lon))return;
+      let time=null;
+      if(gxWhens[i]){const t=new Date(gxWhens[i].textContent);if(!isNaN(t)){hasTS=true;time=t;}}
+      raw.push({lat,lon,ele,time});
+    });
+    if(raw.length>=2){
+      let dist=0;
+      const pts=raw.map((p,i)=>{if(i>0)dist+=hav(raw[i-1],p);return{...p,dist};});
+      const nameEl=doc.querySelector('Document > name, Folder > name, Placemark > name');
+      return{pts,hasTS,name:nameEl?.textContent?.trim()||null,turns:[]};
+    }
+  }
+  // Fall back to LineString coordinates (no timestamps)
+  const coordEls=doc.querySelectorAll('LineString coordinates, MultiGeometry LineString coordinates');
+  if(!coordEls.length)return null;
+  coordEls.forEach(el=>{
+    el.textContent.trim().split(/\s+/).forEach(triplet=>{
+      const parts=triplet.split(',');
+      if(parts.length<2)return;
+      const lon=+parts[0],lat=+parts[1],ele=parts[2]?+parts[2]:0;
+      if(isNaN(lat)||isNaN(lon))return;
+      raw.push({lat,lon,ele,time:null});
+    });
+  });
+  if(raw.length<2)return null;
+  let dist=0;
+  const pts=raw.map((p,i)=>{if(i>0)dist+=hav(raw[i-1],p);return{...p,dist};});
+  const nameEl=doc.querySelector('Document > name, Folder > name, Placemark > name');
+  return{pts,hasTS:false,name:nameEl?.textContent?.trim()||null,turns:[]};
+}
+
+// ═══════════════════════════════════════════
+//  FIT PARSE (binary Garmin format)
+// ═══════════════════════════════════════════
+function parseFIT(buf){
+  // FIT binary parser — extracts record messages (lat/lon/alt/timestamp)
+  const SEMICIRCLES=180/Math.pow(2,31);
+  const bytes=new Uint8Array(buf);
+  const view=new DataView(buf);
+  if(bytes.length<12)return null;
+  // Validate FIT header
+  const headerSize=bytes[0];
+  const sig=String.fromCharCode(bytes[8],bytes[9],bytes[10],bytes[11]);
+  if(sig!=='.FIT')return null;
+
+  const localMsgDefs={};
+  let i=headerSize; // skip file header
+  const raw=[];
+  let hasTS=false;
+  const FIT_EPOCH=631065600; // seconds between Unix epoch and FIT epoch (Dec 31 1989)
+
+  while(i<bytes.length-2){
+    const recordHeader=bytes[i];
+    // Compressed timestamp header
+    if(recordHeader&0x80){
+      i++;continue; // skip compressed — rare in track files
+    }
+    const msgType=(recordHeader>>6)&0x01; // 1=definition, 0=data
+    const localNum=recordHeader&0x0F;
+    if(msgType===1){
+      // Definition message
+      i++; // header
+      i++; // reserved
+      const arch=bytes[i++]; // 0=little, 1=big
+      const globalMsgNum=arch?view.getUint16(i,false):view.getUint16(i,true);i+=2;
+      const numFields=bytes[i++];
+      const fields=[];
+      for(let f=0;f<numFields;f++){
+        const fieldDef=bytes[i++];
+        const size=bytes[i++];
+        const baseType=bytes[i++];
+        fields.push({fieldDef,size,baseType,bigEndian:arch===1});
+      }
+      localMsgDefs[localNum]={globalMsgNum,fields,arch};
+      // Skip dev fields if present
+      if(recordHeader&0x20){
+        const numDevFields=bytes[i++];
+        i+=numDevFields*3;
+      }
+    } else {
+      // Data message
+      i++; // header
+      const def=localMsgDefs[localNum];
+      if(!def){break;} // malformed
+      let lat=null,lon=null,ele=null,ts=null;
+      let offset=i;
+      def.fields.forEach(f=>{
+        const be=f.bigEndian;
+        if(f.fieldDef===0&&f.size===4){ // position_lat
+          const v=be?view.getInt32(offset,false):view.getInt32(offset,true);
+          if(v!==0x7FFFFFFF)lat=v*SEMICIRCLES;
+        } else if(f.fieldDef===1&&f.size===4){ // position_long
+          const v=be?view.getInt32(offset,false):view.getInt32(offset,true);
+          if(v!==0x7FFFFFFF)lon=v*SEMICIRCLES;
+        } else if(f.fieldDef===2&&f.size===2){ // altitude (units: 5m, offset 500)
+          const v=be?view.getUint16(offset,false):view.getUint16(offset,true);
+          if(v!==0xFFFF)ele=(v/5)-500;
+        } else if(f.fieldDef===253&&f.size===4){ // timestamp
+          const v=be?view.getUint32(offset,false):view.getUint32(offset,true);
+          if(v!==0xFFFFFFFF)ts=new Date((v+FIT_EPOCH)*1000);
+        }
+        offset+=f.size;
+      });
+      i=offset;
+      // Only record messages (globalMsgNum=20) with position data
+      if(def.globalMsgNum===20&&lat!==null&&lon!==null){
+        if(ts)hasTS=true;
+        raw.push({lat,lon,ele:ele||0,time:ts});
+      }
+    }
+  }
+  if(raw.length<2)return null;
+  // Deduplicate consecutive identical points
+  const deduped=[raw[0]];
+  for(let j=1;j<raw.length;j++){
+    if(raw[j].lat!==raw[j-1].lat||raw[j].lon!==raw[j-1].lon)deduped.push(raw[j]);
+  }
+  let dist=0;
+  const pts=deduped.map((p,j)=>{if(j>0)dist+=hav(deduped[j-1],p);return{...p,dist};});
+  return{pts,hasTS,name:null,turns:[]};
+}
 function hav(a,b){
   const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLon=(b.lon-a.lon)*Math.PI/180;
   const s=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
@@ -1318,7 +1456,7 @@ let _simPts=null,_simIdx=0,_simTimer=null;
 function simStart(){
   const r=cur();
   if(!r||!r.points.length){alert('No route loaded.');return;}
-  if(!r.hasTS){alert('Route needs timestamps. Upload a TCX with estimated times.');return;}
+  if(!r.hasTS){alert('Route needs timestamps. Upload a TCX or FIT file, or use Speed Factor to set a pace.');return;}
   _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
   if(!UI.simPaused){
     const startDist=UI.gpsDistKm||0;
@@ -1421,7 +1559,7 @@ function simLoadGPX(txt){
 function simStart(){
   const r=cur();
   if(!r||!r.points.length){alert('No route loaded.');return;}
-  if(!r.hasTS){alert('Route needs timestamps. Upload a TCX with estimated times.');return;}
+  if(!r.hasTS){alert('Route needs timestamps. Upload a TCX or FIT file, or use Speed Factor to set a pace.');return;}
   _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
   // Start from current slider position if set, otherwise from beginning
   const startDist=UI.gpsDistKm||0;
@@ -3601,7 +3739,7 @@ async function showQRModal(r){
   }
 
   statusEl.textContent=`${stopCount} stops · ${kb}KB — scan with your phone`;
-  hintEl.textContent='Scan this QR code on your phone. You must have the same GPX file loaded first, then tap "Import Plan" on the Routes tab.';
+  hintEl.textContent='Scan this QR code on your phone. You must have the same route file loaded first, then tap "Import Plan" on the Routes tab.';
 
   try{
     await loadQRLib();
@@ -4397,7 +4535,7 @@ function tRoutes(r){
     <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
     <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;">
       ${[
-        ['Route','Load a GPX or TCX, or search OpenStreetMap for stops along it'],
+        ['Route','Load a route file (GPX, TCX, KML or FIT), or search OpenStreetMap for stops along it'],
         ['Plan','Star stops for your Mission list — add sleep and food to build your supply plan'],
         ['Night','The route line turns black where you\'ll be riding in the dark — plan sleep accordingly'],
         ['Ride','Live GPS map with upcoming water, food and sleep stops and arrival times'],
@@ -4419,8 +4557,8 @@ function tRoutes(r){
 
         <div>
           <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
-          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RWGPS, Komoot, Strava, or Garmin Connect.</p>
-          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">TCX files are more likely to carry timestamps and turn data than GPX.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RWGPS, Komoot, Strava, or Garmin Connect. GPX, TCX, KML and FIT files are all supported.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">TCX and FIT files are more likely to carry timestamps and turn data than GPX or KML.</p>
           <p style="font-size:15px;color:var(--text2);line-height:1.6;">Timestamps drive every ETA, sleep window and food timing in your plan — the closer they match your actual pace, the more reliable everything will be. If your file has no timestamps, PackTimes can estimate them; use the Speed Factor and Adaptive Speed to dial them in as you ride.</p>
         </div>
 
@@ -4461,7 +4599,7 @@ function tRoutes(r){
       ${r?`<span style="font-size:13px;color:var(--text3);">${r.totalDist?r.totalDist.toFixed(0)+'km':''}</span>`:''}
     </div>
     ${actuallyExpanded?`
-    <button class="btn btn-sm btn-p btn-full" id="btn-upload-route">↑ Upload GPX / TCX</button>
+    <button class="btn btn-sm btn-p btn-full" id="btn-upload-route">↑ Upload GPX / TCX / KML / FIT</button>
     <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
     ${ROUTES.length?ROUTES.map((rt,i)=>`
       <div class="rli ${i===CUR?'active':''}" data-ridx="${i}">
@@ -4470,7 +4608,7 @@ function tRoutes(r){
           <div class="ri-meta">${rt.totalDist?rt.totalDist.toFixed(0)+'km · ':''} ${rt.startDate||'no date'} · ${rt.stops.length} stops${rt.turns&&rt.turns.length?` · ${rt.turns.length} turns`:''}</div>
         </div>
         <button class="btn btn-sm btn-r del-route" data-ridx="${i}">✕</button>
-      </div>`).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX above to get started.</p>`}
+      </div>`).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX / KML / FIT above to get started.</p>`}
     </div>
     ${UI.turnStatus?`<div class="banner ${UI.turnStatus.type==='ok'?'ok-bright':'warn'}" style="margin-top:8px;">
       <span>${UI.turnStatus.type==='ok'?'↩':'⚠️'}</span>
@@ -4496,7 +4634,7 @@ function tRoutes(r){
     })():''}
     `:''}
   </div>
-  <input type="file" accept=".gpx,.tcx" id="gpx-input" style="display:none;">`;
+  <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-input" style="display:none;">`;
   if(!r)return routeList;
   const sdt=startDT(r);
   const adjDur=r.estDuration?r.estDuration*r.timeFactor:null;
@@ -4722,7 +4860,7 @@ function tSettings(r){
     <p style="font-size:17px;color:var(--text2);line-height:1.6;">Routes saved in IndexedDB — persists offline between sessions.</p>
     <button class="btn btn-sm btn-full" id="btn-export" style="margin-top:9px;">📤 Export routes (JSON)</button>
     <button class="btn btn-sm btn-p btn-full" id="btn-qr-export" style="margin-top:6px;">📱 Transfer plan to phone (QR)</button>
-    <div style="font-size:16px;color:var(--text3);margin-top:5px;line-height:1.5;">Import a plan: load the same GPX on your phone, then use Import Plan below.</div>
+    <div style="font-size:16px;color:var(--text3);margin-top:5px;line-height:1.5;">Import a plan: load the same route file on your phone, then use Import Plan below.</div>
     <button class="btn btn-sm btn-full" id="btn-import-plan" style="margin-top:6px;">📲 Import plan from file</button>
     <input type="file" id="plan-file-input" accept=".json" style="display:none;">`;
 
@@ -4750,7 +4888,7 @@ function tSettings(r){
       <button class="btn btn-sm" id="btn-sim-pause" style="display:${UI.simRunning?'inline-block':'none'};border-color:rgba(251,191,36,.5);color:var(--amber);">⏸ Pause</button>
       <button class="btn btn-sm btn-r" id="btn-sim-stop" ${UI.simRunning||UI.simPaused?'':'disabled'}>■ Stop</button>
     </div>
-    ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">Route needs timestamps — upload a TCX with estimated times.</p>`:''}
+    ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">Route needs timestamps — upload a TCX or FIT file, or use Speed Factor to set a pace.</p>`:''}
     <div id="sim-status" style="font-size:14px;color:var(--text3);margin-top:6px;font-family:var(--font);"></div>`;
 
   const dangerBody=`
@@ -6722,10 +6860,11 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     return;}
   if(e.target.id==='gpx-input'){
     const f=e.target.files[0];if(!f)return;
-    const fr=new FileReader();fr.onload=ev=>applyGPX(ev.target.result,f.name.replace(/\.(gpx|tcx)$/i,''));fr.readAsText(f);}
+    loadRouteFile(f);
+    e.target.value='';}
   if(e.target.id==='plan-file-input'){
     const f=e.target.files[0];if(!f)return;
-    const r=cur();if(!r){alert('Load a GPX route first.');return;}
+    const r=cur();if(!r){alert('Load a route file first.');return;}
     const reader=new FileReader();
     reader.onload=async ev=>{
       let planStr=ev.target.result;
@@ -6740,17 +6879,44 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
 document.addEventListener('dragover',e=>e.preventDefault());
 document.addEventListener('drop',e=>{
   e.preventDefault();const f=e.dataTransfer.files[0];
-  if(f&&(f.name.toLowerCase().endsWith('.gpx')||f.name.toLowerCase().endsWith('.tcx'))){
-    const fr=new FileReader();fr.onload=ev=>applyGPX(ev.target.result,f.name.replace(/\.(gpx|tcx)$/i,''));fr.readAsText(f);}
+  if(f&&/\.(gpx|tcx|kml|kmz|fit)$/i.test(f.name))loadRouteFile(f);
 });
+
+function loadRouteFile(f){
+  const name=f.name.replace(/\.(gpx|tcx|kml|kmz|fit)$/i,'');
+  const isFIT=f.name.toLowerCase().endsWith('.fit');
+  const isKMZ=f.name.toLowerCase().endsWith('.kmz');
+  if(isFIT){
+    const fr=new FileReader();
+    fr.onload=ev=>applyGPX(ev.target.result,name,true);
+    fr.readAsArrayBuffer(f);
+  } else if(isKMZ){
+    // KMZ is a ZIP containing doc.kml — requires JSZip which we don't bundle
+    // Fall back to informative error
+    alert('KMZ files need to be unzipped first. Please export as KML instead, or rename the .kmz to .zip, extract the doc.kml file, and upload that.');
+  } else {
+    const fr=new FileReader();
+    fr.onload=ev=>applyGPX(ev.target.result,name,false);
+    fr.readAsText(f);
+  }
+}
 
 // ═══════════════════════════════════════════
 //  APPLY GPX
 // ═══════════════════════════════════════════
-function applyGPX(txt,suggestedName){
-  const isTCX=txt.includes('<TrainingCenterDatabase')||txt.includes('<Trackpoint>');
-  const result=isTCX?parseTCX(txt):parseGPX(txt);
-  if(!result){alert('Could not parse file. Please use a GPX or TCX file.');return;}
+function applyGPX(content,suggestedName,isBinary){
+  let result;
+  if(isBinary){
+    // FIT binary
+    result=parseFIT(content);
+    if(!result){alert('Could not parse FIT file. The file may be corrupted or not a valid activity/course file.');return;}
+  } else {
+    const txt=content;
+    const isTCX=txt.includes('<TrainingCenterDatabase')||txt.includes('<Trackpoint>');
+    const isKML=txt.includes('<kml')||txt.includes('<KML');
+    result=isTCX?parseTCX(txt):isKML?parseKML(txt):parseGPX(txt);
+    if(!result){alert('Could not parse file. Please use a GPX, TCX, KML or FIT file.');return;}
+  }
   const routeName=(result.name||suggestedName||'New Route').trim();
   // Check if a route with the same name already exists and has stops
   const existingIdx=ROUTES.findIndex(r=>r.name.trim().toLowerCase()===routeName.toLowerCase());
