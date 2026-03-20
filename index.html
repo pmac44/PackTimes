@@ -4702,7 +4702,7 @@ function tSettings(r){
   ${section('osmRadius','OSM Search Radius',osmRadiusBody,!!r)}
   ${section('offline','Offline Storage',offlineBody)}
   ${section('offlineMaps','Offline Maps',offlineMapsBody)}
-  ${section('simulator','Ride Simulator',simulatorBody)}
+  ${IS_DESKTOP()?'':section('simulator','Ride Simulator',simulatorBody)}
   ${section('danger','Danger Zone',dangerBody)}
   `;
 }
