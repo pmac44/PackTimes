@@ -5969,7 +5969,10 @@ function tFood(r){
     if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
   });
 
-  return'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 12px;">What to pick up and carry at each stop — next food action shows in the Ride tab. Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add or edit food.</div>'
+  return'<div style="padding:6px 4px 12px;">'
+    +'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">What to pick up and carry at each stop</div>'
+    +'<div style="font-size:15px;color:var(--text2);line-height:1.6;">Next food action shows in the Ride tab. Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add or edit food.</div>'
+    +'</div>'
     +nextCard
     +'<div class="card">'
       +(fromStart.length?fmtGrouped(fromStart,'🎒 Carry from start'):'')
