@@ -504,6 +504,7 @@ const newRoute=name=>({
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
+  settingsExp:{dropbox:true,alerts:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
   powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -4549,13 +4550,37 @@ function tRoutes(r){
 
 // ─── Settings tab ───
 function tSettings(r){
-  return`
-  <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
-    <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
-  </div>
-  ${r?`
-  <div class="card">
-    <div class="ctitle">Proximity Alerts</div>
+  const se=UI.settingsExp;
+  // Helper: renders a collapsible card section header + optional body
+  const section=(key,title,bodyHtml,alwaysShow=true)=>{
+    if(!alwaysShow)return'';
+    const open=se[key];
+    return`<div class="card" style="padding:${open?'14px 12px':'10px 12px'};">
+      <div id="settings-hdr-${key}" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${open?'margin-bottom:10px;':''}">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:16px;color:var(--text3);">${open?'▼':'▶'}</span>
+          <span class="ctitle" style="margin-bottom:0;">${title}</span>
+        </div>
+      </div>
+      ${open?bodyHtml:''}
+    </div>`;
+  };
+
+  const dropboxBody=`
+    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Syncs routes and stops to Dropbox. Saves 5 seconds after any change, loads on startup if cloud is newer.</p>
+    <div id="dbx-status" style="font-size:14px;color:var(--text3);margin-bottom:8px;font-family:var(--font);">${UI.dbxToken?(UI.dbxSavedAt?'☁️ Last synced '+new Date(UI.dbxSavedAt).toLocaleTimeString():'☁️ Connected'):'Not connected'}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      ${UI.dbxToken?`
+        <button class="btn btn-sm btn-p" id="btn-dbx-save">☁️ Save now</button>
+        <button class="btn btn-sm btn-p" id="btn-dbx-load">⬇️ Force load</button>
+        <button class="btn btn-sm" id="btn-dbx-disconnect">Disconnect</button>
+      `:`
+        <button class="btn btn-sm btn-p" id="btn-dbx-connect">🔗 Connect Dropbox</button>
+      `}
+    </div>
+    <p style="font-size:13px;color:var(--text3);margin-top:10px;line-height:1.5;">💡 Sync is triggered on save and on startup. To sync between devices manually, tap <strong>Save now</strong> on one device then <strong>Force load</strong> on the other.</p>`;
+
+  const alertsBody=r?`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Full-screen alert when a stop is within range.</p>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:16px;">
@@ -4587,85 +4612,59 @@ function tSettings(r){
       <input type="range" id="offroute-delay-sl" min="2" max="30" step="1" value="${UI.offRouteSecs||8}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>2s</span><span>8s</span><span>15s</span><span>20s</span><span>30s</span></div>
     </div>
-    <p style="font-size:16px;color:var(--text3);margin-top:4px;">Speed factor is on the Route tab.</p>
-  </div>
-  <div class="card">
-    <div class="ctitle">GPS Map Zoom</div>
-    <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">How much of the map is visible when GPS is active and you're moving. Tighter zoom shows more detail — essential for off-road trails where you can easily miss a junction. Wider zoom gives more context ahead.</p>
+    <p style="font-size:16px;color:var(--text3);margin-top:4px;">Speed factor is on the Route tab.</p>`:'';
+
+  const zoomBody=r?`
+    <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">How much of the map is visible when GPS is active and you're moving. Tighter zoom shows more detail — essential for off-road trails where you can easily miss a junction.</p>
     <div style="display:flex;flex-direction:column;gap:8px;">
       ${[['0.1','100m — very tight, individual trail junctions'],['0.15','150m — tight, good for singletrack'],['0.2','200m — standard cycling GPS (Garmin default)'],['0.3','300m — wider, good for roads'],['0.5','500m — overview, open terrain']].map(([val,desc])=>`
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:16px;padding:6px 8px;border-radius:7px;border:1px solid ${String(UI.gpsZoom)===val?'var(--accent)':'var(--border)'};background:${String(UI.gpsZoom)===val?'rgba(74,222,128,0.07)':'var(--bg3)'};">
           <input type="radio" name="gps-zoom" class="gps-zoom-opt" value="${val}" ${String(UI.gpsZoom)===val?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);margin-top:2px;flex-shrink:0;">
           <span><span style="font-family:var(--font);font-weight:500;color:var(--text);">${desc.split('—')[0].trim()}</span><span style="color:var(--text3);"> — ${desc.split('—')[1].trim()}</span></span>
         </label>`).join('')}
-    </div>
-  </div>
-  <div class="card">
-    <div class="ctitle">Weather Map Spacing</div>
-    <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:10px;">How far apart weather markers appear on the route map. Closer spacing gives more detail in mountain terrain. Weather is shown at your predicted ETA at each point — enable the Weather layer on the Stops tab to see it.</p>
+    </div>`:'';
+
+  const weatherBody=r?`
+    <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:10px;">How far apart weather markers appear on the route map. Closer spacing gives more detail in mountain terrain. Enable the Weather layer on the Stops tab to see it.</p>
     <div class="field">
       <label class="lbl">Spacing — <span id="weather-spacing-val">${UI.weatherSpacingKm||25}km</span></label>
       <input type="range" id="weather-spacing-sl" min="10" max="200" step="5" value="${UI.weatherSpacingKm||25}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>10km</span><span>50km</span><span>100km</span><span>150km</span><span>200km</span></div>
     </div>
-    <p style="font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5;">Forecasts beyond 4 days are shown faded — accuracy reduces with time. Data from Open-Meteo (free, no account needed).</p>
-  </div>
-  <div class="card">
-    <div class="ctitle">OSM Search Defaults</div>
+    <p style="font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5;">Forecasts beyond 4 days are shown faded. Data from Open-Meteo (free, no account needed).</p>`:'';
+
+  const osmDefaultsBody=r?`
     <p style="font-size:15px;color:var(--text2);margin-bottom:10px;">Choose which stop types to search for by default. Changes apply immediately on the Stops tab.</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
       ${[['towns','🏘️ Towns',true],['water','💧 Potable water',false],['crossings','🏞 Waterways',false],['toilets','🚻 Toilets',false],['stockwater','🐄 Stock water',false],['food','🍴 Food',false],['fuel','⛽ Fuel',false],['shops','🛒 Shops',false],['pubs','🍺 Pubs',false],['camp','🏕️ Campgrounds',false],['caravan','🚐 Caravan parks',false],['huts','🏔 Huts',false],['hotels','🏨 Accom',false],['halls','🏛️ Community halls',false],['churches','⛪ Churches',false],['schools','🏫 Schools',false],['fire','🚒 Fire stations',false],['police','🚔 Police',false],['peaks','🏔️ Peaks/Saddles',false]].map(([k,lbl,def])=>{
         const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
         return '<label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span>'+lbl+'</span></label>';
       }).join('')}
-    </div>
-  </div>
-  <div class="card">
-    <div class="ctitle">OSM Search Radius</div>
+    </div>`:'';
+
+  const osmRadiusBody=r?`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:10px;">How far off-route to search for stops. Towns &amp; huts use 2× this distance.</p>
     <div class="field">
       <label class="lbl">Base radius — <span id="search-radius-val">${(UI.searchRadiusKm*1000).toFixed(0)}m</span></label>
       <input type="range" id="search-radius-sl" min="0.1" max="3" step="0.1" value="${UI.searchRadiusKm}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>100m</span><span>500m</span><span>1km</span><span>2km</span><span>3km</span></div>
     </div>
-    <p style="font-size:14px;color:var(--text3);margin-top:4px;">Default 400m. Increase for remote areas where stops are further off-route.</p>
-  </div>`:''}
-  <div class="card">
-    <div class="ctitle">Dropbox Sync</div>
-    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Auto-syncs routes and stops to Dropbox. Saves 5 seconds after any change, loads on startup if cloud is newer.</p>
-    <div id="dbx-status" style="font-size:14px;color:var(--text3);margin-bottom:8px;font-family:var(--font);">${UI.dbxToken?(UI.dbxSavedAt?'☁️ Last synced '+new Date(UI.dbxSavedAt).toLocaleTimeString():'☁️ Connected'):'Not connected'}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      ${UI.dbxToken?`
-        <button class="btn btn-sm btn-p" id="btn-dbx-save">☁️ Save now</button>
-        <button class="btn btn-sm btn-p" id="btn-dbx-load">⬇️ Force load</button>
-        <button class="btn btn-sm" id="btn-dbx-disconnect">Disconnect</button>
-      `:`
-        <button class="btn btn-sm btn-p" id="btn-dbx-connect">🔗 Connect Dropbox</button>
-      `}
-    </div>
-  </div>
-  <div class="card">
-    <div class="ctitle">Offline Storage</div>
+    <p style="font-size:14px;color:var(--text3);margin-top:4px;">Default 400m. Increase for remote areas where stops are further off-route.</p>`:'';
+
+  const offlineBody=`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;">Routes saved in IndexedDB — persists offline between sessions.</p>
     <button class="btn btn-sm btn-full" id="btn-export" style="margin-top:9px;">📤 Export routes (JSON)</button>
     <button class="btn btn-sm btn-p btn-full" id="btn-qr-export" style="margin-top:6px;">📱 Transfer plan to phone (QR)</button>
     <div style="font-size:16px;color:var(--text3);margin-top:5px;line-height:1.5;">Import a plan: load the same GPX on your phone, then use Import Plan below.</div>
     <button class="btn btn-sm btn-full" id="btn-import-plan" style="margin-top:6px;">📲 Import plan from file</button>
-    <input type="file" id="plan-file-input" accept=".json" style="display:none;">
-  </div>
-  <div class="card">
-    <div class="ctitle">Offline Maps</div>
+    <input type="file" id="plan-file-input" accept=".json" style="display:none;">`;
+
+  const offlineMapsBody=`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">PackTimes caches map tiles as you view them. Before heading into remote areas <strong>without internet</strong>, open the map on the Route or Stops tab and pan/zoom along your route — tiles you've viewed will be available offline.</p>
-    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">For full offline maps of a region, we recommend <strong>Organic Maps</strong> (free) as a companion app — it downloads entire regions for offline use and works well alongside PackTimes.</p>
-    <a href="https://organicmaps.app" target="_blank" class="btn btn-sm btn-full" style="text-align:center;text-decoration:none;margin-top:4px;">🌍 Get Organic Maps</a>
-  </div>
-  <div class="card">
-    <div class="ctitle">Danger Zone</div>
-    <p style="font-size:16px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Deletes all routes, stops and settings from this device. Cannot be undone.</p>
-    <button class="btn btn-r btn-full" id="btn-clearall">🗑 Clear all data &amp; start fresh</button>
-  </div>
-  <div class="card">
-    <div class="ctitle">Ride Simulator</div>
+    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">For full offline maps of a region, we recommend <strong>Organic Maps</strong> (free) as a companion app.</p>
+    <a href="https://organicmaps.app" target="_blank" class="btn btn-sm btn-full" style="text-align:center;text-decoration:none;margin-top:4px;">🌍 Get Organic Maps</a>`;
+
+  const simulatorBody=`
     <p style="font-size:15px;color:var(--text3);margin-bottom:10px;">Simulate riding the current route to test stop alerts, turn warnings and ETAs. Route must have timestamps.</p>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
       <label class="lbl" style="margin-bottom:0;">Speed</label>
@@ -4685,8 +4684,27 @@ function tSettings(r){
       <button class="btn btn-sm btn-r" id="btn-sim-stop" ${UI.simRunning||UI.simPaused?'':'disabled'}>■ Stop</button>
     </div>
     ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">Route needs timestamps — upload a TCX with estimated times.</p>`:''}
-    <div id="sim-status" style="font-size:14px;color:var(--text3);margin-top:6px;font-family:var(--font);"></div>
-  </div>`;
+    <div id="sim-status" style="font-size:14px;color:var(--text3);margin-top:6px;font-family:var(--font);"></div>`;
+
+  const dangerBody=`
+    <p style="font-size:16px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Deletes all routes, stops and settings from this device. Cannot be undone.</p>
+    <button class="btn btn-r btn-full" id="btn-clearall">🗑 Clear all data &amp; start fresh</button>`;
+
+  return`
+  <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
+    <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
+  </div>
+  ${section('dropbox','Dropbox Sync',dropboxBody)}
+  ${section('alerts','Proximity Alerts',alertsBody,!!r)}
+  ${section('zoom','GPS Map Zoom',zoomBody,!!r)}
+  ${section('weather','Weather Map Spacing',weatherBody,!!r)}
+  ${section('osmDefaults','OSM Search Defaults',osmDefaultsBody,!!r)}
+  ${section('osmRadius','OSM Search Radius',osmRadiusBody,!!r)}
+  ${section('offline','Offline Storage',offlineBody)}
+  ${section('offlineMaps','Offline Maps',offlineMapsBody)}
+  ${section('simulator','Ride Simulator',simulatorBody)}
+  ${section('danger','Danger Zone',dangerBody)}
+  `;
 }
 
 
@@ -6411,6 +6429,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-sim-pause')){simPause();return;}
   if(e.target.closest('#btn-sim-stop')){simStop();return;}
   if(e.target.closest('#route-mgmt-hdr')){UI.routeMgmtExpanded=!UI.routeMgmtExpanded;render();return;}
+  const settingsHdr=e.target.closest('[id^="settings-hdr-"]');
+  if(settingsHdr){const key=settingsHdr.id.replace('settings-hdr-','');if(UI.settingsExp.hasOwnProperty(key)){UI.settingsExp[key]=!UI.settingsExp[key];render();return;}}
   if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
   if(e.target.closest('#turn-popup')){
     // Dismiss turn popup until next turn
