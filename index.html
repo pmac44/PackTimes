@@ -4570,7 +4570,7 @@ function tRoutes(r){
           <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Assign sleep and food to stops and ETAs adjust automatically.</p>
           <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">The route line shifts from blue to black to show day and night segments, based on your start date, time and pace.</p>
           <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Tap a dark section of the route line to add a sleep stop there — it turns blue again once sleep is planned.</p>
-          <p style="font-size:15px;color:var(--text2);line-height:1.6;">The food planner guides you on what to buy ahead for stops further down the route.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Add food to stops and nominate where you'll buy it — the food planner then tells you what to pick up and when.</p>
         </div>
 
         <div style="border-top:1px solid var(--border);"></div>
@@ -4656,7 +4656,7 @@ function tRoutes(r){
           +'<span style="'+lbl+'">Start</span>'
           +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
             +'<span style="'+accent+'">'+(startStr||'<span style="font-size:15px;color:var(--text3);">Not set</span>')+'</span>'
-            +'<button id="btn-open-dt-picker" style="background:none;border:none;cursor:pointer;padding:4px;color:rgba(255,255,255,0.5);flex-shrink:0;display:inline-flex;align-items:center;-webkit-tap-highlight-color:transparent;">'+ICON_EDIT+'</button>'
+            +'<button id="btn-open-dt-picker" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;color:rgba(255,255,255,0.85);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">'+ICON_EDIT+'</button>'
           +'</div>'
           +'<span style="'+lbl+'margin-top:10px;">Finish</span>'
           +(finishStr?`<span style="font-size:18px;font-weight:600;color:var(--text2);font-family:var(--font);" id="rt-finish">${finishStr}</span>`:'<span style="font-size:15px;color:var(--text3);">Set start date →</span>')
