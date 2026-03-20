@@ -3699,7 +3699,7 @@ const LAYER_TYPES=[
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['town','weather','mission','allsleep','rest','water','sleep','hike','kmmarkers','turns'];
+  const PRIORITY=['kmmarkers','turns','town','weather','mission','allsleep','rest','water','sleep','hike'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
