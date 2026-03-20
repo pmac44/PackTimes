@@ -249,6 +249,65 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Edit stop modal -->
+<!-- Date/time picker modal -->
+<div id="dt-picker-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 28px;width:100%;max-width:500px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <span style="font-size:18px;font-weight:600;color:var(--text);">Start Date &amp; Time</span>
+      <button class="btn btn-sm" id="dt-picker-x">✕</button>
+    </div>
+    <!-- Date row -->
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <div style="flex:2;">
+        <div style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Day</div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="btn btn-sm" id="dt-day-m" style="font-size:20px;padding:0 12px;flex-shrink:0;">−</button>
+          <div style="flex:1;text-align:center;font-family:var(--font);font-size:26px;font-weight:600;color:var(--accent);" id="dt-day-val">1</div>
+          <button class="btn btn-sm" id="dt-day-p" style="font-size:20px;padding:0 12px;flex-shrink:0;">+</button>
+        </div>
+      </div>
+      <div style="flex:3;">
+        <div style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Month</div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="btn btn-sm" id="dt-mon-m" style="font-size:20px;padding:0 12px;flex-shrink:0;">−</button>
+          <div style="flex:1;text-align:center;font-family:var(--font);font-size:22px;font-weight:600;color:var(--accent);" id="dt-mon-val">Jan</div>
+          <button class="btn btn-sm" id="dt-mon-p" style="font-size:20px;padding:0 12px;flex-shrink:0;">+</button>
+        </div>
+      </div>
+      <div style="flex:2;">
+        <div style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Year</div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="btn btn-sm" id="dt-yr-m" style="font-size:20px;padding:0 12px;flex-shrink:0;">−</button>
+          <div style="flex:1;text-align:center;font-family:var(--font);font-size:22px;font-weight:600;color:var(--accent);" id="dt-yr-val">2025</div>
+          <button class="btn btn-sm" id="dt-yr-p" style="font-size:20px;padding:0 12px;flex-shrink:0;">+</button>
+        </div>
+      </div>
+    </div>
+    <!-- Time row -->
+    <div style="display:flex;gap:6px;margin-bottom:16px;">
+      <div style="flex:1;">
+        <div style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Hour</div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="btn btn-sm" id="dt-hr-m" style="font-size:20px;padding:0 12px;flex-shrink:0;">−</button>
+          <div style="flex:1;text-align:center;font-family:var(--font);font-size:26px;font-weight:600;color:var(--accent);" id="dt-hr-val">06</div>
+          <button class="btn btn-sm" id="dt-hr-p" style="font-size:20px;padding:0 12px;flex-shrink:0;">+</button>
+        </div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Minute</div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="btn btn-sm" id="dt-min-m" style="font-size:20px;padding:0 12px;flex-shrink:0;">−</button>
+          <div style="flex:1;text-align:center;font-family:var(--font);font-size:26px;font-weight:600;color:var(--accent);" id="dt-min-val">00</div>
+          <button class="btn btn-sm" id="dt-min-p" style="font-size:20px;padding:0 12px;flex-shrink:0;">+</button>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:14px;color:var(--text3);text-align:center;margin-bottom:12px;font-family:var(--font);" id="dt-preview"></div>
+    <button class="btn btn-p btn-full" id="dt-picker-ok">✓ Set Start</button>
+  </div>
+</div>
+
+<!-- Edit stop modal -->
 <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
@@ -2401,6 +2460,70 @@ function openModal(km){
   updateModalFields();
   document.getElementById('stop-modal').style.display='flex';
 }
+// ── Date/time picker ──────────────────────
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const _dtp={day:1,mon:0,yr:2026,hr:6,min:0};
+
+function _dtDaysInMonth(m,y){return new Date(y,m+1,0).getDate();}
+function _dtFmt(){
+  const d=String(_dtp.day).padStart(2,'0');
+  const mo=String(_dtp.mon+1).padStart(2,'0');
+  const h=String(_dtp.hr).padStart(2,'0');
+  const mi=String(_dtp.min).padStart(2,'0');
+  const date=new Date(_dtp.yr,_dtp.mon,_dtp.day);
+  const dow=date.toLocaleDateString('en-GB',{weekday:'short'});
+  return{dateStr:`${_dtp.yr}-${mo}-${d}`,timeStr:`${h}:${mi}`,label:`${dow} ${d} ${MONTHS[_dtp.mon]} ${_dtp.yr} · ${h}:${mi}`};
+}
+function _dtRefresh(){
+  document.getElementById('dt-day-val').textContent=String(_dtp.day).padStart(2,'0');
+  document.getElementById('dt-mon-val').textContent=MONTHS[_dtp.mon];
+  document.getElementById('dt-yr-val').textContent=_dtp.yr;
+  document.getElementById('dt-hr-val').textContent=String(_dtp.hr).padStart(2,'0');
+  document.getElementById('dt-min-val').textContent=String(_dtp.min).padStart(2,'0');
+  document.getElementById('dt-preview').textContent=_dtFmt().label;
+}
+function openDTPicker(r){
+  // Parse current values
+  if(r.startDate){const p=r.startDate.split('-');_dtp.yr=+p[0];_dtp.mon=+p[1]-1;_dtp.day=+p[2];}
+  else{const n=new Date();_dtp.yr=n.getFullYear();_dtp.mon=n.getMonth();_dtp.day=n.getDate();}
+  if(r.startTime){const p=r.startTime.split(':');_dtp.hr=+p[0];_dtp.min=+p[1];}
+  else{_dtp.hr=6;_dtp.min=0;}
+  _dtRefresh();
+  document.getElementById('dt-picker-modal').style.display='flex';
+}
+function closeDTPicker(){document.getElementById('dt-picker-modal').style.display='none';}
+
+// +/- with long-press repeat
+function _dtBtn(id,fn){
+  const el=document.getElementById(id);
+  if(!el)return;
+  let _t,_i;
+  const start=()=>{fn();_t=setTimeout(()=>{_i=setInterval(fn,80);},400);};
+  const stop=()=>{clearTimeout(_t);clearInterval(_i);};
+  el.addEventListener('mousedown',start);el.addEventListener('touchstart',e=>{e.preventDefault();start();},{passive:false});
+  el.addEventListener('mouseup',stop);el.addEventListener('mouseleave',stop);
+  el.addEventListener('touchend',stop);el.addEventListener('touchcancel',stop);
+}
+_dtBtn('dt-day-m',()=>{_dtp.day=_dtp.day>1?_dtp.day-1:_dtDaysInMonth(_dtp.mon,_dtp.yr);_dtRefresh();});
+_dtBtn('dt-day-p',()=>{_dtp.day=_dtp.day<_dtDaysInMonth(_dtp.mon,_dtp.yr)?_dtp.day+1:1;_dtRefresh();});
+_dtBtn('dt-mon-m',()=>{_dtp.mon=_dtp.mon>0?_dtp.mon-1:11;_dtp.day=Math.min(_dtp.day,_dtDaysInMonth(_dtp.mon,_dtp.yr));_dtRefresh();});
+_dtBtn('dt-mon-p',()=>{_dtp.mon=_dtp.mon<11?_dtp.mon+1:0;_dtp.day=Math.min(_dtp.day,_dtDaysInMonth(_dtp.mon,_dtp.yr));_dtRefresh();});
+_dtBtn('dt-yr-m',()=>{_dtp.yr--;_dtp.day=Math.min(_dtp.day,_dtDaysInMonth(_dtp.mon,_dtp.yr));_dtRefresh();});
+_dtBtn('dt-yr-p',()=>{_dtp.yr++;_dtp.day=Math.min(_dtp.day,_dtDaysInMonth(_dtp.mon,_dtp.yr));_dtRefresh();});
+_dtBtn('dt-hr-m',()=>{_dtp.hr=_dtp.hr>0?_dtp.hr-1:23;_dtRefresh();});
+_dtBtn('dt-hr-p',()=>{_dtp.hr=_dtp.hr<23?_dtp.hr+1:0;_dtRefresh();});
+_dtBtn('dt-min-m',()=>{_dtp.min=_dtp.min>=5?_dtp.min-5:55;_dtRefresh();});
+_dtBtn('dt-min-p',()=>{_dtp.min=_dtp.min<=55?_dtp.min+5:0;_dtRefresh();});
+
+document.getElementById('dt-picker-x')?.addEventListener('click',closeDTPicker);
+document.getElementById('dt-picker-modal')?.addEventListener('click',e=>{if(e.target===document.getElementById('dt-picker-modal'))closeDTPicker();});
+document.getElementById('dt-picker-ok')?.addEventListener('click',()=>{
+  const r=cur();if(!r)return;
+  const{dateStr,timeStr}=_dtFmt();
+  r.startDate=dateStr;r.startTime=timeStr;
+  closeDTPicker();saveAll();render();
+});
+
 function closeModal(){document.getElementById('stop-modal').style.display='none';}
 
 // ═══════════════════════════════════════════
@@ -4164,8 +4287,10 @@ function tRoutes(r){
     <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;width:46px;flex-shrink:0;">Start</span>
-        <input type="date" value="${r.startDate||''}" id="inp-date" style="flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--accent);font-family:var(--font);font-size:15px;font-weight:500;padding:5px 7px;cursor:pointer;color-scheme:dark;">
-        <input type="time" value="${r.startTime||''}" id="inp-time" style="width:86px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--accent);font-family:var(--font);font-size:15px;font-weight:500;padding:5px 7px;cursor:pointer;color-scheme:dark;">
+        <button id="btn-open-dt-picker" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--accent);font-family:var(--font);font-size:15px;font-weight:500;padding:5px 10px;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;-webkit-tap-highlight-color:transparent;">
+          <span>${r.startDate&&r.startTime?(()=>{const d=new Date(r.startDate+'T'+r.startTime);return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})+' · '+r.startTime;})():'Tap to set start'}</span>
+          ${ICON_EDIT}
+        </button>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:11px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;width:46px;flex-shrink:0;">Finish</span>
@@ -5093,10 +5218,19 @@ function tPlan(r){
           +'<div style="flex:1;min-width:0;">'
             +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
             +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
-            +(isSleep?'':
-              (eta?'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:'+(isLightBg?'#fff':'var(--accent)')+';margin-top:3px;">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>':'')
-              +daydiv
-              +departDiv
+            +(node.isStart?
+              '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">'
+                +'<div style="flex:1;font-family:var(--font);font-size:16px;font-weight:500;color:var(--accent);">'
+                  +(r.startDate&&r.startTime?(()=>{const d=new Date(r.startDate+'T'+r.startTime);return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+' · '+r.startTime;})():'Tap ✏️ to set start')
+                +'</div>'
+                +'<button class="btn btn-sm" id="btn-mission-dt-edit" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;">'+ICON_EDIT+'</button>'
+              +'</div>'
+            :
+              (isSleep?'':
+                (eta?'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:'+(isLightBg?'#fff':'var(--accent)')+';margin-top:3px;">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>':'')
+                +daydiv
+                +departDiv
+              )
             )
           +'</div>'
           +(isSleep?'':
@@ -5989,6 +6123,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Buttons
+  if(e.target.closest('#btn-open-dt-picker')||e.target.closest('#btn-mission-dt-edit')){
+    const r=cur();if(r)openDTPicker(r);return;
+  }
   if(e.target.closest('#tf-faster')||e.target.closest('#tf-slower')){
     const r=cur();if(!r||!r.estDuration)return;
     const faster=!!e.target.closest('#tf-faster');
