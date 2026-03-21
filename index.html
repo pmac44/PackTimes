@@ -3946,6 +3946,9 @@ function renderKeepScroll(anchorSid){
   const wrap=document.getElementById('content-wrap');
   const scroller=wrap?wrap.querySelector('.content'):null;
   const scrollTop=scroller?scroller.scrollTop:0;
+  // Also save the stops-scroll inner scroller (Stops tab has its own scroll container)
+  const stopsScroller=document.querySelector('.stops-scroll');
+  const stopsScrollTop=stopsScroller?stopsScroller.scrollTop:0;
   // Anchor-based: find the mission-node's top offset relative to scroller before render
   const anchorEl=anchorSid?Array.from(document.querySelectorAll('.mission-node')).find(el=>el.dataset.sid===String(anchorSid)):null;
   const anchorOffsetBefore=anchorEl&&scroller?(anchorEl.getBoundingClientRect().top-scroller.getBoundingClientRect().top):null;
@@ -3963,6 +3966,9 @@ function renderKeepScroll(anchorSid){
         }
       }
       if(scrollTop>0)w.scrollTop=scrollTop;
+      // Restore stops-scroll inner container
+      const ss=document.querySelector('.stops-scroll');
+      if(ss&&stopsScrollTop>0)ss.scrollTop=stopsScrollTop;
     });
   });
 }
