@@ -4567,7 +4567,7 @@ function tRoutes(r){
       </div>
     </div>
     ${helloOpen?`
-    <p style="font-size:17px;font-weight:600;color:var(--text);line-height:1.5;margin-bottom:10px;">PackTimes helps you plan and execute long adventure rides and ultra races where water, food and sleep not only matter, but can be critical. PackTimes handles the logistics so your "Bikepacker Brain" doesn't have to.</p>
+    <p style="font-size:17px;font-weight:600;color:var(--text);line-height:1.5;margin-bottom:10px;">PackTimes helps you plan and execute long adventure rides and ultra races where water, food and sleep not only matter, but can be critical. PackTimes helps your "Bikepacker Brain" stay on top of the logistics — so you can focus on the ride.</p>
     <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
     <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;">
       ${[
@@ -4594,8 +4594,8 @@ function tRoutes(r){
         <div>
           <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
           <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RWGPS, Komoot, Strava, or Garmin Connect. GPX, TCX, KML and FIT files are all supported.</p>
-          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">TCX and FIT files are more likely to carry timestamps and turn data than GPX or KML.</p>
-          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Timestamps drive every ETA, sleep window and food timing in your plan — the closer they match your actual pace, the more reliable everything will be. If your file has no timestamps, PackTimes can estimate them; use the Speed Factor and Adaptive Speed to dial them in as you ride.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">A plain GPX file of GPS coordinates is perfectly fine — PackTimes will estimate your ride time from the distance and elevation. Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy is tied to your ride history on their servers and rarely survives in exported files. The time estimate you see on their website is not in the file.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Turn-by-turn navigation data is more likely to be present in TCX files than GPX. Use the Speed Factor on the Route tab to calibrate estimates to your personal pace — compare with your Strava moving time on a similar ride to find the right setting.</p>
         </div>
 
         <div style="border-top:1px solid var(--border);"></div>
