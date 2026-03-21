@@ -2309,8 +2309,6 @@ function peekLiveStop(s,r){
   const lon=s.lon||p.lon,lat=s.lat||p.lat;
   const state=ms('live-map');
   const savedZoom=state.zoom;
-  const offKm=(s.offRouteM||0)/1000;
-  const kmWidth=offKm>0.5?Math.max(1.5,offKm*3):1.5;
   _highlightStopId=s.id;
 
   // Measure everything NOW before any DOM changes
@@ -2321,8 +2319,23 @@ const _sb=document.getElementById('desktop-sidebar');
 const stripH=IS_DESKTOP()?0:(document.getElementById('live-next-strip')?.offsetHeight||120);
 const weatherBarH=IS_DESKTOP()?0:(document.getElementById('live-weather-bar-wrap')?.offsetHeight||0);
 const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH-weatherBarH));
-  // Anchor: 65% down — GPS position sits lower, more road visible ahead
-  const anchor=0.65;
+
+  // Calculate centre and zoom to show BOTH GPS position and target stop
+  // If GPS position is known, fit both points; otherwise just show the stop
+  let centreLon=lon,centreLat=lat,kmWidth=1.5;
+  if(UI.gpsPos){
+    const gLat=UI.gpsPos.lat,gLon=UI.gpsPos.lon;
+    // Haversine distance between GPS and stop
+    const distKm=hav({lat:gLat,lon:gLon},{lat,lon});
+    if(distKm>0.3){
+      // Centre between the two points
+      centreLat=(gLat+lat)/2;
+      centreLon=(gLon+lon)/2;
+      // Width = distance * 2.5 for padding, minimum 1.5km
+      kmWidth=Math.max(1.5,distKm*2.5);
+    }
+  }
+  const anchor=0.5; // centre when showing both points
 
   // Scroll to top instantly
   const scroller=document.getElementById('live-scroller');
@@ -2339,12 +2352,12 @@ const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math
   // Wait for browser to apply sizing, then draw
   setTimeout(()=>{
     state.zoom=zoomForKmWidth('live-map',kmWidth,mapH);
-    state.cx=lon;state.cy=lat;
+    state.cx=centreLon;state.cy=centreLat;
     state._peekAnchor=anchor;
     if(cvs){
       cvs.style.height=mapH+'px';
       cvs._forcedH=mapH;
-      drawMap(cvs,r,{showGPS:true,followGPS:false,anchor,rotate:true,highlightId:s.id});
+      drawMap(cvs,r,{showGPS:true,followGPS:false,anchor,rotate:false,highlightId:s.id});
       cvs._forcedH=null;
     }
     if(_livePeekTimer)clearTimeout(_livePeekTimer);
