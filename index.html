@@ -1374,6 +1374,7 @@ function startGPS(){
   if(!navigator.geolocation){alert('Geolocation not supported.');return;}
   UI.gpsActive=true;
   UI._gpsAutoPaused=false;
+  UI._lastMovedTs=Date.now(); // assume moving when first started
   const liveState=ms('live-map');
   liveState._userZoomed=false;liveState._autoZoomed=false;
   UI.gpsWatchId=navigator.geolocation.watchPosition(pos=>{
@@ -1383,8 +1384,10 @@ function startGPS(){
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap)UI.gpsDistKm=snap.dist;}
     // Reset idle timer if moving, otherwise let it count down
     const speedKmh=(pos.coords.speed||0)*3.6;
-    if(speedKmh>=GPS_IDLE_SPEED_KMH)_resetGpsIdleTimer();
-    else if(!_gpsIdleTimer)_resetGpsIdleTimer(); // start timer if not already running
+    if(speedKmh>=GPS_IDLE_SPEED_KMH){
+      UI._lastMovedTs=Date.now();
+      _resetGpsIdleTimer();
+    } else if(!_gpsIdleTimer)_resetGpsIdleTimer(); // start timer if not already running
     runAdaptiveCalibration();
     checkAlerts();
     if(UI.tab==='live')updateLive();
@@ -1699,7 +1702,28 @@ function releaseWakeLock(){
 }
 // Re-request wake lock when page becomes visible again (e.g. after screen dim)
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible'&&UI.gpsActive&&UI.keepScreenOn)requestWakeLock();
+  if(document.visibilityState==='visible'){
+    if(UI.gpsActive&&UI.keepScreenOn)requestWakeLock();
+    // Check if we've been stationary long enough to auto-stop GPS
+    // This catches the case where the timer didn't fire while the app was suspended
+    if(UI.gpsActive&&UI._lastMovedTs){
+      const idleMs=Date.now()-UI._lastMovedTs;
+      if(idleMs>=GPS_IDLE_STOP_MS){
+        if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
+        if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
+        UI.gpsWatchId=null;
+        UI.gpsActive=false;
+        _offRouteStart=null;_offRouteAlerted=false;
+        UI._adaptiveWindow=[];
+        if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
+        _lastTurnBeepDist=null;
+        releaseWakeLock();
+        UI._gpsAutoPaused=true;
+        updateGPSPill();
+        if(UI.tab==='live'||UI.tab==='settings')render();
+      }
+    }
+  }
 });
 let _offRouteAlerted=false;
 const OFF_ROUTE_M=150; // metres from route before warning
@@ -6313,7 +6337,12 @@ document.getElementById('tabs').addEventListener('click',e=>{
           if(!isNaN(dist)&&dist<=UI.gpsDistKm)lastPassed=n;
         });
         const target=lastPassed||nodes[0];
-        if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+        if(target){
+          // Scroll within content div, not the whole page — keeps header and tabs visible
+          const contentRect=content.getBoundingClientRect();
+          const targetRect=target.getBoundingClientRect();
+          content.scrollTop+=targetRect.top-contentRect.top-16;
+        }
       },120);
     }
   }
