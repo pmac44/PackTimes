@@ -1486,88 +1486,6 @@ function updateGPSPill(){
 // ═══════════════════════════════════════════
 let _simPts=null,_simIdx=0,_simTimer=null;
 
-function simStart(){
-  const r=cur();
-  if(!r||!r.points.length){alert('No route loaded.');return;}
-  if(!r.hasTS){alert('Route needs timestamps. Upload a TCX or FIT file, or use Speed Factor to set a pace.');return;}
-  _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
-  if(!UI.simPaused){
-    const startDist=UI.gpsDistKm||0;
-    _simIdx=startDist>0?Math.max(0,r.points.findIndex(p=>p.dist>=startDist)):0;
-  }
-  UI.simPaused=false;
-  UI.gpsActive=true;
-  UI.alertedStops=new Set();
-  _offRouteStart=null;_offRouteAlerted=false;
-  const liveState=ms('live-map');
-  liveState._userZoomed=false;liveState._autoZoomed=false;
-  updateGPSPill();
-  function step(){
-    const speed=+(document.getElementById('sim-speed')?.value||20);
-    if(_simIdx>=_simPts.length){simStop();return;}
-    const p=_simPts[_simIdx];
-    let spd=null;
-    if(_simIdx>0){
-      const prev=_simPts[_simIdx-1];
-      const d=hav(prev,p)*1000;
-      spd=d/(1/speed);
-    }
-    UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
-    const r=cur();
-    if(r){const snap=snapTo(r,p.lat,p.lon);if(snap)UI.gpsDistKm=snap.dist;}
-    if(UI._alertStopDist!=null&&UI.gpsDistKm>UI._alertStopDist+0.1){
-      document.getElementById('alert-overlay').style.display='none';
-      UI._alertStopDist=null;
-    }
-    checkAlerts();
-    if(UI.tab==='live')updateLive();
-    else updateGPSPill();
-    if(IS_DESKTOP())renderDesktopMap();
-    const status=document.getElementById('sim-status');
-    if(status){
-      const distKm=UI.gpsDistKm?UI.gpsDistKm.toFixed(1)+'km':'—';
-      status.textContent=`Point ${_simIdx+1}/${_simPts.length} · ${distKm} along route`;
-    }
-    _simIdx++;
-    let delay=100;
-    if(_simIdx<_simPts.length){
-      const curr=_simPts[_simIdx-1],next=_simPts[_simIdx];
-      if(curr.time&&next.time){
-        const realMs=new Date(next.time)-new Date(curr.time);
-        if(realMs>0&&realMs<60000)delay=Math.max(30,realMs/speed);
-      }
-    }
-    _simTimer=setTimeout(step,delay);
-  }
-  step();
-  UI.simRunning=true;
-  _updateSimButtons();
-  if(UI.tab!=='live'){UI.tab='live';render();}
-}
-
-function simPause(){
-  if(!UI.simRunning)return;
-  if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
-  UI.simRunning=false;
-  UI.simPaused=true;
-  const status=document.getElementById('sim-status');
-  if(status)status.textContent='Paused — press ▶ to resume.';
-  _updateSimButtons();
-  if(IS_DESKTOP())renderDesktopMap();
-}
-
-function simStop(){
-  if(!UI.simRunning&&!_simTimer&&!UI.simPaused)return;
-  if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
-  UI.simRunning=false;
-  UI.simPaused=false;
-  _simIdx=0;
-  stopGPS();
-  const status=document.getElementById('sim-status');
-  if(status)status.textContent='Simulation stopped.';
-  _updateSimButtons();
-}
-
 function _updateSimButtons(){
   const startBtn=document.getElementById('btn-sim-start');
   const pauseBtn=document.getElementById('btn-sim-pause');
@@ -1592,7 +1510,7 @@ function simLoadGPX(txt){
 function simStart(){
   const r=cur();
   if(!r||!r.points.length){alert('No route loaded.');return;}
-  if(!r.hasTS){alert('Route needs timestamps. Upload a TCX or FIT file, or use Speed Factor to set a pace.');return;}
+  if(!r.hasTS){alert('The ride simulator requires a route with timestamps. Export as TCX from your route planning app to enable it.');return;}
   _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
   // Start from current slider position if set, otherwise from beginning
   const startDist=UI.gpsDistKm||0;
@@ -1648,19 +1566,22 @@ function simStart(){
   }
   step();
   UI.simRunning=true;
-  document.getElementById('btn-sim-start').disabled=true;
-  const stopBtn=document.getElementById('btn-sim-stop');
-  if(stopBtn)stopBtn.disabled=false;
+  const startBtn2=document.getElementById('btn-sim-start');
+  const stopBtn2=document.getElementById('btn-sim-stop');
+  if(startBtn2)startBtn2.disabled=true;
+  if(stopBtn2)stopBtn2.disabled=false;
   if(UI.tab!=='live'){UI.tab='live';render();}
 }
 
 function simStop(){
-  if(!UI.simRunning&&!_simTimer)return;
   if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
   UI.simRunning=false;
+  UI.simPaused=false;
   stopGPS();
-  document.getElementById('btn-sim-start').disabled=false;
-  document.getElementById('btn-sim-stop').disabled=true;
+  const startBtn=document.getElementById('btn-sim-start');
+  const stopBtn=document.getElementById('btn-sim-stop');
+  if(startBtn)startBtn.disabled=false;
+  if(stopBtn)stopBtn.disabled=true;
   const status=document.getElementById('sim-status');
   if(status)status.textContent=_simIdx>=(_simPts?.length||0)?'Simulation complete.':'Simulation stopped.';
 }
@@ -4594,8 +4515,8 @@ function tRoutes(r){
         <div>
           <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
           <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RWGPS, Komoot, Strava, or Garmin Connect. GPX, TCX, KML and FIT files are all supported.</p>
-          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">A plain GPX file of GPS coordinates is perfectly fine — PackTimes will estimate your ride time from the distance and elevation. Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy is tied to your ride history on their servers and rarely survives in exported files. The time estimate you see on their website is not in the file.</p>
-          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Turn-by-turn navigation data is more likely to be present in TCX files than GPX. Use the Speed Factor on the Route tab to calibrate estimates to your personal pace — compare with your Strava moving time on a similar ride to find the right setting.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">A plain GPX file of GPS coordinates is ideal. PackTimes calculates your ride time from distance and elevation using a formula calibrated against real bikepacking ride data — this is more reliable than timestamps embedded in exported files, which often encode unrealistic speeds.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy is tied to your ride history on their servers and is not in the exported file. TCX files may carry turn-by-turn navigation data, which PackTimes can use for navigation alerts.</p>
         </div>
 
         <div style="border-top:1px solid var(--border);"></div>
@@ -4658,9 +4579,7 @@ function tRoutes(r){
     ${r?(()=>{
       const hasTurns=r.turns&&r.turns.length>0;
       const autoTurns=hasTurns&&r.turns.every(t=>t.auto);
-      const tsBanner=r.hasTS
-        ?`<div class="banner ok-bright" style="margin-top:6px;"><span>✓</span><span>Route has timestamps</span></div>`
-        :`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><span>No timestamps — speed estimated from elevation.</span></div>`;
+      const tsBanner=''; // timestamps no longer used for estimates — naismith always used
       const turnBanner=hasTurns
         ?(autoTurns
           ?`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><span>Auto-detected turns (${r.turns.length}) — review carefully.</span></div>`
@@ -4765,7 +4684,7 @@ function tRoutes(r){
           <span style="font-size:12px;color:var(--text3);white-space:nowrap;">${label}</span>
         </button>`).join('')}
     </div>
-    <p style="font-size:15px;color:var(--text3);margin-top:4px;line-height:1.6;">Calibrate by comparing PackTimes estimates with your Strava moving time on a similar ride — use moving time, not overall time. Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy rarely survives in exported files. The estimate you see on their website is not in the file. Pace varies enormously between riders and conditions: surface type, pack weight, fitness and terrain all make a significant difference. Start with a preset and fine-tune from there.</p>
+    <p style="font-size:15px;color:var(--text3);margin-top:4px;line-height:1.6;">PackTimes estimates ride time from distance and elevation — not from file timestamps, which are unreliable. Calibrate by comparing estimates with your Strava moving time on a similar ride. Pace varies enormously between riders and conditions: surface type, pack weight, fitness and terrain all make a significant difference. Start with a preset and fine-tune from there.</p>
     <p style="font-size:15px;color:var(--text3);margin-top:8px;line-height:1.6;">Adaptive Speed (below) will automatically adjust the factor as you ride by comparing your actual GPS pace with the estimates — useful if you are unsure of your factor or your pace changes across the ride.</p>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:15px;color:var(--text2);">
       <input type="checkbox" id="adaptive-speed-chk" ${r.adaptiveSpeed?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
@@ -4932,7 +4851,7 @@ function tSettings(r){
       <button class="btn btn-sm" id="btn-sim-pause" style="display:${UI.simRunning?'inline-block':'none'};border-color:rgba(251,191,36,.5);color:var(--amber);">⏸ Pause</button>
       <button class="btn btn-sm btn-r" id="btn-sim-stop" ${UI.simRunning||UI.simPaused?'':'disabled'}>■ Stop</button>
     </div>
-    ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">Route needs timestamps — upload a TCX or FIT file, or use Speed Factor to set a pace.</p>`:''}
+    ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">The ride simulator requires a route with timestamps — export as TCX from your route planning app to enable it.</p>`:''}
     <div id="sim-status" style="font-size:14px;color:var(--text3);margin-top:6px;font-family:var(--font);"></div>`;
 
   const dangerBody=`
@@ -6757,6 +6676,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   if(e.target.closest('#btn-auto-turns')&&r){
+    if(UI.simRunning||UI.simPaused)simStop();
     r.turns=autoDetectTurns(r.points);
     UI.turnStatus=null;
     saveAll();render();return;
@@ -7117,11 +7037,10 @@ function _applyGPXRoute(result,name,existingIdx,stops){
     ROUTES.push(r);CUR=ROUTES.length-1;
   }
   r.points=result.pts;r.hasTS=result.hasTS;r.totalDist=result.pts[result.pts.length-1].dist;
-  // Use timestamps only if median segment speed looks like cycling (>=10 km/h).
-  // RWGPS planned routes sometimes embed walking-pace timestamps — detect and fall back to naismith.
-  const tsDur=result.hasTS?durationFromTS(result.pts):null;
-  const medianSpeed=result.hasTS?tsSpeedSanity(result.pts):0;
-  r.estDuration=(tsDur&&medianSpeed>=10)?tsDur:naismith(result.pts,r.totalDist);
+  // Always use naismith for duration — imported timestamps from planned route files
+  // (RWGPS, Komoot, Strava etc.) encode fabricated speeds that are unreliable and often
+  // dangerously optimistic. Naismith from GPS coordinates is more accurate in all tested cases.
+  r.estDuration=naismith(result.pts,r.totalDist);
   r.cumRiding=buildCumRiding(result.pts,r.paceSegs||[]);
   r.stops=stops;
   r.turns=result.turns||[];
