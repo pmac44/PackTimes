@@ -845,8 +845,21 @@ function elevGain(pts){
   return Math.round(g);
 }
 function durationFromTS(pts){
-  const a=pts.find(p=>p.time),b=[...pts].reverse().find(p=>p.time);
-  if(!a||!b||a===b)return null;return(b.time-a.time)/3600000;
+  // Sum only moving segments — filter out long pauses (>5 min gap) that inflate
+  // planned-route TCX files where RWGPS/Garmin embed stop time in timestamps.
+  const timed=pts.filter(p=>p.time);
+  if(timed.length<2)return null;
+  let total=0;
+  const MAX_GAP_MS=5*60*1000; // ignore any gap longer than 5 minutes
+  for(let i=1;i<timed.length;i++){
+    const gap=timed[i].time-timed[i-1].time;
+    if(gap>0&&gap<=MAX_GAP_MS)total+=gap;
+  }
+  if(total===0){
+    // Fallback: plain first-to-last (file may have very sparse points)
+    return(timed[timed.length-1].time-timed[0].time)/3600000;
+  }
+  return total/3600000;
 }
 function naismith(pts,d){return d/15+elevGain(pts)/600;}
 
@@ -5886,13 +5899,13 @@ function tFood(r){
   const lbl='font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;margin-top:12px;';
 
   if(!allMeals.length){
-    return'<div style="padding:6px 4px 8px;color:var(--text2);font-size:15px;line-height:1.7;">'
-      +'<p style="margin-bottom:8px;">The food planner helps you manage eating on long rides where you need to buy food at one place and carry it to eat somewhere else later.</p>'
+    return'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 10px;">Food Plan</div>'
+    +'<div style="padding:0 4px 12px;color:var(--text2);font-size:15px;line-height:1.7;">'
       +'<p style="margin-bottom:8px;">Use the '+ICON_FOOD_BTN+' button on a stop in the Mission or Stops tab to add food and nominate where you\'ll buy it — at that stop, carried from an earlier one, or packed from the start.</p>'
-      +'<p style="margin-bottom:8px;">The planner then builds a list showing what to pick up at each resupply point and what you\'ll be carrying forward. While riding, the next food action appears in the strip at the top of the Ride tab, and a proximity alert fires as you approach any stop with food assigned.</p>'
-      +'<p style="color:var(--text3);font-size:14px;">No food planned yet — add some using the button above.</p>'
+      +'<p style="margin-bottom:8px;">PackTimes then builds a pickup list showing what to collect at each resupply point and what to carry forward. While riding, the next food action appears in the Ride tab strip, and a proximity alert fires as you approach stops with food assigned.</p>'
+      +'<p style="color:var(--text3);font-size:14px;">No food planned yet.</p>'
     +'</div>'
-    +'<div class="card"><div style="font-size:16px;color:var(--text3);text-align:center;padding:16px 0;">No food planned yet.<br><span style="font-size:14px;">Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add food.</span></div></div>';
+    +'<div class="card"><div style="font-size:16px;color:var(--text3);text-align:center;padding:16px 0;">Use the '+ICON_FOOD_BTN+' button on the Mission or Stops tab to get started.</div></div>';
   }
 
   // ── Next food action card ──
@@ -5971,10 +5984,8 @@ function tFood(r){
     if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
   });
 
-  return'<div style="padding:6px 4px 12px;">'
-    +'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">What to pick up and carry at each stop</div>'
-    +'<div style="font-size:15px;color:var(--text2);line-height:1.6;">Next food action shows in the Ride tab. Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add or edit food.</div>'
-    +'</div>'
+  return'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 6px;">Food Plan</div>'
+    +'<div style="padding:0 4px 12px;font-size:14px;color:var(--text3);line-height:1.5;">Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add or edit food.</div>'
     +nextCard
     +'<div class="card">'
       +(fromStart.length?fmtGrouped(fromStart,'🎒 Carry from start'):'')
