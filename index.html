@@ -221,9 +221,9 @@ select option{background:var(--bg3);}
             <option value="500">500×</option>
             <option value="1000">1000×</option>
           </select>
-          <button id="btn-sim-start" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--accent);border-color:rgba(74,222,128,.4);">▶ Play</button>
-          <button id="btn-sim-pause" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--amber);border-color:rgba(251,191,36,.4);display:none;">⏸ Pause</button>
-          <button id="btn-sim-stop" class="zbtn" style="width:auto;padding:0 8px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);">■ Stop</button>
+          <button id="btn-sim-start" class="zbtn" style="width:58px;padding:0 4px;font-size:13px;color:var(--accent);border-color:rgba(74,222,128,.4);">▶ Play</button>
+          <button id="btn-sim-pause" class="zbtn" style="width:58px;padding:0 4px;font-size:13px;color:var(--amber);border-color:rgba(251,191,36,.4);display:none;">⏸ Pause</button>
+          <button id="btn-sim-stop" class="zbtn" style="width:58px;padding:0 4px;font-size:13px;color:var(--red);border-color:rgba(248,113,113,.4);">■ Stop</button>
       </div>
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
@@ -1628,7 +1628,7 @@ function simPause(){
   const pauseBtn=document.getElementById('btn-sim-pause');
   const startBtn=document.getElementById('btn-sim-start');
   if(pauseBtn)pauseBtn.style.display='none';
-  if(startBtn){startBtn.disabled=false;startBtn.textContent='▶ Resume';}
+  if(startBtn){startBtn.disabled=false;startBtn.textContent='▶ Play';}
   const status=document.getElementById('sim-status');
   if(status)status.textContent='Paused at '+(UI.gpsDistKm?UI.gpsDistKm.toFixed(1)+'km':'—');
   if(IS_DESKTOP())renderDesktopMap();
@@ -1642,7 +1642,7 @@ function simStop(){
   const startBtn=document.getElementById('btn-sim-start');
   const stopBtn=document.getElementById('btn-sim-stop');
   const pauseBtn=document.getElementById('btn-sim-pause');
-  if(startBtn){startBtn.disabled=false;startBtn.textContent='▶ Simulate Route';}
+  if(startBtn){startBtn.disabled=false;startBtn.textContent='▶ Play';}
   if(stopBtn)stopBtn.disabled=true;
   if(pauseBtn)pauseBtn.style.display='none';
   const status=document.getElementById('sim-status');
@@ -5052,9 +5052,9 @@ function tSettings(r){
       </select>
     </div>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-sm btn-p" id="btn-sim-start" ${!r||!r.hasTS||(UI.simRunning&&!UI.simPaused)?'disabled':''}>▶ ${UI.simPaused?'Resume':'Simulate Route'}</button>
-      <button class="btn btn-sm" id="btn-sim-pause" style="display:${UI.simRunning?'inline-block':'none'};border-color:rgba(251,191,36,.5);color:var(--amber);">⏸ Pause</button>
-      <button class="btn btn-sm btn-r" id="btn-sim-stop" ${UI.simRunning||UI.simPaused?'':'disabled'}>■ Stop</button>
+      <button class="btn btn-sm btn-p" id="btn-sim-start" style="min-width:80px;" ${!r||!r.hasTS||(UI.simRunning&&!UI.simPaused)?'disabled':''}>▶ Play</button>
+      <button class="btn btn-sm" id="btn-sim-pause" style="min-width:80px;display:${UI.simRunning?'inline-block':'none'};border-color:rgba(251,191,36,.5);color:var(--amber);">⏸ Pause</button>
+      <button class="btn btn-sm btn-r" id="btn-sim-stop" style="min-width:80px;" ${UI.simRunning||UI.simPaused?'':'disabled'}>■ Stop</button>
     </div>
     ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">The ride simulator requires a route with timestamps — export as TCX from your route planning app to enable it.</p>`:''}
     <div id="sim-status" style="font-size:14px;color:var(--text3);margin-top:6px;font-family:var(--font);"></div>`;
