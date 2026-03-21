@@ -38,7 +38,7 @@
   --sab:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18px;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18px;overscroll-behavior-y:contain;}
 .app{display:flex;flex-direction:column;height:100vh;max-width:500px;margin:0 auto;}
 @media(min-width:900px){
   .app{max-width:100%;flex-direction:column;}
@@ -1345,9 +1345,35 @@ function snapTo(r,lat,lon){
 //  GPS
 // ═══════════════════════════════════════════
 function toggleGPS(){UI.gpsActive?stopGPS():startGPS();}
+
+// Auto-stop GPS after no movement for 5 minutes
+const GPS_IDLE_STOP_MS = 5 * 60 * 1000;  // 5 minutes
+const GPS_IDLE_SPEED_KMH = 1.5;           // below this = stationary
+let _gpsIdleTimer = null;
+
+function _resetGpsIdleTimer(){
+  if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
+  if(!UI.gpsActive)return;
+  _gpsIdleTimer=setTimeout(()=>{
+    // Auto-stop GPS and release wake lock — show banner
+    if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
+    UI.gpsWatchId=null;
+    UI.gpsActive=false;
+    _offRouteStart=null;_offRouteAlerted=false;
+    UI._adaptiveWindow=[];
+    if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
+    _lastTurnBeepDist=null;
+    releaseWakeLock(); // let screen sleep independently
+    UI._gpsAutoPaused=true;
+    updateGPSPill();
+    if(UI.tab==='live'||UI.tab==='settings')render();
+  }, GPS_IDLE_STOP_MS);
+}
+
 function startGPS(){
   if(!navigator.geolocation){alert('Geolocation not supported.');return;}
   UI.gpsActive=true;
+  UI._gpsAutoPaused=false;
   const liveState=ms('live-map');
   liveState._userZoomed=false;liveState._autoZoomed=false;
   UI.gpsWatchId=navigator.geolocation.watchPosition(pos=>{
@@ -1355,18 +1381,25 @@ function startGPS(){
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
     const r=cur();
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap)UI.gpsDistKm=snap.dist;}
+    // Reset idle timer if moving, otherwise let it count down
+    const speedKmh=(pos.coords.speed||0)*3.6;
+    if(speedKmh>=GPS_IDLE_SPEED_KMH)_resetGpsIdleTimer();
+    else if(!_gpsIdleTimer)_resetGpsIdleTimer(); // start timer if not already running
     runAdaptiveCalibration();
     checkAlerts();
     if(UI.tab==='live')updateLive();
     else if(UI.tab==='settings')patchGPSInfo();
     else updateGPSPill();
   },err=>console.warn('GPS',err),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+  _resetGpsIdleTimer();
   updateGPSPill();if(UI.tab==='live'||UI.tab==='settings')render();
   requestWakeLock();
 }
 function stopGPS(){
+  if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
   if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;UI.gpsWatchId=null;UI.gpsHeading=null;
+  UI._gpsAutoPaused=false;
   _offRouteStart=null;_offRouteAlerted=false;
   UI._adaptiveWindow=[];// clear window on GPS stop
   if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
@@ -4229,6 +4262,18 @@ function tLiveShell(r){
     html+=`<div class="card" style="padding:10px 12px;">
       <div class="prog" style="margin-top:0;"><div class="progf" id="live-progf2" style="width:${(prog*100).toFixed(1)}%"></div></div>
     </div>`;
+    if(UI._gpsAutoPaused){
+      html+=`<div class="card" style="padding:10px 12px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:20px;">💤</span>
+          <div style="flex:1;">
+            <div style="font-size:15px;font-weight:600;color:var(--amber);">GPS paused — no movement detected</div>
+            <div style="font-size:13px;color:var(--text3);margin-top:2px;">Screen can now sleep to save battery. Tap GPS to resume when riding.</div>
+          </div>
+          <button class="btn btn-sm" id="btn-live-gps" style="flex-shrink:0;border-color:rgba(251,191,36,0.4);color:var(--amber);">Resume</button>
+        </div>
+      </div>`;
+    }
     // Build a flat list of stop tiles and hike-a-bike tiles, sorted by distance
     const liveTiles=[];
     clusters.forEach(cl=>{
@@ -7096,32 +7141,28 @@ function _parsePowerMeasurement(buf){
   const view=new DataView(buf);
   const flags=view.getUint16(0,true);
   const watts=view.getInt16(2,true);
-  // Cadence: present if bit 4 set (Wheel Revolution Data present shifts offset)
-  // Bit 4 = Wheel Revolution Data Present, bit 5 = Crank Revolution Data Present
+  // Calculate dynamic offset based on optional fields present before crank data
+  // Spec: after flags(2) + power(2) = offset 4
+  let offset=4;
+  if(flags&(1<<0))offset+=1;  // Pedal Power Balance: 1 byte
+  if(flags&(1<<2))offset+=2;  // Accumulated Torque: 2 bytes
+  if(flags&(1<<4))offset+=6;  // Wheel Revolution Data: 4 bytes revs + 2 bytes time
+  // Now offset points to crank revolution data if bit 5 set
   let cadence=null;
-  if(flags&(1<<4)){
-    // Wheel rev data: 4 bytes cumulative revs + 2 bytes event time = 6 bytes at offset 4
-    // Crank rev data follows if bit 5 set
-    if(flags&(1<<5)){
-      const crankRevs=view.getUint16(10,true);
-      const crankTime=view.getUint16(12,true); // 1/1024 s units
+  if(flags&(1<<5)){
+    if(offset+3<view.byteLength){
+      const crankRevs=view.getUint16(offset,true);
+      const crankTime=view.getUint16(offset+2,true); // 1/1024 s units
       if(_powerChar._lastCrankRevs!==undefined){
         const dRevs=(crankRevs-_powerChar._lastCrankRevs+65536)%65536;
         const dTime=(crankTime-_powerChar._lastCrankTime+65536)%65536;
-        if(dTime>0)cadence=Math.round(dRevs/(dTime/1024)*60);
+        if(dTime>0){
+          const rpm=Math.round(dRevs/(dTime/1024)*60);
+          if(rpm>=0&&rpm<=220)cadence=rpm; // physically sane range
+        }
       }
       _powerChar._lastCrankRevs=crankRevs;_powerChar._lastCrankTime=crankTime;
     }
-  } else if(flags&(1<<5)){
-    // Crank revolution data at offset 4
-    const crankRevs=view.getUint16(4,true);
-    const crankTime=view.getUint16(6,true);
-    if(_powerChar._lastCrankRevs!==undefined){
-      const dRevs=(crankRevs-_powerChar._lastCrankRevs+65536)%65536;
-      const dTime=(crankTime-_powerChar._lastCrankTime+65536)%65536;
-      if(dTime>0)cadence=Math.round(dRevs/(dTime/1024)*60);
-    }
-    _powerChar._lastCrankRevs=crankRevs;_powerChar._lastCrankTime=crankTime;
   }
   return{watts,cadence};
 }
