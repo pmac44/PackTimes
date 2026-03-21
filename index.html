@@ -2280,19 +2280,21 @@ function drawMap(cvs,r,opts){
 // Zoom helper
 function zoomMap(id,factor,mouseX,mouseY){
   const state=ms(id);
-  // If mouse coordinates supplied, keep the geo-point under the pointer fixed
-  if(mouseX!==undefined&&mouseY!==undefined){
+  // Clamp zoom first so we know if it actually changes
+  const newZoom=Math.max(0.4,Math.min(800,state.zoom*factor));
+  // Only shift cx/cy if zoom is actually changing — otherwise it becomes a pan
+  if(mouseX!==undefined&&mouseY!==undefined&&newZoom!==state.zoom){
     const cvs=document.getElementById(id);
     if(cvs&&cvs._kx&&cvs._scale){
       const mouseLon=cvs._cLon+(mouseX-cvs._W/2)/(cvs._kx*cvs._scale);
       const mouseLat=cvs._cLat-(mouseY-cvs._H*cvs._anchor)/(cvs._ky*cvs._scale);
-      const newScale=cvs._scale*factor;
+      const newScale=cvs._scale*(newZoom/state.zoom);
       const newCx=mouseLon-(mouseX-cvs._W/2)/(cvs._kx*newScale);
       const newCy=mouseLat+(mouseY-cvs._H*cvs._anchor)/(cvs._ky*newScale);
       state.cx=newCx;state.cy=newCy;
     }
   }
-  state.zoom=Math.max(0.4,Math.min(800,state.zoom*factor));
+  state.zoom=newZoom;
   if(id==='live-map')state._userZoomed=true;
   redrawMap(id);
 }
