@@ -1553,13 +1553,17 @@ function simStart(){
   const r=cur();
   if(!r||!r.points.length){alert('No route loaded.');return;}
   if(!r.hasTS){alert('The ride simulator requires a route with timestamps. Export as TCX from your route planning app to enable it.');return;}
-  _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
-  // Start from current slider position if set, otherwise from beginning
-  const startDist=UI.gpsDistKm||0;
-  _simIdx=startDist>0?Math.max(0,r.points.findIndex(p=>p.dist>=startDist)):0;
+  const resuming=UI.simPaused&&_simPts&&_simIdx>0;
+  if(!resuming){
+    _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
+    // Start from current slider position if set, otherwise from beginning
+    const startDist=UI.gpsDistKm||0;
+    _simIdx=startDist>0?Math.max(0,r.points.findIndex(p=>p.dist>=startDist)):0;
+    UI.alertedStops=new Set();
+    _offRouteStart=null;_offRouteAlerted=false;
+  }
+  UI.simPaused=false;
   UI.gpsActive=true;
-  UI.alertedStops=new Set();
-  _offRouteStart=null;_offRouteAlerted=false;
   // Reset auto-zoom for live (small) map only — don't touch desktop big map state
   const liveState=ms('live-map');
   liveState._userZoomed=false;liveState._autoZoomed=false;
@@ -1615,6 +1619,21 @@ function simStart(){
   if(UI.tab!=='live'){UI.tab='live';render();}
 }
 
+function simPause(){
+  if(!UI.simRunning)return;
+  if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
+  UI.simRunning=false;
+  UI.simPaused=true;
+  // Don't call stopGPS — keep position on map
+  const pauseBtn=document.getElementById('btn-sim-pause');
+  const startBtn=document.getElementById('btn-sim-start');
+  if(pauseBtn)pauseBtn.style.display='none';
+  if(startBtn){startBtn.disabled=false;startBtn.textContent='▶ Resume';}
+  const status=document.getElementById('sim-status');
+  if(status)status.textContent='Paused at '+(UI.gpsDistKm?UI.gpsDistKm.toFixed(1)+'km':'—');
+  if(IS_DESKTOP())renderDesktopMap();
+}
+
 function simStop(){
   if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
   UI.simRunning=false;
@@ -1622,8 +1641,10 @@ function simStop(){
   stopGPS();
   const startBtn=document.getElementById('btn-sim-start');
   const stopBtn=document.getElementById('btn-sim-stop');
-  if(startBtn)startBtn.disabled=false;
+  const pauseBtn=document.getElementById('btn-sim-pause');
+  if(startBtn){startBtn.disabled=false;startBtn.textContent='▶ Simulate Route';}
   if(stopBtn)stopBtn.disabled=true;
+  if(pauseBtn)pauseBtn.style.display='none';
   const status=document.getElementById('sim-status');
   if(status)status.textContent=_simIdx>=(_simPts?.length||0)?'Simulation complete.':'Simulation stopped.';
 }
@@ -3317,14 +3338,15 @@ function renderDesktopMap(){
       const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
       const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
       // "All" toggle row — same style as layer rows, white dot when all visible, empty when any hidden
-      legend.innerHTML=`<div id="desktop-legend-all" class="map-legend-item" data-ltype="__all__" style="cursor:pointer;margin-bottom:3px;opacity:${allHidden?0.35:1};">
-          <span style="display:inline-block;font-size:14px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 8px;border-radius:3px;color:rgba(255,255,255,0.85);background:rgba(20,29,20,0.88);text-shadow:none;white-space:nowrap;">ALL</span>
+      legend.innerHTML=`<div id="desktop-legend-all" class="map-legend-item" data-ltype="__all__" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);margin-bottom:2px;opacity:${allHidden?0.45:1};">
+          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${allVisible?'rgba(255,255,255,0.85)':'none'}" stroke="rgba(255,255,255,0.85)" stroke-width="1.5"/></svg>
+          <span style="font-size:12px;color:${allHidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;font-weight:600;">All</span>
         </div>`
         +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
-        const hex=t.col.startsWith('#')?t.col:t.col;
-        return`<div class="map-legend-item" data-ltype="${t.type}" style="cursor:pointer;margin-bottom:2px;opacity:${hidden?0.35:1};">
-          <span style="display:inline-block;font-size:14px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 8px;border-radius:3px;color:${t.col};background:${({'town':'rgba(31,47,28,0.88)','water':'rgba(29,36,48,0.88)','crossing':'rgba(28,36,41,0.88)','sleep':'rgba(35,30,49,0.88)','food':'rgba(55,44,20,0.88)','shop':'rgba(44,28,53,0.88)','pub':'rgba(52,41,20,0.88)','fuel':'rgba(53,34,20,0.88)','accom':'rgba(44,28,53,0.88)','rest':'rgba(36,33,27,0.88)','camp':'rgba(26,36,27,0.88)','caravan':'rgba(34,46,20,0.88)','hut':'rgba(46,39,28,0.88)','wc':'rgba(20,41,38,0.88)','peak':'rgba(38,39,42,0.88)','church':'rgba(52,40,52,0.88)','school':'rgba(39,42,58,0.88)','hall':'rgba(48,40,31,0.88)','fire':'rgba(54,24,24,0.88)','police':'rgba(22,31,52,0.88)','stockwater':'rgba(38,39,42,0.88)'})[t.type]||'rgba(20,29,20,0.88)'};border-radius:2px;text-shadow:none;white-space:nowrap;">${t.label}</span>
+        return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
+          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${hidden?'none':t.col}" stroke="${t.col}" stroke-width="1.5"/></svg>
+          <span style="font-size:12px;color:${hidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;">${t.label}</span>
         </div>`;
       }).join('')
       +(startDT(r)?`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
@@ -4200,13 +4222,15 @@ function tStopsShell(r){
             const filtered=sortedLayers(r);
             const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
             const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
-            const allDot=`<div id="mob-layer-all" style="cursor:pointer;margin-bottom:3px;opacity:${allVisible?1:0.35};">
-              <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:rgba(255,255,255,0.85);background:rgba(20,29,20,0.88);border-radius:2px;text-shadow:none;white-space:nowrap;">ALL</span>
+            const allDot=`<div id="mob-layer-all" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;margin-bottom:4px;opacity:${allVisible?1:0.45};background:rgba(0,0,0,0.52);border-radius:20px;">
+              <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${allVisible?'#fff':'none'}" stroke="#fff" stroke-width="1.4"/></svg>
+              <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">All</span>
             </div>`;
             const dotHTML=t=>{
               const hidden=UI.hiddenMapTypes.has(t.type);
-              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="cursor:pointer;margin-bottom:2px;opacity:${hidden?0.35:1};">
-                <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:${t.col};background:${({'town':'rgba(31,47,28,0.88)','water':'rgba(29,36,48,0.88)','crossing':'rgba(28,36,41,0.88)','sleep':'rgba(35,30,49,0.88)','food':'rgba(55,44,20,0.88)','shop':'rgba(44,28,53,0.88)','pub':'rgba(52,41,20,0.88)','fuel':'rgba(53,34,20,0.88)','accom':'rgba(44,28,53,0.88)','rest':'rgba(36,33,27,0.88)','camp':'rgba(26,36,27,0.88)','caravan':'rgba(34,46,20,0.88)','hut':'rgba(46,39,28,0.88)','wc':'rgba(20,41,38,0.88)','peak':'rgba(38,39,42,0.88)','church':'rgba(52,40,52,0.88)','school':'rgba(39,42,58,0.88)','hall':'rgba(48,40,31,0.88)','fire':'rgba(54,24,24,0.88)','police':'rgba(22,31,52,0.88)','stockwater':'rgba(38,39,42,0.88)'})[t.type]||'rgba(20,29,20,0.88)'};border-radius:2px;text-shadow:none;white-space:nowrap;">${t.label}</span>
+              return`<div class="mob-layer-btn" data-ltype="${t.type}" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;background:rgba(0,0,0,0.52);border-radius:20px;opacity:${hidden?0.45:1};">
+                <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#fff'}" stroke-width="1.4"/></svg>
+                <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">${t.label}</span>
               </div>`;
             };
             return allDot+filtered.map(dotHTML).join('');
