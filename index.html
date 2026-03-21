@@ -558,7 +558,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,hiddenMapTypes:[...UI.hiddenMapTypes]}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -583,6 +583,7 @@ async function loadAll(){
       if(prefs.gpsZoom!==undefined)UI.gpsZoom=prefs.gpsZoom;
       if(prefs.weatherSpacingKm!==undefined)UI.weatherSpacingKm=prefs.weatherSpacingKm;
       if(Array.isArray(prefs.hiddenMapTypes))UI.hiddenMapTypes=new Set(prefs.hiddenMapTypes);
+      if(prefs.osmOpts)UI.osmOpts=prefs.osmOpts;
     }
     // Restore sun cache
     const sc=await DB.getKV('sunCache').catch(()=>null);
@@ -4226,9 +4227,18 @@ function tStopsShell(r){
             ${UI.opStatus==='loading'?'<div class="spin"></div> Searching…':'🔍 Search OSM'}</button>
         </div>
         <div id="osm-body" style="${UI.osmExpanded?'':'display:none'}">
-        <p style="font-size:13px;color:var(--text3);margin:4px 0 8px;">Radius: ${(UI.searchRadiusKm*1000).toFixed(0)}m · <span style="text-decoration:underline;cursor:pointer;" onclick="document.getElementById('tabs').querySelectorAll('[data-tab]').forEach(b=>{if(b.dataset.tab==='settings'){b.click();}})">adjust in Settings</span></p>
+        <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;">
+          <span style="font-size:12px;color:var(--text3);font-family:var(--font);white-space:nowrap;flex-shrink:0;">RADIUS</span>
+          <input type="range" id="search-radius-sl" min="0.1" max="3" step="0.1" value="${UI.searchRadiusKm}" style="flex:1;accent-color:var(--accent);height:18px;">
+          <span id="search-radius-val" style="font-size:12px;font-family:var(--font);color:var(--accent);min-width:36px;text-align:right;">${(UI.searchRadiusKm*1000).toFixed(0)}m</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:13px;color:var(--text3);font-family:var(--font);">Select stops to search</span>
+          <button id="osm-all-toggle" style="font-family:var(--font);font-size:12px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;letter-spacing:.5px;">${(()=>{const keys=['towns','water','crossings','toilets','stockwater','food','fuel','shops','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks'];const allOn=keys.every(k=>UI.osmOpts&&UI.osmOpts[k]);return allOn?'NONE':'ALL';})()}</button>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
-          ${[['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['stockwater','stockwater','stock h2o',false],['food','food','food',false],['fuel','fuel','fuel',false],['shops','shop','shop',false],['pubs','pub','pub',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false]].map(([k,t,lbl,def])=>{
+          ${['
+['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['stockwater','stockwater','stock h2o',false],['food','food','food',false],['fuel','fuel','fuel',false],['shops','shop','shop',false],['pubs','pub','pub',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false]].map(([k,t,lbl,def])=>{
             const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
             return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span class="tag t-'+t+'" style="font-size:13px;">'+lbl+'</span></label>';
           }).join('')}
@@ -4982,23 +4992,9 @@ function tSettings(r){
     </div>
     <p style="font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5;">Forecasts beyond 4 days are shown faded. Data from Open-Meteo (free, no account needed).</p>`:'';
 
-  const osmDefaultsBody=r?`
-    <p style="font-size:15px;color:var(--text2);margin-bottom:10px;">Choose which stop types to search for by default. Changes apply immediately on the Stops tab.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-      ${[['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['stockwater','stockwater','stock h2o',false],['food','food','food',false],['fuel','fuel','fuel',false],['shops','shop','shop',false],['pubs','pub','pub',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false]].map(([k,t,lbl,def])=>{
-        const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
-        return '<label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span class="tag t-'+t+'" style="font-size:13px;">'+lbl+'</span></label>';
-      }).join('')}
-    </div>`:'';
+  const osmDefaultsBody='';
 
-  const osmRadiusBody=r?`
-    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:10px;">How far off-route to search for stops. Towns &amp; huts use 2× this distance.</p>
-    <div class="field">
-      <label class="lbl">Base radius — <span id="search-radius-val">${(UI.searchRadiusKm*1000).toFixed(0)}m</span></label>
-      <input type="range" id="search-radius-sl" min="0.1" max="3" step="0.1" value="${UI.searchRadiusKm}" style="width:100%;accent-color:var(--accent);">
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>100m</span><span>500m</span><span>1km</span><span>2km</span><span>3km</span></div>
-    </div>
-    <p style="font-size:14px;color:var(--text3);margin-top:4px;">Default 400m. Increase for remote areas where stops are further off-route.</p>`:'';
+  const osmRadiusBody='';
 
   const offlineBody=`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;">Routes saved in IndexedDB — persists offline between sessions.</p>
@@ -5047,8 +5043,6 @@ function tSettings(r){
   ${section('alerts','Proximity Alerts',alertsBody,!!r)}
   ${section('zoom','GPS Map Zoom',zoomBody,!!r)}
   ${section('weather','Weather Map Spacing',weatherBody,!!r)}
-  ${section('osmDefaults','OSM Search Defaults',osmDefaultsBody,!!r)}
-  ${section('osmRadius','OSM Search Radius',osmRadiusBody,!!r)}
   ${section('offline','Offline Storage',offlineBody)}
   ${section('offlineMaps','Offline Maps',offlineMapsBody)}
   ${IS_DESKTOP()?'':section('simulator','Ride Simulator',simulatorBody)}
@@ -7078,7 +7072,7 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     UI.searchRadiusKm=+e.target.value;
     const v=document.getElementById('search-radius-val');
     if(v)v.textContent=(UI.searchRadiusKm*1000).toFixed(0)+'m';
-    return;}
+    saveAll();return;}
   if(e.target.id==='sim-sl'){
     const dist=+e.target.value;
     const r=cur();
@@ -7105,7 +7099,13 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
   if(e.target.classList.contains('osm-opt')){
     if(!UI.osmOpts)UI.osmOpts={towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,camp:false,caravan:false,huts:false,hotels:false,halls:false,churches:false,schools:false,fire:false,police:false,peaks:false};
     UI.osmOpts[e.target.dataset.key]=e.target.checked;
-    return;}
+    saveAll();renderKeepScroll();return;}
+  if(e.target.id==='osm-all-toggle'||e.target.closest('#osm-all-toggle')){
+    const keys=['towns','water','crossings','toilets','stockwater','food','fuel','shops','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks'];
+    if(!UI.osmOpts)UI.osmOpts={};
+    const allOn=keys.every(k=>UI.osmOpts[k]);
+    keys.forEach(k=>UI.osmOpts[k]=!allOn);
+    saveAll();renderKeepScroll();return;}
   if(e.target.id==='gpx-input'){
     const f=e.target.files[0];if(!f)return;
     loadRouteFile(f);
