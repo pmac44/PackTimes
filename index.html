@@ -148,7 +148,7 @@ select option{background:var(--bg3);}
 .si:hover{border-color:var(--border2);}
 .si.hi{border-color:var(--accent)!important;}
 .sdot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
-.d-food{background:var(--amber);}.d-water{background:var(--blue);}.d-sleep{background:var(--red);}.d-accom{background:var(--purple);}.d-wc{background:#2dd4bf;}.d-hut{background:#c8a96e;}.d-fuel{background:#f97316;}.d-peak{background:#94a3b8;}.d-camp{background:#4a7c59;}.d-rest{background:#94856a;}.d-town{background:var(--accent);}.d-shop{background:var(--purple);}
+.d-food{background:var(--amber);}.d-water{background:var(--blue);}.d-crossing{background:#6b9eb0;}.d-sleep{background:var(--red);}.d-accom{background:var(--purple);}.d-wc{background:#2dd4bf;}.d-hut{background:#c8a96e;}.d-fuel{background:#f97316;}.d-peak{background:#94a3b8;}.d-camp{background:#4a7c59;}.d-rest{background:#94856a;}.d-town{background:var(--accent);}.d-shop{background:var(--purple);}
 .si-inf{flex:1;min-width:0;}.si-name{font-weight:500;font-size:18px;color:var(--text);line-height:1.35;}
 .si-meta{font-family:var(--font);font-size:18px;color:var(--text3);margin-top:2px;}
 .si-rt{text-align:right;flex-shrink:0;}.si-time{font-family:var(--font);font-size:18px;font-weight:500;color:var(--accent);}
@@ -1212,7 +1212,7 @@ async function fetchOverpass(){
       // Add best waterway per 500m bucket
       Object.values(waterwayBuckets).forEach(w=>{
         const isDupe=r.stops.some(s=>s.auto&&s.crossing&&Math.abs(s.dist-w.dist)<0.5);
-        if(!isDupe)addStop(r,w.dist,'water',w.name,{auto:true,...w.offOpts,crossing:true});
+        if(!isDupe)addStop(r,w.dist,'crossing',w.name,{auto:true,...w.offOpts,crossing:true});
       });
       UI.opStatus='done';UI.opMsg=`Found ${r.stops.filter(s=>s.auto).length} points along route`;
       await saveAll();render();return;
@@ -2088,7 +2088,7 @@ function drawMap(cvs,r,opts){
   }
 
   // Stop dots (with off-route connectors for auto-stops with real coords)
-  const dc={food:'#fbbf24',water:'#60a5fa',sleep:'#b39ddb',rest:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
+  const dc={food:'#fbbf24',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',rest:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
   r.stops.forEach(s=>{
     const isSleepRelated=s.type==='sleep'||s.sleepAt;
     const isOnMap=cvs.id==='desktop-map'||cvs.id==='stops-map';
@@ -3958,14 +3958,14 @@ const STRIP_ICON_STAR='<svg width="26" height="26" viewBox="0 0 24 24" fill="#fb
 // Build pill label for a stop in the live strip — consistent with stop list labels
 function liveStripIcons(s){
   const typeColor={
-    town:'#4ade80',water:'#60a5fa',sleep:'#b39ddb',food:'#fbbf24',
+    town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',food:'#fbbf24',
     shop:'#c084fc',pub:'#f59e0b',fuel:'#f97316',accom:'#c084fc',
     rest:'#94856a',camp:'#4a7c59',caravan:'#84cc16',hut:'#c8a96e',
     wc:'#2dd4bf',peak:'#94a3b8',church:'#e8c4f0',school:'#93c5fd',
     hall:'#d4a373',police:'#3b82f6',fire:'#ef4444',stockwater:'#94a3b8'
   };
   const typeLabel={
-    town:'TOWN',water:'WATER',sleep:'SLEEP',food:'FOOD',
+    town:'TOWN',water:'WATER',crossing:'WATERWAY',sleep:'SLEEP',food:'FOOD',
     shop:'SHOP',pub:'PUB',fuel:'FUEL',accom:'ACCOM',
     rest:'SNACK',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
     wc:'TOILET',peak:'PEAK',church:'CHURCH',school:'SCHOOL',
@@ -4450,7 +4450,7 @@ function tLiveShell(r){
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
             <div class="si-name">${s.name}${orBadge}</div>
-            <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.crossing?'crossing':s.type}">${s.crossing?'waterway':s.type}</span>${ohHint}</div>
+            <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type}</span>${ohHint}</div>
             ${stEl?`<div class="si-st">${stEl}</div>`:''}
           </div>
           <div class="si-time" id="eta-${s.id}">${timeStr}${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}</div>
@@ -5079,7 +5079,7 @@ function stopRow(s,r,sdt){
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">
         <div style="flex:1;min-width:0;">
           <div class="si-name">${s.name}${orBadge}${autoBadge}</div>
-          <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.crossing?'crossing':s.type}">${s.crossing?'waterway':s.type}</span>${ohHint}</div>
+          <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type}</span>${ohHint}</div>
           ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
           <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom')&&s.ohRules?stEl:''}</div>
         </div>
