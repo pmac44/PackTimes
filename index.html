@@ -4759,16 +4759,17 @@ function tRoutes(r){
       </button>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:10px;">
-      ${[['1.0','Strong rider'],['1.2','Recreational'],['1.4','Loaded / slow terrain']].map(([val,label])=>`
+      ${[['1.4','Loaded / slow terrain'],['1.2','Recreational'],['1.0','Strong rider']].map(([val,label])=>`
         <button class="btn btn-sm tf-preset" data-val="${val}" style="flex:1;flex-direction:column;gap:2px;padding:5px 4px;text-align:center;${Math.abs(r.timeFactor-parseFloat(val))<0.01?'border-color:var(--accent);color:var(--accent);':''}">
-          <span style="font-size:14px;font-family:var(--font);font-weight:600;">${val}×</span>
+          <span style="font-size:14px;font-family:var(--font);font-weight:600;">${val} ×</span>
           <span style="font-size:12px;color:var(--text3);white-space:nowrap;">${label}</span>
         </button>`).join('')}
     </div>
-    <p style="font-size:15px;color:var(--text3);margin-top:4px;">Calibrate by comparing PackTimes estimates with your Strava moving time on a similar ride. Apps like RWGPS and Strava can be very accurate at predicting your ride time, but that accuracy is personal to you and is rarely preserved in exported files — the estimate you see on screen is not in the file. Pace varies enormously: surface type, pack weight, fitness and terrain all make a big difference. Start with a preset and fine-tune from there.</p>
+    <p style="font-size:15px;color:var(--text3);margin-top:4px;line-height:1.6;">Calibrate by comparing PackTimes estimates with your Strava moving time on a similar ride — use moving time, not overall time. Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy rarely survives in exported files. The estimate you see on their website is not in the file. Pace varies enormously between riders and conditions: surface type, pack weight, fitness and terrain all make a significant difference. Start with a preset and fine-tune from there.</p>
+    <p style="font-size:15px;color:var(--text3);margin-top:8px;line-height:1.6;">Adaptive Speed (below) will automatically adjust the factor as you ride by comparing your actual GPS pace with the estimates — useful if you are unsure of your factor or your pace changes across the ride.</p>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:15px;color:var(--text2);">
       <input type="checkbox" id="adaptive-speed-chk" ${r.adaptiveSpeed?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
-      <span>Adaptive speed — auto-adjust from GPS while riding</span>
+      <span>Adaptive Speed</span>
     </label>
     ${r.adaptiveSpeed?`<p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">Compares your actual pace to estimates every 30 min and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Disable to lock the factor.</p>`:''}
   </div>
@@ -6103,11 +6104,16 @@ function patchSpeedFactor(r){
     const adj=r.estDuration*r.timeFactor;
     const sleepH=totalSleepHours(r);
     const totalMealH=totalMealHours(r);
+    const totalH=adj+sleepH+totalMealH;
+    const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
+    const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
+    const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
+    const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
     const vt=document.getElementById('rt-total');
-    if(vt)vt.textContent=Math.round(adj+sleepH+totalMealH)+'h';
+    if(vt)vt.textContent='≈ '+totalHM+' · '+daysHM+' total';
     const sdt=startDT(r);
     const vf=document.getElementById('rt-finish');
-    if(vf&&sdt)vf.textContent=fmtDTY(new Date(sdt.getTime()+(adj+sleepH+totalMealH)*3600000));
+    if(vf&&sdt)vf.textContent=fmtDTY(new Date(sdt.getTime()+(totalH)*3600000));
   }
 }
 
