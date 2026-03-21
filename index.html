@@ -3984,7 +3984,7 @@ function liveStripIcons(s){
     hall:'#d4a373',police:'#3b82f6',fire:'#ef4444',stockwater:'#94a3b8'
   };
   const typeLabel={
-    town:'TOWN',water:'WATER',crossing:'WATERWAY',sleep:'SLEEP',food:'FOOD',
+    town:'TOWN',water:'WATER',crossing:'WATERWAYS',sleep:'SLEEP',food:'FOOD',
     shop:'SHOP',pub:'PUB',fuel:'FUEL',accom:'ACCOM',
     rest:'SNACK',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
     wc:'TOILET',peak:'PEAK',church:'CHURCH',school:'SCHOOL',
@@ -4469,7 +4469,7 @@ function tLiveShell(r){
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
             <div class="si-name">${s.name}${orBadge}</div>
-            <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type}</span>${ohHint}</div>
+            <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
             ${stEl?`<div class="si-st">${stEl}</div>`:''}
           </div>
           <div class="si-time" id="eta-${s.id}">${timeStr}${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}</div>
@@ -5098,7 +5098,7 @@ function stopRow(s,r,sdt){
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">
         <div style="flex:1;min-width:0;">
           <div class="si-name">${s.name}${orBadge}${autoBadge}</div>
-          <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type}</span>${ohHint}</div>
+          <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
           ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
           <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom')&&s.ohRules?stEl:''}</div>
         </div>
@@ -6361,7 +6361,7 @@ function updateLive(){
             <div class="sdot d-${s.type}"></div>
             <div class="si-inf">
               <div class="si-name">${s.name}${orBadge}</div>
-              <div class="si-meta">${dt} km · <span class="tag t-${s.type}">${s.type}</span></div>
+              <div class="si-meta">${dt} km · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span></div>
             </div>
             <div class="si-eta">${timeStr}${remStr?`<div style="font-size:17px;font-weight:600;color:var(--accent);font-family:var(--font);">in ${remStr}</div>`:''}</div>
           </div>`;
