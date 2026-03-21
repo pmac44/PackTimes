@@ -6773,9 +6773,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const sid=ds.dataset.sid;
     const stop=r.stops.find(s=>String(s.id)===String(sid));
     const isTownStop=stop&&stop.type==='town';
-    const isRestStop=stop&&stop.type==='stop';
+    const isManualStop=stop&&stop.type==='stop';
     if(isTownStop&&!confirm(`Delete town "${stop.name}"?`))return;
-    if(isRestStop&&!confirm(`Delete snack stop "${stop.name}"?`))return;
+    if(isManualStop&&!confirm(`Delete "${stop.name}"?`))return;
     const tile=ds.closest('.tap-stop')||ds.closest('.mission-node');
     delStop(r,sid);
     saveAll();
@@ -6933,9 +6933,16 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(cu&&r){
     const s=r.stops.find(x=>String(x.id)===String(cu.dataset.sid));
     if(s){
-      if(!confirm(`Remove "${s.name}" from the mission list?`))return;
-      s.starred=false;
-      saveAll();renderKeepScroll(cu.dataset.sid);
+      // Manual stops (type='stop') have no OSM backing — delete entirely
+      if(s.type==='stop'){
+        if(!confirm(`Delete "${s.name}"?`))return;
+        delStop(r,s.id);
+        saveAll();renderKeepScroll();
+      } else {
+        if(!confirm(`Remove "${s.name}" from the mission list?`))return;
+        s.starred=false;
+        saveAll();renderKeepScroll(cu.dataset.sid);
+      }
     }
     return;
   }
