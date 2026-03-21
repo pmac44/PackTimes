@@ -6129,7 +6129,18 @@ function tFood(r){
   const mealsByDay={};
   for(let d=1;d<=totalDays;d++)mealsByDay[d]={meals:0,snacks:0};
   allMeals.forEach(m=>{
-    const eta=etaAt(m.stop.dist,r);
+    // Use arrival ETA as base, then add before-meal durations and sleep if this is an after-sleep meal
+    let eta=etaAt(m.stop.dist,r);
+    if(eta&&m.when==='after'){
+      // after-sleep meal: add duration of before-sleep meals + sleep itself
+      const s=m.stop;
+      const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+      if(hasSleep){
+        const beforeMealH=(s.meals||[]).filter(b=>b.when!=='after').reduce((a,b)=>a+(b.durationMin||20)/60,0);
+        const sleepH=sleepHoursFor(s,new Date(eta.getTime()+beforeMealH*3600000));
+        eta=new Date(eta.getTime()+(beforeMealH+sleepH)*3600000);
+      }
+    }
     const day=sdt&&eta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<=eta){n++;d.setDate(d.getDate()+1);}return n;})():1;
     if(!mealsByDay[day])mealsByDay[day]={meals:0,snacks:0};
     if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
