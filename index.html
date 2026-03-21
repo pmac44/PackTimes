@@ -3316,13 +3316,13 @@ function renderDesktopMap(){
       const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
       // "All" toggle row — same style as layer rows, white dot when all visible, empty when any hidden
       legend.innerHTML=`<div id="desktop-legend-all" class="map-legend-item" data-ltype="__all__" style="cursor:pointer;margin-bottom:3px;opacity:${allHidden?0.35:1};">
-          <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:rgba(255,255,255,0.9);background:rgba(255,255,255,${allVisible?'0.18':'0.08'});border:1px solid rgba(255,255,255,0.35);white-space:nowrap;">ALL</span>
+          <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:rgba(255,255,255,0.9);background:rgba(10,15,10,0.75);border:1px solid rgba(255,255,255,${allVisible?'0.45':'0.2'});box-shadow:0 1px 4px rgba(0,0,0,0.5);white-space:nowrap;">ALL</span>
         </div>`
         +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
         const hex=t.col.startsWith('#')?t.col:t.col;
         return`<div class="map-legend-item" data-ltype="${t.type}" style="cursor:pointer;margin-bottom:2px;opacity:${hidden?0.35:1};">
-          <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:${t.col};background:${t.col}${hidden?'18':'30'};border:1px solid ${t.col}${hidden?'55':'88'};white-space:nowrap;">${t.label}</span>
+          <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:${t.col};background:rgba(10,15,10,0.75);border:1px solid ${t.col}${hidden?'55':'99'};box-shadow:0 1px 4px rgba(0,0,0,0.5);white-space:nowrap;">${t.label}</span>
         </div>`;
       }).join('')
       +(startDT(r)?`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
@@ -4199,12 +4199,12 @@ function tStopsShell(r){
             const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
             const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
             const allDot=`<div id="mob-layer-all" style="cursor:pointer;margin-bottom:3px;opacity:${allVisible?1:0.35};">
-              <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:rgba(255,255,255,0.9);background:rgba(255,255,255,${allVisible?'0.18':'0.08'});border:1px solid rgba(255,255,255,0.35);white-space:nowrap;">ALL</span>
+              <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:rgba(255,255,255,0.9);background:rgba(10,15,10,0.75);border:1px solid rgba(255,255,255,${allVisible?'0.45':'0.2'});box-shadow:0 1px 4px rgba(0,0,0,0.5);white-space:nowrap;">ALL</span>
             </div>`;
             const dotHTML=t=>{
               const hidden=UI.hiddenMapTypes.has(t.type);
               return`<div class="mob-layer-btn" data-ltype="${t.type}" style="cursor:pointer;margin-bottom:2px;opacity:${hidden?0.35:1};">
-                <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:${t.col};background:${t.col}${hidden?'18':'30'};border:1px solid ${t.col}${hidden?'55':'88'};white-space:nowrap;">${t.label}</span>
+                <span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:${t.col};background:rgba(10,15,10,0.75);border:1px solid ${t.col}${hidden?'55':'99'};box-shadow:0 1px 4px rgba(0,0,0,0.5);white-space:nowrap;">${t.label}</span>
               </div>`;
             };
             return allDot+filtered.map(dotHTML).join('');
