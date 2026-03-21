@@ -499,7 +499,7 @@ const newRoute=name=>({
   id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
   name:name||'New Route',points:[],hasTS:false,totalDist:0,estDuration:null,
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
-  adaptiveSpeed:false,baseTimeFactor:1.0,
+  adaptiveSpeed:true,baseTimeFactor:1.0,
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
@@ -524,7 +524,7 @@ function unpackRoute(r){
     Array.isArray(a)?{lat:a[0],lon:a[1],ele:a[2],dist:a[3],time:a[4]?new Date(a[4]):null}:a)};
   // Rebuild cumRiding if missing (old saved routes)
   if(!out.paceSegs)out.paceSegs=[];
-  if(out.adaptiveSpeed===undefined)out.adaptiveSpeed=false;
+  if(out.adaptiveSpeed===undefined)out.adaptiveSpeed=true;
   if(!out.baseTimeFactor)out.baseTimeFactor=out.timeFactor||1.0;
   if(!out.cumRiding&&out.points.length>1)out.cumRiding=buildCumRiding(out.points,out.paceSegs||[]);
   // Always recalculate estDuration from naismith — never trust stored value which
@@ -3366,7 +3366,7 @@ function renderDesktopMap(){
       </div>`
       +(!UI.hiddenMapTypes.has('weather')?`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
         <div style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);margin-bottom:3px;line-height:1.5;">Weather at ETA · faded = low confidence (4+ days)</div>
-        ${[['rgba(161,98,7,0.88)','rgba(251,191,36,0.6)','#fef3c7','Sun'],['rgba(71,85,105,0.88)','rgba(148,163,184,0.4)','#e2e8f0','Cloud'],['rgba(37,99,235,0.88)','rgba(147,197,253,0.5)','#bfdbfe','Rain'],['rgba(30,64,175,0.92)','rgba(147,197,253,0.6)','#bfdbfe','Heavy'],['rgba(91,33,182,0.92)','rgba(196,181,253,0.8)','#ddd6fe','Storm !']].map(([bg,border,tc,lbl])=>`
+        ${[['rgba(234,179,8,0.92)','rgba(253,224,71,0.8)','#fefce8','Sun'],['rgba(71,85,105,0.88)','rgba(148,163,184,0.4)','#e2e8f0','Cloud'],['rgba(37,99,235,0.88)','rgba(147,197,253,0.5)','#bfdbfe','Rain'],['rgba(30,64,175,0.92)','rgba(147,197,253,0.6)','#bfdbfe','Heavy'],['rgba(91,33,182,0.92)','rgba(196,181,253,0.8)','#ddd6fe','Storm !']].map(([bg,border,tc,lbl])=>`
           <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;">
             <div style="background:${bg};border:1px solid ${border};border-radius:4px;padding:1px 5px;font-size:9px;font-family:var(--font);color:${tc};min-width:24px;text-align:center;">18°</div>
             <span style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);">${lbl}</span>
@@ -4059,7 +4059,7 @@ function buildLiveStrip(r,liveDist,sdt){
       :null;
     const icons=liveStripIcons(s);
     const st=shopSt(s,r);
-    const hoursTypes=new Set(['food','shop','town','accom','hut','pub','fuel']);
+    const hoursTypes=new Set(['food','shop','accom','hut','pub','fuel']);
     const needsHours=hoursTypes.has(s.type);
     const openBadge=needsHours?(st==='open'?'<span style="font-size:11px;color:var(--accent);margin-left:4px;">✓</span>':st==='closed'?'<span style="font-size:11px;color:var(--red);margin-left:4px;">✗</span>':'<span style="font-size:11px;color:var(--amber);margin-left:4px;">? hrs</span>'):'';
     return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
@@ -4500,7 +4500,7 @@ function tLiveShell(r){
         const departDay=depart&&sdt?dayOff(depart,sdt):'';
         const orBadge=s.offRouteM?' <span style="font-size:16px;color:var(--text3);">('+( s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km')+' off route)</span>':'';
         const st=shopSt(s,r);
-        const hasSt=s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='hut'||s.type==='pub'||s.type==='fuel';
+        const hasSt=s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='hut'||s.type==='pub'||s.type==='fuel';
         const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
           hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':'<span class="s-uk">? Hours unknown</span>'):'';
@@ -4536,7 +4536,7 @@ function tLiveShell(r){
     const day=sdt&&eta?dayOff(eta,sdt):'';
     const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
     const st=shopSt(s,r);
-    const hasSt=s.type==='food'||s.type==='shop'||s.type==='hut'||s.type==='town'||s.type==='accom'||s.type==='pub'||s.type==='fuel';
+    const hasSt=s.type==='food'||s.type==='shop'||s.type==='hut'||s.type==='accom'||s.type==='pub'||s.type==='fuel';
     const stEl=hasSt?(st==='open'?'<span class="s-op" style="font-size:14px;">✓ Open</span>':st==='closed'?'<span class="s-cl" style="font-size:14px;">✗ Closed</span>':'<span class="s-uk" style="font-size:14px;">? Hours unknown</span>'):'';
     // Time remaining to stop
     const now=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
@@ -5101,7 +5101,7 @@ function clusteredStopRows(r,sdt){
 
 function stopRow(s,r,sdt){
   const eta=etaAt(s.dist,r),day=dayOff(eta,sdt),st=shopSt(s,r);
-  const hoursTypes=new Set(['food','shop','town','accom','hut','pub','fuel']);
+  const hoursTypes=new Set(['food','shop','accom','hut','pub','fuel']);
   const stEl=st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':(hoursTypes.has(s.type)?'<span class="s-uk">? Hours unknown</span>':'');
   const ohHint=s.ohRaw?` · <span style="color:var(--text3);font-size:16px;">${s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw}</span>`:'';
   const sleepBadge=s.type==='sleep'?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH||10}h bivi</span>`:s.type==='rest'?`<span style="color:#94856a;font-size:15px;font-family:var(--font);">🍫 ${s.sleepH<=0.5?(s.sleepH*60|0)+'min':(s.sleepH||0.25)+'h'} snack</span>`:
@@ -5113,7 +5113,7 @@ function stopRow(s,r,sdt){
   const depart=s.type==='sleep'&&eta?new Date(eta.getTime()+(s.sleepH||10)*3600000):null;
   const departDay=depart&&sdt?dayOff(depart,sdt):'';
   // Tile background
-  const hasSt=s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='hut';
+  const hasSt=s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='hut';
   const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
     hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
   return`<div class="si tap-stop" data-sid="${s.id}" style="${tileBg}">
@@ -5124,7 +5124,7 @@ function stopRow(s,r,sdt){
           <div class="si-name">${s.name}${orBadge}${autoBadge}</div>
           <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
           ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
-          <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom')&&s.ohRules?stEl:''}</div>
+          <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='accom')&&s.ohRules?stEl:''}</div>
         </div>
         <div style="text-align:right;flex-shrink:0;">
           <div class="si-time">${day?day.trim()+' ':''}${fmtT(eta)}</div>
@@ -5336,16 +5336,16 @@ function drawWeatherDot(ctx,x,y,w,mapFontSm,isDesktop){
                isHeavyRain?'rgba(30,64,175,0.92)':  // dark blue — heavy rain
                isRain?'rgba(37,99,235,0.88)':        // blue — rain
                isCloud?'rgba(71,85,105,0.88)':       // grey — cloud
-               'rgba(161,98,7,0.88)';                // amber/gold — sun
+               'rgba(234,179,8,0.92)';               // yellow — sun
   const pillBorder=isStorm?'rgba(196,181,253,0.8)':
                    isHeavyRain?'rgba(147,197,253,0.6)':
                    isRain?'rgba(147,197,253,0.5)':
                    isCloud?'rgba(148,163,184,0.4)':
-                   'rgba(251,191,36,0.6)';
+                   'rgba(253,224,71,0.8)';
   const textCol=isStorm?'#ddd6fe':
                 isHeavyRain||isRain?'#bfdbfe':
                 isCloud?'#e2e8f0':
-                '#fef3c7';
+                '#fefce8';
   ctx.globalAlpha=alpha;
   const pillW=isDesktop?(isStorm?52:46):isStorm?42:36;
   const pillH=isDesktop?20:16;
@@ -5386,7 +5386,7 @@ function weatherPillHTML(code,temp,label){
   const isRain=wmoIsRainy(code)&&!isStorm;
   const isCloud=code>=3&&code<51;
   const bg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(120,70,0,1)';
-  const tc=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fef3c7';
+  const tc=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fefce8';
   return`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
     <div style="background:${bg};border-radius:6px;padding:5px 10px;min-width:48px;text-align:center;">
       <span style="font-size:17px;font-weight:600;color:${tc};">${Math.round(temp)}°</span>
@@ -5414,7 +5414,7 @@ function weatherBarHTML(){
   const isRain=wmoIsRainy(code)&&!isStorm;
   const isCloud=code>=3&&code<51;
   const condBg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(120,70,0,1)';
-  const condText=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fef3c7';
+  const condText=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fefce8';
   const condLabel=isStorm?'Storm':isHeavyRain?'Heavy rain':isRain?'Rain':isCloud?'Cloud':'Clear';
 
   // Expanded panel — hourly forecast + extra details
@@ -7256,6 +7256,7 @@ function _applyGPXRoute(result,name,existingIdx,stops){
     ROUTES.push(r);CUR=ROUTES.length-1;
   }
   r.points=result.pts;r.hasTS=result.hasTS;r.totalDist=result.pts[result.pts.length-1].dist;
+  r.adaptiveSpeed=true; // reset to default on new file load
   // Always use naismith for duration — imported timestamps from planned route files
   // (RWGPS, Komoot, Strava etc.) encode fabricated speeds that are unreliable and often
   // dangerously optimistic. Naismith from GPS coordinates is more accurate in all tested cases.
