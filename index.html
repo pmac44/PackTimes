@@ -2001,6 +2001,21 @@ function drawMap(cvs,r,opts){
     for(let i=1;i<pts.length;i++)ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
     if(_tileMode>0){ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=5;ctx.stroke();}
     else{ctx.strokeStyle='#1a2d1a';ctx.lineWidth=4;ctx.stroke();}
+    // Wide semi-transparent glow band — makes day/night transition visible at a glance
+    let glowCol=getCol(etaAt(pts[0].dist,r));
+    ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
+    for(let i=1;i<pts.length;i++){
+      const col=i%10===0?getCol(etaAt(pts[i].dist,r)):glowCol;
+      if(col!==glowCol){
+        ctx.strokeStyle=glowCol.replace('rgb(','rgba(').replace(')',',0.25)');
+        ctx.lineWidth=14;ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();
+        ctx.beginPath();ctx.moveTo(px(pts[i-1].lon),py(pts[i-1].lat));
+        glowCol=col;
+      }
+      ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
+    }
+    ctx.strokeStyle=glowCol.replace('rgb(','rgba(').replace(')',',0.25)');
+    ctx.lineWidth=14;ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();
     // Batch segments by colour — sample every 10th point for performance
     let curCol=getCol(etaAt(pts[0].dist,r));
     ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
