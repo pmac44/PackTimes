@@ -877,10 +877,10 @@ function tsSpeedSanity(pts){
   return speeds[Math.floor(speeds.length/2)];
 }
 function naismith(pts,d){
-  // Cycling estimate calibrated against real RWGPS route data:
-  // 25.5 km/h base flat speed, climb penalty of 1h per 1400m gain.
-  // Errors vs RWGPS on test routes: +16m, +36m, +1m across 267-467km routes.
-  return d/25.5+elevGain(pts)/1400;
+  // Cycling estimate calibrated so SF 1.0 = typical recreational bikepacker on good gravel.
+  // Fast riders (strong/light kit) will find SF ~0.8; loaded/slow terrain ~1.2+.
+  // Based on real ride data across 19 riders on mixed terrain.
+  return d/21.19+elevGain(pts)/1164;
 }
 
 // Per-point cumulative riding hours using per-segment Naismith.
@@ -4759,7 +4759,7 @@ function tRoutes(r){
       </button>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:10px;">
-      ${[['1.4','Loaded / slow terrain'],['1.2','Recreational'],['1.0','Strong rider']].map(([val,label])=>`
+      ${[['1.2','Loaded / slow terrain'],['1.0','Recreational'],['0.8','Strong rider']].map(([val,label])=>`
         <button class="btn btn-sm tf-preset" data-val="${val}" style="flex:1;flex-direction:column;gap:2px;padding:5px 4px;text-align:center;${Math.abs(r.timeFactor-parseFloat(val))<0.01?'border-color:var(--accent);color:var(--accent);':''}">
           <span style="font-size:14px;font-family:var(--font);font-weight:600;">${val} ×</span>
           <span style="font-size:12px;color:var(--text3);white-space:nowrap;">${label}</span>
@@ -6119,12 +6119,12 @@ function patchSpeedFactor(r){
 
 
 function factorDesc(f){
-  if(f<=0.8)return'Faster than baseline';
-  if(f<=1.1)return'Strong rider, good terrain';
-  if(f<=1.3)return'Recreational, mixed terrain';
-  if(f<=1.5)return'Loaded or slow terrain';
-  if(f<=2.0)return'Heavily loaded / technical';
-  if(f<=3.0)return'Very slow conditions';
+  if(f<=0.7)return'Very fast rider';
+  if(f<=0.9)return'Strong rider, light kit';
+  if(f<=1.1)return'Recreational bikepacker';
+  if(f<=1.3)return'Loaded or slow terrain';
+  if(f<=1.6)return'Heavily loaded / technical';
+  if(f<=2.5)return'Very slow conditions';
   return'Extreme conditions';
 }
 
