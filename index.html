@@ -6493,7 +6493,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(!UI.osmOpts)UI.osmOpts={};
     const allOn=keys.every(k=>UI.osmOpts[k]);
     keys.forEach(k=>UI.osmOpts[k]=!allOn);
-    saveAll();renderKeepScroll();return;}
+    saveAll();
+    // Update checkboxes and button label directly — no re-render
+    document.querySelectorAll('.osm-opt').forEach(cb=>{if(keys.includes(cb.dataset.key))cb.checked=!allOn;});
+    const allToggle=document.getElementById('osm-all-toggle');
+    if(allToggle)allToggle.textContent=allOn?'ALL':'NONE';
+    return;}
   // Route list select
   const rli=e.target.closest('.rli');
   if(rli&&!e.target.closest('.del-route')){CUR=+rli.dataset.ridx;UI.tab='routes';saveAll();render();return;}
@@ -7141,7 +7146,11 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
   if(e.target.classList.contains('osm-opt')){
     if(!UI.osmOpts)UI.osmOpts={towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,camp:false,caravan:false,huts:false,hotels:false,halls:false,churches:false,schools:false,fire:false,police:false,peaks:false};
     UI.osmOpts[e.target.dataset.key]=e.target.checked;
-    saveAll();renderKeepScroll();return;}
+    saveAll();
+    // Update ALL/NONE toggle label without re-rendering
+    const allToggle=document.getElementById('osm-all-toggle');
+    if(allToggle){const keys=['towns','water','crossings','toilets','stockwater','food','fuel','shops','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks'];allToggle.textContent=keys.every(k=>UI.osmOpts&&UI.osmOpts[k])?'NONE':'ALL';}
+    return;}
 
   if(e.target.id==='gpx-input'){
     const f=e.target.files[0];if(!f)return;
