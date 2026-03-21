@@ -148,14 +148,14 @@ select option{background:var(--bg3);}
 .si:hover{border-color:var(--border2);}
 .si.hi{border-color:var(--accent)!important;}
 .sdot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
-.d-food{background:var(--amber);}.d-water{background:var(--blue);}.d-crossing{background:#6b9eb0;}.d-sleep{background:var(--red);}.d-accom{background:var(--purple);}.d-wc{background:#2dd4bf;}.d-hut{background:#c8a96e;}.d-fuel{background:#f97316;}.d-peak{background:#94a3b8;}.d-camp{background:#4a7c59;}.d-caravan{background:#84cc16;}.d-rest{background:#94856a;}.d-town{background:var(--accent);}.d-shop{background:var(--purple);}
+.d-food{background:var(--amber);}.d-water{background:var(--blue);}.d-crossing{background:#6b9eb0;}.d-sleep{background:var(--red);}.d-accom{background:var(--purple);}.d-wc{background:#2dd4bf;}.d-hut{background:#c8a96e;}.d-fuel{background:#f97316;}.d-peak{background:#94a3b8;}.d-camp{background:#4a7c59;}.d-caravan{background:#84cc16;}.d-stop{background:#94856a;}.d-town{background:var(--accent);}.d-shop{background:var(--purple);}
 .si-inf{flex:1;min-width:0;}.si-name{font-weight:500;font-size:18px;color:var(--text);line-height:1.35;}
 .si-meta{font-family:var(--font);font-size:18px;color:var(--text3);margin-top:2px;}
 .si-rt{text-align:right;flex-shrink:0;}.si-time{font-family:var(--font);font-size:18px;font-weight:500;color:var(--accent);}
 .si-st{font-size:18px;margin-top:1px;}.s-op{color:var(--accent);}.s-cl{color:var(--red);}.s-uk{color:var(--amber);}
 .tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:18px;font-family:var(--font);text-transform:uppercase;}
 .t-food{background:rgba(251,191,36,.15);color:var(--amber);}.t-water{background:rgba(96,165,250,.15);color:var(--blue);}
-.t-sleep{background:rgba(130,100,220,.2);color:#b39ddb;}.t-accom{background:rgba(192,132,252,.15);color:var(--purple);}.t-wc{background:rgba(45,212,191,.15);color:#2dd4bf;}.t-town{background:rgba(74,222,128,.15);color:var(--accent);}.t-shop{background:rgba(192,132,252,.15);color:var(--purple);}.t-hut{background:rgba(200,169,110,.15);color:#c8a96e;}.t-fuel{background:rgba(249,115,22,.15);color:#f97316;}.t-peak{background:rgba(148,163,184,.15);color:#94a3b8;}.t-camp{background:rgba(74,124,89,.2);color:#4a7c59;}.t-rest{background:rgba(148,133,106,.2);color:#94856a;}.t-crossing{background:rgba(100,140,160,.2);color:#6b9eb0;}.t-church{background:rgba(232,196,240,.15);color:#e8c4f0;}.t-school{background:rgba(147,197,253,.15);color:#93c5fd;}.t-hall{background:rgba(212,163,115,.15);color:#d4a373;}.t-fire{background:rgba(239,68,68,.15);color:#ef4444;}.t-police{background:rgba(59,130,246,.15);color:#3b82f6;}.t-caravan{background:rgba(132,204,22,.15);color:#84cc16;}
+.t-sleep{background:rgba(130,100,220,.2);color:#b39ddb;}.t-accom{background:rgba(192,132,252,.15);color:var(--purple);}.t-wc{background:rgba(45,212,191,.15);color:#2dd4bf;}.t-town{background:rgba(74,222,128,.15);color:var(--accent);}.t-shop{background:rgba(192,132,252,.15);color:var(--purple);}.t-hut{background:rgba(200,169,110,.15);color:#c8a96e;}.t-fuel{background:rgba(249,115,22,.15);color:#f97316;}.t-peak{background:rgba(148,163,184,.15);color:#94a3b8;}.t-camp{background:rgba(74,124,89,.2);color:#4a7c59;}.t-stop{background:rgba(148,133,106,.2);color:#94856a;}.t-crossing{background:rgba(100,140,160,.2);color:#6b9eb0;}.t-church{background:rgba(232,196,240,.15);color:#e8c4f0;}.t-school{background:rgba(147,197,253,.15);color:#93c5fd;}.t-hall{background:rgba(212,163,115,.15);color:#d4a373;}.t-fire{background:rgba(239,68,68,.15);color:#ef4444;}.t-police{background:rgba(59,130,246,.15);color:#3b82f6;}.t-caravan{background:rgba(132,204,22,.15);color:#84cc16;}
 .slr{display:flex;align-items:center;gap:8px;}.slv{font-family:var(--font);font-size:18px;color:var(--accent);min-width:52px;text-align:right;}
 .next-card{background:var(--card2);border:1px solid var(--accent3);border-radius:10px;padding:12px 14px;}
 .nlbl{font-size:18px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--sans);margin-bottom:2px;}
@@ -358,8 +358,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="field"><label class="lbl">Type</label>
       <select id="m-type">
-        <option value="sleep">😴 Bivi</option>
-        <option value="rest">🍫 Snack Stop</option>
+        <option value="stop">📍 Stop</option>
         <option value="water">💧 Water</option>
         <option value="food">🍴 Food</option>
         <option value="shop">🛒 Shop</option>
@@ -525,6 +524,13 @@ function unpackRoute(r){
   // Rebuild cumRiding if missing (old saved routes)
   if(!out.paceSegs)out.paceSegs=[];
   if(out.adaptiveSpeed===undefined)out.adaptiveSpeed=true;
+  // Migrate rest→stop and standalone sleep→stop
+  if(out.stops){out.stops=out.stops.map(s=>{
+    if(s.type==='rest')return{...s,type:'stop'};
+    if(s.type==='sleep'&&!s.auto&&!s.sleepAt)return{...s,type:'stop',sleepAt:true};
+    return s;
+  });}
+
   if(!out.baseTimeFactor)out.baseTimeFactor=out.timeFactor||1.0;
   if(!out.cumRiding&&out.points.length>1)out.cumRiding=buildCumRiding(out.points,out.paceSegs||[]);
   // Always recalculate estDuration from naismith — never trust stored value which
@@ -996,7 +1002,7 @@ function startDT(r){
 }
 // Get effective sleep hours for a stop — handles fixed departure time
 function sleepHoursFor(s,arrivalEta){
-  if(s.type==='rest')return s.sleepH||0.25;
+  if(s.type==='stop')return s.sleepH||0.25;
   if(!s.departTime)return s.sleepH||(s.sleepAt?10:10);
   // Fixed wake time mode — calculate hours from arrival to next occurrence of wakeTime
   const [dh,dm]=s.departTime.split(':').map(Number);
@@ -1013,7 +1019,7 @@ function sleepHoursFor(s,arrivalEta){
 
 // Get total sleep hours accounting for fixed departure times
 function totalSleepHours(r){
-  return r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt)
+  return r.stops.filter(s=>s.type==='sleep'||s.type==='stop'||s.sleepAt)
     .reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0);
 }
 function totalMealHours(r){
@@ -1051,10 +1057,10 @@ function etaAt(distKm,r){
   // Add stop durations for stops strictly before this point
   // Order at each stop: before-meals → sleep → after-meals
   let sleepOffset=0;
-  const sortedStops=r.stops.filter(s=>((s.type==='sleep'||s.type==='rest'||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist<distKm)
+  const sortedStops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist<distKm)
     .sort((a,b)=>a.dist-b.dist);
   sortedStops.forEach(s=>{
-    const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+    const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
     // Before-sleep meals — or ALL meals if no sleep at this stop
     const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
     sleepOffset+=beforeMealH;
@@ -1068,7 +1074,7 @@ function etaAt(distKm,r){
         const arrivalEta=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
         sleepOffset+=sleepHoursFor(s,arrivalEta);
       } else {
-        sleepOffset+=s.sleepH||(s.type==='rest'?0.25:10);
+        sleepOffset+=s.sleepH||(s.type==='stop'?0.25:10);
       }
     }
     // After-sleep meals (only relevant if stop has sleep)
@@ -1091,7 +1097,7 @@ function capName(s){if(!s)return s;return s.charAt(0).toUpperCase()+s.slice(1);}
 function addStop(r,dist,type,name,opts){
   opts=opts||{};
   r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:capName(name||(type+' stop')),
-    sleepH:opts.sleepH!==undefined?opts.sleepH:(type==='rest'?0.25:10),departTime:opts.departTime||null,
+    sleepH:opts.sleepH!==undefined?opts.sleepH:(type==='stop'?0.25:10),departTime:opts.departTime||null,
     ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
     icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🍫',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
     auto:opts.auto||false,
@@ -1769,7 +1775,7 @@ function checkAlerts(){
   }
   // Stop proximity alerts
   for(const s of r.stops){
-    if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)continue;
+    if(s.starred===false&&s.type!=='sleep'&&s.type!=='stop'&&!s.sleepAt)continue;
     const rem=s.dist-UI.gpsDistKm;
     if(rem>0&&rem<=UI.alertKm&&!UI.alertedStops.has(s.id)){
       UI.alertedStops.add(s.id);UI._alertStopDist=s.dist;showAlert(s,rem,r);break;
@@ -2112,13 +2118,13 @@ function drawMap(cvs,r,opts){
   }
 
   // Stop dots (with off-route connectors for auto-stops with real coords)
-  const dc={food:'#fbbf24',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',rest:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
+  const dc={food:'#fbbf24',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',stop:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
   r.stops.forEach(s=>{
-    const isSleepRelated=s.type==='sleep'||s.sleepAt;
+    const isSleepRelated=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
     const isOnMap=cvs.id==='desktop-map'||cvs.id==='stops-map';
-    const hiddenByType=((s.type==='rest'?UI.hiddenMapTypes.has('rest'):UI.hiddenMapTypes.has(s.type)))&&isOnMap
+    const hiddenByType=(UI.hiddenMapTypes.has(s.type))&&isOnMap
       &&!(isSleepRelated&&!UI.hiddenMapTypes.has('allsleep')&&isOnMap);
-    const savedByMission=isOnMap&&!UI.hiddenMapTypes.has('mission')&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
+    const savedByMission=isOnMap&&!UI.hiddenMapTypes.has('mission')&&(s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH)));
     const isHidden=hiddenByType&&!savedByMission;
     const isHighlighted=opts.highlightId&&String(opts.highlightId)===String(s.id);
     // Skip hidden stops unless they are highlighted
@@ -2132,15 +2138,16 @@ function drawMap(cvs,r,opts){
         ctx.beginPath();ctx.moveTo(px(rp.lon),py(rp.lat));ctx.lineTo(px(dotLon),py(dotLat));
         ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
         ctx.beginPath();ctx.arc(px(rp.lon),py(rp.lat),3,0,Math.PI*2);
-        ctx.fillStyle=dc[s.type]||'#fff';ctx.globalAlpha=0.5;ctx.fill();ctx.globalAlpha=1;
+        ctx.fillStyle=(s.type==='stop'&&(s.sleepAt||s.sleepH))?'#b39ddb':(dc[s.type]||'#fff');ctx.globalAlpha=0.5;ctx.fill();ctx.globalAlpha=1;
       }
       ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),7,0,Math.PI*2);
-      ctx.fillStyle=dc[s.type]||'#fff';ctx.fill();
+      const _dotCol=(s.type==='stop'&&(s.sleepAt||s.sleepH))?'#b39ddb':(dc[s.type]||'#fff');
+      ctx.fillStyle=_dotCol;ctx.fill();
       ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
       const isMapWithRings=cvs.id==='desktop-map'||cvs.id==='stops-map';
       const missionVisible=!UI.hiddenMapTypes.has('mission');
-      if(isMapWithRings&&missionVisible&&(s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt)){
-        const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+      if(isMapWithRings&&missionVisible&&(s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt)){
+        const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
         const ringR=cvs.id==='desktop-map'?22:14;
         const glowR=cvs.id==='desktop-map'?26:18;
         const innerR=cvs.id==='desktop-map'?16:10;
@@ -2586,7 +2593,7 @@ function hitTest(cvs,cx,cy,cb){
         if(cvs.id==='desktop-map'){
           if(UI.tab==='plan'){
             // Mission tab — only act if stop is in the mission list
-            const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
+            const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||(s.type==='stop')||(s.sleepAt));
             if(!planStops.some(s=>String(s.id)===String(bestStop.id)))return;
             setTimeout(()=>{
               // Try mission-node with matching data-sid
@@ -2620,7 +2627,7 @@ function hitTest(cvs,cx,cy,cb){
           }
         } else {
           setTimeout(()=>{
-            const isStarred=bestStop.starred!==false||bestStop.type==='sleep'||bestStop.type==='rest'||bestStop.sleepAt;
+            const isStarred=bestStop.starred!==false||bestStop.type==='sleep'||bestStop.type==='stop'||bestStop.sleepAt;
             const needsReveal=UI.stopsShowStarred&&!isStarred;
             if(needsReveal){
               // Temporarily reveal this stop in the filtered list
@@ -2641,7 +2648,7 @@ function hitTest(cvs,cx,cy,cb){
                 _tempRevealTimer=null;
                 const r2=cur();
                 const s2=r2&&r2.stops.find(s=>String(s.id)===String(UI._tempRevealId));
-                const nowStarred=s2&&(s2.starred!==false||s2.type==='sleep'||s2.type==='rest'||s2.sleepAt);
+                const nowStarred=s2&&(s2.starred!==false||s2.type==='sleep'||s2.type==='stop'||s2.sleepAt);
                 UI._tempRevealId=null;
                 if(!nowStarred)renderKeepScroll();
               },4000);
@@ -2756,7 +2763,7 @@ function drawElev(cvs,r){
   for(let i=1;i<pts.length;i++)ctx.lineTo(x(i),y(i));
   ctx.strokeStyle='#a855f7';ctx.lineWidth=1.5;ctx.stroke();
   // Sleep stop markers
-  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt);
+  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='stop'||s.sleepAt);
   sleepStops.forEach(s=>{
     const sx=xd(s.dist);
     const pi=pts.reduce((bi,p,i)=>Math.abs(p.dist-s.dist)<Math.abs(pts[bi].dist-s.dist)?i:bi,0);
@@ -2790,7 +2797,7 @@ function openModal(km){
   const inp=document.getElementById('m-dist');
   inp.min=0;inp.max=r.totalDist;inp.value=v;
   document.getElementById('m-name').value='';
-  document.getElementById('m-type').value='sleep';
+  document.getElementById('m-type').value='stop';
   updateModalFields();
   document.getElementById('stop-modal').style.display='flex';
 }
@@ -3054,33 +3061,19 @@ const OH_TYPES=new Set(['food','shop','town','fuel','accom','camp','caravan','pu
 function updateModalFields(){
   const t=document.getElementById('m-type').value;
   const isHike=t==='hike';
-  const isSleep=t==='sleep'||t==='rest';
-  const isSnack=t==='rest';
+  const isManualStop=t==='stop';
   const hasOH=OH_TYPES.has(t);
-  document.getElementById('m-sleep-row').style.display=isSleep?'block':'none';
-  document.getElementById('m-hike-row').style.display='none'; // hike opens pace modal directly
-  document.getElementById('m-hours-row').style.display=(!isSleep&&!isHike)?'block':'none';
-  // Snack stop: duration only, no wake toggle, 15min default
+  document.getElementById('m-sleep-row').style.display='none';
+  document.getElementById('m-hike-row').style.display='none';
+  document.getElementById('m-hours-row').style.display=(!isManualStop&&!isHike)?'block':'none';
   const modeBtns=document.getElementById('m-sleep-mode-btns');
   const durIcon=document.getElementById('m-sleep-dur-icon');
   const sleepInp=document.getElementById('m-sleep');
   const lbl=document.getElementById('m-sleep-lbl');
-  if(isSnack){
-    if(modeBtns)modeBtns.style.display='none';
-    // Force back to duration mode
-    document.getElementById('m-sleep-dur-row').style.display='flex';
-    document.getElementById('m-sleep-wake-row').style.display='none';
-    document.getElementById('m-sleep-mode-dur').classList.add('btn-p');
-    document.getElementById('m-sleep-mode-wake').classList.remove('btn-p');
-    if(durIcon)durIcon.textContent='🍫 Duration (hrs):';
-    if(sleepInp){sleepInp.value=0.25;sleepInp.step=0.25;sleepInp.min=0.25;}
-    if(lbl)lbl.textContent='Snack Stop';
-  } else {
-    if(modeBtns)modeBtns.style.display='flex';
-    if(durIcon)durIcon.textContent='😴 Hours:';
-    if(sleepInp){sleepInp.value=10;sleepInp.step=0.5;sleepInp.min=0.5;}
-    if(lbl)lbl.textContent='Sleep';
-  }
+  if(modeBtns)modeBtns.style.display='flex';
+  if(durIcon)durIcon.textContent='😴 Hours:';
+  if(sleepInp){sleepInp.value=10;sleepInp.step=0.5;sleepInp.min=0.5;}
+  if(lbl)lbl.textContent='Sleep';
   // Set default hours checkbox state based on type
   const hasHoursChk=document.getElementById('m-has-hours');
   if(hasHoursChk){
@@ -3261,17 +3254,16 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
     const openT=document.getElementById('m-open').value,closeT=document.getElementById('m-close').value;
     if(openT&&closeT){ohRaw=openT+'-'+closeT;ohRules=parseOH(ohRaw);}
   }
-  const stopName=name||(t==='rest'?'Snack Stop':(t.charAt(0).toUpperCase()+t.slice(1)))+' at '+dist.toFixed(1)+'km';
-  addStop(r,dist,t,stopName,{sleepH,departTime,ohRaw,ohRules});
-  // Capture the newly added stop's id before render
-  const newSnackId=(t==='rest')?r.stops.slice().reverse().find(s=>s.type==='rest'&&s.dist===dist)?.id:null;
+  const fallbackName='Stop at '+dist.toFixed(1)+'km';
+  const stopName=name||fallbackName;
+  addStop(r,dist,t,stopName,{sleepH:null,departTime:null,ohRaw,ohRules});
   saveAll();closeModal();render();
-  // Auto-open food picker for snack stops
-  if(newSnackId){
-    setTimeout(()=>{
-      const btn=document.querySelector(`.food-at-stop[data-sid="${newSnackId}"]`);
-      if(btn)btn.click();
-    },120);
+  if(t==='stop'&&!name){
+    const newStop=r.stops.slice().reverse().find(s=>s.type==='stop'&&Math.abs(s.dist-dist)<0.1);
+    if(newStop){
+      const pt=r.points[newStop.snapIdx!==null&&newStop.snapIdx!==undefined?newStop.snapIdx:cidx(r,dist)];
+      if(pt)geocodeStop(newStop,pt.lat,pt.lon,r);
+    }
   }
 });
 
@@ -3530,11 +3522,11 @@ function renderDesktopMap(){
     }
     ctx.strokeStyle=curCol;ctx.lineWidth=1.5;ctx.stroke();
     r.stops.forEach(s=>{
-      if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
+      if(s.starred===false&&s.type!=='sleep'&&s.type!=='stop'&&!s.sleepAt)return;
       const x=ex(s.dist);
       const nearPt=epts.reduce((best,p)=>Math.abs(p.dist-s.dist)<Math.abs(best.dist-s.dist)?p:best,epts[0]);
       const y=ey(nearPt.ele);
-      const isSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+      const isSleep=s.type==='sleep'||s.type==='stop'||s.sleepAt;
       ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
       ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
       ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=0.5;ctx.stroke();
@@ -3578,7 +3570,7 @@ function renderDesktopMap(){
       if(tt){
         let bestStop=null,bestDx=Infinity;
         r2.stops.forEach(s=>{
-          if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt)return;
+          if(s.starred===false&&s.type!=='sleep'&&s.type!=='stop'&&!s.sleepAt)return;
           const dx=Math.abs(ex2(s.dist)-mx);
           if(dx<bestDx){bestDx=dx;bestStop=s;}
         });
@@ -4011,14 +4003,14 @@ function liveStripIcons(s){
   const typeColor={
     town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',food:'#fbbf24',
     shop:'#c084fc',pub:'#f59e0b',fuel:'#f97316',accom:'#c084fc',
-    rest:'#94856a',camp:'#4a7c59',caravan:'#84cc16',hut:'#c8a96e',
+    stop:'#94856a',camp:'#4a7c59',caravan:'#84cc16',hut:'#c8a96e',
     wc:'#2dd4bf',peak:'#94a3b8',church:'#e8c4f0',school:'#93c5fd',
     hall:'#d4a373',police:'#3b82f6',fire:'#ef4444',stockwater:'#94a3b8'
   };
   const typeLabel={
     town:'TOWN',water:'WATER',crossing:'WATERWAYS',sleep:'SLEEP',food:'FOOD',
     shop:'SHOP',pub:'PUB',fuel:'FUEL',accom:'ACCOM',
-    rest:'SNACK',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
+    stop:'STOP',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
     wc:'TOILET',peak:'PEAK',church:'CHURCH',school:'SCHOOL',
     hall:'HALL',police:'POLICE',fire:'FIRE STN',stockwater:'STOCK H2O'
   };
@@ -4030,7 +4022,7 @@ function liveStripIcons(s){
 
 // Build the live next strip HTML — unique upcoming stops with icon clusters
 function buildLiveStrip(r,liveDist,sdt){
-  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt;
+  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
   const ahead=r.stops.filter(s=>s.dist>liveDist&&starred(s));
   if(!ahead.length)return'<div class="live-next-strip"><div class="live-next-row" style="justify-content:center;color:var(--accent);font-size:14px;">🏁 All stops passed</div></div>';
   // Collect distinct upcoming stops — deduplicated by id
@@ -4092,7 +4084,7 @@ const LAYER_TYPES=[
   {type:'weather',col:'#60a5fa',label:'ETA Weather'},
   {type:'allsleep',col:'#b39ddb',label:'All sleep'},
   {type:'mission',col:'#ffe632',label:'Mission list'},
-  {type:'rest',col:'#94856a',label:'Snack Stops'},
+  {type:'stop',col:'#94856a',label:'Stops'},
   {type:'water',col:'#60a5fa',label:'Water'},
   {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
   {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
@@ -4117,15 +4109,15 @@ const LAYER_TYPES=[
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['kmmarkers','turns','town','weather','mission','allsleep','rest','water','sleep','hike'];
+  const PRIORITY=['kmmarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
   if(r&&r.turns&&r.turns.length)present.add('turns');
   present.add('kmmarkers');
   if(r&&r.points.length)present.add('weather');
-  if(r&&r.stops.some(s=>s.type==='sleep'||s.sleepAt))present.add('allsleep');
-  if(r&&r.stops.some(s=>s.type==='rest'))present.add('rest');
+  if(r&&r.stops.some(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))))present.add('allsleep');
+  if(r&&r.stops.some(s=>s.type==='stop'))present.add('stop');
   if(r&&r.stops.some(s=>s.starred!==false))present.add('mission');
   if(r&&r.paceSegs&&r.paceSegs.length)present.add('hike');
   return LAYER_TYPES.filter(t=>present.has(t.type)).sort((a,b)=>{
@@ -4302,7 +4294,7 @@ function tStopsShell(r){
       </div>
       ${r.stops.length?`<div class="card">
         <div class="secrow">
-          <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt).length:r.stops.length})</div>
+          <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt).length:r.stops.length})</div>
           <button class="btn btn-sm" id="btn-toggle-starred" title="${UI.stopsShowStarred?'Showing starred only':'Showing all stops'}" style="${UI.stopsShowStarred?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);'}">${UI.stopsShowStarred?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
         </div>
         <div id="stops-list-rows">${clusteredStopRows(r,sdt)}</div>
@@ -4413,7 +4405,7 @@ function handleStopsScroll(e){
 // ─── Live tab shell (split layout) ───
 function tLiveShell(r){
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
-  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt;
+  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
   const next=r.stops.find(s=>s.dist>liveDist&&starred(s));
   const nextFood=r.stops.find(s=>s.dist>liveDist&&starred(s)&&(s.type==='food'||s.type==='shop'));
   const nextWaterOnly=r.stops.find(s=>s.dist>liveDist&&starred(s)&&s.type==='water');
@@ -4428,7 +4420,7 @@ function tLiveShell(r){
   // Build stop list (upcoming + passed faded, exclude those shown in summary)
   const stopListHtml=(()=>{
     if(!r.stops.length&&!(r.paceSegs&&r.paceSegs.length))return'';
-    const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
+    const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||(s.type==='stop')||(s.sleepAt));
   const clusters=clusterStops(planStops);
     let html='';
     // GPS toggle button — single line, clear state
@@ -4453,7 +4445,7 @@ function tLiveShell(r){
     clusters.forEach(cl=>{
       cl.stops.forEach(s=>{
         if(liveDist>s.dist)return;
-        if(s.starred===false&&s.type!=='sleep'&&s.type!=='rest')return;
+        if(s.starred===false&&s.type!=='sleep'&&s.type!=='stop')return;
         liveTiles.push({_type:'stop',dist:s.dist,s,cl});
       });
     });
@@ -4501,7 +4493,7 @@ function tLiveShell(r){
         const orBadge=s.offRouteM?' <span style="font-size:16px;color:var(--text3);">('+( s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km')+' off route)</span>':'';
         const st=shopSt(s,r);
         const hasSt=s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='hut'||s.type==='pub'||s.type==='fuel';
-        const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
+        const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='stop'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
           hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':'<span class="s-uk">? Hours unknown</span>'):'';
         const ohHint=s.ohRaw?' · <span style="color:var(--text3);font-size:16px;">'+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
@@ -5082,7 +5074,7 @@ function tSettings(r){
 // Render stops list grouped by cluster for the Stops tab
 function clusteredStopRows(r,sdt){
   if(!r.stops.length)return'';
-  const stops=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt||String(s.id)===String(UI._tempRevealId)):r.stops;
+  const stops=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt||String(s.id)===String(UI._tempRevealId)):r.stops;
   const clusters=clusterStops(stops);
   let html='';
   clusters.forEach(cl=>{
@@ -5104,7 +5096,7 @@ function stopRow(s,r,sdt){
   const hoursTypes=new Set(['food','shop','accom','hut','pub','fuel']);
   const stEl=st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':(hoursTypes.has(s.type)?'<span class="s-uk">? Hours unknown</span>':'');
   const ohHint=s.ohRaw?` · <span style="color:var(--text3);font-size:16px;">${s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw}</span>`:'';
-  const sleepBadge=s.type==='sleep'?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH||10}h bivi</span>`:s.type==='rest'?`<span style="color:#94856a;font-size:15px;font-family:var(--font);">🍫 ${s.sleepH<=0.5?(s.sleepH*60|0)+'min':(s.sleepH||0.25)+'h'} snack</span>`:
+  const sleepBadge=s.type==='sleep'?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH||10}h bivi</span>`:s.type==='stop'?`<span style="color:#94856a;font-size:15px;font-family:var(--font);">🍫 ${s.sleepH<=0.5?(s.sleepH*60|0)+'min':(s.sleepH||0.25)+'h'} snack</span>`:
     '';
   const orBadge=s.offRouteM?` <span style="font-size:16px;color:var(--text3);font-family:var(--font);">(${s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km'} off route)</span>`:'';
   const autoBadge=s.auto?`<span style="font-size:12px;color:var(--text3);font-family:var(--font);background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:0 4px;margin-left:3px;">OSM</span>`:'';
@@ -5114,7 +5106,7 @@ function stopRow(s,r,sdt){
   const departDay=depart&&sdt?dayOff(depart,sdt):'';
   // Tile background
   const hasSt=s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='hut';
-  const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
+  const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='stop'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
     hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
   return`<div class="si tap-stop" data-sid="${s.id}" style="${tileBg}">
     <div class="sdot d-${s.type}"></div>
@@ -5133,7 +5125,7 @@ function stopRow(s,r,sdt){
       </div>
       <div style="display:flex;gap:4px;margin-top:6px;">
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="${s.starred!==false?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);'}">${s.starred!==false?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
-        ${s.type!=='sleep'&&s.type!=='rest'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);'}">${s.sleepAt?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
+        ${s.type!=='sleep'&&s.type!=='stop'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);'}">${s.sleepAt?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
         <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="${s.meals&&s.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);'}"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>
         <button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);">${ICON_EDIT}</button>
         ${(()=>{const lat=s.lat||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lat;const lon=s.lon||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lon;return lat&&lon?`<a href="https://maps.google.com/?q=${lat.toFixed(5)},${lon.toFixed(5)}" target="_blank" class="btn btn-sm" title="Open in Google Maps" style="text-decoration:none;font-size:13px;font-family:var(--font);font-weight:600;padding:0 8px;">MAP</a>`:'';})()}
@@ -5645,18 +5637,18 @@ function tPlan(r){
     <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>`;
   if(!r.stops.length) return header+'<div class="banner info"><span>📊</span><span>Add stops on the Stops tab to see your plan.</span></div>';
-  const unstarredCount=r.stops.filter(s=>s.starred===false&&s.type!=='sleep'&&s.type!=='rest').length;
+  const unstarredCount=r.stops.filter(s=>s.starred===false&&s.type!=='sleep'&&s.type!=='stop').length;
 
   // Ensure sun times are fetched/cached for this route
   ensureSunCache(r);
 
-  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
+  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||(s.type==='stop')||(s.sleepAt));
   const clusters=clusterStops(planStops);
   // Build nodes: sleep/sleepAt stops get their own timeline entry
   const nodeList=[];
   clusters.forEach(cl=>{
-    const sleepStops=cl.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt);
-    const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt);
+    const sleepStops=cl.stops.filter(s=>s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt);
+    const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&!(s.type==='stop'&&(s.sleepAt||s.sleepH))&&!s.sleepAt);
     if(sleepStops.length){
       const chipStops=nonSleepStops;
       const chipCluster=chipStops.length?{...cl,stops:chipStops}:null;
@@ -5747,7 +5739,7 @@ function tPlan(r){
     const _rawDay=eta&&sdt?dayOff(eta,sdt):'';const dayStr=_rawDay?_rawDay.trim():'';
     const isLast=i===nodes.length-1;
     const isSleep=node.isSleep;
-    const isRest=isSleep&&node.sleepStop?.type==='rest';
+    const isRest=isSleep&&node.sleepStop?.type==='stop'&&!node.sleepStop?.sleepAt;
     const sun=getSun(eta);
     const dnBg=(!node.isStart&&!node.isFinish&&!isSleep)?dayNightBg(eta,sun):'';
     const dnIcon=(!node.isStart&&!node.isFinish)?dayNightLabel(eta,sun):'';
@@ -5777,8 +5769,8 @@ function tPlan(r){
       const depart=wake&&afterMealH>0?new Date(wake.getTime()+afterMealH*3600000):wake;
       const wakeDay=wake&&sdt?dayOff(wake,sdt):'';
       const departDay=depart&&sdt?dayOff(depart,sdt):'';
-      const col=s.type==='rest'?'#94856a':'#b39ddb';
-      const icon=s.type==='rest'?'🍫':'😴';
+      const col=s.type==='stop'?'#94856a':'#b39ddb';
+      const icon=s.type==='stop'?'🍫':'😴';
       const fmtChip=m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;display:inline-block;margin:2px 2px 2px 0;">${m.type==='snack'?ICON_SNACK:ICON_MEAL} ${m.name||m.type} · ${m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier'}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
       const row=(label,val,color)=>`<div style="display:flex;align-items:baseline;gap:6px;margin-top:4px;font-family:var(--font);font-size:15px;"><span style="color:var(--text3);min-width:52px;">${label}</span><span style="color:${color||'var(--text)'};">${val}</span></div>`;
       sleepDiv='<div style="margin-top:8px;">'
@@ -5801,7 +5793,7 @@ function tPlan(r){
         +'</div>';
     }
     // Cluster sleep departure
-    const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
+    const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='stop'||s.sleepAt).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
     const depart=clusterSleepH>0&&eta?new Date(eta.getTime()+clusterSleepH*3600000):null;
     const departDay=depart&&sdt?dayOff(depart,sdt):'';
     const departDiv=depart?'<div style="font-size:14px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">▶ '+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</div>':'';
@@ -5812,7 +5804,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='rest'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">🍫 Snack Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
             +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
             +'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+metaCount+'</div>'
@@ -5844,7 +5836,7 @@ function tPlan(r){
           return'<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px;">'
             +stops.map(s=>{
               const hasFood=s.meals&&s.meals.length;
-              const hasSleep=s.sleepAt||s.type==='sleep'||s.type==='rest';
+              const hasSleep=s.sleepAt||s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH));
               const warnings=[];
               if(hasFood)warnings.push(s.meals.length+' food item'+(s.meals.length>1?'s':''));
               if(hasSleep)warnings.push('sleep');
@@ -5900,7 +5892,7 @@ function tPlan(r){
       const segDist=next.dist-node.dist;
       // Departure from current node = arrival + sleep at this node
       const nodeSleepH=isSleep&&node.sleepStop?sleepHoursFor(node.sleepStop,eta):
-        node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
+        node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.type==='stop'||s.sleepAt).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
       const departEta=eta&&nodeSleepH>0?new Date(eta.getTime()+nodeSleepH*3600000):
         node.isStart?sdt:eta;
       const arriveNextEta=next.isFinish?finEta:etaAt(next.dist,r);
@@ -5958,7 +5950,7 @@ function tPlan(r){
   if(finEta&&sdt)summaryParts.push('<span style="color:var(--accent);">Finish '+fmtT(finEta)+dayOff(finEta,sdt)+'</span>');
   // Sleep per night + unplanned nights warning
   const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;
-  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt).length;
+  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='stop'||s.sleepAt).length;
   let sleepExtra='';
   if(nights>0&&totalSleepH){
     const avgSleep=(totalSleepH/sleepStops).toFixed(1);
@@ -6134,7 +6126,7 @@ function tFood(r){
     if(eta&&m.when==='after'){
       // after-sleep meal: add duration of before-sleep meals + sleep itself
       const s=m.stop;
-      const hasSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+      const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
       if(hasSleep){
         const beforeMealH=(s.meals||[]).filter(b=>b.when!=='after').reduce((a,b)=>a+(b.durationMin||20)/60,0);
         const sleepH=sleepHoursFor(s,new Date(eta.getTime()+beforeMealH*3600000));
@@ -6174,19 +6166,19 @@ function tFood(r){
 function printMission(){
   const r=cur();if(!r)return;
   const sdt=startDT(r);
-  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt);
+  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||(s.type==='stop')||(s.sleepAt));
   const clusters=clusterStops(planStops);
   const finEta=etaAt(r.totalDist,r);
   const totalSleepH=totalSleepHours(r);
 
   let rows='';
   clusters.forEach(cl=>{
-    const sleepStops=cl.stops.filter(s=>s.type==='sleep'||s.type==='rest'||s.sleepAt);
-    const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&s.type!=='rest'&&!s.sleepAt);
+    const sleepStops=cl.stops.filter(s=>s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt);
+    const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&!(s.type==='stop'&&(s.sleepAt||s.sleepH))&&!s.sleepAt);
     const stops=sleepStops.length?sleepStops:[...nonSleepStops];
     stops.forEach(s=>{
       const eta=sdt?etaAt(s.dist,r):null;
-      const isSleep=s.type==='sleep'||s.type==='rest'||s.sleepAt;
+      const isSleep=s.type==='sleep'||s.type==='stop'||s.sleepAt;
       const chips=nonSleepStops.length&&isSleep?nonSleepStops.map(x=>`<span style="display:inline-block;background:#f0f0f0;border-radius:4px;padding:1px 6px;font-size:11px;margin:1px;">${x.icon||'📍'} ${x.name}</span>`).join(' '):'';
       rows+=`<tr style="border-bottom:1px solid #ddd;${isSleep?'background:#f3f0ff;':''}">
         <td style="padding:6px 8px;font-size:13px;color:#666;">${s.dist.toFixed(1)}</td>
@@ -6302,7 +6294,7 @@ function updateLive(){
   const r=cur();if(!r)return;
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const prog=liveDist/Math.max(1,r.totalDist);
-  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt;
+  const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
   const next=r.stops.find(s=>s.dist>liveDist&&starred(s));
   const nextFood=r.stops.find(s=>s.dist>liveDist&&starred(s)&&(s.type==='food'||s.type==='shop'));
   const nextWaterOnly=r.stops.find(s=>s.dist>liveDist&&starred(s)&&s.type==='water');
@@ -6391,7 +6383,7 @@ function updateLive(){
           const remH=remMs?remMs/3600000:null;
           const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
           const orBadge=s.offRouteM>50?`<span style="font-size:13px;color:var(--text3);"> (${s.offRouteM}m off route)</span>`:'';
-          const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='rest'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':'';
+          const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='stop'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':'';
           return`<div class="si live-stop" style="${tileBg}">
             <div class="sdot d-${s.type}"></div>
             <div class="si-inf">
@@ -6675,7 +6667,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       const picker=document.createElement('div');
       picker.className='food-picker';
       picker.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:6px;padding:10px 12px;background:var(--card);border-radius:8px;border:1px solid rgba(251,191,36,0.5);box-shadow:0 4px 16px rgba(0,0,0,0.5);min-width:260px;';
-      const hasSleep=(s.type==='sleep'||s.sleepAt)&&s.type!=='rest';
+      const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
       const renderPicker=()=>{
         picker.innerHTML=`
           <div style="font-size:13px;color:#fbbf24;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;display:flex;align-items:center;gap:5px;">${ICON_FOOD} Food at this stop</div>
@@ -6781,7 +6773,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const sid=ds.dataset.sid;
     const stop=r.stops.find(s=>String(s.id)===String(sid));
     const isTownStop=stop&&stop.type==='town';
-    const isRestStop=stop&&stop.type==='rest';
+    const isRestStop=stop&&stop.type==='stop';
     if(isTownStop&&!confirm(`Delete town "${stop.name}"?`))return;
     if(isRestStop&&!confirm(`Delete snack stop "${stop.name}"?`))return;
     const tile=ds.closest('.tap-stop')||ds.closest('.mission-node');
@@ -6997,7 +6989,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const btn=document.getElementById('btn-toggle-starred');
     const title=document.getElementById('stops-list-title');
     const rows=document.getElementById('stops-list-rows');
-    const count=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='rest'||s.sleepAt).length:r.stops.length;
+    const count=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt).length:r.stops.length;
     if(btn){
       btn.innerHTML=UI.stopsShowStarred
         ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'
@@ -7417,6 +7409,29 @@ function disconnectPowerMeter(){
   UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerDeviceName=null;
   _powerChar=null;_powerWindow.length=0;
   if(UI.tab==='live')renderKeepScroll();
+}
+
+// ═══════════════════════════════════════════
+//  REVERSE GEOCODE FOR MANUAL STOPS
+// ═══════════════════════════════════════════
+async function geocodeStop(stop,lat,lon,r){
+  try{
+    const res=await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`,
+      {headers:{'Accept-Language':'en','User-Agent':'PackTimes/1.0'}}
+    );
+    if(!res.ok)return;
+    const data=await res.json();
+    const addr=data.address||{};
+    // Pick most specific meaningful level
+    const place=addr.village||addr.hamlet||addr.suburb||addr.town||addr.city||
+                 addr.county||addr.state_district||addr.state||addr.country||null;
+    if(place){
+      stop.name='Stop near '+place;
+      saveAll();
+      renderKeepScroll();
+    }
+  }catch(e){/* offline or failed — keep fallback name */}
 }
 
 // ═══════════════════════════════════════════
