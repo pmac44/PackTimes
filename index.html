@@ -2275,8 +2275,20 @@ function drawMap(cvs,r,opts){
 }
 
 // Zoom helper
-function zoomMap(id,factor){
+function zoomMap(id,factor,mouseX,mouseY){
   const state=ms(id);
+  // If mouse coordinates supplied, keep the geo-point under the pointer fixed
+  if(mouseX!==undefined&&mouseY!==undefined){
+    const cvs=document.getElementById(id);
+    if(cvs&&cvs._kx&&cvs._scale){
+      const mouseLon=cvs._cLon+(mouseX-cvs._W/2)/(cvs._kx*cvs._scale);
+      const mouseLat=cvs._cLat-(mouseY-cvs._H*cvs._anchor)/(cvs._ky*cvs._scale);
+      const newScale=cvs._scale*factor;
+      const newCx=mouseLon-(mouseX-cvs._W/2)/(cvs._kx*newScale);
+      const newCy=mouseLat+(mouseY-cvs._H*cvs._anchor)/(cvs._ky*newScale);
+      state.cx=newCx;state.cy=newCy;
+    }
+  }
   state.zoom=Math.max(0.4,Math.min(800,state.zoom*factor));
   if(id==='live-map')state._userZoomed=true;
   redrawMap(id);
@@ -2399,7 +2411,14 @@ function attachMap(cvs,tapCb){
   const id=cvs.id;
 
   // Mouse wheel zoom
-  cvs.addEventListener('wheel',e=>{e.preventDefault();zoomMap(id,e.deltaY<0?1.25:0.8);},{passive:false});
+  cvs.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const factor=e.deltaY<0?1.25:0.8;
+    const rect=cvs.getBoundingClientRect();
+    const mouseX=(e.clientX-rect.left)*(cvs.width/rect.width);
+    const mouseY=(e.clientY-rect.top)*(cvs.height/rect.height);
+    zoomMap(id,factor,mouseX,mouseY);
+  },{passive:false});
 
   // Pinch zoom
   let _pinch=null;
