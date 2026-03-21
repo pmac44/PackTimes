@@ -148,7 +148,7 @@ select option{background:var(--bg3);}
 .si:hover{border-color:var(--border2);}
 .si.hi{border-color:var(--accent)!important;}
 .sdot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
-.d-food{background:var(--amber);}.d-water{background:var(--blue);}.d-crossing{background:#6b9eb0;}.d-sleep{background:var(--red);}.d-accom{background:var(--purple);}.d-wc{background:#2dd4bf;}.d-hut{background:#c8a96e;}.d-fuel{background:#f97316;}.d-peak{background:#94a3b8;}.d-camp{background:#4a7c59;}.d-rest{background:#94856a;}.d-town{background:var(--accent);}.d-shop{background:var(--purple);}
+.d-food{background:var(--amber);}.d-water{background:var(--blue);}.d-crossing{background:#6b9eb0;}.d-sleep{background:var(--red);}.d-accom{background:var(--purple);}.d-wc{background:#2dd4bf;}.d-hut{background:#c8a96e;}.d-fuel{background:#f97316;}.d-peak{background:#94a3b8;}.d-camp{background:#4a7c59;}.d-caravan{background:#84cc16;}.d-rest{background:#94856a;}.d-town{background:var(--accent);}.d-shop{background:var(--purple);}
 .si-inf{flex:1;min-width:0;}.si-name{font-weight:500;font-size:18px;color:var(--text);line-height:1.35;}
 .si-meta{font-family:var(--font);font-size:18px;color:var(--text3);margin-top:2px;}
 .si-rt{text-align:right;flex-shrink:0;}.si-time{font-family:var(--font);font-size:18px;font-weight:500;color:var(--accent);}
@@ -1131,7 +1131,7 @@ async function fetchOverpass(){
   if(opts.pubs)  parts.push(`node["amenity"~"^(pub|bar|biergarten)$"](${bb})`);
   if(opts.huts){parts.push(`nwr["tourism"~"^(alpine_hut|wilderness_hut)$"](${bb})`);parts.push(`nwr["amenity"~"^(shelter|hut)$"](${bb})`);parts.push(`nwr["shelter_type"~"^(basic_hut|alpine_hut|wilderness_hut)$"](${bb})`);parts.push(`nwr["building"="hut"](${bb})`);}
   if(opts.hotels)parts.push(`node["tourism"~"^(hotel|hostel|motel|guest_house|chalet)$"](${bb})`);
-  if(opts.camp)parts.push(`node["tourism"~"^(camp_site|caravan_site|caravan_park)$"](${bb})`);
+  if(opts.camp)parts.push(`node["tourism"="camp_site"](${bb})`);
   if(opts.peaks){parts.push(`node["natural"="peak"](${bb})`);parts.push(`node["natural"="saddle"](${bb})`);}
   if(opts.crossings)parts.push(`way["waterway"~"^(river|stream|creek)$"](${bb})`);
   if(opts.churches)parts.push(`node["amenity"="place_of_worship"](${bb})`);
@@ -1192,7 +1192,8 @@ async function fetchOverpass(){
           if(tags.amenity==='cafe'||tags.amenity==='restaurant'||tags.amenity==='fast_food')type='food';
           else if(tags.amenity==='pub'||tags.amenity==='bar'||tags.amenity==='biergarten')type='food';
           else if(tags.tourism==='alpine_hut'||tags.tourism==='wilderness_hut'||tags.amenity==='shelter'||tags.amenity==='hut'||tags.building==='hut'||tags.shelter_type)type='hut';
-          else if(tags.tourism==='camp_site'||tags.tourism==='caravan_site'||tags.tourism==='caravan_park')type='camp';
+          else if(tags.tourism==='camp_site')type='camp';
+          else if(tags.tourism==='caravan_site'||tags.tourism==='caravan_park')type='caravan';
           else if(tags.tourism)type='accom';
           else if(tags.amenity==='fuel')type='fuel';
           else if(tags.amenity==='place_of_worship')type='church';
@@ -1265,7 +1266,7 @@ async function fetchTownSearch(query){
   if(opts.pubs)  parts.push(`nwr["amenity"~"^(pub|bar|biergarten)$"](${bb})`);
   if(opts.huts){parts.push(`nwr["tourism"~"^(alpine_hut|wilderness_hut)$"](${bb})`);parts.push(`nwr["amenity"~"^(shelter|hut)$"](${bb})`);parts.push(`nwr["shelter_type"~"^(basic_hut|alpine_hut|wilderness_hut)$"](${bb})`);parts.push(`nwr["building"="hut"](${bb})`);}
   if(opts.hotels)parts.push(`nwr["tourism"~"^(hotel|hostel|motel|guest_house|chalet)$"](${bb})`);
-  if(opts.camp)parts.push(`nwr["tourism"~"^(camp_site|caravan_site|caravan_park)$"](${bb})`);
+  if(opts.camp)parts.push(`nwr["tourism"="camp_site"](${bb})`);
   if(opts.peaks){parts.push(`node["natural"="peak"](${bb})`);parts.push(`node["natural"="saddle"](${bb})`);}
   if(opts.crossings)parts.push(`way["waterway"~"^(river|stream|creek)$"](${bb})`);
   if(opts.churches)parts.push(`node["amenity"="place_of_worship"](${bb})`);
@@ -1313,7 +1314,8 @@ async function fetchTownSearch(query){
           if(tags.amenity==='cafe'||tags.amenity==='restaurant'||tags.amenity==='fast_food')type='food';
           else if(tags.amenity==='pub'||tags.amenity==='bar'||tags.amenity==='biergarten')type='food';
           else if(tags.tourism==='alpine_hut'||tags.tourism==='wilderness_hut'||tags.amenity==='shelter'||tags.amenity==='hut'||tags.building==='hut'||tags.shelter_type)type='hut';
-          else if(tags.tourism==='camp_site'||tags.tourism==='caravan_site'||tags.tourism==='caravan_park')type='camp';
+          else if(tags.tourism==='camp_site')type='camp';
+          else if(tags.tourism==='caravan_site'||tags.tourism==='caravan_park')type='caravan';
           else if(tags.tourism)type='accom';
           else if(tags.amenity==='fuel')type='fuel';
           else if(tags.amenity==='place_of_worship')type='church';
