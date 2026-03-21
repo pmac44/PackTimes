@@ -4722,7 +4722,7 @@ function tRoutes(r){
       const avgGain=Math.round(totalGain/dayCount);
       const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;
       const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:var(--border2);"></div></div>';
-      return'<div style="margin-top:0;">'
+      return'<div style="margin-top:0;" id="rt-stats">'
         +'<div style="flex:1;padding:4px 0;">'
           +(dayCount>1?'<div style="'+lbl+'">Daily average · '+dayCount+' day'+(dayCount!==1?'s':'')+'</div>'
             +'<span style="'+accent+'">'+avgDist+' km</span>'
@@ -6100,21 +6100,54 @@ function patchSpeedFactor(r){
   const v=document.getElementById('tf-val'),d=document.getElementById('tf-desc');
   if(v)v.innerHTML=r.timeFactor.toFixed(2)+' ×'+(r.estDuration&&r.totalDist?`<br><span style="font-size:16px;color:var(--text3);">(${(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1)} km/h avg)</span>`:'');
   if(d)d.textContent=factorDesc(r.timeFactor);
-  if(r.estDuration&&r.totalDist){
-    const adj=r.estDuration*r.timeFactor;
-    const sleepH=totalSleepHours(r);
-    const totalMealH=totalMealHours(r);
-    const totalH=adj+sleepH+totalMealH;
-    const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
-    const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
-    const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
-    const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
-    const vt=document.getElementById('rt-total');
-    if(vt)vt.textContent='≈ '+totalHM+' · '+daysHM+' total';
-    const sdt=startDT(r);
-    const vf=document.getElementById('rt-finish');
-    if(vf&&sdt)vf.textContent=fmtDTY(new Date(sdt.getTime()+(totalH)*3600000));
-  }
+  if(!r.estDuration||!r.totalDist)return;
+  const adj=r.estDuration*r.timeFactor;
+  const sleepH=totalSleepHours(r);
+  const totalMealH=totalMealHours(r);
+  const totalH=adj+sleepH+totalMealH;
+  const sdt=startDT(r);
+  const finEta=sdt?new Date(sdt.getTime()+totalH*3600000):null;
+  // Update finish time
+  const vf=document.getElementById('rt-finish');
+  if(vf&&sdt)vf.textContent=fmtDTY(finEta);
+  // Rebuild full stats block
+  const statsEl=document.getElementById('rt-stats');
+  if(!statsEl)return;
+  const accent='font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);';
+  const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
+  const totalGain=elevGain(r.points);
+  const avgGainPerKm=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
+  const totRideH=Math.floor(adj),totRideM=Math.round((adj-totRideH)*60);
+  const totRideHM=totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':'');
+  const totSpd=(adj>0.1)?(r.totalDist/adj).toFixed(1):null;
+  const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
+  const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
+  const nights=sdt&&finEta?(()=>{let n=0,dd=new Date(sdt);dd.setHours(24,0,0,0);while(dd<finEta){n++;dd.setDate(dd.getDate()+1);}return n;})():0;
+  const avgSleepPerNight=nights>0?(sleepH/nights).toFixed(1):null;
+  const dayCount=nights?nights+1:1;
+  const avgDist=(r.totalDist/dayCount).toFixed(1);
+  const avgRideH=adj/dayCount;
+  const arh=Math.floor(avgRideH),arm=Math.round((avgRideH-arh)*60);
+  const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
+  const avgSpd2=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
+  const avgGain=Math.round(totalGain/dayCount);
+  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;
+  const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
+  const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
+  statsEl.innerHTML='<div style="flex:1;padding:4px 0;">'
+    +(dayCount>1?'<div style="'+lbl+'">Daily average · '+dayCount+' day'+(dayCount!==1?'s':'')+'</div>'
+      +'<span style="'+accent+'">'+avgDist+' km</span>'
+      +'<br><span style="'+accent+'">'+avgRideHM+(avgSpd2?' · '+avgSpd2+' km/h':'')+'</span>'
+      +(avgGain?'<br><span style="'+accent+'">'+avgGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':''):'')
+    +'<div style="'+lbl+'margin-top:'+(dayCount>1?'12':'0')+'px;">Totals</div>'
+    +'<span style="'+accent+'">'+r.totalDist.toFixed(1)+' km</span>'
+    +'<br><span style="'+accent+'">'+totRideHM+(totSpd?' · '+totSpd+' km/h':'')+'</span>'
+    +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
+    +(sleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+sleepH.toFixed(1)+'h bivi</span>':'')
+    +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
+    +(nights>0?'<span style="font-size:14px;color:rgba(179,157,219,0.7);display:block;margin-top:4px;">'+sleepStops+' of '+nights+' nights sleep planned'+(sleepStops<nights?' — '+(nights-sleepStops)+' unplanned':'')+'</span>':'')
+    +'<span style="'+accent+'color:var(--text2);display:block;margin-top:10px;" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>'
+    +'</div>';
 }
 
 
