@@ -1707,6 +1707,8 @@ function releaseWakeLock(){
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
     if(UI.gpsActive&&UI.keepScreenOn)requestWakeLock();
+    // Check if Dropbox has a newer copy — lightweight metadata check only
+    dbxCheckOnFocus();
     // Check if we've been stationary long enough to auto-stop GPS
     // This catches the case where the timer didn't fire while the app was suspended
     if(UI.gpsActive&&UI._lastMovedTs){
@@ -3689,6 +3691,68 @@ async function dbxLoad(force){
 async function dbxAutoLoad(){
   if(!UI.dbxToken)return;
   await dbxLoad(false);
+}
+
+// Lightweight check: fetch only Dropbox file metadata (no download) and compare
+// timestamps. If cloud is newer, show a non-intrusive banner rather than silently
+// overwriting, so the user is never surprised. If already in sync, costs ~100ms.
+async function dbxCheckOnFocus(){
+  if(!UI.dbxToken)return;
+  // Don't interrupt an active GPS session with a potentially disruptive reload
+  if(UI.gpsActive)return;
+  try{
+    const res=await fetch('https://api.dropboxapi.com/2/files/get_metadata',{
+      method:'POST',
+      headers:{
+        'Authorization':'Bearer '+UI.dbxToken,
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({path:DBX_FILE})
+    });
+    if(res.status===401){UI.dbxToken=null;await saveAll();if(UI.tab==='settings')render();return;}
+    if(res.status===409)return; // file doesn't exist yet
+    if(!res.ok)return;
+    const meta=await res.json();
+    const cloudMs=meta.server_modified?new Date(meta.server_modified).getTime():0;
+    const localMs=UI.dbxSavedAt||0;
+    if(cloudMs>localMs+2000){ // >2s newer to avoid false positives from clock skew
+      dbxShowStaleBanner(cloudMs);
+    }
+  }catch(e){/* silent — focus checks should never nag the user about network errors */}
+}
+
+function dbxShowStaleBanner(cloudMs){
+  if(document.getElementById('dbx-stale-banner'))return;
+  const ago=_dbxAgoStr(cloudMs);
+  const banner=document.createElement('div');
+  banner.id='dbx-stale-banner';
+  banner.style.cssText='position:fixed;bottom:calc(56px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);z-index:9999;'
+    +'background:#1a2a1a;border:1px solid rgba(74,222,128,0.5);border-radius:9px;'
+    +'padding:10px 14px;display:flex;align-items:center;gap:10px;'
+    +'font-family:var(--sans);font-size:15px;color:var(--text);'
+    +'box-shadow:0 4px 24px rgba(0,0,0,0.6);max-width:340px;width:calc(100vw - 32px);';
+  banner.innerHTML=
+    '<span style="font-size:20px;">☁️</span>'
+    +'<span style="flex:1;line-height:1.4;">Cloud copy updated <b style="color:var(--accent);">'+ago+'</b> — load it?</span>'
+    +'<button id="dbx-stale-yes" style="background:var(--accent3);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;">Update</button>'
+    +'<button id="dbx-stale-no" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:6px 10px;font-size:14px;cursor:pointer;margin-left:2px;">Skip</button>';
+  document.body.appendChild(banner);
+  document.getElementById('dbx-stale-yes').addEventListener('click',async()=>{
+    banner.remove();
+    await dbxLoad(true);
+  });
+  document.getElementById('dbx-stale-no').addEventListener('click',()=>{
+    banner.remove();
+  });
+  setTimeout(()=>{if(document.getElementById('dbx-stale-banner'))banner.remove();},30000);
+}
+
+function _dbxAgoStr(ms){
+  const diffS=Math.round((Date.now()-ms)/1000);
+  if(diffS<60)return diffS+'s ago';
+  if(diffS<3600)return Math.round(diffS/60)+'m ago';
+  if(diffS<86400)return Math.round(diffS/3600)+'h ago';
+  return Math.round(diffS/86400)+'d ago';
 }
 
 // Handle OAuth redirect on page load
