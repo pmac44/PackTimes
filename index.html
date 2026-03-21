@@ -527,6 +527,9 @@ function unpackRoute(r){
   if(out.adaptiveSpeed===undefined)out.adaptiveSpeed=false;
   if(!out.baseTimeFactor)out.baseTimeFactor=out.timeFactor||1.0;
   if(!out.cumRiding&&out.points.length>1)out.cumRiding=buildCumRiding(out.points,out.paceSegs||[]);
+  // Always recalculate estDuration from naismith — never trust stored value which
+  // may have been set from unreliable file timestamps before that approach was abandoned
+  if(out.points.length>1)out.estDuration=naismith(out.points,out.totalDist);
   // Restore ohRules Sets (lost in JSON.stringify)
   // Also migrate any stops with short/numeric IDs to proper alphanumeric IDs
   let needsSave=false;
