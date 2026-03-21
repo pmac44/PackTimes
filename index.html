@@ -82,7 +82,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-next-eta{font-size:13px;color:var(--text3);font-family:var(--font);margin-top:1px;}
 .live-next-in{font-size:20px;font-weight:600;color:var(--accent);font-family:var(--font);}
 .turn-popup{position:absolute;top:64px;left:8px;right:8px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;}
-.turn-arrow{font-size:42px;line-height:1;flex-shrink:0;}
+.turn-arrow{font-size:42px;line-height:1;flex-shrink:0;color:var(--accent);}
 .turn-info{flex:1;min-width:0;}
 .turn-dist{font-size:22px;font-weight:700;color:var(--accent);font-family:var(--font);}
 .turn-label{font-size:16px;color:var(--text2);margin-top:2px;}
@@ -2096,7 +2096,7 @@ function drawMap(cvs,r,opts){
       else if(t.type==='Right'){ctx.moveTo(0,-size);ctx.lineTo(size,size);ctx.lineTo(-size,size);}
       else{ctx.moveTo(0,-size);ctx.lineTo(size,size*0.6);ctx.lineTo(-size,size*0.6);}
       ctx.closePath();
-      ctx.fillStyle=t.auto?'rgba(251,191,36,0.8)':'rgba(74,222,128,0.8)';
+      ctx.fillStyle='rgba(74,222,128,0.8)';
       ctx.fill();
       ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1;ctx.stroke();
       ctx.restore();
