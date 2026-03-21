@@ -3891,20 +3891,26 @@ const STRIP_ICON_FOOD='<svg width="24" height="28" viewBox="0 0 24 24" fill="non
 const STRIP_ICON_SHOP='<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>';
 const STRIP_ICON_STAR='<svg width="26" height="26" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
 
-// Build icon cluster for a stop in the live strip
+// Build pill label for a stop in the live strip — consistent with stop list labels
 function liveStripIcons(s){
-  const icons=[];
-  // Water icon: only for explicit water stops, or confirmed operating resupply stops (have ohRaw)
-  const explicitWater=s.type==='water';
-  const confirmedResupply=(s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='pub'||s.type==='fuel')&&s.ohRaw;
-  if(explicitWater||confirmedResupply)icons.push(STRIP_ICON_WATER);
-  const resupplyTypes=new Set(['shop','pub','fuel','town','accom']);
-  if(resupplyTypes.has(s.type)||(s.type==='food'&&s.ohRaw))icons.push(STRIP_ICON_SHOP);
-  if(s.meals&&s.meals.length)icons.push(STRIP_ICON_FOOD);
-  if(s.type==='sleep'||s.sleepAt)icons.push(STRIP_ICON_SLEEP);
-  // Deduplicate
-  const seen=new Set();
-  return icons.filter(i=>{if(seen.has(i))return false;seen.add(i);return true;}).join('');
+  const typeColor={
+    town:'#4ade80',water:'#60a5fa',sleep:'#b39ddb',food:'#fbbf24',
+    shop:'#c084fc',pub:'#f59e0b',fuel:'#f97316',accom:'#c084fc',
+    rest:'#94856a',camp:'#4a7c59',caravan:'#84cc16',hut:'#c8a96e',
+    wc:'#2dd4bf',peak:'#94a3b8',church:'#e8c4f0',school:'#93c5fd',
+    hall:'#d4a373',police:'#3b82f6',fire:'#ef4444',stockwater:'#94a3b8'
+  };
+  const typeLabel={
+    town:'TOWN',water:'WATER',sleep:'SLEEP',food:'FOOD',
+    shop:'SHOP',pub:'PUB',fuel:'FUEL',accom:'ACCOM',
+    rest:'SNACK',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
+    wc:'TOILET',peak:'PEAK',church:'CHURCH',school:'SCHOOL',
+    hall:'HALL',police:'POLICE',fire:'FIRE STN',stockwater:'STOCK H2O'
+  };
+  const type=s.sleepAt&&s.type!=='sleep'?'sleep':s.type;
+  const col=typeColor[type]||'#9db89d';
+  const lbl=typeLabel[type]||(type?type.toUpperCase():'STOP');
+  return`<span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;color:${col};background:${col}1a;border:1px solid ${col}55;border-radius:4px;padding:2px 5px;line-height:1.4;">${lbl}</span>`;
 }
 
 // Build the live next strip HTML — unique upcoming stops with icon clusters
@@ -3942,7 +3948,7 @@ function buildLiveStrip(r,liveDist,sdt){
     const needsHours=hoursTypes.has(s.type);
     const openBadge=needsHours?(st==='open'?'<span style="font-size:11px;color:var(--accent);margin-left:4px;">✓</span>':st==='closed'?'<span style="font-size:11px;color:var(--red);margin-left:4px;">✗</span>':'<span style="font-size:11px;color:var(--amber);margin-left:4px;">? hrs</span>'):'';
     return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
-      <div class="live-next-icons">${icons||STRIP_ICON_STAR}</div>
+      <div class="live-next-icons">${icons}</div>
       <div class="live-next-name">${s.name}${openBadge}</div>
       <div class="live-next-right">
         ${inStr?`<div class="live-next-in">in ${inStr}</div>`:''}
