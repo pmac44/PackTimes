@@ -639,6 +639,11 @@ function parseTCX(txt){
   // Extract course name
   const nameEl=doc.querySelector('Course > n, Course > Name');
   const name=nameEl?.textContent?.trim()||null;
+  // Extract TotalTimeSeconds from Lap — this is RWGPS/Garmin's moving time estimate,
+  // more reliable than first-to-last timestamp which includes planned stop/sleep gaps.
+  const lapTimeEl=doc.querySelector('Lap > TotalTimeSeconds');
+  const lapTimeSecs=lapTimeEl?+lapTimeEl.textContent:null;
+  const lapDuration=(lapTimeSecs&&lapTimeSecs>0)?lapTimeSecs/3600:null;
   // Extract CoursePoints (turns)
   const turns=[];
   doc.querySelectorAll('CoursePoint').forEach(cp=>{
@@ -659,7 +664,7 @@ function parseTCX(txt){
     });
     turns.push({lat,lon,dist:best.dist,type,name:n,notes,auto:false});
   });
-  return{pts,hasTS,name,turns};
+  return{pts,hasTS,name,turns,lapDuration};
 }
 
 // ═══════════════════════════════════════════
@@ -845,23 +850,38 @@ function elevGain(pts){
   return Math.round(g);
 }
 function durationFromTS(pts){
-  // Sum only moving segments — filter out long pauses (>5 min gap) that inflate
-  // planned-route TCX files where RWGPS/Garmin embed stop time in timestamps.
+  // Sum consecutive gaps, skipping pauses > 5 min
   const timed=pts.filter(p=>p.time);
   if(timed.length<2)return null;
   let total=0;
-  const MAX_GAP_MS=5*60*1000; // ignore any gap longer than 5 minutes
+  const MAX_GAP_MS=5*60*1000;
   for(let i=1;i<timed.length;i++){
     const gap=timed[i].time-timed[i-1].time;
     if(gap>0&&gap<=MAX_GAP_MS)total+=gap;
   }
-  if(total===0){
-    // Fallback: plain first-to-last (file may have very sparse points)
-    return(timed[timed.length-1].time-timed[0].time)/3600000;
-  }
+  if(total===0)return(timed[timed.length-1].time-timed[0].time)/3600000;
   return total/3600000;
 }
-function naismith(pts,d){return d/15+elevGain(pts)/600;}
+function tsSpeedSanity(pts){
+  // Returns median segment speed in km/h — used to detect walking-pace RWGPS exports
+  const timed=pts.filter(p=>p.time);
+  if(timed.length<2)return 0;
+  const speeds=[];
+  for(let i=1;i<timed.length;i++){
+    const gap=(timed[i].time-timed[i-1].time)/1000;
+    const dd=timed[i].dist-timed[i-1].dist;
+    if(gap>0&&dd>0)speeds.push(dd/gap*3.6);
+  }
+  if(!speeds.length)return 0;
+  speeds.sort((a,b)=>a-b);
+  return speeds[Math.floor(speeds.length/2)];
+}
+function naismith(pts,d){
+  // Cycling estimate calibrated against real RWGPS route data:
+  // 25.5 km/h base flat speed, climb penalty of 1h per 1400m gain.
+  // Errors vs RWGPS on test routes: +16m, +36m, +1m across 267-467km routes.
+  return d/25.5+elevGain(pts)/1400;
+}
 
 // Per-point cumulative riding hours using per-segment Naismith.
 // Climbs slow down; steep descents give a small time saving.
@@ -4738,7 +4758,14 @@ function tRoutes(r){
         <span style="font-size:22px;">➡</span><span style="font-size:16px;">Faster</span>
       </button>
     </div>
-    <p style="font-size:15px;color:var(--text3);margin-top:4px;">Adjust if you expect to ride slower or faster than the estimates. This is especially important if the upload has no times and you are relying on estimates from this app.</p>
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      ${[['1.0','Strong rider'],['1.2','Recreational'],['1.4','Loaded / slow terrain']].map(([val,label])=>`
+        <button class="btn btn-sm tf-preset" data-val="${val}" style="flex:1;flex-direction:column;gap:2px;padding:5px 4px;text-align:center;${Math.abs(r.timeFactor-parseFloat(val))<0.01?'border-color:var(--accent);color:var(--accent);':''}">
+          <span style="font-size:14px;font-family:var(--font);font-weight:600;">${val}×</span>
+          <span style="font-size:12px;color:var(--text3);white-space:nowrap;">${label}</span>
+        </button>`).join('')}
+    </div>
+    <p style="font-size:15px;color:var(--text3);margin-top:4px;">Calibrate by comparing PackTimes estimates with your Strava moving time on a similar ride. Apps like RWGPS and Strava can be very accurate at predicting your ride time, but that accuracy is personal to you and is rarely preserved in exported files — the estimate you see on screen is not in the file. Pace varies enormously: surface type, pack weight, fitness and terrain all make a big difference. Start with a preset and fine-tune from there.</p>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:15px;color:var(--text2);">
       <input type="checkbox" id="adaptive-speed-chk" ${r.adaptiveSpeed?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
       <span>Adaptive speed — auto-adjust from GPS while riding</span>
@@ -6086,14 +6113,13 @@ function patchSpeedFactor(r){
 
 
 function factorDesc(f){
-  if(f<=0.35)return'Elite / race pace';
-  if(f<=0.6)return'Very fast';
-  if(f<=0.85)return'Fast';
-  if(f<=1.15)return'As planned';
-  if(f<=1.5)return'Comfortable';
-  if(f<=2.0)return'Steady / loaded';
-  if(f<=3.0)return'Very relaxed';
-  return'Ultra slow / bad conditions';
+  if(f<=0.8)return'Faster than baseline';
+  if(f<=1.1)return'Strong rider, good terrain';
+  if(f<=1.3)return'Recreational, mixed terrain';
+  if(f<=1.5)return'Loaded or slow terrain';
+  if(f<=2.0)return'Heavily loaded / technical';
+  if(f<=3.0)return'Very slow conditions';
+  return'Extreme conditions';
 }
 
 // ═══════════════════════════════════════════
@@ -6643,6 +6669,20 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(r.adaptiveSpeed)r.baseTimeFactor=r.timeFactor;
     patchSpeedFactor(r);saveAll();return;
   }
+  const tfPreset=e.target.closest('.tf-preset');
+  if(tfPreset){
+    const r=cur();if(!r)return;
+    r.timeFactor=parseFloat(tfPreset.dataset.val);
+    if(r.adaptiveSpeed)r.baseTimeFactor=r.timeFactor;
+    patchSpeedFactor(r);saveAll();
+    // Refresh preset button highlights
+    document.querySelectorAll('.tf-preset').forEach(btn=>{
+      const active=Math.abs(r.timeFactor-parseFloat(btn.dataset.val))<0.01;
+      btn.style.borderColor=active?'var(--accent)':'';
+      btn.style.color=active?'var(--accent)':'';
+    });
+    return;
+  }
   if(e.target.closest('#adaptive-msg-dismiss')){
     UI._adaptiveMsg=null;renderKeepScroll();return;
   }
@@ -7038,7 +7078,11 @@ function _applyGPXRoute(result,name,existingIdx,stops){
     ROUTES.push(r);CUR=ROUTES.length-1;
   }
   r.points=result.pts;r.hasTS=result.hasTS;r.totalDist=result.pts[result.pts.length-1].dist;
-  r.estDuration=result.hasTS?durationFromTS(result.pts):naismith(result.pts,r.totalDist);
+  // Use timestamps only if median segment speed looks like cycling (>=10 km/h).
+  // RWGPS planned routes sometimes embed walking-pace timestamps — detect and fall back to naismith.
+  const tsDur=result.hasTS?durationFromTS(result.pts):null;
+  const medianSpeed=result.hasTS?tsSpeedSanity(result.pts):0;
+  r.estDuration=(tsDur&&medianSpeed>=10)?tsDur:naismith(result.pts,r.totalDist);
   r.cumRiding=buildCumRiding(result.pts,r.paceSegs||[]);
   r.stops=stops;
   r.turns=result.turns||[];
