@@ -1383,6 +1383,8 @@ function _resetGpsIdleTimer(){
 
 function startGPS(){
   if(!navigator.geolocation){alert('Geolocation not supported.');return;}
+  // Stop any running or paused simulation before starting real GPS
+  if(UI.simRunning||UI.simPaused){if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}UI.simRunning=false;UI.simPaused=false;}
   UI.gpsActive=true;
   UI._gpsAutoPaused=false;
   UI._lastMovedTs=Date.now(); // assume moving when first started
