@@ -2037,7 +2037,12 @@ function showAlert(s,remKm,r){
   if(navigator.vibrate)navigator.vibrate([200,100,200,100,200]);
 }
 // alert-ok handled via event delegation above
-document.getElementById('gpspill').addEventListener('click',toggleGPS);
+// ── Turn review overlay buttons — on document since overlay is outside content-wrap ──
+document.addEventListener('click',e=>{
+  if(e.target.id==='trv-exit'){exitTurnReview();return;}
+  if(e.target.id==='trv-next'){goToTurnReviewIdx((UI.turnReviewIdx||0)+1);return;}
+  if(e.target.id==='trv-prev'){goToTurnReviewIdx((UI.turnReviewIdx||0)-1);return;}
+});
 
 // ═══════════════════════════════════════════
 //  MAP ENGINE
@@ -2778,6 +2783,25 @@ function hitTest(cvs,cx,cy,cb){
   const mx=cx-rect.left,my=cy-rect.top;
   cvs._lastTapX=mx;cvs._lastTapY=my;
   const{_px:px,_py:py,_pts:pts}=cvs;
+
+  // Turn review map — check for turn/near-miss taps first, then route-line placement
+  if(cvs.id==='turn-review-map'){
+    const r=cur();if(!r||!cb)return;
+    const all=allReviewTurns(r);
+    let best=null,bestD=Infinity;
+    all.forEach(t=>{
+      const tx=px(t.lon),ty=py(t.lat);
+      const d=Math.sqrt((tx-mx)**2+(ty-my)**2);
+      if(d<bestD){bestD=d;best=t;}
+    });
+    // Hit a turn marker (within 32px)
+    if(best&&bestD<32){cb(best.dist,best);return;}
+    // Tap on route line — find nearest point
+    let bi=0,bd=Infinity;
+    pts.forEach((p,i)=>{const dx=px(p.lon)-mx,dy=py(p.lat)-my,d=dx*dx+dy*dy;if(d<bd){bd=d;bi=i;}});
+    if(Math.sqrt(bd)<50)cb(pts[bi].dist,null);
+    return;
+  }
   // Handle stop dot taps for stops-map and desktop-map
   if(cvs.id==='stops-map'||cvs.id==='desktop-map'){
     const r=cur();
@@ -4674,44 +4698,36 @@ function enterTurnReview(){
     cvs.width=Math.round(cvs.offsetWidth*dpr);
     cvs.height=Math.round(cvs.offsetHeight*dpr);
     cvs._forcedH=cvs.offsetHeight;
-    attachMap(cvs,(distKm)=>{
-      // Tap on review map — check if near a turn, else place new turn
+    attachMap(cvs,(distKm, hitTurn)=>{
+      // Tap on review map
       const r=cur();if(!r)return;
-      const all=allReviewTurns(r);
-      // Find closest turn within ~150m
-      const closest=all.reduce((best,t)=>{
-        const d=Math.abs(t.dist-distKm);
-        return d<best.d?{t,d}:best;
-      },{t:null,d:0.15});
-      if(closest.t){
-        if(closest.t.nearMiss){
+      if(hitTurn){
+        if(hitTurn.nearMiss){
           // Promote near-miss to confirmed turn
-          r.turns.push({...closest.t,nearMiss:false});
+          r.turns.push({...hitTurn,nearMiss:false});
           r.turns.sort((a,b)=>a.dist-b.dist);
-          r.nearMissTurns=(r.nearMissTurns||[]).filter(t=>t.dist!==closest.t.dist);
+          r.nearMissTurns=(r.nearMissTurns||[]).filter(t=>Math.abs(t.dist-hitTurn.dist)>0.001);
         } else {
           // Delete confirmed turn
-          r.turns=r.turns.filter(t=>t.dist!==closest.t.dist);
+          r.turns=r.turns.filter(t=>Math.abs(t.dist-hitTurn.dist)>0.001);
         }
       } else {
-        // Place new manual turn at this position
-        const p=r.points[cidx(r,distKm)];
-        // Determine direction from bearing change at this point
-        const fwd=r.points[Math.min(cidx(r,distKm)+5,r.points.length-1)];
-        const bck=r.points[Math.max(cidx(r,distKm)-5,0)];
+        // Place new manual turn at tapped route position
+        const p=r.points[cidx(r,+distKm)];
+        const fwd=r.points[Math.min(cidx(r,+distKm)+5,r.points.length-1)];
+        const bck=r.points[Math.max(cidx(r,+distKm)-5,0)];
         const diff=angleDiff(bearing(bck,p),bearing(p,fwd));
         const type=diff<-10?'Left':diff>10?'Right':'Straight';
-        r.turns.push({lat:p.lat,lon:p.lon,dist:distKm,type,name:'',notes:'Manual turn',auto:false});
+        r.turns.push({lat:p.lat,lon:p.lon,dist:+distKm,type,name:'',notes:'Manual turn',auto:false});
         r.turns.sort((a,b)=>a.dist-b.dist);
       }
       saveAll();
-      // Update counter and redraw
+      // Update counter display
       const all2=allReviewTurns(r);
       const ctr=document.getElementById('trv-counter');
-      const confirmed2=r.turns||[];
       if(ctr)ctr.textContent=`${(UI.turnReviewIdx||0)+1} / ${all2.length}`;
-      const lbl=document.querySelector('#turn-review-overlay .trv-src-lbl');
-      if(lbl)lbl.textContent=`${confirmed2.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}`;
+      const lbl=document.querySelector('.trv-src-lbl');
+      if(lbl)lbl.textContent=`${r.turns.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}`;
       redrawMap('turn-review-map');
     });
     goToTurnReviewIdx(0);
@@ -5185,7 +5201,7 @@ function tRoutes(r){
         return`<div class="banner ok-bright" style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
           <span>↩ ${r.turns.length} turn${r.turns.length!==1?'s':''} (${src})</span>
           <div style="display:flex;gap:6px;flex-shrink:0;">
-            <button class="btn btn-sm" id="btn-review-turns">🗺 Review</button>
+            <button class="btn btn-sm" id="btn-review-turns">Review Turns</button>
             <button class="btn btn-sm" id="btn-auto-turns">↺ Re-detect</button>
           </div>
         </div>`;
@@ -7408,9 +7424,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
-  if(e.target.id==='trv-exit'){exitTurnReview();return;}
-  if(e.target.id==='trv-next'){goToTurnReviewIdx((UI.turnReviewIdx||0)+1);return;}
-  if(e.target.id==='trv-prev'){goToTurnReviewIdx((UI.turnReviewIdx||0)-1);return;}
   if(e.target.id==='btn-review-turns'){const r=cur();if(r)enterTurnReview();return;}
   if(e.target.closest('#btn-auto-turns')&&r){
     if(UI.simRunning||UI.simPaused)simStop();
