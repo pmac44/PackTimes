@@ -7470,6 +7470,10 @@ async function geocodeStop(stop,lat,lon,r){
 //  INIT
 // ═══════════════════════════════════════════
 loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
+  // Kill any leftover sim state from a previous PWA session
+  if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
+  UI.simRunning=false;UI.simPaused=false;_simPts=null;_simIdx=0;
+  UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;
   initDesktop();render();
   // Auto-load from Dropbox if connected and cloud is newer
   if(UI.dbxToken)dbxAutoLoad();
