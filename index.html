@@ -845,125 +845,110 @@ function bearing(a,b){
 }
 function angleDiff(a,b){let d=((b-a)+540)%360-180;return d;}
 function autoDetectTurns(pts){
-  if(pts.length<10)return[];
+  if(pts.length<20)return[];
   const totalDist=pts[pts.length-1].dist;
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-  // Find the point index closest to a given distance
-  function idxAt(dist){
-    let lo=0,hi=pts.length-1;
-    while(lo<hi){const mid=(lo+hi)>>1;pts[mid].dist<dist?lo=mid+1:hi=mid;}
-    return lo;
-  }
-  // Bearing of route at a given distance, averaged over ±lookKm either side
-  // Uses distance-based window so it works equally on dense and sparse trackpoints
-  function bearingAt(dist,lookKm){
-    const d0=Math.max(0,dist-lookKm),d1=Math.min(totalDist,dist+lookKm);
-    const a=pts[idxAt(d0)],b=pts[idxAt(d1)];
-    return bearing(a,b);
+  // ── Step 1: compute smoothed bearing at each point ──────────────────────
+  // For each point, average the bearing over the next SMOOTH_KM of trackpoints.
+  // Distance-based so it works on both dense and sparse GPX files.
+  const SMOOTH_KM=0.10; // 100m smoothing window
+  const smoothed=[]; // smoothed[i] = average bearing heading forward from pts[i]
+  for(let i=0;i<pts.length;i++){
+    // Find the point ~SMOOTH_KM ahead
+    const target=pts[i].dist+SMOOTH_KM;
+    let j=i+1;
+    while(j<pts.length-1&&pts[j].dist<target)j++;
+    smoothed.push(bearing(pts[i],pts[j]));
   }
 
-  // ── Pass 1: candidate detection ──────────────────────────────────────────
-  // Slide along the route at 15m steps. At each point compare bearing
-  // 60m before to bearing 60m after. Flag anything ≥30° as a candidate.
-  const STEP_KM=0.015;       // 15m steps
-  const LOOK_KM=0.06;        // bearing window: 60m each side
-  const MIN_ANGLE=30;        // minimum total bearing change to consider
+  // ── Step 2: find bearing step-changes ───────────────────────────────────
+  // Slide along looking for places where the smoothed bearing changes by
+  // more than MIN_TURN_DEG over a short distance (CHANGE_KM).
+  const MIN_TURN_DEG=40;  // minimum angle to consider a turn
+  const CHANGE_KM=0.05;   // step change must happen within 50m
   const candidates=[];
-  for(let dist=LOOK_KM;dist<=totalDist-LOOK_KM;dist+=STEP_KM){
-    const b1=bearingAt(dist-LOOK_KM*0.5,LOOK_KM*0.5);
-    const b2=bearingAt(dist+LOOK_KM*0.5,LOOK_KM*0.5);
-    const diff=angleDiff(b1,b2);
-    if(Math.abs(diff)>=MIN_ANGLE){
-      candidates.push({dist,diff});
+  for(let i=1;i<pts.length-1;i++){
+    // Find point CHANGE_KM ahead
+    let j=i;
+    while(j<pts.length-1&&pts[j].dist-pts[i].dist<CHANGE_KM)j++;
+    const diff=angleDiff(smoothed[i],smoothed[j]);
+    if(Math.abs(diff)>=MIN_TURN_DEG){
+      candidates.push({i,dist:pts[i].dist,diff});
     }
   }
 
-  // ── Pass 2: cluster candidates into single turn events ───────────────────
-  // Group candidates within 80m of each other, keeping the peak angle in each group
+  // ── Step 3: cluster candidates into single turn events ──────────────────
   const CLUSTER_KM=0.08;
   const clustered=[];
-  let i=0;
-  while(i<candidates.length){
-    let peak=candidates[i];
-    let j=i+1;
-    // Extend cluster while next candidate is within CLUSTER_KM of cluster START
-    while(j<candidates.length&&candidates[j].dist-candidates[i].dist<CLUSTER_KM){
-      if(Math.abs(candidates[j].diff)>Math.abs(peak.diff))peak=candidates[j];
-      j++;
+  let ci=0;
+  while(ci<candidates.length){
+    let peak=candidates[ci];
+    let cj=ci+1;
+    while(cj<candidates.length&&candidates[cj].dist-candidates[ci].dist<CLUSTER_KM){
+      if(Math.abs(candidates[cj].diff)>Math.abs(peak.diff))peak=candidates[cj];
+      cj++;
     }
     clustered.push(peak);
-    i=j;
+    ci=cj;
   }
 
-  // ── Pass 3: sharpness test — confirm it's a junction, not a curve ─────────
-  // A real turn concentrates most of its bearing change over a short distance.
-  // Central zone: 40m either side of apex (80m total)
-  // Outer zone: 100m either side (200m total)
-  // If the central zone contains >45% of the total change, it's a junction turn.
-  const CENTRAL_KM=0.04;    // 40m either side = 80m central zone
-  const OUTER_KM=0.10;      // 100m either side = 200m full window
-  const CONCENTRATION=0.45;
+  // ── Step 4: stability test — require straight sections before AND after ──
+  // The key insight: a real junction turn has two stable straight sections
+  // on either side. A curve or wiggle does not.
+  // "Stable" = bearing variance over STABLE_KM is less than STABLE_TOL degrees.
+  const STABLE_KM=0.12;   // must be straight for 120m before and after
+  const STABLE_TOL=25;    // bearing can wander up to 25° and still count as straight
+
+  function bearingVariance(fromDist,toDist){
+    // Returns the total bearing spread (max - min) over a stretch of route
+    const from=Math.max(0,fromDist),to=Math.min(totalDist,toDist);
+    const section=pts.filter(p=>p.dist>=from&&p.dist<=to);
+    if(section.length<2)return 0;
+    const bearings=[];
+    for(let k=0;k<section.length-1;k++){
+      bearings.push(bearing(section[k],section[k+1]));
+    }
+    // Use circular variance: find the range accounting for 0/360 wrap
+    let min=bearings[0],max=bearings[0];
+    bearings.forEach(b=>{
+      // Normalise all bearings relative to the first one
+      let d=angleDiff(bearings[0],b);
+      if(d<min-bearings[0])min=bearings[0]+d;
+      if(d>max-bearings[0])max=bearings[0]+d;
+    });
+    return Math.abs(max-min);
+  }
 
   const confirmed=[];
   for(const c of clustered){
-    const outerBefore=bearingAt(c.dist-OUTER_KM*0.5, OUTER_KM*0.5);
-    const outerAfter =bearingAt(c.dist+OUTER_KM*0.5, OUTER_KM*0.5);
-    const totalChange=Math.abs(angleDiff(outerBefore,outerAfter));
-    if(totalChange<MIN_ANGLE)continue;
-
-    const centralBefore=bearingAt(c.dist-CENTRAL_KM*0.5, CENTRAL_KM*0.5);
-    const centralAfter =bearingAt(c.dist+CENTRAL_KM*0.5, CENTRAL_KM*0.5);
-    const centralChange=Math.abs(angleDiff(centralBefore,centralAfter));
-
-    const concentration=totalChange>0?centralChange/totalChange:0;
-    if(concentration>=CONCENTRATION){
-      confirmed.push({...c,totalAngle:totalChange,centralAngle:centralChange});
+    const varBefore=bearingVariance(c.dist-STABLE_KM,c.dist-0.01);
+    const varAfter =bearingVariance(c.dist+0.01,c.dist+STABLE_KM);
+    if(varBefore<=STABLE_TOL&&varAfter<=STABLE_TOL){
+      confirmed.push(c);
     }
   }
 
-  // ── Pass 4: suppress recoveries (chicanes/wiggles) ────────────────────────
-  // If bearing 150m after the turn is within 25° of bearing 150m before,
-  // the route straightened out — it's a wiggle, not a real navigation turn.
-  const RECOVERY_KM=0.15;
-  const RECOVERY_TOL=25;
-  const real=[];
-  for(const c of confirmed){
-    const bBefore=bearingAt(c.dist-RECOVERY_KM,LOOK_KM);
-    const bAfter =bearingAt(c.dist+RECOVERY_KM,LOOK_KM);
-    const recovery=Math.abs(angleDiff(bBefore,bAfter));
-    if(recovery>RECOVERY_TOL){
-      real.push(c);
-    }
-  }
-
-  // ── Pass 5: suppress turns too close together (< 60m) ────────────────────
-  const MIN_SEP_KM=0.06;
+  // ── Step 5: minimum separation ──────────────────────────────────────────
+  const MIN_SEP_KM=0.10;
   const separated=[];
   let lastDist=-999;
-  for(const c of real){
+  for(const c of confirmed){
     if(c.dist-lastDist>=MIN_SEP_KM){
       separated.push(c);
       lastDist=c.dist;
-    } else {
-      // Keep the sharper one
-      if(separated.length&&Math.abs(c.totalAngle)>Math.abs(separated[separated.length-1].totalAngle)){
-        separated[separated.length-1]=c;
-        lastDist=c.dist;
-      }
+    } else if(separated.length&&Math.abs(c.diff)>Math.abs(separated[separated.length-1].diff)){
+      separated[separated.length-1]=c;
+      lastDist=c.dist;
     }
   }
 
-  // ── Pass 6: classify and build turn objects ───────────────────────────────
+  // ── Step 6: classify ────────────────────────────────────────────────────
   return separated.map(c=>{
-    const p=pts[idxAt(c.dist)];
-    const diff=c.diff; // signed: negative=left, positive=right
-    const angle=c.totalAngle;
-    const type=diff<0?'Left':'Right';
+    const p=pts[c.i];
+    const angle=Math.abs(c.diff);
+    const type=c.diff<0?'Left':'Right';
     const sharpness=angle>110?'Sharp ':angle>60?'':'Slight ';
-    const isSwitchback=angle>140;
-    const notes=isSwitchback?'Switchback':(sharpness+type.toLowerCase()+' turn');
-    return{lat:p.lat,lon:p.lon,dist:p.dist,type,name:'',notes,auto:true};
+    return{lat:p.lat,lon:p.lon,dist:p.dist,type,name:'',notes:sharpness+type.toLowerCase()+' turn',auto:true};
   });
 }
 function elevGain(pts){
@@ -5106,10 +5091,13 @@ function tRoutes(r){
     <button class="btn btn-sm btn-full" style="margin-top:8px;" id="btn-demo">▶ Load demo route</button>
     ${r?(()=>{
       const hasTurns=r.turns&&r.turns.length>0;
-      const turnBanner=hasTurns
-        ?`<button class="btn btn-sm" style="margin-top:8px;" id="btn-auto-turns">↩ Re-detect turns</button>`
-        :`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><div style="flex:1;"><span>No turns detected.</span><div style="margin-top:6px;"><button class="btn btn-sm" id="btn-auto-turns">↩ Re-detect turns</button></div></div></div>`;
-      return turnBanner;
+      if(hasTurns){
+        const autoCount=r.turns.filter(t=>t.auto).length;
+        const fileCount=r.turns.length-autoCount;
+        const src=fileCount>0&&autoCount===0?'from file':fileCount>0?`${fileCount} from file, ${autoCount} auto`:'auto-detected';
+        return`<div class="banner ok-bright" style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;"><span>↩ ${r.turns.length} turn${r.turns.length!==1?'s':''} (${src})</span><button class="btn btn-sm" id="btn-auto-turns">Re-detect</button></div>`;
+      }
+      return`<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;"><div style="font-weight:600;margin-bottom:3px;">No turn navigation</div><div style="font-size:14px;line-height:1.5;">For best results export as <strong>TCX</strong> from RWGPS or Komoot. PackTimes will also attempt to auto-detect clear 90° turns from GPX geometry.</div><button class="btn btn-sm" id="btn-auto-turns" style="margin-top:6px;">↩ Run turn detection</button></div></div>`;
     })():''}
     `:''}
   </div>
@@ -7752,20 +7740,10 @@ function _applyGPXRoute(result,name,sourceId,existingIdx,stops){
   r.cumRiding=buildCumRiding(result.pts,r.paceSegs||[]);
   r.stops=stops;
   r.turns=result.turns||[];
-  // Always run auto-detection. For GPX/KML/FIT (no embedded turns) this is the
-  // only source. For TCX with embedded turns, merge both — auto catches what the
-  // exporter missed, embedded adds named waypoints.
-  const autoTurns=autoDetectTurns(r.points);
+  // For files with no embedded turns (GPX/KML/FIT), run auto-detection.
+  // For TCX with embedded turns, trust the file — it has road-network-derived cues.
   if(r.turns.length===0){
-    r.turns=autoTurns;
-  } else {
-    const merged=[...r.turns];
-    autoTurns.forEach(at=>{
-      const nearby=merged.some(et=>Math.abs(et.dist-at.dist)<0.08);
-      if(!nearby)merged.push(at);
-    });
-    merged.sort((a,b)=>a.dist-b.dist);
-    r.turns=merged;
+    r.turns=autoDetectTurns(r.points);
   }
   UI.tab='routes';UI.opStatus='idle';
   delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
