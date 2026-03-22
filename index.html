@@ -2684,7 +2684,8 @@ function hitTest(cvs,cx,cy,cb){
 function mapCtrlHTML(mapId,showGPS){
   const isStopsMobile=mapId==='stops-map'&&!IS_DESKTOP();
   const isLiveMobile=mapId==='live-map'&&!IS_DESKTOP();
-  const pos=(isStopsMobile||isLiveMobile)?'top:auto;bottom:8px;right:8px;left:auto;transform:none;':'';
+  // Live map: raise buttons above the weather bar overlay (~34px collapsed)
+  const pos=isLiveMobile?'top:auto;bottom:46px;right:8px;left:auto;transform:none;':isStopsMobile?'top:auto;bottom:8px;right:8px;left:auto;transform:none;':'';
   const btnSize=isLiveMobile?'width:48px;height:48px;font-size:22px;':'';
   const gpsBtn=UI.gpsActive?
     `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
