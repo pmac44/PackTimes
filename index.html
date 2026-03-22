@@ -893,16 +893,40 @@ function autoDetectTurns(pts){
     }
   }
 
-  return separated.map(c=>{
-    // Place marker at midpoint between detection point and 50m-ahead point
-    // so it sits at the apex of the turn rather than the approach
+  const makeTurn=(c,nm=false)=>{
     const mid=Math.round((c.i+fwd05[c.i])/2);
     const p=pts[mid];
     const angle=Math.abs(c.diff);
     const type=c.diff<0?'Left':'Right';
     const sharpness=angle>110?'Sharp ':angle>60?'':'Slight ';
-    return{lat:p.lat,lon:p.lon,dist:p.dist,type,name:'',notes:sharpness+type.toLowerCase()+' turn',auto:true};
-  });
+    return{lat:p.lat,lon:p.lon,dist:p.dist,type,name:'',notes:sharpness+type.toLowerCase()+' turn',auto:true,nearMiss:nm};
+  };
+
+  // Near-miss candidates: 25-37°, passed recovery filter — shown faded in review mode
+  const NEAR_MISS_MIN=25;
+  const nmCandidates=[];
+  for(let i=1;i<pts.length-2;i++){
+    const diff=angleDiff(sm[i],sm[fwd05[i]]);
+    if(Math.abs(diff)>=NEAR_MISS_MIN&&Math.abs(diff)<MIN_TURN_DEG)nmCandidates.push({i,dist:pts[i].dist,diff});
+  }
+  const nmClustered=[];let nci=0;
+  while(nci<nmCandidates.length){
+    let peak=nmCandidates[nci];let ncj=nci+1;
+    while(ncj<nmCandidates.length&&nmCandidates[ncj].dist-nmCandidates[nci].dist<0.08){
+      if(Math.abs(nmCandidates[ncj].diff)>Math.abs(peak.diff))peak=nmCandidates[ncj];ncj++;
+    }
+    nmClustered.push(peak);nci=ncj;
+  }
+  const nearMiss=[];let nmLastDist=-999;
+  for(const c of nmClustered){
+    const committed=Math.abs(angleDiff(sm[bck15[c.i]],sm[fwd15[c.i]]));
+    if(committed>=RECOVERY_TOL&&c.dist-nmLastDist>=0.06){
+      const nearConfirmed=separated.some(s=>Math.abs(s.dist-c.dist)<0.08);
+      if(!nearConfirmed){nearMiss.push(makeTurn(c,true));nmLastDist=c.dist;}
+    }
+  }
+
+  return{turns:separated.map(c=>makeTurn(c,false)),nearMiss};
 }
 function elevGain(pts){
   // Use a rolling threshold to filter GPS noise — only count gain after 10m continuous climb
