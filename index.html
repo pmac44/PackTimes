@@ -848,36 +848,65 @@ function autoDetectTurns(pts){
   if(pts.length<20)return[];
   const totalDist=pts[pts.length-1].dist;
 
-  // ── Step 1: compute smoothed bearing at each point ──────────────────────
-  // For each point, average the bearing over the next SMOOTH_KM of trackpoints.
-  // Distance-based so it works on both dense and sparse GPX files.
-  const SMOOTH_KM=0.10; // 100m smoothing window
-  const smoothed=[]; // smoothed[i] = average bearing heading forward from pts[i]
-  for(let i=0;i<pts.length;i++){
-    // Find the point ~SMOOTH_KM ahead
-    const target=pts[i].dist+SMOOTH_KM;
-    let j=i+1;
-    while(j<pts.length-1&&pts[j].dist<target)j++;
-    smoothed.push(bearing(pts[i],pts[j]));
+  // ── Pre-compute: for each point, find the index of the point ~D km ahead ──
+  // Build a forward-lookup array once, O(n), using a sliding pointer.
+  function buildForwardIdx(kmAhead){
+    const idx=new Int32Array(pts.length);
+    let j=0;
+    for(let i=0;i<pts.length;i++){
+      if(j<i)j=i;
+      while(j<pts.length-1&&pts[j].dist-pts[i].dist<kmAhead)j++;
+      idx[i]=j;
+    }
+    return idx;
   }
 
-  // ── Step 2: find bearing step-changes ───────────────────────────────────
-  // Slide along looking for places where the smoothed bearing changes by
-  // more than MIN_TURN_DEG over a short distance (CHANGE_KM).
-  const MIN_TURN_DEG=40;  // minimum angle to consider a turn
-  const CHANGE_KM=0.05;   // step change must happen within 50m
+  const fwd10=buildForwardIdx(0.10); // 100m ahead — for smoothed bearing
+  const fwd05=buildForwardIdx(0.05); // 50m ahead — for step-change detection
+  const fwd12=buildForwardIdx(0.12); // 120m ahead — for stability check
+
+  // ── Pre-compute smoothed bearing at each point (bearing to point 100m ahead) ──
+  const sm=new Float32Array(pts.length);
+  for(let i=0;i<pts.length;i++) sm[i]=bearing(pts[i],pts[fwd10[i]]);
+
+  // ── Pre-compute bearing variance over next 120m at each point ──────────
+  // variance[i] = max bearing spread between pts[i] and pts[fwd12[i]]
+  const variance=new Float32Array(pts.length);
+  for(let i=0;i<pts.length;i++){
+    const end=fwd12[i];
+    if(end<=i+1){variance[i]=0;continue;}
+    let minD=0,maxD=0;
+    const b0=sm[i];
+    for(let k=i+1;k<=end;k++){
+      const d=angleDiff(b0,sm[k]);
+      if(d<minD)minD=d;
+      if(d>maxD)maxD=d;
+    }
+    variance[i]=maxD-minD;
+  }
+
+  // ── Scan for step-changes ───────────────────────────────────────────────
+  // At each point, compare smoothed bearing now vs 50m ahead.
+  // Flag if change >= MIN_TURN_DEG and both the 120m before and 120m after
+  // are stable (low variance = straight road).
+  const MIN_TURN_DEG=45;
+  const STABLE_TOL=22;   // degrees — how much bearing can wander and still be "straight"
+
   const candidates=[];
   for(let i=1;i<pts.length-1;i++){
-    // Find point CHANGE_KM ahead
-    let j=i;
-    while(j<pts.length-1&&pts[j].dist-pts[i].dist<CHANGE_KM)j++;
-    const diff=angleDiff(smoothed[i],smoothed[j]);
-    if(Math.abs(diff)>=MIN_TURN_DEG){
+    const diff=angleDiff(sm[i],sm[fwd05[i]]);
+    if(Math.abs(diff)<MIN_TURN_DEG)continue;
+    // Find index 120m before i
+    let back=i;
+    while(back>0&&pts[i].dist-pts[back].dist<0.12)back--;
+    const varBefore=variance[back];
+    const varAfter=variance[i];
+    if(varBefore<=STABLE_TOL&&varAfter<=STABLE_TOL){
       candidates.push({i,dist:pts[i].dist,diff});
     }
   }
 
-  // ── Step 3: cluster candidates into single turn events ──────────────────
+  // ── Cluster within 80m, keep peak ──────────────────────────────────────
   const CLUSTER_KM=0.08;
   const clustered=[];
   let ci=0;
@@ -892,57 +921,18 @@ function autoDetectTurns(pts){
     ci=cj;
   }
 
-  // ── Step 4: stability test — require straight sections before AND after ──
-  // The key insight: a real junction turn has two stable straight sections
-  // on either side. A curve or wiggle does not.
-  // "Stable" = bearing variance over STABLE_KM is less than STABLE_TOL degrees.
-  const STABLE_KM=0.12;   // must be straight for 120m before and after
-  const STABLE_TOL=25;    // bearing can wander up to 25° and still count as straight
-
-  function bearingVariance(fromDist,toDist){
-    // Returns the total bearing spread (max - min) over a stretch of route
-    const from=Math.max(0,fromDist),to=Math.min(totalDist,toDist);
-    const section=pts.filter(p=>p.dist>=from&&p.dist<=to);
-    if(section.length<2)return 0;
-    const bearings=[];
-    for(let k=0;k<section.length-1;k++){
-      bearings.push(bearing(section[k],section[k+1]));
-    }
-    // Use circular variance: find the range accounting for 0/360 wrap
-    let min=bearings[0],max=bearings[0];
-    bearings.forEach(b=>{
-      // Normalise all bearings relative to the first one
-      let d=angleDiff(bearings[0],b);
-      if(d<min-bearings[0])min=bearings[0]+d;
-      if(d>max-bearings[0])max=bearings[0]+d;
-    });
-    return Math.abs(max-min);
-  }
-
-  const confirmed=[];
-  for(const c of clustered){
-    const varBefore=bearingVariance(c.dist-STABLE_KM,c.dist-0.01);
-    const varAfter =bearingVariance(c.dist+0.01,c.dist+STABLE_KM);
-    if(varBefore<=STABLE_TOL&&varAfter<=STABLE_TOL){
-      confirmed.push(c);
-    }
-  }
-
-  // ── Step 5: minimum separation ──────────────────────────────────────────
-  const MIN_SEP_KM=0.10;
+  // ── Minimum separation 100m ─────────────────────────────────────────────
   const separated=[];
   let lastDist=-999;
-  for(const c of confirmed){
-    if(c.dist-lastDist>=MIN_SEP_KM){
-      separated.push(c);
-      lastDist=c.dist;
+  for(const c of clustered){
+    if(c.dist-lastDist>=0.10){
+      separated.push(c);lastDist=c.dist;
     } else if(separated.length&&Math.abs(c.diff)>Math.abs(separated[separated.length-1].diff)){
-      separated[separated.length-1]=c;
-      lastDist=c.dist;
+      separated[separated.length-1]=c;lastDist=c.dist;
     }
   }
 
-  // ── Step 6: classify ────────────────────────────────────────────────────
+  // ── Classify ────────────────────────────────────────────────────────────
   return separated.map(c=>{
     const p=pts[c.i];
     const angle=Math.abs(c.diff);
