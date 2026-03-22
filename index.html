@@ -1953,8 +1953,7 @@ function drawMap(cvs,r,opts){
   opts=opts||{};
   if(!r||!r.points.length)return;
   const dpr=devicePixelRatio||1,W=cvs.offsetWidth,H=cvs._forcedH||cvs.offsetHeight||220;
-  // Only update canvas pixel dimensions if they changed — avoids forced reflow on every GPS tick
-  if(cvs.width!==Math.round(W*dpr)||cvs.height!==Math.round(H*dpr)){cvs.width=Math.round(W*dpr);cvs.height=Math.round(H*dpr);}
+  cvs.width=W*dpr;cvs.height=H*dpr;
   const ctx=cvs.getContext('2d');ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,W,H);
   const pts=r.points;
@@ -4685,8 +4684,9 @@ function initLiveMap(r){
     }
     if(!_livePeekTimer)drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
   };
-  // Call immediately for initial size, then again after DOM settles with real strip heights
+  // Call immediately, then again after layout settles (sidebar/strips may not have final dimensions yet)
   sizeLiveMap();
+  setTimeout(sizeLiveMap, 200);
   // Re-size when address bar retracts/appears — debounced to prevent rapid iOS resize loops
   let _sizeDebounce=null;
   const debouncedSize=()=>{if(_sizeDebounce)clearTimeout(_sizeDebounce);_sizeDebounce=setTimeout(sizeLiveMap,150);};
