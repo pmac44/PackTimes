@@ -4659,6 +4659,11 @@ function tLiveShell(r){
         const orBadge=s.offRouteM?' <span style="font-size:16px;color:var(--text3);">('+( s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km')+' off route)</span>':'';
         const st=shopSt(s,r);
         const hasSt=s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='hut'||s.type==='pub'||s.type==='fuel';
+        const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+        const now2=(UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
+        const remMs2=eta?eta-now2:null;
+        const remH2=remMs2?remMs2/3600000:null;
+        const remStr2=remH2!==null&&remH2>0?(remH2<1?(Math.round(remH2*60)+'min'):(Math.floor(remH2)+'h'+(Math.round((remH2%1)*60)>0?' '+Math.round((remH2%1)*60)+'m':''))):'';
         const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='stop'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':
           hasSt&&s.ohRules?(st==='open'?'background:rgba(74,222,128,0.18);border-color:rgba(74,222,128,0.55);':st==='closed'?'background:rgba(248,113,113,0.18);border-color:rgba(248,113,113,0.55);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':'<span class="s-uk">? Hours unknown</span>'):'';
@@ -4667,10 +4672,15 @@ function tLiveShell(r){
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
             <div class="si-name">${s.name}${orBadge}</div>
-            <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
-            ${stEl?`<div class="si-st">${stEl}</div>`:''}
+            <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${(s.dist-liveDist).toFixed(1)} km</span> · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
+            ${stEl?`<div class="si-st" style="margin-top:2px;">${stEl}</div>`:''}
+            ${hasSleep?`<div style="margin-top:2px;font-size:14px;color:#b39ddb;">😴 ${s.sleepH||10}h bivi</div>`:''}
           </div>
-          <div class="si-time" id="eta-${s.id}">${timeStr}${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}</div>
+          <div class="si-time" style="text-align:right;flex-shrink:0;" id="eta-${s.id}">
+            <div style="font-size:16px;font-weight:600;color:var(--text);font-family:var(--font);">${timeStr}</div>
+            ${remStr2?`<div style="font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);">in ${remStr2}</div>`:''}
+            ${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}
+          </div>
         </div>`;
       }
     });
@@ -6566,13 +6576,24 @@ function updateLive(){
           const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
           const orBadge=s.offRouteM>50?`<span style="font-size:13px;color:var(--text3);"> (${s.offRouteM}m off route)</span>`:'';
           const tileBg=s.type==='sleep'||s.sleepAt?'background:rgba(60,40,120,0.55);border-color:rgba(130,100,220,0.6);':s.type==='stop'?'background:rgba(80,65,45,0.45);border-color:rgba(148,133,106,0.6);':'';
+          const hasSt=s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='hut'||s.type==='pub'||s.type==='fuel';
+          const st=shopSt(s,r2);
+          const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open at ETA</span>':st==='closed'?'<span class="s-cl">✗ May be closed</span>':'<span class="s-uk">? Hours unknown</span>'):'';
+          const ohHint=s.ohRaw?'<span style="color:var(--text3);font-size:14px;"> · '+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
+          const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+          const sleepEl=hasSleep?`<span style="font-size:14px;color:#b39ddb;">😴 ${s.sleepH||10}h bivi</span>`:'';
           return`<div class="si live-stop" style="${tileBg}">
             <div class="sdot d-${s.type}"></div>
             <div class="si-inf">
               <div class="si-name">${s.name}${orBadge}</div>
-              <div class="si-meta">${dt} km · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span></div>
+              <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${dt} km</span> · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
+              ${stEl?`<div class="si-st" style="margin-top:2px;">${stEl}</div>`:''}
+              ${sleepEl?`<div style="margin-top:2px;">${sleepEl}</div>`:''}
             </div>
-            <div class="si-eta">${timeStr}${remStr?`<div style="font-size:17px;font-weight:600;color:var(--accent);font-family:var(--font);">in ${remStr}</div>`:''}</div>
+            <div class="si-eta" style="text-align:right;flex-shrink:0;">
+              <div style="font-size:16px;font-weight:600;color:var(--text);font-family:var(--font);">${timeStr}</div>
+              ${remStr?`<div style="font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);">in ${remStr}</div>`:''}
+            </div>
           </div>`;
         }).join('');
       })();
