@@ -2433,7 +2433,9 @@ function redrawMap(id){
     drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:state._peekAnchor||0.65,rotate:true,highlightId:_highlightStopId});
     return;
   }
-  drawMap(cvs,r,{showGPS:isLive,followGPS:false,anchor:isLive?0.65:0.5,highlightId:_highlightStopId});
+  // Use 0.5 anchor when fitting (cx=cy=null), 0.65 when GPS is active so position sits higher
+  const liveAnchor=isLive?(()=>{const st=ms('live-map');return(st.cx===null||st.cy===null)?0.5:0.65;})():0.5;
+  drawMap(cvs,r,{showGPS:isLive,followGPS:false,anchor:liveAnchor,highlightId:_highlightStopId});
   if(IS_DESKTOP())renderDesktopMap();
 }
 
@@ -4519,15 +4521,7 @@ function tLiveShell(r){
         </div>`;
       }
     });
-    if(UI.gpsActive&&!IS_DESKTOP()){
-      html+=`<div class="card" style="border-color:rgba(248,113,113,.25);">
-        <div class="ctitle" style="color:var(--red);">Simulate Position (demo)</div>
-        <div class="slr">
-          <input type="range" id="sim-sl" min="0" max="${r.totalDist.toFixed(0)}" step="0.5" value="${liveDist.toFixed(1)}">
-          <span class="slv">${liveDist.toFixed(1)}km</span>
-        </div>
-      </div>`;
-    }
+
     return html;
   })();
 
