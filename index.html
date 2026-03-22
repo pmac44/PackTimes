@@ -6444,8 +6444,10 @@ function updateLive(){
       if(distM<=0){tp.remove();}
     }
   } else if(UI.gpsActive&&r.turns&&r.turns.length){
-    // Check if we need to show a new turn popup
-    render();
+    // Only render if a turn is actually within alert distance — not on every GPS tick
+    const alertDistKm2=(UI.turnAlertM||30)/1000;
+    const needsTurn=r.turns.some(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm2&&!t._dismissed);
+    if(needsTurn)render();
   }
   if(!_livePeekTimer){
     const mc=document.getElementById('live-map');
