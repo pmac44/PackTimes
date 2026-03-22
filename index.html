@@ -4028,15 +4028,19 @@ function buildLiveStrip(r,liveDist,sdt){
   const add=(s,reason)=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);rowReason[s.id]=reason||'type';}};
   add(ahead[0],'type'); // next stop always first
   add(ahead.find(s=>s.type==='sleep'||s.sleepAt),'type'); // next sleep
-  // Slot 3: next water point (explicit drinking water only)
-  add(ahead.find(s=>s.type==='water'),'type');
-  // Slot 4: next resupply — priority: confirmed primary > confirmed fuel > unconfirmed primary > unconfirmed fuel
-  const isPrimary=s=>s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='pub';
+  // Slot 3: next water — explicit water point OR nearest town (towns reliably have water)
+  const nextWater=
+    ahead.find(s=>s.type==='water')||           // explicit drinking water — most specific
+    ahead.find(s=>s.type==='town');              // town as water fallback
+  add(nextWater,'type');
+  // Slot 4: next resupply — town outranks individual food/fuel; confirmed outranks unconfirmed
   const nextResupply=
-    ahead.find(s=>isPrimary(s)&&s.ohRaw)||    // confirmed primary
-    ahead.find(s=>s.type==='fuel'&&s.ohRaw)||  // confirmed fuel
-    ahead.find(s=>isPrimary(s))||              // unconfirmed primary
-    ahead.find(s=>s.type==='fuel');             // unconfirmed fuel — last resort
+    ahead.find(s=>s.type==='town'&&s.ohRaw)||          // confirmed town — best resupply
+    ahead.find(s=>(s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom')&&s.ohRaw)|| // confirmed food/drink
+    ahead.find(s=>s.type==='fuel'&&s.ohRaw)||          // confirmed fuel
+    ahead.find(s=>s.type==='town')||                   // unconfirmed town
+    ahead.find(s=>s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom')|| // unconfirmed food/drink
+    ahead.find(s=>s.type==='fuel');                    // unconfirmed fuel — last resort
   add(nextResupply,'type'); // next resupply
   rows.sort((a,b)=>a.dist-b.dist); // always show in distance order
   const now=etaAt(liveDist,r)||sdt||new Date(); // always use route time, never wall clock
