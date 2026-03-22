@@ -4028,12 +4028,8 @@ function buildLiveStrip(r,liveDist,sdt){
   const add=(s,reason)=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);rowReason[s.id]=reason||'type';}};
   add(ahead[0],'type'); // next stop always first
   add(ahead.find(s=>s.type==='sleep'||s.sleepAt),'type'); // next sleep
-  // Slot 3: next water — explicit water point OR nearest town (towns reliably have water)
-  const nextWater=
-    ahead.find(s=>s.type==='water')||           // explicit drinking water — most specific
-    ahead.find(s=>s.type==='town');              // town as water fallback
-  add(nextWater,'type');
   // Slot 4: next resupply — town outranks individual food/fuel; confirmed outranks unconfirmed
+  const isResupplyType=s=>s.type==='town'||s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom'||s.type==='fuel';
   const nextResupply=
     ahead.find(s=>s.type==='town'&&s.ohRaw)||          // confirmed town — best resupply
     ahead.find(s=>(s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom')&&s.ohRaw)|| // confirmed food/drink
@@ -4041,7 +4037,14 @@ function buildLiveStrip(r,liveDist,sdt){
     ahead.find(s=>s.type==='town')||                   // unconfirmed town
     ahead.find(s=>s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom')|| // unconfirmed food/drink
     ahead.find(s=>s.type==='fuel');                    // unconfirmed fuel — last resort
-  add(nextResupply,'type'); // next resupply
+  add(nextResupply,'type');
+  // Slot 3: next water — only show if it's before or not covered by the resupply stop
+  // A confirmed open resupply stop (town/hotel/pub) covers water — skip the water slot
+  const resupplyCoversWater=nextResupply&&(nextResupply.type==='town'||(nextResupply.ohRaw&&(nextResupply.type==='pub'||nextResupply.type==='accom'||nextResupply.type==='food'||nextResupply.type==='shop')));
+  const nextWater=resupplyCoversWater?null:
+    ahead.find(s=>s.type==='water')||           // explicit drinking water
+    ahead.find(s=>s.type==='town');              // town as water fallback
+  add(nextWater,'type'); // next water
   rows.sort((a,b)=>a.dist-b.dist); // always show in distance order
   const now=etaAt(liveDist,r)||sdt||new Date(); // always use route time, never wall clock
   const html=rows.map(s=>{
@@ -5381,7 +5384,7 @@ function weatherPillHTML(code,temp,label){
   const isHeavyRain=code>=65&&code<80;
   const isRain=wmoIsRainy(code)&&!isStorm;
   const isCloud=code>=3&&code<51;
-  const bg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(120,70,0,1)';
+  const bg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(202,138,4,1)';
   const tc=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fefce8';
   return`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
     <div style="background:${bg};border-radius:6px;padding:5px 10px;min-width:48px;text-align:center;">
@@ -5409,7 +5412,7 @@ function weatherBarHTML(){
   const isHeavyRain=code>=65&&code<80;
   const isRain=wmoIsRainy(code)&&!isStorm;
   const isCloud=code>=3&&code<51;
-  const condBg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(120,70,0,1)';
+  const condBg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(202,138,4,1)';
   const condText=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fefce8';
   const condLabel=isStorm?'Storm':isHeavyRain?'Heavy rain':isRain?'Rain':isCloud?'Cloud':'Clear';
 
