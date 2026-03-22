@@ -5149,10 +5149,10 @@ function tRoutes(r){
     <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
     <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;">
       ${[
-        ['Route','Load a route file (GPX, TCX, KML or FIT)'],
+        ['Route','Load a route file (GPX, TCX, KML or FIT). For turn-by-turn navigation export as TCX from RWGPS or Komoot — PackTimes uses the embedded turn cues for audio alerts while riding'],
         ['Plan','Search OpenStreetMap for stops along the route, or add your own — star the ones you want on your Mission list, add sleep and food to build your supply plan'],
         ['Night','The route line turns black where you\'ll be riding in the dark — add a sleep stop to make it blue again, or turn on your lights!'],
-        ['Ride','Live GPS map with upcoming water, food and sleep stops and arrival times'],
+        ['Ride','Live GPS map with upcoming stops, arrival times, and turn alerts. If your route has no turn data, PackTimes can auto-detect turns from the GPS line — review them before riding'],
         ['Data','Weather updates and data from connected sensors such as power and heart rate are visible as you ride'],
       ].map(([label,text])=>`
         <div style="display:flex;gap:8px;align-items:baseline;">
@@ -5173,7 +5173,7 @@ function tRoutes(r){
           <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
           <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RWGPS, Komoot, Strava, or Garmin Connect. GPX, TCX, KML and FIT files are all supported.</p>
           <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">A plain GPX file of GPS coordinates is ideal. PackTimes calculates your ride time from distance and elevation using a formula calibrated against real bikepacking ride data — this is more reliable than timestamps embedded in exported files, which often encode unrealistic speeds.</p>
-          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy is tied to your ride history on their servers and is not in the exported file. TCX files may carry turn-by-turn navigation data, which PackTimes can use for navigation alerts.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy is tied to your ride history on their servers and is not in the exported file. For turn-by-turn navigation, <strong>TCX format is strongly recommended</strong> — RWGPS and Komoot embed accurate turn cues derived from the road network into TCX exports, which PackTimes uses directly for audio turn alerts on the ride screen.</p>
         </div>
 
         <div style="border-top:1px solid var(--border);"></div>
@@ -5246,17 +5246,22 @@ function tRoutes(r){
         const autoCount=r.turns.filter(t=>t.auto).length;
         const fileCount=r.turns.length-autoCount;
         const src=fileCount>0&&autoCount===0?'from file':fileCount>0?`${fileCount} from file, ${autoCount} auto`:'auto-detected';
-        return`<div class="banner ok-bright" style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-          <span>↩ ${r.turns.length} turn${r.turns.length!==1?'s':''} (${src})</span>
-          <div style="display:flex;gap:6px;flex-shrink:0;">
+        const note=fileCount===0&&autoCount>0?'<div style="font-size:13px;color:var(--text3);margin-top:3px;">Auto-detected — review recommended before riding</div>':'';
+        return`<div class="banner ok-bright" style="margin-top:8px;">
+          <div style="flex:1;">
+            <div>↩ ${r.turns.length} turn${r.turns.length!==1?'s':''} (${src})</div>
+            ${note}
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;margin-top:${note?'4':'0'}px;">
             <button class="btn btn-sm" id="btn-review-turns">Review Turns</button>
             <button class="btn btn-sm" id="btn-auto-turns">↺ Re-detect</button>
           </div>
         </div>`;
       }
       return`<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;">
-        <div style="font-weight:600;margin-bottom:3px;">No turn navigation</div>
-        <div style="font-size:14px;line-height:1.5;margin-bottom:8px;">For best results export as <strong>TCX</strong> from RWGPS or Komoot. Or auto-detect turns from the GPS line.</div>
+        <div style="font-weight:600;margin-bottom:4px;">No turn navigation</div>
+        <div style="font-size:14px;line-height:1.6;margin-bottom:4px;"><strong>Best option:</strong> re-export your route as <strong>TCX</strong> from RWGPS or Komoot. TCX embeds turn cues generated from the road network — accurate left/right/straight instructions at every junction.</div>
+        <div style="font-size:14px;line-height:1.6;margin-bottom:8px;color:var(--text3);">If TCX isn't available, PackTimes can analyse the GPS line and detect probable turns based on bearing changes. This is a fallback — it works well on routes with clear 90° turns on open roads, but may miss turns or add false ones on winding trails. Review detected turns before riding.</div>
         <button class="btn btn-sm btn-p" id="btn-auto-turns">↩ Auto-detect turns</button>
       </div></div>`;
     })():''}
@@ -5426,7 +5431,7 @@ function tSettings(r){
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:16px;">
         <input type="checkbox" id="toggle-turn-audio" ${UI.turnAudio?'checked':''} style="width:18px;height:18px;accent-color:var(--accent);">
-        <span>🔔 Turn audio alerts <span style="font-size:13px;color:var(--text3);">(escalating beeps — left/right/straight tones)</span></span>
+        <span>🔔 Turn audio alerts <span style="font-size:13px;color:var(--text3);">(3-tone sequence — descending = left, ascending = right)</span></span>
       </label>
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:16px;">
         <input type="checkbox" id="toggle-keep-screen" ${UI.keepScreenOn?'checked':''} style="width:18px;height:18px;accent-color:var(--accent);">
