@@ -880,14 +880,15 @@ function autoDetectTurns(pts){
   }
 
   // ── Pass 2: cluster candidates into single turn events ───────────────────
-  // Consecutive candidates within 80m are the same turn — keep the peak
+  // Group candidates within 80m of each other, keeping the peak angle in each group
   const CLUSTER_KM=0.08;
   const clustered=[];
   let i=0;
   while(i<candidates.length){
     let peak=candidates[i];
     let j=i+1;
-    while(j<candidates.length&&candidates[j].dist-candidates[j-1].dist<CLUSTER_KM){
+    // Extend cluster while next candidate is within CLUSTER_KM of cluster START
+    while(j<candidates.length&&candidates[j].dist-candidates[i].dist<CLUSTER_KM){
       if(Math.abs(candidates[j].diff)>Math.abs(peak.diff))peak=candidates[j];
       j++;
     }
@@ -897,22 +898,22 @@ function autoDetectTurns(pts){
 
   // ── Pass 3: sharpness test — confirm it's a junction, not a curve ─────────
   // A real turn concentrates most of its bearing change over a short distance.
-  // Compare angle change in the central 30m vs the full 120m window.
-  // If the central 30m contains >50% of the total change, it's a junction turn.
-  // A sweeping curve distributes change evenly and fails this test.
-  const CENTRAL_KM=0.015;    // 15m either side of apex = 30m central zone
-  const OUTER_KM=0.06;       // 60m either side = 120m full window
-  const CONCENTRATION=0.45;  // central zone must contain this fraction of total change
+  // Central zone: 40m either side of apex (80m total)
+  // Outer zone: 100m either side (200m total)
+  // If the central zone contains >45% of the total change, it's a junction turn.
+  const CENTRAL_KM=0.04;    // 40m either side = 80m central zone
+  const OUTER_KM=0.10;      // 100m either side = 200m full window
+  const CONCENTRATION=0.45;
 
   const confirmed=[];
   for(const c of clustered){
-    const outerBefore=bearingAt(c.dist-OUTER_KM,OUTER_KM*0.4);
-    const outerAfter =bearingAt(c.dist+OUTER_KM,OUTER_KM*0.4);
+    const outerBefore=bearingAt(c.dist-OUTER_KM*0.5, OUTER_KM*0.5);
+    const outerAfter =bearingAt(c.dist+OUTER_KM*0.5, OUTER_KM*0.5);
     const totalChange=Math.abs(angleDiff(outerBefore,outerAfter));
     if(totalChange<MIN_ANGLE)continue;
 
-    const centralBefore=bearingAt(c.dist-CENTRAL_KM,CENTRAL_KM*0.4);
-    const centralAfter =bearingAt(c.dist+CENTRAL_KM,CENTRAL_KM*0.4);
+    const centralBefore=bearingAt(c.dist-CENTRAL_KM*0.5, CENTRAL_KM*0.5);
+    const centralAfter =bearingAt(c.dist+CENTRAL_KM*0.5, CENTRAL_KM*0.5);
     const centralChange=Math.abs(angleDiff(centralBefore,centralAfter));
 
     const concentration=totalChange>0?centralChange/totalChange:0;
