@@ -1557,6 +1557,7 @@ function simLoadGPX(txt){
 }
 
 function simStart(){
+  if(Date.now()-_simStoppedAt<800){return;} // ignore accidental re-trigger after stop
   const r=cur();
   if(!r||!r.points.length){alert('No route loaded.');return;}
   if(!r.hasTS){alert('The ride simulator requires a route with timestamps. Export as TCX from your route planning app to enable it.');return;}
@@ -1641,10 +1642,13 @@ function simPause(){
   if(IS_DESKTOP())renderDesktopMap();
 }
 
+let _simStoppedAt=0;
 function simStop(){
   if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
   UI.simRunning=false;
   UI.simPaused=false;
+  _simStoppedAt=Date.now();
+  _simPts=null;_simIdx=0; // clear so resuming check can't accidentally fire
   stopGPS();
   const startBtn=document.getElementById('btn-sim-start');
   const stopBtn=document.getElementById('btn-sim-stop');
