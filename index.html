@@ -4027,12 +4027,13 @@ function buildLiveStrip(r,liveDist,sdt){
   const rowReason={};
   const add=(s,reason)=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);rowReason[s.id]=reason||'type';}};
   add(ahead[0],'type'); // next stop always first
-  add(ahead.find(s=>s.type==='sleep'||s.sleepAt),'type');
-  // Water — explicit water point, OR confirmed operating resupply (has ohRaw)
-  const isWaterSource=s=>s.type==='water'||((s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='pub'||s.type==='fuel')&&s.ohRaw);
-  add(ahead.find(s=>isWaterSource(s)),'type');
-  add(ahead.find(s=>s.type==='food'||s.type==='shop'),'type'); // resupply — buy food here
-  add(ahead.find(s=>s.meals&&s.meals.length),'food');           // eat stop — carrying food
+  add(ahead.find(s=>s.type==='sleep'||s.sleepAt),'type'); // next sleep
+  // Slot 3: next water point (explicit drinking water only)
+  add(ahead.find(s=>s.type==='water'),'type');
+  // Slot 4: next resupply — town/food/shop/pub/accom with confirmed hours, or fuel as last resort
+  const isResupply=s=>(s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='pub')&&s.ohRaw;
+  const nextResupply=ahead.find(s=>isResupply(s))||ahead.find(s=>s.type==='fuel'&&s.ohRaw);
+  add(nextResupply,'type'); // next resupply
   rows.sort((a,b)=>a.dist-b.dist); // always show in distance order
   const now=etaAt(liveDist,r)||sdt||new Date(); // always use route time, never wall clock
   const html=rows.map(s=>{
