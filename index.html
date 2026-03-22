@@ -7341,7 +7341,15 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     delStop(r,sid);
     saveAll();
     if(tile)tile.remove();
-    renderKeepScroll();
+    // Update stop count label without rebuilding the whole list (avoids scroll jump)
+    const titleEl=document.getElementById('stops-list-title');
+    if(titleEl){
+      const starred=UI.stopsShowStarred;
+      const count=starred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).length:r.stops.length;
+      titleEl.textContent=(starred?'Starred Stops':'All Stops')+' ('+count+')';
+    }
+    redrawMap('stops-map');
+    if(IS_DESKTOP())redrawMap('desktop-map');
     return;
   }
   // Tap live stop tile → peek map for 5s
