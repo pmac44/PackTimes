@@ -1123,7 +1123,7 @@ function shopSt(s,r){
 const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 async function fetchOverpass(){
   const r=cur();if(!r||!r.points.length)return;
-  UI.opStatus='loading';UI.opMsg='Searching OSM…';render();
+  UI.opStatus='loading';UI.opMsg='Searching OSM…';renderKeepScroll();
   const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
   const bb=`${(lats.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lons.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lats.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)},${(lons.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)}`;
   // Build query based on UI.osmOpts flags
@@ -1223,16 +1223,16 @@ async function fetchOverpass(){
         if(!isDupe)addStop(r,w.dist,'crossing',w.name,{auto:true,...w.offOpts,crossing:true});
       });
       UI.opStatus='done';UI.opMsg=`Found ${r.stops.filter(s=>s.auto).length} points along route`;
-      await saveAll();render();return;
+      await saveAll();renderKeepScroll();return;
     }catch(e){lastErr=e.message;}
   }
-  UI.opStatus='error';UI.opMsg=`Could not reach OSM (${lastErr}). Works best in Firefox or when hosted.`;render();
+  UI.opStatus='error';UI.opMsg=`Could not reach OSM (${lastErr}). Works best in Firefox or when hosted.`;renderKeepScroll();
 }
 
 // ─── Town search: geocode name → Overpass within town bbox ───────────────────
 async function fetchTownSearch(query){
   const r=cur();if(!r||!r.points.length)return;
-  UI.tsStatus='loading';UI.tsMsg='Looking up '+query+'…';render();
+  UI.tsStatus='loading';UI.tsMsg='Looking up '+query+'…';renderKeepScroll();
   // 1. Nominatim geocode
   let place;
   try{
@@ -1257,10 +1257,10 @@ async function fetchTownSearch(query){
     place.bb=bb_n?`${bb_n[0]},${bb_n[2]},${bb_n[1]},${bb_n[3]}`:
       `${(place.lat-.02).toFixed(5)},${(place.lon-.02).toFixed(5)},${(place.lat+.02).toFixed(5)},${(place.lon+.02).toFixed(5)}`;
   }catch(e){
-    UI.tsStatus='error';UI.tsMsg='Could not find "'+query+'" ('+e.message+')';render();return;
+    UI.tsStatus='error';UI.tsMsg='Could not find "'+query+'" ('+e.message+')';renderKeepScroll();return;
   }
   // 2. Overpass within town bbox using same opts as corridor search
-  UI.tsMsg=`Found ${place.display_name.split(',')[0]} — searching for stops…`;render();
+  UI.tsMsg=`Found ${place.display_name.split(',')[0]} — searching for stops…`;renderKeepScroll();
   const opts=UI.osmOpts||{food:false,water:false,towns:false,shops:false,hotels:false,pubs:false,toilets:false};
   const bb=place.bb;
   const parts=[];
@@ -1341,10 +1341,10 @@ async function fetchTownSearch(query){
       });
       const townName=place.display_name.split(',')[0];
       UI.tsStatus='done';UI.tsMsg=`Added ${added} stop${added!==1?'s':''} from ${townName}`;
-      await saveAll();render();return;
+      await saveAll();renderKeepScroll();return;
     }catch(e){lastErr=e.message;}
   }
-  UI.tsStatus='error';UI.tsMsg=`OSM search failed (${lastErr})`;render();
+  UI.tsStatus='error';UI.tsMsg=`OSM search failed (${lastErr})`;renderKeepScroll();
 }
 function snapTo(r,lat,lon){
   if(!r.points.length)return null;
