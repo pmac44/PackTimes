@@ -73,14 +73,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 .live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
 .live-next-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 10px;}
-.live-next-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);}
+.live-next-row{display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--border);}
 .live-next-row:last-child{border-bottom:none;}
 .live-next-icons{display:flex;gap:4px;align-items:center;flex-shrink:0;}
-.live-next-name{flex:1;min-width:0;font-size:14px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.live-next-name{flex:1;min-width:0;font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .live-next-right{text-align:right;flex-shrink:0;}
-.live-next-km{font-size:13px;font-weight:500;color:var(--accent);font-family:var(--font);}
-.live-next-eta{font-size:12px;color:var(--text3);font-family:var(--font);}
-.live-next-in{font-size:13px;font-weight:600;color:var(--accent);font-family:var(--font);}
+.live-next-km{font-size:15px;font-weight:500;color:var(--accent);font-family:var(--font);}
+.live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font);}
+.live-next-in{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);}
 .turn-popup{position:absolute;top:64px;left:8px;right:8px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;}
 .turn-arrow{font-size:42px;line-height:1;flex-shrink:0;color:var(--accent);}
 .turn-info{flex:1;min-width:0;}
@@ -1032,42 +1032,71 @@ function etaAt(distKm,r){
   const estTotal=r.estDuration||naismith(r.points,r.totalDist);
   if(!estTotal||!r.totalDist)return null;
   const targetTotal=estTotal*r.timeFactor;
-  let hrs;
+  const crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
+
+  // When GPS is active: anchor entirely from current real-world time + position.
+  // Ignore planned start time — it's aspirational. Just calculate riding time
+  // remaining from here to destination and add it to now.
   if(UI.gpsActive&&UI.gpsDistKm!==null){
     const nowDist=UI.gpsDistKm;
     const nowTime=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
-    const elapsed=(nowTime-base)/3600000;
-    const crNow=cumRidingAt(nowDist,r),crDest=cumRidingAt(distKm,r),crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
+    // Riding time remaining from current position to destination
+    let remRidingHrs;
+    const crNow=cumRidingAt(nowDist,r),crDest=cumRidingAt(distKm,r);
     if(crNow!==null&&crDest!==null&&crTot&&crTot>0){
       const scale=targetTotal/crTot;
-      hrs=elapsed+Math.max(0,crDest-crNow)*scale;
+      remRidingHrs=Math.max(0,crDest-crNow)*scale;
     } else {
       const rem=Math.max(0,distKm-nowDist),totRem=Math.max(0.001,r.totalDist-nowDist);
-      hrs=elapsed+targetTotal*(totRem/r.totalDist)*(rem/totRem);
+      remRidingHrs=targetTotal*(rem/totRem)*(totRem/r.totalDist);
     }
+    // Add stop durations for stops strictly between current position and destination
+    let stopOffset=0;
+    const aheadStops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist>nowDist&&s.dist<distKm)
+      .sort((a,b)=>a.dist-b.dist);
+    aheadStops.forEach(s=>{
+      const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+      const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+      stopOffset+=beforeMealH;
+      if(hasSleep){
+        if(s.departTime){
+          // Estimate arrival at this stop from now
+          let remToStop;
+          const crStop=cumRidingAt(s.dist,r);
+          if(crNow!==null&&crStop!==null&&crTot&&crTot>0){remToStop=Math.max(0,crStop-crNow)*(targetTotal/crTot);}
+          else{remToStop=targetTotal*(Math.max(0,s.dist-nowDist)/r.totalDist);}
+          const arrivalEta=new Date(nowTime.getTime()+(remToStop+stopOffset)*3600000);
+          stopOffset+=sleepHoursFor(s,arrivalEta);
+        } else {
+          stopOffset+=s.sleepH||(s.type==='stop'?0.25:10);
+        }
+      }
+      const afterMealH=hasSleep?(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0):0;
+      stopOffset+=afterMealH;
+    });
+    return new Date(nowTime.getTime()+(remRidingHrs+stopOffset)*3600000);
+  }
+
+  // No GPS — use planned start time as anchor (planning mode)
+  let hrs;
+  const crHere=cumRidingAt(distKm,r);
+  if(crHere!==null&&crTot&&crTot>0){
+    hrs=crHere*(targetTotal/crTot);
   } else {
-    const crHere=cumRidingAt(distKm,r),crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
-    if(crHere!==null&&crTot&&crTot>0){
-      hrs=crHere*(targetTotal/crTot);
-    } else {
-      hrs=targetTotal*(distKm/r.totalDist);
-    }
+    hrs=targetTotal*(distKm/r.totalDist);
   }
   // Add stop durations for stops strictly before this point
-  // Order at each stop: before-meals → sleep → after-meals
   let sleepOffset=0;
   const sortedStops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist<distKm)
     .sort((a,b)=>a.dist-b.dist);
   sortedStops.forEach(s=>{
     const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
-    // Before-sleep meals — or ALL meals if no sleep at this stop
     const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
     sleepOffset+=beforeMealH;
-    // Sleep
     if(hasSleep){
       if(s.departTime){
         let rideHrsToStop;
-        const crStop=cumRidingAt(s.dist,r),crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
+        const crStop=cumRidingAt(s.dist,r);
         if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
         else{rideHrsToStop=targetTotal*(s.dist/r.totalDist);}
         const arrivalEta=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
@@ -1076,7 +1105,6 @@ function etaAt(distKm,r){
         sleepOffset+=s.sleepH||(s.type==='stop'?0.25:10);
       }
     }
-    // After-sleep meals (only relevant if stop has sleep)
     const afterMealH=hasSleep?(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0):0;
     sleepOffset+=afterMealH;
   });
@@ -1416,7 +1444,9 @@ function stopGPS(){
   if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;UI.gpsWatchId=null;UI.gpsHeading=null;
   UI._gpsAutoPaused=false;
-  _offRouteStart=null;_offRouteAlerted=false;
+  _offRouteStart=null;_offRouteAlerted=false;_offRouteLastM=0;
+  const ov=document.getElementById('offroute-overlay');if(ov)ov.remove();
+  stopOffRouteAudio();
   UI._adaptiveWindow=[];// clear window on GPS stop
   if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
   _lastTurnBeepDist=null;
@@ -1665,6 +1695,8 @@ function simStop(){
 UI.alertKm=UI.alertKm||0.5;
 let _wakeLock=null;
 let _offRouteStart=null;
+let _offRouteAlerted=false;
+let _offRouteLastM=0;
 
 // ─── Audio alerts ───
 let _audioCtx=null;
@@ -1685,34 +1717,70 @@ function playTone(freq1,freq2,duration){
     const osc=ctx.createOscillator();
     const gain=ctx.createGain();
     osc.connect(gain);gain.connect(ctx.destination);
-    osc.type='sine';
+    osc.type='square'; // square wave cuts through wind noise far better than sine
     osc.frequency.setValueAtTime(freq1,t);
     if(freq2)osc.frequency.setValueAtTime(freq2,t+duration*0.5);
-    gain.gain.setValueAtTime(0.6,t);
-    gain.gain.exponentialRampToValueAtTime(0.001,t+duration);
+    gain.gain.setValueAtTime(0.0,t);
+    gain.gain.linearRampToValueAtTime(0.4,t+0.005); // fast attack
+    gain.gain.setValueAtTime(0.4,t+duration-0.02);
+    gain.gain.linearRampToValueAtTime(0.0,t+duration); // fast decay
     osc.start(t);osc.stop(t+duration);
   }catch(e){}
 }
 
-function playTurnBeep(turnType){
+function playBeepSequence(freqs,beepDuration,gapDuration){
+  // Play a sequence of beeps: freqs = array of [freq1,freq2|null]
+  try{
+    const ctx=getAudioCtx();
+    let t=ctx.currentTime;
+    freqs.forEach(([f1,f2])=>{
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.connect(gain);gain.connect(ctx.destination);
+      osc.type='square';
+      osc.frequency.setValueAtTime(f1,t);
+      if(f2)osc.frequency.setValueAtTime(f2,t+beepDuration*0.5);
+      gain.gain.setValueAtTime(0.0,t);
+      gain.gain.linearRampToValueAtTime(0.45,t+0.008);
+      gain.gain.setValueAtTime(0.45,t+beepDuration-0.02);
+      gain.gain.linearRampToValueAtTime(0.0,t+beepDuration);
+      osc.start(t);osc.stop(t+beepDuration);
+      t+=beepDuration+gapDuration;
+    });
+  }catch(e){}
+}
+
+function playTurnBeep(turnType,distM){
   if(!UI.turnAudio)return;
-  // Left: high→low (600→400Hz), Right: low→high (400→600Hz), Straight: mid single (500Hz)
-  if(turnType==='Left')playTone(660,420,0.18);
-  else if(turnType==='Right')playTone(420,660,0.18);
-  else playTone(520,null,0.15);
+  // Three distinct patterns — all use repeated beeps so they cut through wind noise
+  // Left:  3× descending beeps (high→low)
+  // Right: 3× ascending beeps (low→high)
+  // Straight/other: 2× mid beeps
+  // Closer = faster beeps
+  const fast=distM<50;
+  const bd=fast?0.10:0.13; // beep duration
+  const gap=fast?0.06:0.09; // gap between beeps
+  if(turnType==='Left'){
+    playBeepSequence([[800,null],[600,null],[440,null]],bd,gap);
+  } else if(turnType==='Right'){
+    playBeepSequence([[440,null],[600,null],[800,null]],bd,gap);
+  } else {
+    playBeepSequence([[660,null],[660,null]],bd,gap);
+  }
+  if(navigator.vibrate)navigator.vibrate(fast?[80,50,80,50,80]:[120,80,120,80,120]);
 }
 
 function scheduleTurnBeeps(distM,turnType){
   if(!UI.turnAudio)return;
   if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
-  // Fixed rhythm: occasional at >30m, medium at 15-30m, rapid under 15m
-  const interval=distM>30?2000:distM>15?1000:400;
-  playTurnBeep(turnType);
+  // Fixed rhythm: slow at >100m, medium at 50-100m, rapid under 50m
+  const interval=distM>100?2500:distM>50?1200:500;
+  playTurnBeep(turnType,distM);
   _turnBeepTimer=setTimeout(()=>{
     if(UI.gpsActive&&UI.gpsDistKm!==null){
       const r=cur();
       if(r&&r.turns){
-        const alertDistKm=(UI.turnAlertM||30)/1000;
+        const alertDistKm=(UI.turnAlertM||150)/1000;
         const t=r.turns.find(t=>t.dist>UI.gpsDistKm&&t.dist-UI.gpsDistKm<=alertDistKm&&!t._dismissed);
         if(t){
           const rem=(t.dist-UI.gpsDistKm)*1000;
@@ -1788,7 +1856,7 @@ function checkAlerts(){
   }
   // Turn audio beeps
   if(UI.turnAudio&&r.turns&&r.turns.length){
-    const alertDistKm=UI.simRunning?(UI.turnAlertM||30)*20/1000:(UI.turnAlertM||30)/1000;
+    const alertDistKm=UI.simRunning?(UI.turnAlertM||150)*20/1000:(UI.turnAlertM||150)/1000;
     const nextTurn=r.turns.find(t=>t.dist>UI.gpsDistKm&&t.dist-UI.gpsDistKm<=alertDistKm&&!t._dismissed);
     if(nextTurn){
       const remM=(nextTurn.dist-UI.gpsDistKm)*1000;
@@ -1818,33 +1886,99 @@ function checkAlerts(){
     if(!nearOffRoute){
       if(!_offRouteStart)_offRouteStart=Date.now();
       const secsOff=(Date.now()-_offRouteStart)/1000;
-      if(secsOff>=(UI.offRouteSecs||8)&&!_offRouteAlerted){
-        _offRouteAlerted=true;
-        showOffRouteAlert(Math.round(offM));
+      if(secsOff>=(UI.offRouteSecs||8)){
+        // Show alert — and re-alert every 15s if still going further off route
+        if(!_offRouteAlerted){
+          _offRouteAlerted=true;
+          _offRouteLastM=offM;
+          showOffRouteAlert(Math.round(offM));
+        } else if(offM>(_offRouteLastM||0)+50){
+          // Getting further away — escalate again
+          _offRouteLastM=offM;
+          showOffRouteAlert(Math.round(offM));
+        }
       }
     } else {
-      _offRouteStart=null;_offRouteAlerted=false;
+      _offRouteStart=null;_offRouteAlerted=false;_offRouteLastM=0;
     }
   } else {
-    // Back on route
-    _offRouteStart=null;_offRouteAlerted=false;
+    // Back on route — dismiss overlay and stop audio
+    if(_offRouteAlerted){
+      const ov=document.getElementById('offroute-overlay');
+      if(ov)ov.remove();
+      stopOffRouteAudio();
+    }
+    _offRouteStart=null;_offRouteAlerted=false;_offRouteLastM=0;
   }
 }
 
 function showOffRouteAlert(distM){
-  document.getElementById('alert-ico').textContent='⚠️';
-  document.getElementById('alert-title').textContent='Off Route';
-  document.getElementById('alert-msg').innerHTML=`You are <strong>${distM}m</strong> from the route.<br>Check your navigation.`;
-  document.getElementById('alert-overlay').style.display='flex';
-  if(navigator.vibrate)navigator.vibrate([300,100,300,100,300,100,300]);
+  // Full-screen takeover — much more urgent than the regular stop alert
+  let overlay=document.getElementById('offroute-overlay');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.id='offroute-overlay';
+    overlay.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(180,20,20,0.93);backdrop-filter:blur(2px);pointer-events:all;';
+    overlay.innerHTML=`
+      <div style="font-size:72px;line-height:1;margin-bottom:12px;">⛔</div>
+      <div style="font-size:32px;font-weight:800;color:#fff;letter-spacing:1px;margin-bottom:8px;">OFF ROUTE</div>
+      <div id="offroute-dist" style="font-size:22px;color:rgba(255,255,255,0.85);font-family:var(--font);margin-bottom:24px;">${distM}m from route</div>
+      <button id="offroute-ok" style="background:#fff;color:#b91c1c;font-size:20px;font-weight:700;border:none;border-radius:12px;padding:14px 48px;cursor:pointer;-webkit-tap-highlight-color:transparent;">Got it</button>
+      <div style="font-size:14px;color:rgba(255,255,255,0.6);margin-top:16px;">Turn around as soon as safe to do so</div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('offroute-ok').addEventListener('click',()=>{
+      overlay.remove();
+      _offRouteAlerted=true; // suppress re-alert for this off-route episode
+      stopOffRouteAudio();
+    });
+  } else {
+    // Update distance if already showing
+    const d=document.getElementById('offroute-dist');
+    if(d)d.textContent=distM+'m from route';
+  }
+  // Loud repeating audio — urgent alarm pattern
+  playOffRouteAudio();
+  // Long aggressive vibration
+  if(navigator.vibrate)navigator.vibrate([500,150,500,150,500,150,800]);
+}
+
+let _offRouteAudioTimer=null;
+function playOffRouteAudio(){
+  stopOffRouteAudio();
+  // Two-tone descending alarm — hard to ignore
+  function alarm(){
+    try{
+      const ctx=getAudioCtx();
+      let t=ctx.currentTime;
+      [[880,0.0],[740,0.18],[880,0.36],[740,0.54]].forEach(([freq,offset])=>{
+        const osc=ctx.createOscillator();
+        const gain=ctx.createGain();
+        osc.connect(gain);gain.connect(ctx.destination);
+        osc.type='square';
+        osc.frequency.setValueAtTime(freq,t+offset);
+        gain.gain.setValueAtTime(0,t+offset);
+        gain.gain.linearRampToValueAtTime(0.5,t+offset+0.01);
+        gain.gain.setValueAtTime(0.5,t+offset+0.15);
+        gain.gain.linearRampToValueAtTime(0,t+offset+0.18);
+        osc.start(t+offset);osc.stop(t+offset+0.18);
+      });
+    }catch(e){}
+    _offRouteAudioTimer=setTimeout(alarm,1200);
+  }
+  alarm();
+}
+function stopOffRouteAudio(){
+  if(_offRouteAudioTimer){clearTimeout(_offRouteAudioTimer);_offRouteAudioTimer=null;}
 }
 function showAlert(s,remKm,r){
   const eta=etaAt(s.dist,r),st=shopSt(s,r);
   const stTxt=st==='open'?'<span style="color:var(--accent)">✓ Open at ETA</span>':st==='closed'?'<span style="color:var(--red)">⚠ May be closed</span>':'';
   document.getElementById('alert-ico').textContent=s.icon;
   document.getElementById('alert-title').textContent=s.name;
-  document.getElementById('alert-msg').innerHTML=`${remKm.toFixed(1)} km away<br>ETA: <strong>${fmtT(eta)}</strong><br>${stTxt}`;
+  document.getElementById('alert-msg').innerHTML=`<span id="alert-rem">${remKm.toFixed(1)} km away</span><br>ETA: <strong id="alert-eta">${fmtT(eta)}</strong><br>${stTxt}`;
   document.getElementById('alert-overlay').style.display='flex';
+  document.getElementById('alert-overlay').dataset.stopId=s.id;
   if(navigator.vibrate)navigator.vibrate([200,100,200,100,200]);
 }
 // alert-ok handled via event delegation above
@@ -2149,7 +2283,7 @@ function drawMap(cvs,r,opts){
       const _dotCol=(s.type==='stop'&&(s.sleepAt||s.sleepH))?'#b39ddb':(dc[s.type]||'#fff');
       ctx.fillStyle=_dotCol;ctx.fill();
       ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
-      const isMapWithRings=cvs.id==='desktop-map'||cvs.id==='stops-map';
+      const isMapWithRings=cvs.id==='desktop-map'||cvs.id==='stops-map'||cvs.id==='live-map';
       const missionVisible=!UI.hiddenMapTypes.has('mission');
       if(isMapWithRings&&missionVisible&&(s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt)){
         const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
@@ -2359,6 +2493,7 @@ function panTo(id,lon,lat){
 
 // Peek: pan live map to a stop for 5s then return to GPS follow
 let _livePeekTimer=null;
+let _peekResetFn=null;
 function peekLiveStop(s,r){
   const p=r.points[cidx(r,s.dist)];
   const lon=s.lon||p.lon,lat=s.lat||p.lat;
@@ -2375,21 +2510,20 @@ const stripH=IS_DESKTOP()?0:(document.getElementById('live-next-strip')?.offsetH
 const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH));
 
   // Calculate centre and zoom to show BOTH GPS position and target stop
-  // If GPS position is known, fit both points; otherwise just show the stop
-  let centreLon=lon,centreLat=lat,kmWidth=1.5;
+  // Rider at bottom of map, stop at top — anchor 0.8 means GPS is 80% down the canvas
+  let centreLon=lon,centreLat=lat,kmWidth=1.5,anchor=0.5;
   if(UI.gpsPos){
     const gLat=UI.gpsPos.lat,gLon=UI.gpsPos.lon;
-    // Haversine distance between GPS and stop
     const distKm=hav({lat:gLat,lon:gLon},{lat,lon});
-    if(distKm>0.3){
-      // Centre between the two points
-      centreLat=(gLat+lat)/2;
-      centreLon=(gLon+lon)/2;
-      // Width = distance * 2.5 for padding, minimum 1.5km
-      kmWidth=Math.max(1.5,distKm*2.5);
+    if(distKm>0.1){
+      // Place centre 30% of the way from GPS toward stop (so GPS is ~80% down, stop ~20% down)
+      centreLat=gLat+(lat-gLat)*0.3;
+      centreLon=gLon+(lon-gLon)*0.3;
+      // Width = distance / 0.6 so both points fit within 80% of map height with small margin
+      kmWidth=Math.max(0.5,distKm/0.6);
+      anchor=0.8; // GPS dot sits 80% down the canvas
     }
   }
-  const anchor=0.5; // centre when showing both points
 
   // Scroll to top instantly
   const scroller=document.getElementById('live-scroller');
@@ -2411,18 +2545,32 @@ const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math
     if(cvs){
       cvs.style.height=mapH+'px';
       cvs._forcedH=mapH;
-      drawMap(cvs,r,{showGPS:true,followGPS:false,anchor,rotate:false,highlightId:s.id});
+      drawMap(cvs,r,{showGPS:true,followGPS:false,anchor,rotate:true,highlightId:s.id});
       cvs._forcedH=null;
     }
     if(_livePeekTimer)clearTimeout(_livePeekTimer);
     _livePeekTimer=setTimeout(()=>{
       _livePeekTimer=null;
+      _peekResetFn=null;
       _highlightStopId=null;
       state.zoom=savedZoom;
       state.cx=null;state.cy=null;state._peekAnchor=null;
       // Re-run full size+draw to restore strip-aware map height
       const r2=cur();if(r2)initLiveMap(r2);
     },5000);
+    // Any touch/interaction on the map resets the 5s countdown
+    _peekResetFn=()=>{
+      if(!_livePeekTimer)return;
+      clearTimeout(_livePeekTimer);
+      _livePeekTimer=setTimeout(()=>{
+        _livePeekTimer=null;
+        _peekResetFn=null;
+        _highlightStopId=null;
+        state.zoom=savedZoom;
+        state.cx=null;state.cy=null;state._peekAnchor=null;
+        const r2=cur();if(r2)initLiveMap(r2);
+      },5000);
+    };
   },50);
 }
 
@@ -2463,6 +2611,7 @@ function attachMap(cvs,tapCb){
   let _pinch=null;
   cvs.addEventListener('touchstart',e=>{
     if(e.touches.length===2){
+      if(id==='live-map'&&_peekResetFn)_peekResetFn();
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
       _pinch={d0:Math.sqrt(dx*dx+dy*dy),z0:ms(id).zoom};
       e.preventDefault();
@@ -2480,6 +2629,7 @@ function attachMap(cvs,tapCb){
   // ── Pan support (single finger drag / mouse drag) ──
   let _drag=null;
   const dragStart=(x,y)=>{
+    if(id==='live-map'&&_peekResetFn)_peekResetFn();
     _mapDragging=true;
     // Always capture the current rendered centre (cvs._cLon/Lat is set by drawMap)
     const cx=cvs._cLon!==undefined?cvs._cLon:0;
@@ -4591,6 +4741,18 @@ function tLiveShell(r){
         ${mapCtrlHTML('live-map',true)}
         ${progressOverlay}
         <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:10;">${weatherBarHTML()}</div>
+        <div id="adaptive-msg-bar-wrap" style="position:absolute;top:56px;left:8px;right:8px;z-index:11;">
+        ${(()=>{
+          if(!UI._adaptiveMsg)return'';
+          const age=Date.now()-UI._adaptiveMsg.ts;
+          if(age>10*60*1000)return'';
+          const isWarn=UI._adaptiveMsg.msg.startsWith('⚠️');
+          return`<div style="padding:6px 10px;font-size:13px;font-family:var(--font);line-height:1.4;display:flex;align-items:center;justify-content:space-between;gap:8px;background:${isWarn?'rgba(20,15,5,0.92)':'rgba(5,10,20,0.92)'};border:1px solid ${isWarn?'rgba(251,191,36,0.5)':'rgba(96,165,250,0.4)'};border-radius:7px;color:${isWarn?'var(--amber)':'var(--blue)'};">
+            <span>${UI._adaptiveMsg.msg}</span>
+            <button class="btn btn-sm" id="adaptive-msg-dismiss" style="flex-shrink:0;font-size:12px;padding:2px 8px;">✕</button>
+          </div>`;
+        })()}
+        </div>
         <div id="alert-overlay">
           <div id="alert-box">
             <div id="alert-ico">📍</div>
@@ -4603,7 +4765,7 @@ function tLiveShell(r){
         </div>
         ${(()=>{
           if(!UI.gpsActive)return '';
-          const alertDistKm=UI.simRunning?(UI.turnAlertM||30)*20/1000:(UI.turnAlertM||30)/1000;
+          const alertDistKm=UI.simRunning?(UI.turnAlertM||150)*20/1000:(UI.turnAlertM||150)/1000;
           const turns=r.turns||[];
           turns.forEach(t=>{if(t.dist<=liveDist)t._dismissed=false;});
           const nextTurn=turns.find(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm&&!t._dismissed);
@@ -4621,16 +4783,6 @@ function tLiveShell(r){
           </div>`;
         })()}
       </div>
-      ${(()=>{
-        if(!UI._adaptiveMsg)return'';
-        const age=Date.now()-UI._adaptiveMsg.ts;
-        if(age>10*60*1000)return''; // dismiss after 10 min
-        const isWarn=UI._adaptiveMsg.msg.startsWith('⚠️');
-        return`<div id="adaptive-msg-bar" style="padding:7px 12px;font-size:14px;font-family:var(--font);line-height:1.4;display:flex;align-items:center;justify-content:space-between;gap:8px;background:${isWarn?'rgba(251,191,36,0.12)':'rgba(96,165,250,0.1)'};border-bottom:1px solid ${isWarn?'rgba(251,191,36,0.35)':'rgba(96,165,250,0.25)'};color:${isWarn?'var(--amber)':'var(--blue)'};">
-          <span>${UI._adaptiveMsg.msg}</span>
-          <button class="btn btn-sm" id="adaptive-msg-dismiss" style="flex-shrink:0;font-size:12px;padding:2px 8px;">✕</button>
-        </div>`;
-      })()}
       ${buildLiveStrip(r,liveDist,sdt)}
       <div class="live-stop-list" id="live-stop-list">
         ${stopListHtml}
@@ -4994,9 +5146,9 @@ function tSettings(r){
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>500m</span><span>1km</span><span>2km</span><span>3km</span></div>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label class="lbl">Turn alert distance — <span id="turn-alert-m-val">${UI.turnAlertM||30}m</span></label>
-      <input type="range" id="turn-alert-sl" min="5" max="50" step="5" value="${UI.turnAlertM||30}" style="width:100%;accent-color:var(--accent);">
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>5m</span><span>15m</span><span>25m</span><span>35m</span><span>50m</span></div>
+      <label class="lbl">Turn alert distance — <span id="turn-alert-m-val">${UI.turnAlertM||150}m</span></label>
+      <input type="range" id="turn-alert-sl" min="50" max="500" step="25" value="${UI.turnAlertM||150}" style="width:100%;accent-color:var(--accent);">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>150m</span><span>250m</span><span>350m</span><span>500m</span></div>
     </div>
     <div class="field" style="margin-top:10px;">
       <label class="lbl">Off-route alert distance — <span id="offroute-m-val">${UI.offRouteM||150}m</span></label>
@@ -5315,10 +5467,12 @@ function weatherAtEta(lat,lon,eta){
   const w=_weatherCache[key];
   if(!w||!w.hourly||!w.hourly.length)return null;
   // Find the hourly entry closest to the ETA
-  const etaISO=eta.toISOString().slice(0,13); // 'YYYY-MM-DDTHH'
+  // h.time is "YYYY-MM-DDTHH:MM" local — compare as epoch ms by appending local offset
   let best=w.hourly[0],bestDiff=Infinity;
   w.hourly.forEach(h=>{
-    const diff=Math.abs(new Date(h.time)-eta);
+    // Parse tz-naive ISO as local time by replacing T with space (works in all browsers)
+    const hMs=new Date(h.time.replace('T',' ')).getTime();
+    const diff=Math.abs(hMs-eta.getTime());
     if(diff<bestDiff){bestDiff=diff;best=h;}
   });
   // If forecast is >4 days out, flag as low confidence
@@ -5431,15 +5585,16 @@ function weatherBarHTML(){
     // Hourly chips — next 8 hours
     const hours=w.hourly.slice(0,8);
     const hourChips=hours.map(h=>{
-      const t=new Date(h.time);
-      const lbl=t.getHours().toString().padStart(2,'0')+':00';
+      // h.time is an ISO string like "2026-03-22T14:00" with no tz suffix —
+      // parse the hour directly from the string to avoid UTC/local ambiguity
+      const lbl=(h.time||'').slice(11,16)||'--:--';
       return weatherPillHTML(h.code,h.temp,lbl);
     }).join('');
 
     // Tonight's low
     const tonight=w.hourly.filter(h=>{
-      const t=new Date(h.time);
-      return t.getHours()>=18||t.getHours()<=6;
+      const hr=parseInt((h.time||'').slice(11,13),10);
+      return hr>=18||hr<=6;
     });
     const tonightLow=tonight.length?Math.min(...tonight.map(h=>h.temp)):null;
     const lowWarning=tonightLow!==null&&tonightLow<10;
@@ -6447,9 +6602,28 @@ function updateLive(){
     }
   } else if(UI.gpsActive&&r.turns&&r.turns.length){
     // Only render if a turn is actually within alert distance — not on every GPS tick
-    const alertDistKm2=(UI.turnAlertM||30)/1000;
+    const alertDistKm2=(UI.turnAlertM||150)/1000;
     const needsTurn=r.turns.some(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm2&&!t._dismissed);
     if(needsTurn)render();
+  }
+  // Patch stop proximity alert distance/ETA live on every GPS tick
+  const ao=document.getElementById('alert-overlay');
+  if(ao&&ao.style.display!=='none'&&ao.dataset.stopId){
+    const alertStop=r.stops.find(s=>s.id===ao.dataset.stopId);
+    if(alertStop){
+      const remKm=alertStop.dist-liveDist;
+      if(remKm<0){
+        // Passed the stop — auto-dismiss
+        ao.style.display='none';
+        ao.dataset.stopId='';
+        UI._alertStopDist=null;
+      } else {
+        const remEl=document.getElementById('alert-rem');
+        const etaEl=document.getElementById('alert-eta');
+        if(remEl)remEl.textContent=remKm.toFixed(1)+' km away';
+        if(etaEl)etaEl.textContent=fmtT(etaAt(alertStop.dist,r));
+      }
+    }
   }
   if(!_livePeekTimer){
     const mc=document.getElementById('live-map');
@@ -6905,12 +7079,22 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   if(e.target.closest('#adaptive-msg-dismiss')){
-    UI._adaptiveMsg=null;renderKeepScroll();return;
+    UI._adaptiveMsg=null;
+    const wrap=document.getElementById('adaptive-msg-bar-wrap');
+    if(wrap)wrap.innerHTML='';
+    return;
   }
 
   if(e.target.closest('#alert-ok')){
-    document.getElementById('alert-overlay').style.display='none';
+    const ao=document.getElementById('alert-overlay');
+    const stopId=ao.dataset.stopId;
+    ao.style.display='none';
+    ao.dataset.stopId='';
     UI._alertStopDist=null;
+    // Allow re-alert after 60s cooldown — useful if still approaching the stop
+    if(stopId){
+      setTimeout(()=>{ UI.alertedStops.delete(stopId); }, 60000);
+    }
     if(_wakeLock){_wakeLock.release();_wakeLock=null;}
     return;
   }
@@ -7113,7 +7297,7 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
   if(e.target.id==='toggle-turn-audio'){
     UI.turnAudio=e.target.checked;
     // Play a test beep so user knows it's working
-    if(UI.turnAudio)setTimeout(()=>playTone(520,null,0.2),100);
+    if(UI.turnAudio)setTimeout(()=>playTurnBeep('Right',150),100);
     saveAll();return;
   }
   if(e.target.id==='toggle-keep-screen'){
