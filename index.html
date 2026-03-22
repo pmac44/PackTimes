@@ -5677,7 +5677,7 @@ function tPlan(r){
   }));
   const nodes=[
     {name:'Start 🚩',dist:0,distEnd:0,isStart:true,cluster:null},
-    ...[...filteredList,...hikeNodes].sort((a,b)=>a.dist-b.dist),
+    ...[...filteredList,...(UI.planSleepOnly?[]:hikeNodes)].sort((a,b)=>a.dist-b.dist),
     {name:'Finish 🏁',dist:r.totalDist,distEnd:r.totalDist,isFinish:true,cluster:null},
   ];
 
