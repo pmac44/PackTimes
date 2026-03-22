@@ -2372,7 +2372,8 @@ function peekLiveStop(s,r){
   const viewW=window.innerWidth;
 const _sb=document.getElementById('desktop-sidebar');
 const stripH=IS_DESKTOP()?0:(document.getElementById('live-next-strip')?.offsetHeight||120);
-const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH));
+const weatherBarH=IS_DESKTOP()?0:(document.getElementById('live-weather-bar-wrap')?.offsetHeight||0);
+const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH-weatherBarH));
 
   // Calculate centre and zoom to show BOTH GPS position and target stop
   // If GPS position is known, fit both points; otherwise just show the stop
@@ -2684,7 +2685,7 @@ function hitTest(cvs,cx,cy,cb){
 function mapCtrlHTML(mapId,showGPS){
   const isStopsMobile=mapId==='stops-map'&&!IS_DESKTOP();
   const isLiveMobile=mapId==='live-map'&&!IS_DESKTOP();
-  const pos=(isStopsMobile||isLiveMobile)?'top:auto;bottom:8px;right:8px;left:auto;transform:none;':'';
+  const pos=(isStopsMobile||isLiveMobile)?'top:auto;bottom:calc(8px + var(--weather-bar-h, 0px));right:8px;left:auto;transform:none;':'';
   const btnSize=isLiveMobile?'width:48px;height:48px;font-size:22px;':'';
   const gpsBtn=UI.gpsActive?
     `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
@@ -4589,7 +4590,6 @@ function tLiveShell(r){
         <canvas id="live-map"></canvas>
         ${mapCtrlHTML('live-map',true)}
         ${progressOverlay}
-        <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:10;">${weatherBarHTML()}</div>
         <div id="alert-overlay">
           <div id="alert-box">
             <div id="alert-ico">📍</div>
@@ -4620,6 +4620,7 @@ function tLiveShell(r){
           </div>`;
         })()}
       </div>
+      <div id="live-weather-bar-wrap">${weatherBarHTML()}</div>
       ${(()=>{
         if(!UI._adaptiveMsg)return'';
         const age=Date.now()-UI._adaptiveMsg.ts;
@@ -4666,13 +4667,13 @@ function initLiveMap(r){
       const strip=document.getElementById('live-next-strip');
       // Use actual height if rendered, otherwise reserve space for expected compact strip (3 rows ~105px) + weather bar (~56px)
       const stripH=strip&&strip.offsetHeight>0?strip.offsetHeight:105;
-      const avail=viewH-tabsH-stripH-4;
+      const weatherBar=document.getElementById('live-weather-bar-wrap');
+      const weatherBarH=weatherBar&&weatherBar.offsetHeight>0?weatherBar.offsetHeight:56;
+      // Expose weather bar height as CSS variable so map buttons can offset above it
+      document.documentElement.style.setProperty('--weather-bar-h',weatherBarH+'px');
+      const avail=viewH-tabsH-stripH-weatherBarH-4;
       mapH=Math.min(ideal,Math.max(200,avail));
     }
-    // Suppress micro-fluctuations (strip/weather bar text changes during GPS ticks
-    // can shift offsetHeight by a pixel or two, causing constant map resize flicker)
-    const prevH=cvs._forcedH||0;
-    if(Math.abs(mapH-prevH)<5&&prevH>0)return;
     mapSection.style.height=mapH+'px';
     mapSection.style.minHeight=mapH+'px';
     cvs.style.width='100%';
@@ -6349,6 +6350,7 @@ function updateLive(){
       if(newW&&wb.innerHTML!==newW){
         wb.innerHTML=newW;
         wb._lastUpdate=now2;
+        if(!IS_DESKTOP()&&typeof _liveResizeHandler==='function')_liveResizeHandler();
       } else if(newW){
         wb._lastUpdate=now2;
       }
