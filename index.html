@@ -858,7 +858,7 @@ function autoDetectTurns(pts){
   for(let i=0;i<pts.length;i++)sm[i]=bearing(pts[i],pts[fwd10[i]]);
 
   // Pass 1: find all points where bearing changes ≥55° within the next 50m
-  const MIN_TURN_DEG=45;
+  const MIN_TURN_DEG=38;
   const candidates=[];
   for(let i=1;i<pts.length-2;i++){
     const diff=angleDiff(sm[i],sm[fwd05[i]]);
@@ -877,7 +877,7 @@ function autoDetectTurns(pts){
 
   // Pass 3: recovery filter — bearing 150m after must still differ from 150m before
   // Suppresses trail wiggles that recover back to the original direction
-  const RECOVERY_TOL=35;
+  const RECOVERY_TOL=15;
   const confirmed=[];
   for(const c of clustered){
     const committed=Math.abs(angleDiff(sm[bck15[c.i]],sm[fwd15[c.i]]));
