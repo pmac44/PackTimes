@@ -3349,12 +3349,6 @@ function renderDesktopMap(){
           <span style="font-size:10px;color:rgba(255,255,255,0.4);font-family:var(--font);">night</span>
         </div>
       </div>`:'')
-      +`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="4" fill="none" stroke="#fbbf24" stroke-width="2"/></svg>
-          <span style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);">On mission list</span>
-        </div>
-      </div>`
       +(!UI.hiddenMapTypes.has('weather')?`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
         <div style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);margin-bottom:3px;line-height:1.5;">Weather at ETA · faded = low confidence (4+ days)</div>
         ${[['rgba(234,179,8,0.92)','rgba(253,224,71,0.8)','#fefce8','Sun'],['rgba(71,85,105,0.88)','rgba(148,163,184,0.4)','#e2e8f0','Cloud'],['rgba(37,99,235,0.88)','rgba(147,197,253,0.5)','#bfdbfe','Rain'],['rgba(30,64,175,0.92)','rgba(147,197,253,0.6)','#bfdbfe','Heavy'],['rgba(91,33,182,0.92)','rgba(196,181,253,0.8)','#ddd6fe','Storm !']].map(([bg,border,tc,lbl])=>`
