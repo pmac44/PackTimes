@@ -1953,7 +1953,8 @@ function drawMap(cvs,r,opts){
   opts=opts||{};
   if(!r||!r.points.length)return;
   const dpr=devicePixelRatio||1,W=cvs.offsetWidth,H=cvs._forcedH||cvs.offsetHeight||220;
-  cvs.width=W*dpr;cvs.height=H*dpr;
+  // Only update canvas pixel dimensions if they changed — avoids forced reflow on every GPS tick
+  if(cvs.width!==Math.round(W*dpr)||cvs.height!==Math.round(H*dpr)){cvs.width=Math.round(W*dpr);cvs.height=Math.round(H*dpr);}
   const ctx=cvs.getContext('2d');ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,W,H);
   const pts=r.points;
