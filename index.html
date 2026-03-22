@@ -847,92 +847,52 @@ function angleDiff(a,b){let d=((b-a)+540)%360-180;return d;}
 function autoDetectTurns(pts){
   if(pts.length<20)return[];
 
-  // ── Pre-compute forward-index lookups (O(n) sliding pointer each) ───────
-  function buildForwardIdx(kmAhead){
-    const idx=new Int32Array(pts.length);
-    let j=0;
-    for(let i=0;i<pts.length;i++){
-      if(j<=i)j=i;
-      while(j<pts.length-1&&pts[j].dist-pts[i].dist<kmAhead)j++;
-      idx[i]=j;
-    }
-    return idx;
-  }
-  function buildBackwardIdx(kmBehind){
-    const idx=new Int32Array(pts.length);
-    let j=0;
-    for(let i=0;i<pts.length;i++){
-      while(j<i&&pts[i].dist-pts[j].dist>kmBehind)j++;
-      idx[i]=j;
-    }
-    return idx;
-  }
+  // O(n) sliding-pointer forward/backward index builders
+  function buildFwd(km){const idx=new Int32Array(pts.length);let j=0;for(let i=0;i<pts.length;i++){if(j<=i)j=i;while(j<pts.length-1&&pts[j].dist-pts[i].dist<km)j++;idx[i]=j;}return idx;}
+  function buildBck(km){const idx=new Int32Array(pts.length);let j=0;for(let i=0;i<pts.length;i++){while(j<i&&pts[i].dist-pts[j].dist>km)j++;idx[i]=j;}return idx;}
 
-  const fwd10=buildForwardIdx(0.10);  // 100m ahead — smoothed bearing
-  const fwd05=buildForwardIdx(0.05);  // 50m ahead  — step-change detection
-  const fwd15=buildForwardIdx(0.15);  // 150m ahead — stability after
-  const bck15=buildBackwardIdx(0.15); // 150m behind — stability before
+  const fwd10=buildFwd(0.10),fwd05=buildFwd(0.05),fwd15=buildFwd(0.15),bck15=buildBck(0.15);
 
-  // ── Smoothed bearing at each point (bearing to point 100m ahead) ─────────
+  // Smoothed bearing at each point = bearing to point 100m ahead
   const sm=new Float32Array(pts.length);
-  for(let i=0;i<pts.length;i++) sm[i]=bearing(pts[i],pts[fwd10[i]]);
+  for(let i=0;i<pts.length;i++)sm[i]=bearing(pts[i],pts[fwd10[i]]);
 
-  // ── Bearing variance helper: max angular spread over index range [a,b] ───
-  function angularSpread(a,b){
-    if(b<=a+1)return 0;
-    let minD=0,maxD=0;
-    const b0=sm[a];
-    for(let k=a+1;k<=b;k++){
-      const d=angleDiff(b0,sm[k]);
-      if(d<minD)minD=d;
-      if(d>maxD)maxD=d;
-    }
-    return maxD-minD;
-  }
-
-  // ── Scan for turn candidates ──────────────────────────────────────────────
-  // At each point: does the bearing change by MIN_TURN_DEG within 50m,
-  // AND is the road straight for 150m before AND 150m after?
-  const MIN_TURN_DEG=40;
-  const STABLE_TOL=30;  // degrees of wandering allowed in "straight" section
-
+  // Pass 1: find all points where bearing changes ≥55° within the next 50m
+  const MIN_TURN_DEG=55;
   const candidates=[];
   for(let i=1;i<pts.length-2;i++){
     const diff=angleDiff(sm[i],sm[fwd05[i]]);
-    if(Math.abs(diff)<MIN_TURN_DEG)continue;
-    const spreadBefore=angularSpread(bck15[i],i);
-    const spreadAfter =angularSpread(fwd05[i],fwd15[i]);
-    if(spreadBefore<=STABLE_TOL&&spreadAfter<=STABLE_TOL){
-      candidates.push({i,dist:pts[i].dist,diff});
-    }
+    if(Math.abs(diff)>=MIN_TURN_DEG)candidates.push({i,dist:pts[i].dist,diff});
   }
 
-  // ── Cluster within 80m, keep peak ────────────────────────────────────────
-  const clustered=[];
-  let ci=0;
+  // Pass 2: cluster within 80m, keep peak angle
+  const clustered=[];let ci=0;
   while(ci<candidates.length){
-    let peak=candidates[ci];
-    let cj=ci+1;
+    let peak=candidates[ci];let cj=ci+1;
     while(cj<candidates.length&&candidates[cj].dist-candidates[ci].dist<0.08){
-      if(Math.abs(candidates[cj].diff)>Math.abs(peak.diff))peak=candidates[cj];
-      cj++;
+      if(Math.abs(candidates[cj].diff)>Math.abs(peak.diff))peak=candidates[cj];cj++;
     }
-    clustered.push(peak);
-    ci=cj;
+    clustered.push(peak);ci=cj;
   }
 
-  // ── Minimum separation 100m ───────────────────────────────────────────────
-  const separated=[];
-  let lastDist=-999;
+  // Pass 3: recovery filter — bearing 150m after must still differ from 150m before
+  // Suppresses trail wiggles that recover back to the original direction
+  const RECOVERY_TOL=35;
+  const confirmed=[];
   for(const c of clustered){
-    if(c.dist-lastDist>=0.10){
-      separated.push(c);lastDist=c.dist;
-    } else if(separated.length&&Math.abs(c.diff)>Math.abs(separated[separated.length-1].diff)){
+    const committed=Math.abs(angleDiff(sm[bck15[c.i]],sm[fwd15[c.i]]));
+    if(committed>=RECOVERY_TOL)confirmed.push(c);
+  }
+
+  // Pass 4: minimum 100m separation, keep sharpest if two are close
+  const separated=[];let lastDist=-999;
+  for(const c of confirmed){
+    if(c.dist-lastDist>=0.10){separated.push(c);lastDist=c.dist;}
+    else if(separated.length&&Math.abs(c.diff)>Math.abs(separated[separated.length-1].diff)){
       separated[separated.length-1]=c;lastDist=c.dist;
     }
   }
 
-  // ── Classify ──────────────────────────────────────────────────────────────
   return separated.map(c=>{
     const p=pts[c.i];
     const angle=Math.abs(c.diff);
