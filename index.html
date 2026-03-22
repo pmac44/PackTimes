@@ -502,7 +502,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  ftp:null,
+  ftp:null,turnReview:false,turnReviewIdx:0,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,
@@ -877,7 +877,7 @@ function autoDetectTurns(pts){
 
   // Pass 3: recovery filter — bearing 150m after must still differ from 150m before
   // Suppresses trail wiggles that recover back to the original direction
-  const RECOVERY_TOL=15;
+  const RECOVERY_TOL=20;
   const confirmed=[];
   for(const c of clustered){
     const committed=Math.abs(angleDiff(sm[bck15[c.i]],sm[fwd15[c.i]]));
@@ -887,7 +887,7 @@ function autoDetectTurns(pts){
   // Pass 4: minimum 100m separation, keep sharpest if two are close
   const separated=[];let lastDist=-999;
   for(const c of confirmed){
-    if(c.dist-lastDist>=0.10){separated.push(c);lastDist=c.dist;}
+    if(c.dist-lastDist>=0.06){separated.push(c);lastDist=c.dist;}
     else if(separated.length&&Math.abs(c.diff)>Math.abs(separated[separated.length-1].diff)){
       separated[separated.length-1]=c;lastDist=c.dist;
     }
@@ -2371,21 +2371,29 @@ function drawMap(cvs,r,opts){
   // Turn markers
   if(r.turns&&r.turns.length&&!(UI.hiddenMapTypes.has('turns')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))){
     const liveDist=UI.gpsDistKm||0;
-    r.turns.forEach(t=>{
-      if(t.dist<liveDist)return; // skip passed turns
+    const isReview=cvs.id==='turn-review-map';
+    const size=isReview?10:6;
+    // In review mode also draw near-miss turns as faded grey triangles
+    const allTurns=[...(r.turns||[]),...(isReview?(r.nearMissTurns||[]):[])];
+    allTurns.forEach(t=>{
+      if(!isReview&&t.dist<liveDist)return;
       const tx=px(t.lon),ty=py(t.lat);
-      // Small triangle marker
       ctx.save();
       ctx.translate(tx,ty);
-      const size=6;
       ctx.beginPath();
       if(t.type==='Left'){ctx.moveTo(0,-size);ctx.lineTo(-size,size);ctx.lineTo(size,size);}
       else if(t.type==='Right'){ctx.moveTo(0,-size);ctx.lineTo(size,size);ctx.lineTo(-size,size);}
       else{ctx.moveTo(0,-size);ctx.lineTo(size,size*0.6);ctx.lineTo(-size,size*0.6);}
       ctx.closePath();
-      ctx.fillStyle='rgba(74,222,128,0.8)';
+      if(t.nearMiss){
+        ctx.fillStyle='rgba(180,180,180,0.35)';
+        ctx.strokeStyle='rgba(180,180,180,0.6)';
+      } else {
+        ctx.fillStyle='rgba(74,222,128,0.8)';
+        ctx.strokeStyle='#0a0f0a';
+      }
       ctx.fill();
-      ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1;ctx.stroke();
+      ctx.lineWidth=1;ctx.stroke();
       ctx.restore();
     });
   }
@@ -2633,13 +2641,16 @@ function redrawMap(id){
   const cvs=document.getElementById(id);if(!cvs)return;
   const r=cur();if(!r)return;
   const isLive=id==='live-map';
+  const isReview=id==='turn-review-map';
   if(isLive&&_livePeekTimer){
-    // During peek: redraw at peek position (not GPS-following)
     const state=ms('live-map');
     drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:state._peekAnchor||0.65,rotate:true,highlightId:_highlightStopId});
     return;
   }
-  // Use 0.5 anchor when fitting (cx=cy=null), 0.65 when GPS is active so position sits higher
+  if(isReview){
+    drawMap(cvs,r,{anchor:0.5});
+    return;
+  }
   const liveAnchor=isLive?(()=>{const st=ms('live-map');return(st.cx===null||st.cy===null)?0.5:0.65;})():0.5;
   drawMap(cvs,r,{showGPS:isLive,followGPS:false,anchor:liveAnchor,highlightId:_highlightStopId});
   if(IS_DESKTOP())renderDesktopMap();
@@ -4196,7 +4207,19 @@ function renderKeepScroll(anchorSid){
     });
   });
 }
-function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();if(_afterRender){_afterRender();_afterRender=null;}});}
+function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_render();
+  // Inject turn review overlay if active
+  let trv=document.getElementById('turn-review-overlay');
+  if(UI.turnReview&&!trv){
+    document.body.insertAdjacentHTML('beforeend',renderTurnReview());
+    const cvs=document.getElementById('turn-review-map');
+    if(cvs)attachMap(cvs,null);
+    goToTurnReviewIdx(UI.turnReviewIdx||0);
+  } else if(!UI.turnReview&&trv){
+    trv.remove();
+  }
+  if(_afterRender){_afterRender();_afterRender=null;}});}
+
 
 // Expand/collapse icons for stops map
 // SVG icons for live next strip — 16px, coloured
@@ -4638,6 +4661,117 @@ function powerZone(watts,ftp){
   return          {z:7,label:'Z7 Anaerobic',   color:'#f87171',bg:'rgba(248,113,113,0.15)',border:'rgba(248,113,113,0.35)'};
 }
 
+// ─── Turn Review Mode ───────────────────────────────────────────────────────
+function enterTurnReview(){
+  UI.turnReview=true;
+  UI.turnReviewIdx=0;
+  render();
+  setTimeout(()=>{
+    const cvs=document.getElementById('turn-review-map');
+    if(!cvs)return;
+    // Size canvas to fill the overlay
+    const dpr=devicePixelRatio||1;
+    cvs.width=Math.round(cvs.offsetWidth*dpr);
+    cvs.height=Math.round(cvs.offsetHeight*dpr);
+    cvs._forcedH=cvs.offsetHeight;
+    attachMap(cvs,(distKm)=>{
+      // Tap on review map — check if near a turn, else place new turn
+      const r=cur();if(!r)return;
+      const all=allReviewTurns(r);
+      // Find closest turn within ~150m
+      const closest=all.reduce((best,t)=>{
+        const d=Math.abs(t.dist-distKm);
+        return d<best.d?{t,d}:best;
+      },{t:null,d:0.15});
+      if(closest.t){
+        if(closest.t.nearMiss){
+          // Promote near-miss to confirmed turn
+          r.turns.push({...closest.t,nearMiss:false});
+          r.turns.sort((a,b)=>a.dist-b.dist);
+          r.nearMissTurns=(r.nearMissTurns||[]).filter(t=>t.dist!==closest.t.dist);
+        } else {
+          // Delete confirmed turn
+          r.turns=r.turns.filter(t=>t.dist!==closest.t.dist);
+        }
+      } else {
+        // Place new manual turn at this position
+        const p=r.points[cidx(r,distKm)];
+        // Determine direction from bearing change at this point
+        const fwd=r.points[Math.min(cidx(r,distKm)+5,r.points.length-1)];
+        const bck=r.points[Math.max(cidx(r,distKm)-5,0)];
+        const diff=angleDiff(bearing(bck,p),bearing(p,fwd));
+        const type=diff<-10?'Left':diff>10?'Right':'Straight';
+        r.turns.push({lat:p.lat,lon:p.lon,dist:distKm,type,name:'',notes:'Manual turn',auto:false});
+        r.turns.sort((a,b)=>a.dist-b.dist);
+      }
+      saveAll();
+      // Update counter and redraw
+      const all2=allReviewTurns(r);
+      const ctr=document.getElementById('trv-counter');
+      const confirmed2=r.turns||[];
+      if(ctr)ctr.textContent=`${(UI.turnReviewIdx||0)+1} / ${all2.length}`;
+      const lbl=document.querySelector('#turn-review-overlay .trv-src-lbl');
+      if(lbl)lbl.textContent=`${confirmed2.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}`;
+      redrawMap('turn-review-map');
+    });
+    goToTurnReviewIdx(0);
+  },80);
+}
+
+function exitTurnReview(){
+  UI.turnReview=false;
+  render();
+}
+
+function allReviewTurns(r){
+  // Confirmed turns + near-miss turns, sorted by distance
+  const confirmed=(r.turns||[]).map(t=>({...t,nearMiss:false}));
+  const nm=(r.nearMissTurns||[]).map(t=>({...t,nearMiss:true}));
+  return [...confirmed,...nm].sort((a,b)=>a.dist-b.dist);
+}
+
+function goToTurnReviewIdx(idx){
+  const r=cur();if(!r)return;
+  const all=allReviewTurns(r);
+  if(!all.length)return;
+  idx=Math.max(0,Math.min(idx,all.length-1));
+  UI.turnReviewIdx=idx;
+  const t=all[idx];
+  const cvs=document.getElementById('turn-review-map');
+  if(!cvs)return;
+  const state=ms('turn-review-map');
+  state.cx=t.lon;state.cy=t.lat;
+  state.zoom=zoomForKmWidth('turn-review-map',0.3);
+  redrawMap('turn-review-map');
+  // Update counter
+  const ctr=document.getElementById('trv-counter');
+  if(ctr)ctr.textContent=`${idx+1} / ${all.length}`;
+}
+
+function renderTurnReview(){
+  const r=cur();if(!r)return'';
+  const all=allReviewTurns(r);
+  const confirmed=r.turns||[];
+  return`<div id="turn-review-overlay" style="position:fixed;inset:0;z-index:10000;background:#0a0f0a;display:flex;flex-direction:column;">
+    <canvas id="turn-review-map" style="flex:1;display:block;width:100%;touch-action:none;"></canvas>
+    <div style="position:absolute;top:12px;right:12px;z-index:10001;">
+      <button id="trv-exit" style="width:48px;height:48px;background:rgba(248,113,113,0.15);border:2px solid rgba(248,113,113,0.6);border-radius:50%;color:#f87171;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>
+    </div>
+    <div style="position:absolute;top:12px;left:12px;z-index:10001;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;">
+      <div style="font-size:13px;color:var(--text3);font-family:var(--font);">TURN REVIEW</div>
+      <div id="trv-counter" style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">1 / ${all.length}</div>
+      <div class="trv-src-lbl" style="font-size:12px;color:var(--text3);margin-top:2px;">${confirmed.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}</div>
+    </div>
+    <div style="position:absolute;bottom:0;left:0;right:0;z-index:10001;background:rgba(10,15,10,0.9);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <button id="trv-prev" class="btn" style="flex:1;justify-content:center;font-size:22px;padding:10px;">◀</button>
+      <div style="text-align:center;flex:2;">
+        <div style="font-size:13px;color:var(--text3);font-family:var(--font);">tap turn to delete · tap grey to add · tap route to place</div>
+      </div>
+      <button id="trv-next" class="btn" style="flex:1;justify-content:center;font-size:22px;padding:10px;">▶</button>
+    </div>
+  </div>`;
+}
+
 function tLiveShell(r){
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
@@ -5048,9 +5182,19 @@ function tRoutes(r){
         const autoCount=r.turns.filter(t=>t.auto).length;
         const fileCount=r.turns.length-autoCount;
         const src=fileCount>0&&autoCount===0?'from file':fileCount>0?`${fileCount} from file, ${autoCount} auto`:'auto-detected';
-        return`<div class="banner ok-bright" style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;"><span>↩ ${r.turns.length} turn${r.turns.length!==1?'s':''} (${src})</span><button class="btn btn-sm" id="btn-auto-turns">Re-detect</button></div>`;
+        return`<div class="banner ok-bright" style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+          <span>↩ ${r.turns.length} turn${r.turns.length!==1?'s':''} (${src})</span>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="btn btn-sm" id="btn-review-turns">🗺 Review</button>
+            <button class="btn btn-sm" id="btn-auto-turns">↺ Re-detect</button>
+          </div>
+        </div>`;
       }
-      return`<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;"><div style="font-weight:600;margin-bottom:3px;">No turn navigation</div><div style="font-size:14px;line-height:1.5;">For best results export as <strong>TCX</strong> from RWGPS or Komoot. PackTimes will also attempt to auto-detect clear 90° turns from GPX geometry.</div><button class="btn btn-sm" id="btn-auto-turns" style="margin-top:6px;">↩ Run turn detection</button></div></div>`;
+      return`<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;">
+        <div style="font-weight:600;margin-bottom:3px;">No turn navigation</div>
+        <div style="font-size:14px;line-height:1.5;margin-bottom:8px;">For best results export as <strong>TCX</strong> from RWGPS or Komoot. Or auto-detect turns from the GPS line.</div>
+        <button class="btn btn-sm btn-p" id="btn-auto-turns">↩ Auto-detect turns</button>
+      </div></div>`;
     })():''}
     `:''}
   </div>
@@ -7264,9 +7408,14 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
+  if(e.target.id==='trv-exit'){exitTurnReview();return;}
+  if(e.target.id==='trv-next'){goToTurnReviewIdx((UI.turnReviewIdx||0)+1);return;}
+  if(e.target.id==='trv-prev'){goToTurnReviewIdx((UI.turnReviewIdx||0)-1);return;}
+  if(e.target.id==='btn-review-turns'){const r=cur();if(r)enterTurnReview();return;}
   if(e.target.closest('#btn-auto-turns')&&r){
     if(UI.simRunning||UI.simPaused)simStop();
-    r.turns=autoDetectTurns(r.points);
+    const det=autoDetectTurns(r.points);
+    r.turns=det.turns;r.nearMissTurns=det.nearMiss;
     saveAll();render();return;
   }
   if(e.target.closest('#turn-popup')){
@@ -7696,7 +7845,9 @@ function _applyGPXRoute(result,name,sourceId,existingIdx,stops){
   // For files with no embedded turns (GPX/KML/FIT), run auto-detection.
   // For TCX with embedded turns, trust the file — it has road-network-derived cues.
   if(r.turns.length===0){
-    r.turns=autoDetectTurns(r.points);
+    const det=autoDetectTurns(r.points);
+    r.turns=det.turns;
+    r.nearMissTurns=det.nearMiss;
   }
   UI.tab='routes';UI.opStatus='idle';
   delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
