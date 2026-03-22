@@ -2068,6 +2068,14 @@ document.addEventListener('click',e=>{
   if(e.target.id==='trv-prev'){goToTurnReviewIdx((UI.turnReviewIdx||0)-1);return;}
 });
 
+// Arrow keys for turn review on desktop
+document.addEventListener('keydown',e=>{
+  if(!UI.turnReview)return;
+  if(e.key==='ArrowRight'||e.key==='ArrowDown'){e.preventDefault();goToTurnReviewIdx((UI.turnReviewIdx||0)+1);}
+  else if(e.key==='ArrowLeft'||e.key==='ArrowUp'){e.preventDefault();goToTurnReviewIdx((UI.turnReviewIdx||0)-1);}
+  else if(e.key==='Escape'){exitTurnReview();}
+});
+
 // ═══════════════════════════════════════════
 //  MAP ENGINE
 // ═══════════════════════════════════════════
@@ -4261,8 +4269,7 @@ function render(){if(_rf)return;_rf=true;requestAnimationFrame(()=>{_rf=false;_r
   let trv=document.getElementById('turn-review-overlay');
   if(UI.turnReview&&!trv){
     document.body.insertAdjacentHTML('beforeend',renderTurnReview());
-    const cvs=document.getElementById('turn-review-map');
-    if(cvs)attachMap(cvs,null);
+    // Don't attachMap here — enterTurnReview does it with the real tapCb
     goToTurnReviewIdx(UI.turnReviewIdx||0);
   } else if(!UI.turnReview&&trv){
     trv.remove();
@@ -4769,6 +4776,8 @@ function enterTurnReview(){
 
 function exitTurnReview(){
   UI.turnReview=false;
+  const cvs=document.getElementById('turn-review-map');
+  if(cvs)cvs._attached=false;
   render();
 }
 
