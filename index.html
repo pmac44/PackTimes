@@ -1096,9 +1096,9 @@ function capName(s){if(!s)return s;return s.charAt(0).toUpperCase()+s.slice(1);}
 function addStop(r,dist,type,name,opts){
   opts=opts||{};
   r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:capName(name||(type+' stop')),
-    sleepH:opts.sleepH!==undefined?opts.sleepH:(type==='stop'?0.25:10),departTime:opts.departTime||null,
+    sleepH:opts.sleepH!==undefined?opts.sleepH:(type==='sleep'?10:null),departTime:opts.departTime||null,
     ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
-    icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🍫',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
+    icon:{food:'🍴',water:'💧',sleep:'😴',stop:'📍',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐'}[type]||'📍',
     auto:opts.auto||false,
     starred:opts.starred!==undefined?opts.starred:(type==='town'?true:!opts.auto),
     crossing:opts.crossing||false,
@@ -3914,7 +3914,7 @@ function importPlan(jsonStr,r){
     if(existingIds.has(s.id))return;
     r.stops.push({...s,
       ohRules:s.ohRaw?parseOH(s.ohRaw):null,
-      icon:{food:'🍴',water:'💧',sleep:'😴',rest:'🍫',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[s.type]||'📍'
+      icon:{food:'🍴',water:'💧',sleep:'😴',stop:'📍',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️'}[s.type]||'📍'
     });
   });
   r.stops.sort((a,b)=>a.dist-b.dist);
@@ -5768,8 +5768,8 @@ function tPlan(r){
       const depart=wake&&afterMealH>0?new Date(wake.getTime()+afterMealH*3600000):wake;
       const wakeDay=wake&&sdt?dayOff(wake,sdt):'';
       const departDay=depart&&sdt?dayOff(depart,sdt):'';
-      const col=s.type==='stop'?'#94856a':'#b39ddb';
-      const icon=s.type==='stop'?'🍫':'😴';
+      const col=s.type==='stop'&&!(s.sleepAt||s.sleepH)?'#94856a':'#b39ddb';
+      const icon=s.type==='stop'&&!(s.sleepAt||s.sleepH)?'📍':'😴';
       const fmtChip=m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;display:inline-block;margin:2px 2px 2px 0;">${m.type==='snack'?ICON_SNACK:ICON_MEAL} ${m.name||m.type} · ${m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier'}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
       const row=(label,val,color)=>`<div style="display:flex;align-items:baseline;gap:6px;margin-top:4px;font-family:var(--font);font-size:15px;"><span style="color:var(--text3);min-width:52px;">${label}</span><span style="color:${color||'var(--text)'};">${val}</span></div>`;
       sleepDiv='<div style="margin-top:8px;">'
