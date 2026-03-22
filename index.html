@@ -858,7 +858,7 @@ function autoDetectTurns(pts){
   for(let i=0;i<pts.length;i++)sm[i]=bearing(pts[i],pts[fwd10[i]]);
 
   // Pass 1: find all points where bearing changes ≥55° within the next 50m
-  const MIN_TURN_DEG=55;
+  const MIN_TURN_DEG=45;
   const candidates=[];
   for(let i=1;i<pts.length-2;i++){
     const diff=angleDiff(sm[i],sm[fwd05[i]]);
@@ -894,7 +894,10 @@ function autoDetectTurns(pts){
   }
 
   return separated.map(c=>{
-    const p=pts[c.i];
+    // Place marker at midpoint between detection point and 50m-ahead point
+    // so it sits at the apex of the turn rather than the approach
+    const mid=Math.round((c.i+fwd05[c.i])/2);
+    const p=pts[mid];
     const angle=Math.abs(c.diff);
     const type=c.diff<0?'Left':'Right';
     const sharpness=angle>110?'Sharp ':angle>60?'':'Slight ';
