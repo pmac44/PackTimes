@@ -2751,10 +2751,12 @@ function attachMap(cvs,tapCb){
     state.cy=_drag.startCy+dy/(ky*scale);
     redrawMap(id);
   };
+  let _didDrag=false;
   const dragEnd=(x,y,tapCb)=>{
     _mapDragging=false;
     if(!_drag)return;
     const wasTap=!_drag.moved;
+    _didDrag=_drag.moved;
     _drag=null;
     // For turn-review-map, click event handles taps to avoid double-fire
     if(wasTap&&tapCb&&cvs._px&&id!=='turn-review-map')hitTest(cvs,x,y,tapCb);
@@ -2808,6 +2810,8 @@ function attachMap(cvs,tapCb){
   },{passive:false});
   cvs.addEventListener('click',e=>{
     // Only fire on mouse click (touch already handled above)
+    // Suppress if a drag just completed (_didDrag flag)
+    if(_didDrag){_didDrag=false;return;}
     if(cvs._px&&e.detail!==0)hitTest(cvs,e.clientX,e.clientY,tapCb);
   });
 }
