@@ -3992,24 +3992,26 @@ const STRIP_ICON_SHOP='<svg width="28" height="28" viewBox="0 0 24 24" fill="non
 const STRIP_ICON_STAR='<svg width="26" height="26" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
 
 // Build pill label for a stop in the live strip — consistent with stop list labels
-function liveStripIcons(s){
+function liveStripIcons(s,reason){
   const typeColor={
-    town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',food:'#fbbf24',
+    town:'#4ade80',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',food:'#fbbf24',meal:'#fbbf24',
     shop:'#c084fc',pub:'#f59e0b',fuel:'#f97316',accom:'#c084fc',
     stop:'#94856a',camp:'#4a7c59',caravan:'#84cc16',hut:'#c8a96e',
     wc:'#2dd4bf',peak:'#94a3b8',church:'#e8c4f0',school:'#93c5fd',
     hall:'#d4a373',police:'#3b82f6',fire:'#ef4444',stockwater:'#94a3b8'
   };
   const typeLabel={
-    town:'TOWN',water:'WATER',crossing:'WATERWAYS',sleep:'SLEEP',food:'FOOD',
+    town:'TOWN',water:'WATER',crossing:'WATERWAYS',sleep:'SLEEP',food:'FOOD',meal:'EAT',
     shop:'SHOP',pub:'PUB',fuel:'FUEL',accom:'ACCOM',
     stop:'STOP',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
     wc:'TOILET',peak:'PEAK',church:'CHURCH',school:'SCHOOL',
     hall:'HALL',police:'POLICE',fire:'FIRE STN',stockwater:'STOCK H2O'
   };
   const type=s.sleepAt&&s.type!=='sleep'?'sleep':s.type;
-  const col=typeColor[type]||'#9db89d';
-  const lbl=typeLabel[type]||(type?type.toUpperCase():'STOP');
+  // If stop is shown because of food assignment (not its type), label as FOOD
+  const effectiveType=(reason==='food'&&s.type!=='food'&&s.type!=='shop')?'meal':type;
+  const col=typeColor[effectiveType]||'#9db89d';
+  const lbl=typeLabel[effectiveType]||(effectiveType?effectiveType.toUpperCase():'STOP');
   return`<span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;color:${col};background:${col}1a;border:1px solid ${col}55;border-radius:4px;padding:2px 5px;line-height:1.4;">${lbl}</span>`;
 }
 
@@ -4021,14 +4023,16 @@ function buildLiveStrip(r,liveDist,sdt){
   // Collect distinct upcoming stops — deduplicated by id
   const seen=new Set();
   const rows=[];
-  const add=s=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);}};
-  add(ahead[0]); // next stop always first
-  add(ahead.find(s=>s.type==='sleep'||s.sleepAt));
+  // Track reason: 'type' = shown for what it is, 'food' = shown because meals assigned
+  const rowReason={};
+  const add=(s,reason)=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);rowReason[s.id]=reason||'type';}};
+  add(ahead[0],'type'); // next stop always first
+  add(ahead.find(s=>s.type==='sleep'||s.sleepAt),'type');
   // Water — explicit water point, OR confirmed operating resupply (has ohRaw)
   const isWaterSource=s=>s.type==='water'||((s.type==='food'||s.type==='shop'||s.type==='town'||s.type==='accom'||s.type==='pub'||s.type==='fuel')&&s.ohRaw);
-  add(ahead.find(s=>isWaterSource(s)));
-  add(ahead.find(s=>s.type==='food'||s.type==='shop')); // resupply — buy food here
-  add(ahead.find(s=>s.meals&&s.meals.length));           // eat stop — carrying food
+  add(ahead.find(s=>isWaterSource(s)),'type');
+  add(ahead.find(s=>s.type==='food'||s.type==='shop'),'type'); // resupply — buy food here
+  add(ahead.find(s=>s.meals&&s.meals.length),'food');           // eat stop — carrying food
   rows.sort((a,b)=>a.dist-b.dist); // always show in distance order
   const now=etaAt(liveDist,r)||sdt||new Date(); // always use route time, never wall clock
   const html=rows.map(s=>{
@@ -4042,10 +4046,12 @@ function buildLiveStrip(r,liveDist,sdt){
       ?(remH<1?(Math.round(remH*60)+'min')
         :(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':'')))
       :null;
-    const icons=liveStripIcons(s);
+    const reason=rowReason[s.id]||'type';
+    const icons=liveStripIcons(s,reason);
     const st=shopSt(s,r);
-    const hoursTypes=new Set(['food','shop','accom','hut','pub','fuel']);
-    const needsHours=hoursTypes.has(s.type);
+    // Only show hours badge for stops shown for their type (not for meal stops at huts etc)
+    const hoursTypes=new Set(['food','shop','accom','pub','fuel']);
+    const needsHours=reason==='type'&&hoursTypes.has(s.type);
     const openBadge=needsHours?(st==='open'?'<span style="font-size:11px;color:var(--accent);margin-left:4px;">✓</span>':st==='closed'?'<span style="font-size:11px;color:var(--red);margin-left:4px;">✗</span>':'<span style="font-size:11px;color:var(--amber);margin-left:4px;">? hrs</span>'):'';
     return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
       <div class="live-next-icons">${icons}</div>
