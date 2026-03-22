@@ -502,8 +502,9 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
+  ftp:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
-  settingsExp:{dropbox:true,alerts:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
+  settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,
   powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
@@ -564,7 +565,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -588,6 +589,7 @@ async function loadAll(){
       if(prefs.searchRadiusKm!==undefined)UI.searchRadiusKm=prefs.searchRadiusKm;
       if(prefs.gpsZoom!==undefined)UI.gpsZoom=prefs.gpsZoom;
       if(prefs.weatherSpacingKm!==undefined)UI.weatherSpacingKm=prefs.weatherSpacingKm;
+      if(prefs.ftp)UI.ftp=prefs.ftp;
       if(Array.isArray(prefs.hiddenMapTypes))UI.hiddenMapTypes=new Set(prefs.hiddenMapTypes);
       if(prefs.osmOpts)UI.osmOpts=prefs.osmOpts;
     }
@@ -624,7 +626,16 @@ function parseGPX(txt){
   if(raw.length<2)return null;
   let dist=0;
   const pts=raw.map((p,i)=>{if(i>0)dist+=hav(raw[i-1],p);return{...p,dist};});
-  return{pts,hasTS};
+  // Extract name — prefer metadata name over track name
+  const metaName=doc.querySelector('metadata > name')?.textContent?.trim();
+  const trkName=doc.querySelector('trk > name, rte > name')?.textContent?.trim();
+  const name=metaName||trkName||null;
+  // Extract source timestamp — metadata/time is when file was exported/created
+  const metaTimeStr=doc.querySelector('metadata > time')?.textContent?.trim();
+  const metaTime=metaTimeStr?new Date(metaTimeStr):null;
+  const sourceId=metaTime&&!isNaN(metaTime)?metaTime.toISOString():
+    (raw[0]?.time?raw[0].time.toISOString():null);
+  return{pts,hasTS,name,sourceId,turns:[]};
 }
 
 function parseTCX(txt){
@@ -649,6 +660,12 @@ function parseTCX(txt){
   // Extract course name
   const nameEl=doc.querySelector('Course > n, Course > Name');
   const name=nameEl?.textContent?.trim()||null;
+  // Extract source ID — TCX Course Id is usually an ISO timestamp
+  const idEl=doc.querySelector('Course > Id');
+  const idStr=idEl?.textContent?.trim()||null;
+  const idDate=idStr?new Date(idStr):null;
+  const sourceId=idDate&&!isNaN(idDate)?idDate.toISOString():
+    (raw[0]?.time?raw[0].time.toISOString():null);
   // Extract TotalTimeSeconds from Lap — this is RWGPS/Garmin's moving time estimate,
   // more reliable than first-to-last timestamp which includes planned stop/sleep gaps.
   const lapTimeEl=doc.querySelector('Lap > TotalTimeSeconds');
@@ -674,7 +691,7 @@ function parseTCX(txt){
     });
     turns.push({lat,lon,dist:best.dist,type,name:n,notes,auto:false});
   });
-  return{pts,hasTS,name,turns,lapDuration};
+  return{pts,hasTS,name,sourceId,turns,lapDuration};
 }
 
 // ═══════════════════════════════════════════
@@ -827,26 +844,126 @@ function bearing(a,b){
   return(Math.atan2(y,x)*180/Math.PI+360)%360;
 }
 function angleDiff(a,b){let d=((b-a)+540)%360-180;return d;}
-function autoDetectTurns(pts,thresholdDeg=45,minDistKm=0.1){
-  const turns=[];
-  const smooth=20; // average over N points for stable bearing
-  let lastTurnDist=-1;
-  for(let i=smooth;i<pts.length-smooth;i++){
-    if(pts[i].dist-lastTurnDist<minDistKm)continue;
-    const b1=bearing(pts[i-smooth],pts[i]);
-    const b2=bearing(pts[i],pts[i+smooth]);
+function autoDetectTurns(pts){
+  if(pts.length<10)return[];
+  const totalDist=pts[pts.length-1].dist;
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  // Find the point index closest to a given distance
+  function idxAt(dist){
+    let lo=0,hi=pts.length-1;
+    while(lo<hi){const mid=(lo+hi)>>1;pts[mid].dist<dist?lo=mid+1:hi=mid;}
+    return lo;
+  }
+  // Bearing of route at a given distance, averaged over ±lookKm either side
+  // Uses distance-based window so it works equally on dense and sparse trackpoints
+  function bearingAt(dist,lookKm){
+    const d0=Math.max(0,dist-lookKm),d1=Math.min(totalDist,dist+lookKm);
+    const a=pts[idxAt(d0)],b=pts[idxAt(d1)];
+    return bearing(a,b);
+  }
+
+  // ── Pass 1: candidate detection ──────────────────────────────────────────
+  // Slide along the route at 15m steps. At each point compare bearing
+  // 60m before to bearing 60m after. Flag anything ≥30° as a candidate.
+  const STEP_KM=0.015;       // 15m steps
+  const LOOK_KM=0.06;        // bearing window: 60m each side
+  const MIN_ANGLE=30;        // minimum total bearing change to consider
+  const candidates=[];
+  for(let dist=LOOK_KM;dist<=totalDist-LOOK_KM;dist+=STEP_KM){
+    const b1=bearingAt(dist-LOOK_KM*0.5,LOOK_KM*0.5);
+    const b2=bearingAt(dist+LOOK_KM*0.5,LOOK_KM*0.5);
     const diff=angleDiff(b1,b2);
-    if(Math.abs(diff)>=thresholdDeg){
-      const type=diff<-thresholdDeg*0.6?'Left':diff>thresholdDeg*0.6?'Right':'Straight';
-      const sharpness=Math.abs(diff)>100?'Sharp ':Math.abs(diff)>60?'':'Slight ';
-      turns.push({
-        lat:pts[i].lat,lon:pts[i].lon,dist:pts[i].dist,
-        type,name:'',notes:sharpness+'turn '+type.toLowerCase(),auto:true
-      });
-      lastTurnDist=pts[i].dist;
+    if(Math.abs(diff)>=MIN_ANGLE){
+      candidates.push({dist,diff});
     }
   }
-  return turns;
+
+  // ── Pass 2: cluster candidates into single turn events ───────────────────
+  // Consecutive candidates within 80m are the same turn — keep the peak
+  const CLUSTER_KM=0.08;
+  const clustered=[];
+  let i=0;
+  while(i<candidates.length){
+    let peak=candidates[i];
+    let j=i+1;
+    while(j<candidates.length&&candidates[j].dist-candidates[j-1].dist<CLUSTER_KM){
+      if(Math.abs(candidates[j].diff)>Math.abs(peak.diff))peak=candidates[j];
+      j++;
+    }
+    clustered.push(peak);
+    i=j;
+  }
+
+  // ── Pass 3: sharpness test — confirm it's a junction, not a curve ─────────
+  // A real turn concentrates most of its bearing change over a short distance.
+  // Compare angle change in the central 30m vs the full 120m window.
+  // If the central 30m contains >50% of the total change, it's a junction turn.
+  // A sweeping curve distributes change evenly and fails this test.
+  const CENTRAL_KM=0.015;    // 15m either side of apex = 30m central zone
+  const OUTER_KM=0.06;       // 60m either side = 120m full window
+  const CONCENTRATION=0.45;  // central zone must contain this fraction of total change
+
+  const confirmed=[];
+  for(const c of clustered){
+    const outerBefore=bearingAt(c.dist-OUTER_KM,OUTER_KM*0.4);
+    const outerAfter =bearingAt(c.dist+OUTER_KM,OUTER_KM*0.4);
+    const totalChange=Math.abs(angleDiff(outerBefore,outerAfter));
+    if(totalChange<MIN_ANGLE)continue;
+
+    const centralBefore=bearingAt(c.dist-CENTRAL_KM,CENTRAL_KM*0.4);
+    const centralAfter =bearingAt(c.dist+CENTRAL_KM,CENTRAL_KM*0.4);
+    const centralChange=Math.abs(angleDiff(centralBefore,centralAfter));
+
+    const concentration=totalChange>0?centralChange/totalChange:0;
+    if(concentration>=CONCENTRATION){
+      confirmed.push({...c,totalAngle:totalChange,centralAngle:centralChange});
+    }
+  }
+
+  // ── Pass 4: suppress recoveries (chicanes/wiggles) ────────────────────────
+  // If bearing 150m after the turn is within 25° of bearing 150m before,
+  // the route straightened out — it's a wiggle, not a real navigation turn.
+  const RECOVERY_KM=0.15;
+  const RECOVERY_TOL=25;
+  const real=[];
+  for(const c of confirmed){
+    const bBefore=bearingAt(c.dist-RECOVERY_KM,LOOK_KM);
+    const bAfter =bearingAt(c.dist+RECOVERY_KM,LOOK_KM);
+    const recovery=Math.abs(angleDiff(bBefore,bAfter));
+    if(recovery>RECOVERY_TOL){
+      real.push(c);
+    }
+  }
+
+  // ── Pass 5: suppress turns too close together (< 60m) ────────────────────
+  const MIN_SEP_KM=0.06;
+  const separated=[];
+  let lastDist=-999;
+  for(const c of real){
+    if(c.dist-lastDist>=MIN_SEP_KM){
+      separated.push(c);
+      lastDist=c.dist;
+    } else {
+      // Keep the sharper one
+      if(separated.length&&Math.abs(c.totalAngle)>Math.abs(separated[separated.length-1].totalAngle)){
+        separated[separated.length-1]=c;
+        lastDist=c.dist;
+      }
+    }
+  }
+
+  // ── Pass 6: classify and build turn objects ───────────────────────────────
+  return separated.map(c=>{
+    const p=pts[idxAt(c.dist)];
+    const diff=c.diff; // signed: negative=left, positive=right
+    const angle=c.totalAngle;
+    const type=diff<0?'Left':'Right';
+    const sharpness=angle>110?'Sharp ':angle>60?'':'Slight ';
+    const isSwitchback=angle>140;
+    const notes=isSwitchback?'Switchback':(sharpness+type.toLowerCase()+' turn');
+    return{lat:p.lat,lon:p.lon,dist:p.dist,type,name:'',notes,auto:true};
+  });
 }
 function elevGain(pts){
   // Use a rolling threshold to filter GPS noise — only count gain after 10m continuous climb
@@ -4309,7 +4426,7 @@ function _render(){
     if(activeTab)activeTab.scrollIntoView({block:'nearest',inline:'center'});
   });
   const r=cur();
-  document.getElementById('hroute').textContent=r?r.name:'';
+  document.getElementById('hroute').textContent=r?(r.label||r.name):'';
   updateGPSPill();
   // Always ensure sun cache is populated for current route
   if(r)ensureSunCache(r);
@@ -4569,6 +4686,19 @@ function handleStopsScroll(e){
 }
 
 // ─── Live tab shell (split layout) ───
+// ─── Power zones (Wahoo 7-zone model) ───
+function powerZone(watts,ftp){
+  if(!ftp||!watts)return null;
+  const pct=watts/ftp;
+  if(pct<0.55)return{z:1,label:'Z1 Recovery',   color:'#9ca3af',bg:'rgba(156,163,175,0.15)',border:'rgba(156,163,175,0.35)'};
+  if(pct<0.75)return{z:2,label:'Z2 Endurance',  color:'#60a5fa',bg:'rgba(96,165,250,0.15)', border:'rgba(96,165,250,0.35)'};
+  if(pct<0.85)return{z:3,label:'Z3 Tempo',      color:'#34d399',bg:'rgba(52,211,153,0.15)', border:'rgba(52,211,153,0.35)'};
+  if(pct<0.95)return{z:4,label:'Z4 Sweet Spot', color:'#a3e635',bg:'rgba(163,230,53,0.15)', border:'rgba(163,230,53,0.35)'};
+  if(pct<1.05)return{z:5,label:'Z5 Threshold',  color:'#fbbf24',bg:'rgba(251,191,36,0.15)', border:'rgba(251,191,36,0.35)'};
+  if(pct<1.20)return{z:6,label:'Z6 VO2 Max',    color:'#f97316',bg:'rgba(249,115,22,0.15)', border:'rgba(249,115,22,0.35)'};
+  return          {z:7,label:'Z7 Anaerobic',   color:'#f87171',bg:'rgba(248,113,113,0.15)',border:'rgba(248,113,113,0.35)'};
+}
+
 function tLiveShell(r){
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
@@ -4717,12 +4847,13 @@ function tLiveShell(r){
 
   // Compact progress strip for top of map
   const finDay=sdt&&finEta?dayOff(finEta,sdt):'';
-  const powerPill=`<div style="flex:1;background:rgba(10,15,10,0.72);border:1px solid ${UI.powerConnected?'rgba(251,191,36,0.4)':'rgba(255,255,255,0.12)'};border-radius:7px;padding:4px 8px;text-align:center;cursor:pointer;" id="live-power-pill">
-      <div style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;">watts</div>
+  const _pz=UI.powerConnected&&UI.powerWatts!==null?powerZone(UI.powerWatts,UI.ftp):null;
+  const powerPill=`<div style="flex:1;background:${_pz?_pz.bg:'rgba(10,15,10,0.72)'};border:1px solid ${_pz?_pz.border:UI.powerConnected?'rgba(251,191,36,0.4)':'rgba(255,255,255,0.12)'};border-radius:7px;padding:4px 8px;text-align:center;cursor:pointer;transition:all .3s;" id="live-power-pill">
+      <div style="font-size:13px;color:${_pz?_pz.color:'var(--text3)'};font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;">${_pz?_pz.label:'watts'}</div>
       ${UI.powerConnected
-        ?`<div style="font-size:17px;font-weight:600;color:#fbbf24;font-family:var(--font);" id="live-power-val">${UI.powerWatts!==null?UI.powerWatts+'w':'—'}</div>
-           ${UI.powerCadence!==null?`<div style="font-size:11px;color:var(--text3);font-family:var(--font);" id="live-cadence-val">${UI.powerCadence}rpm</div>`:'<div style="font-size:11px;color:var(--text3);" id="live-cadence-val"></div>'}`
-        :`<div style="font-size:13px;color:var(--text3);font-family:var(--font);">tap</div>`}
+        ?`<div style="font-size:17px;font-weight:600;color:${_pz?_pz.color:'#fbbf24'};font-family:var(--font);" id="live-power-val">${UI.powerWatts!==null?UI.powerWatts+'w':'—'}</div>
+           ${UI.powerCadence!==null?`<div style="font-size:11px;color:${_pz?_pz.color:'var(--text3)'};font-family:var(--font);opacity:0.8;" id="live-cadence-val">${UI.powerCadence}rpm</div>`:'<div style="font-size:11px;color:var(--text3);" id="live-cadence-val"></div>'}`
+        :`<div style="font-size:13px;color:var(--text3);font-family:var(--font);">${UI.ftp?'tap':'set FTP'}</div>`}
     </div>`;
   const progressOverlay=`<div class="live-progress-bar">
     <div style="display:flex;gap:6px;">
@@ -4940,41 +5071,44 @@ function tRoutes(r){
     <div id="route-mgmt-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${actuallyExpanded?'margin-bottom:10px;':''}">
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:16px;color:var(--text3);">${actuallyExpanded?'▼':'▶'}</span>
-        <span class="ctitle" style="margin-bottom:0;">Routes${r?' · '+r.name:''}</span>
+        <span class="ctitle" style="margin-bottom:0;">Routes${r?' · '+(r.label||r.name):''}</span>
       </div>
       ${r?`<span style="font-size:13px;color:var(--text3);">${r.totalDist?r.totalDist.toFixed(0)+'km':''}</span>`:''}
     </div>
     ${actuallyExpanded?`
     <button class="btn btn-sm btn-p btn-full" id="btn-upload-route">↑ Upload GPX / TCX / KML / FIT</button>
     <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
-    ${ROUTES.length?ROUTES.map((rt,i)=>`
+    ${ROUTES.length?ROUTES.map((rt,i)=>{
+      const autoCount=rt.turns?rt.turns.filter(t=>t.auto).length:0;
+      const fileCount=rt.turns?(rt.turns.length-autoCount):0;
+      const turnMeta=rt.turns&&rt.turns.length
+        ?(fileCount>0&&autoCount>0
+          ?` · ${rt.turns.length} turns (${fileCount} file, ${autoCount} auto)`
+          :fileCount>0
+            ?` · ${rt.turns.length} turns (from file)`
+            :` · ${rt.turns.length} turns (auto)`)
+        :'';
+      return`
       <div class="rli ${i===CUR?'active':''}" data-ridx="${i}">
         <div class="ri-inf">
-          <div class="ri-name">${rt.name}</div>
-          <div class="ri-meta">${rt.totalDist?rt.totalDist.toFixed(0)+'km · ':''} ${rt.startDate||'no date'} · ${rt.stops.length} stops${rt.turns&&rt.turns.length?` · ${rt.turns.length} turns`:''}</div>
+          <div class="ri-name" style="font-size:17px;">${rt.label||rt.name}</div>
+          ${rt.sourceId?`<div style="font-size:12px;color:var(--text3);font-family:var(--font);margin-top:1px;opacity:0.7;">v ${formatSourceId(rt.sourceId)}</div>`:''}
+          <div class="ri-meta">${rt.totalDist?rt.totalDist.toFixed(0)+'km · ':''} ${rt.startDate||'no date'} · ${rt.stops.length} stops${turnMeta}</div>
         </div>
-        <button class="btn btn-sm btn-r del-route" data-ridx="${i}">✕</button>
-      </div>`).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX / KML / FIT above to get started.</p>`}
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button class="btn btn-sm rename-route" data-ridx="${i}" title="Rename">✎</button>
+          <button class="btn btn-sm btn-r del-route" data-ridx="${i}">✕</button>
+        </div>
+      </div>`;
+    }).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX / KML / FIT above to get started.</p>`}
     </div>
-    ${UI.turnStatus?`<div class="banner ${UI.turnStatus.type==='ok'?'ok-bright':'warn'}" style="margin-top:8px;">
-      <span>${UI.turnStatus.type==='ok'?'↩':'⚠️'}</span>
-      <div style="flex:1;">
-        <div>${UI.turnStatus.msg}</div>
-        ${UI.turnStatus.type==='warn'&&r?`<button class="btn btn-sm" id="btn-auto-turns" style="margin-top:6px;">⚙ Auto-detect turns (basic — review carefully)</button>`:''}
-      </div>
-      <button class="btn btn-sm" id="btn-dismiss-turns">✕</button>
-    </div>`:''}
     <button class="btn btn-sm btn-full" style="margin-top:8px;" id="btn-demo">▶ Load demo route</button>
     ${r?(()=>{
       const hasTurns=r.turns&&r.turns.length>0;
-      const autoTurns=hasTurns&&r.turns.every(t=>t.auto);
-      const tsBanner=''; // timestamps no longer used for estimates — naismith always used
       const turnBanner=hasTurns
-        ?(autoTurns
-          ?`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><span>Auto-detected turns (${r.turns.length}) — review carefully.</span></div>`
-          :`<div class="banner ok-bright" style="margin-top:6px;"><span>↩</span><span>${r.turns.length} turn${r.turns.length!==1?'s':''} imported</span></div>`)
-        :`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><div style="flex:1;"><span>No turn information.</span><div style="margin-top:6px;"><button class="btn btn-sm" id="btn-auto-turns">⚙ Auto-detect turns</button></div></div></div>`;
-      return tsBanner+turnBanner;
+        ?`<button class="btn btn-sm" style="margin-top:8px;" id="btn-auto-turns">↩ Re-detect turns</button>`
+        :`<div class="banner warn" style="margin-top:6px;"><span>⚠️</span><div style="flex:1;"><span>No turns detected.</span><div style="margin-top:6px;"><button class="btn btn-sm" id="btn-auto-turns">↩ Re-detect turns</button></div></div></div>`;
+      return turnBanner;
     })():''}
     `:''}
   </div>
@@ -5233,12 +5367,46 @@ function tSettings(r){
     <p style="font-size:16px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Deletes all routes, stops and settings from this device. Cannot be undone.</p>
     <button class="btn btn-r btn-full" id="btn-clearall">🗑 Clear all data &amp; start fresh</button>`;
 
+  const ftpZoneRows=(()=>{
+    if(!UI.ftp)return'';
+    const ftp=UI.ftp;
+    const zones=[
+      [1,'Z1 Recovery',  'under 55%',  'under '+Math.round(ftp*0.55),'#9ca3af','rgba(156,163,175,0.15)','rgba(156,163,175,0.35)'],
+      [2,'Z2 Endurance', '55 - 74%',   Math.round(ftp*0.55)+' - '+Math.round(ftp*0.74),'#60a5fa','rgba(96,165,250,0.15)','rgba(96,165,250,0.35)'],
+      [3,'Z3 Tempo',     '75 - 84%',   Math.round(ftp*0.75)+' - '+Math.round(ftp*0.84),'#34d399','rgba(52,211,153,0.15)','rgba(52,211,153,0.35)'],
+      [4,'Z4 Sweet Spot','85 - 94%',   Math.round(ftp*0.85)+' - '+Math.round(ftp*0.94),'#a3e635','rgba(163,230,53,0.15)','rgba(163,230,53,0.35)'],
+      [5,'Z5 Threshold', '95 - 105%',  Math.round(ftp*0.95)+' - '+Math.round(ftp*1.05),'#fbbf24','rgba(251,191,36,0.15)','rgba(251,191,36,0.35)'],
+      [6,'Z6 VO2 Max',   '106 - 120%', Math.round(ftp*1.06)+' - '+Math.round(ftp*1.20),'#f97316','rgba(249,115,22,0.15)','rgba(249,115,22,0.35)'],
+      [7,'Z7 Anaerobic', 'over 120%',  'over '+Math.round(ftp*1.20),'#f87171','rgba(248,113,113,0.15)','rgba(248,113,113,0.35)'],
+    ];
+    return '<div style="margin-top:14px;display:flex;flex-direction:column;gap:4px;">'
+      +zones.map(function(row){
+        var z=row[0],name=row[1],pct=row[2],range=row[3],col=row[4],bg=row[5],border=row[6];
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;background:'+bg+';border:1px solid '+border+';">'
+          +'<div style="width:6px;height:6px;border-radius:50%;background:'+col+';flex-shrink:0;"></div>'
+          +'<div style="flex:1;font-size:15px;font-weight:500;color:'+col+';">Z'+z+' '+name+'</div>'
+          +'<div style="font-size:13px;color:'+col+';font-family:var(--font);opacity:0.8;">'+pct+'</div>'
+          +'<div style="font-size:13px;color:'+col+';font-family:var(--font);font-weight:600;">'+range+'w</div>'
+          +'</div>';
+      }).join('')+'</div>';
+  })();
+
+  const ftpBody='<p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">Set your FTP to see Wahoo-style power zones on the ride screen. The watts display changes colour based on your current zone.</p>'
+    +'<div class="field"><label class="lbl">FTP &mdash; <span id="ftp-val">'+(UI.ftp?UI.ftp+'w':'Not set')+'</span></label>'
+    +'<div style="display:flex;gap:8px;align-items:center;">'
+    +'<input type="number" id="ftp-input" min="50" max="600" step="1" value="'+(UI.ftp||'')+'" placeholder="e.g. 250" style="width:100px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;">'
+    +'<span style="font-size:16px;color:var(--text3);">watts</span>'
+    +(UI.ftp?'<button class="btn btn-sm btn-r" id="ftp-clear">Clear</button>':'')
+    +'</div></div>'
+    +ftpZoneRows;
+
   return`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="font-size:22px;">⏱</span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>
   ${section('dropbox','Dropbox Sync',dropboxBody)}
   ${section('alerts','Proximity Alerts',alertsBody,!!r)}
+  ${section('ftp','⚡ Power Zones',ftpBody)}
   ${section('zoom','GPS Map Zoom',zoomBody,!!r)}
   ${section('weather','Weather Map Spacing',weatherBody,!!r)}
   ${section('offline','Offline Storage',offlineBody)}
@@ -6375,7 +6543,7 @@ function printMission(){
     <td style="padding:8px;">${totalSleepH>0?totalSleepH.toFixed(1)+'h sleep':''}</td>
   </tr>`;
 
-  const html=`<!DOCTYPE html><html><head><title>PackTimes Mission — ${r.name}</title>
+  const html=`<!DOCTYPE html><html><head><title>PackTimes Mission — ${r.label||r.name}</title>
   <meta charset="utf-8">
   <style>
     body{font-family:system-ui,sans-serif;margin:24px;color:#111;}
@@ -6386,7 +6554,7 @@ function printMission(){
     tr:nth-child(even){background:#fafafa;}
     @media print{body{margin:12px;}}
   </style></head><body>
-  <h1>⏱ PackTimes — ${r.name}</h1>
+  <h1>⏱ PackTimes — ${r.label||r.name}</h1>
   <h2>${sdt?'Start: '+fmtDT(sdt):''} · ${r.totalDist.toFixed(1)} km · ${totalSleepH>0?totalSleepH.toFixed(1)+'h sleep planned':''}</h2>
   <table>
     <thead><tr>
@@ -6714,6 +6882,8 @@ document.getElementById('tabs').addEventListener('click',e=>{
 
 document.getElementById('content-wrap').addEventListener('click',e=>{
   const r=cur();
+  // FTP clear
+  if(e.target.id==='ftp-clear'){UI.ftp=null;saveAll();if(UI.tab==='settings')render();return;}
   // OSM all/none toggle
   if(e.target.closest('#osm-all-toggle')){
     const keys=['towns','water','crossings','toilets','stockwater','food','fuel','shops','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks'];
@@ -6728,12 +6898,24 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;}
   // Route list select
   const rli=e.target.closest('.rli');
-  if(rli&&!e.target.closest('.del-route')){CUR=+rli.dataset.ridx;UI.tab='routes';saveAll();render();return;}
+  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')){CUR=+rli.dataset.ridx;UI.tab='routes';saveAll();render();return;}
+  // Rename route
+  const rr=e.target.closest('.rename-route');
+  if(rr){
+    const i=+rr.dataset.ridx;const rt=ROUTES[i];if(!rt)return;
+    const current=rt.label||rt.name;
+    const newName=prompt('Rename route:',current);
+    if(newName&&newName.trim()&&newName.trim()!==current){
+      rt.label=newName.trim();rt._userLabel=true;
+      saveAll();render();
+    }
+    return;
+  }
   // Delete route
   const dr=e.target.closest('.del-route');
-  if(dr){const i=+dr.dataset.ridx;
-    if(confirm(`Delete "${ROUTES[i].name}"?`)){
-      DB.del(ROUTES[i].id).catch(()=>{});ROUTES.splice(i,1);
+  if(dr){const i=+dr.dataset.ridx;const rt=ROUTES[i];
+    if(confirm(`Delete "${rt.label||rt.name}"?`)){
+      DB.del(rt.id).catch(()=>{});ROUTES.splice(i,1);
       if(CUR>=ROUTES.length)CUR=ROUTES.length-1;saveAll();render();}return;}
   // Edit stop position — redirect to edit modal (same as rename)
   const ed=e.target.closest('.edit-dist');
@@ -7140,9 +7322,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
-  if(e.target.closest('#btn-dismiss-turns')){UI.turnStatus=null;render();return;}
+  if(e.target.closest('#btn-auto-turns')&&r){
+    if(UI.simRunning||UI.simPaused)simStop();
+    r.turns=autoDetectTurns(r.points);
+    saveAll();render();return;
+  }
   if(e.target.closest('#turn-popup')){
-    // Dismiss turn popup until next turn
     const r=cur();if(r&&r.turns){
       const liveDist=UI.gpsDistKm||0;
       const t=r.turns.find(t=>t.dist>liveDist&&t.dist-liveDist<=0.5);
@@ -7150,12 +7335,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       render();
     }
     return;
-  }
-  if(e.target.closest('#btn-auto-turns')&&r){
-    if(UI.simRunning||UI.simPaused)simStop();
-    r.turns=autoDetectTurns(r.points);
-    UI.turnStatus=null;
-    saveAll();render();return;
   }
   if(e.target.closest('#btn-plan-sleep-filter')){
     UI.planSleepOnly=!UI.planSleepOnly;renderKeepScroll();return;}
@@ -7335,6 +7514,15 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     }
     saveAll();render();return;
   }
+  if(e.target.id==='ftp-input'){
+    const v=parseInt(e.target.value);
+    UI.ftp=(v>=50&&v<=600)?v:null;
+    const lbl=document.getElementById('ftp-val');
+    if(lbl)lbl.textContent=UI.ftp?UI.ftp+'w':'Not set';
+    saveAll();
+    if(UI.tab==='settings')render();
+    return;
+  }
   if(e.target.classList.contains('gps-zoom-opt')){
     UI.gpsZoom=parseFloat(e.target.value);
     saveAll();render();return;
@@ -7429,6 +7617,30 @@ document.addEventListener('drop',e=>{
   if(f&&/\.(gpx|tcx|kml|kmz|fit)$/i.test(f.name))loadRouteFile(f);
 });
 
+function cleanRouteName(raw){
+  if(!raw)return null;
+  let s=raw.trim();
+  // Strip leading date prefixes like "2024-03-15_", "2024-03-15 ", "20240315-"
+  s=s.replace(/^\d{4}[-_]?\d{2}[-_]?\d{2}[-_ ]*/,'');
+  // Strip common app prefixes like "Cycling_", "Running_", "Morning_Ride_"
+  s=s.replace(/^(cycling|running|walking|hiking|bikepacking|gravel|mtb|road)[_ -]/i,'');
+  // Replace hyphens and underscores with spaces
+  s=s.replace(/[-_]+/g,' ');
+  // Collapse multiple spaces
+  s=s.replace(/\s+/g,' ').trim();
+  // Title case
+  s=s.replace(/\b\w/g,c=>c.toUpperCase());
+  return s||null;
+}
+
+function formatSourceId(iso){
+  if(!iso)return null;
+  const d=new Date(iso);
+  if(isNaN(d))return iso;
+  return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})+
+    ' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
+
 function loadRouteFile(f){
   const name=f.name.replace(/\.(gpx|tcx|kml|kmz|fit)$/i,'');
   const isFIT=f.name.toLowerCase().endsWith('.fit');
@@ -7464,31 +7676,32 @@ function applyGPX(content,suggestedName,isBinary){
     result=isTCX?parseTCX(txt):isKML?parseKML(txt):parseGPX(txt);
     if(!result){alert('Could not parse file. Please use a GPX, TCX, KML or FIT file.');return;}
   }
-  const routeName=(result.name||suggestedName||'New Route').trim();
+  const rawName=result.name||suggestedName||'New Route';
+  const routeName=(cleanRouteName(rawName)||rawName).trim();
+  const sourceId=result.sourceId||null;
   // Check if a route with the same name already exists and has stops
-  const existingIdx=ROUTES.findIndex(r=>r.name.trim().toLowerCase()===routeName.toLowerCase());
+  const existingIdx=ROUTES.findIndex(r=>{
+    const rn=(r.label||r.name).trim().toLowerCase();
+    return rn===routeName.toLowerCase();
+  });
   const existing=existingIdx>=0?ROUTES[existingIdx]:null;
   if(existing&&existing.stops.length>0){
     const choice=confirm(`"${routeName}" already exists with ${existing.stops.length} stop${existing.stops.length!==1?'s':''}.\n\nOK = Copy existing stops across to updated route\nCancel = Show more options`);
     if(choice){
-      // Copy stops across — snap each to nearest point on new route
-      _applyGPXWithStops(result,routeName,existingIdx,existing.stops);
+      _applyGPXWithStops(result,routeName,sourceId,existingIdx,existing.stops);
       return;
     } else {
       const fresh=confirm(`Fresh start — clear all stops?\n\nOK = Fresh start (no stops)\nCancel = Keep as a new separate route`);
       if(fresh){
-        _applyGPXRoute(result,routeName,existingIdx,[]);
+        _applyGPXRoute(result,routeName,sourceId,existingIdx,[]);
         return;
       }
-      // Fall through — create new route
     }
   } else if(existing){
-    // Same name, no stops — just replace
-    _applyGPXRoute(result,routeName,existingIdx,[]);
+    _applyGPXRoute(result,routeName,sourceId,existingIdx,[]);
     return;
   }
-  // New route
-  _applyGPXRoute(result,routeName,-1,[]);
+  _applyGPXRoute(result,routeName,sourceId,-1,[]);
 }
 
 function _snapStopsToRoute(stops,newPts,newTotalDist){
@@ -7505,23 +7718,28 @@ function _snapStopsToRoute(stops,newPts,newTotalDist){
   });
 }
 
-function _applyGPXWithStops(result,name,existingIdx,oldStops){
+function _applyGPXWithStops(result,name,sourceId,existingIdx,oldStops){
   const newPts=result.pts;
   const newTotalDist=newPts[newPts.length-1].dist;
   const snappedStops=_snapStopsToRoute(oldStops,newPts,newTotalDist);
-  _applyGPXRoute(result,name,existingIdx,snappedStops);
+  _applyGPXRoute(result,name,sourceId,existingIdx,snappedStops);
   const kept=snappedStops.length,removed=oldStops.length-kept;
   if(removed>0)alert(`${kept} stops copied across. ${removed} stop${removed!==1?'s':''} removed (beyond new route end).`);
 }
 
-function _applyGPXRoute(result,name,existingIdx,stops){
+function _applyGPXRoute(result,name,sourceId,existingIdx,stops){
   let r;
   if(existingIdx>=0){
     r=ROUTES[existingIdx];
     r.name=name;
+    // Only update label if user hasn't renamed it
+    if(!r._userLabel)r.label=name;
+    r.sourceId=sourceId;
     CUR=existingIdx;
   } else {
     r=newRoute(name);
+    r.label=name;
+    r.sourceId=sourceId;
     ROUTES.push(r);CUR=ROUTES.length-1;
   }
   r.points=result.pts;r.hasTS=result.hasTS;r.totalDist=result.pts[result.pts.length-1].dist;
@@ -7533,14 +7751,23 @@ function _applyGPXRoute(result,name,existingIdx,stops){
   r.cumRiding=buildCumRiding(result.pts,r.paceSegs||[]);
   r.stops=stops;
   r.turns=result.turns||[];
+  // Always run auto-detection. For GPX/KML/FIT (no embedded turns) this is the
+  // only source. For TCX with embedded turns, merge both — auto catches what the
+  // exporter missed, embedded adds named waypoints.
+  const autoTurns=autoDetectTurns(r.points);
+  if(r.turns.length===0){
+    r.turns=autoTurns;
+  } else {
+    const merged=[...r.turns];
+    autoTurns.forEach(at=>{
+      const nearby=merged.some(et=>Math.abs(et.dist-at.dist)<0.08);
+      if(!nearby)merged.push(at);
+    });
+    merged.sort((a,b)=>a.dist-b.dist);
+    r.turns=merged;
+  }
   UI.tab='routes';UI.opStatus='idle';
   delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
-  // Show turn info status
-  if(r.turns.length>0){
-    UI.turnStatus={type:'ok',msg:`${r.turns.length} turn${r.turns.length!==1?'s':''} imported from file.`};
-  } else {
-    UI.turnStatus={type:'warn',msg:'No turn information found in this file. Turn-by-turn navigation will not be available. Try re-exporting with turn instructions enabled.'};
-  }
   saveAll();render();
 }
 
@@ -7641,10 +7868,27 @@ async function connectPowerMeter(){
       UI.powerWatts=avg;
       if(cadence!==null&&cadence>=0&&cadence<250)UI.powerCadence=cadence;
       // Patch power pill directly without full re-render
+      const pill=document.getElementById('live-power-pill');
       const pw=document.getElementById('live-power-val');
       const pc=document.getElementById('live-cadence-val');
+      const plbl=pill?.querySelector('div:first-child');
       if(pw)pw.textContent=avg+'w';
       if(pc&&UI.powerCadence!==null)pc.textContent=UI.powerCadence+'rpm';
+      // Update zone colour if FTP is set
+      const pz=powerZone(avg,UI.ftp);
+      if(pill&&pz){
+        pill.style.background=pz.bg;
+        pill.style.borderColor=pz.border;
+        if(plbl){plbl.textContent=pz.label;plbl.style.color=pz.color;}
+        if(pw)pw.style.color=pz.color;
+        if(pc)pc.style.color=pz.color;
+      } else if(pill&&!pz){
+        pill.style.background='rgba(10,15,10,0.72)';
+        pill.style.borderColor='rgba(251,191,36,0.4)';
+        if(plbl){plbl.textContent='watts';plbl.style.color='var(--text3)';}
+        if(pw)pw.style.color='#fbbf24';
+        if(pc)pc.style.color='var(--text3)';
+      }
     });
     UI.powerConnected=true;
     UI.powerDeviceName=_powerDevice.name||'Power meter';
