@@ -4686,13 +4686,14 @@ function initLiveMap(r){
   };
   // Call immediately for initial size, then again after DOM settles with real strip heights
   sizeLiveMap();
-  requestAnimationFrame(()=>requestAnimationFrame(sizeLiveMap));
-  // Re-size when address bar retracts/appears
-  _liveResizeHandler=sizeLiveMap;
+  // Re-size when address bar retracts/appears — debounced to prevent rapid iOS resize loops
+  let _sizeDebounce=null;
+  const debouncedSize=()=>{if(_sizeDebounce)clearTimeout(_sizeDebounce);_sizeDebounce=setTimeout(sizeLiveMap,150);};
+  _liveResizeHandler=debouncedSize;
   if(window.visualViewport){
-    window.visualViewport.addEventListener('resize',sizeLiveMap);
+    window.visualViewport.addEventListener('resize',debouncedSize);
   } else {
-    window.addEventListener('resize',sizeLiveMap);
+    window.addEventListener('resize',debouncedSize);
   }
   attachMap(cvs,km=>openModal(km));
 }
@@ -6337,8 +6338,21 @@ function updateLive(){
   patchCard(nextFood,'food');
 
   // Update weather bar
+  // Update weather bar at most every 30s — it changes slowly and rebuilding it every GPS tick causes map flicker
   const wb=document.getElementById('live-weather-bar-wrap');
-  if(wb){const newW=weatherBarHTML();if(newW)wb.innerHTML=newW;}
+  if(wb){
+    const now2=Date.now();
+    if(!wb._lastUpdate||now2-wb._lastUpdate>30000){
+      const newW=weatherBarHTML();
+      if(newW&&wb.innerHTML!==newW){
+        wb.innerHTML=newW;
+        wb._lastUpdate=now2;
+        if(!IS_DESKTOP()&&typeof _liveResizeHandler==='function')_liveResizeHandler();
+      } else if(newW){
+        wb._lastUpdate=now2;
+      }
+    }
+  }
   // Also refresh weather cache for current GPS position
   if(r)ensureWeatherCache(r);
 
