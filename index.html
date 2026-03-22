@@ -2409,7 +2409,7 @@ function drawMap(cvs,r,opts){
   if(r.turns&&r.turns.length&&!(UI.hiddenMapTypes.has('turns')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))){
     const liveDist=UI.gpsDistKm||0;
     const isReview=cvs.id==='turn-review-map';
-    const size=isReview?13:6;
+    const size=isReview?16:6;
     // In review mode also draw near-miss turns as faded grey triangles
     const allTurns=[...(r.turns||[]),...(isReview?(r.nearMissTurns||[]):[])];
     allTurns.forEach(t=>{
@@ -2756,7 +2756,8 @@ function attachMap(cvs,tapCb){
     if(!_drag)return;
     const wasTap=!_drag.moved;
     _drag=null;
-    if(wasTap&&tapCb&&cvs._px)hitTest(cvs,x,y,tapCb);
+    // For turn-review-map, click event handles taps to avoid double-fire
+    if(wasTap&&tapCb&&cvs._px&&id!=='turn-review-map')hitTest(cvs,x,y,tapCb);
   };
 
   // Mouse drag — scoped to this canvas to avoid cross-canvas interference
@@ -2829,10 +2830,10 @@ function hitTest(cvs,cx,cy,cb){
     });
     // Hit a turn marker (within 44px — bigger target for fat fingers)
     if(best&&bestD<44){cb(best.dist,best);return;}
-    // Tap on route line — find nearest point
+    // Tap anywhere else — snap to nearest route point and place a turn
     let bi=0,bd=Infinity;
     pts.forEach((p,i)=>{const dx=px(p.lon)-mx,dy=py(p.lat)-my,d=dx*dx+dy*dy;if(d<bd){bd=d;bi=i;}});
-    if(Math.sqrt(bd)<60)cb(pts[bi].dist,null);
+    cb(pts[bi].dist,null);
     return;
   }
   // Handle stop dot taps for stops-map and desktop-map
@@ -4739,17 +4740,19 @@ function enterTurnReview(){
     cvs.width=Math.round(w*dpr);
     cvs.height=Math.round(h*dpr);
     attachMap(cvs,(distKm, hitTurn)=>{
-      // Tap on review map
       const r=cur();if(!r)return;
       if(hitTurn){
-        if(hitTurn.nearMiss){
+        // Determine if this is a near-miss by checking which array it lives in
+        const isNearMiss=(r.nearMissTurns||[]).some(t=>Math.abs(t.lat-hitTurn.lat)<0.00001&&Math.abs(t.lon-hitTurn.lon)<0.00001);
+        if(isNearMiss){
           // Promote near-miss to confirmed turn
-          r.turns.push({...hitTurn,nearMiss:false});
+          const promoted={...hitTurn,nearMiss:false};
+          r.turns.push(promoted);
           r.turns.sort((a,b)=>a.dist-b.dist);
-          r.nearMissTurns=(r.nearMissTurns||[]).filter(t=>Math.abs(t.dist-hitTurn.dist)>0.001);
+          r.nearMissTurns=(r.nearMissTurns||[]).filter(t=>!(Math.abs(t.lat-hitTurn.lat)<0.00001&&Math.abs(t.lon-hitTurn.lon)<0.00001));
         } else {
           // Delete confirmed turn
-          r.turns=r.turns.filter(t=>Math.abs(t.dist-hitTurn.dist)>0.001);
+          r.turns=r.turns.filter(t=>!(Math.abs(t.lat-hitTurn.lat)<0.00001&&Math.abs(t.lon-hitTurn.lon)<0.00001));
         }
       } else {
         // Place new manual turn at tapped route position
@@ -4762,10 +4765,9 @@ function enterTurnReview(){
         r.turns.sort((a,b)=>a.dist-b.dist);
       }
       saveAll();
-      // Update counter display
       const all2=allReviewTurns(r);
       const ctr=document.getElementById('trv-counter');
-      if(ctr)ctr.textContent=`${(UI.turnReviewIdx||0)+1} / ${all2.length}`;
+      if(ctr)ctr.textContent=`${Math.min((UI.turnReviewIdx||0)+1,all2.length)} / ${all2.length}`;
       const lbl=document.querySelector('.trv-src-lbl');
       if(lbl)lbl.textContent=`${r.turns.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}`;
       redrawMap('turn-review-map');
@@ -4823,7 +4825,7 @@ function renderTurnReview(){
     <div style="position:absolute;bottom:0;left:0;right:0;z-index:10001;background:rgba(10,15,10,0.9);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:12px;">
       <button id="trv-prev" class="btn" style="flex:1;justify-content:center;font-size:22px;padding:10px;">◀</button>
       <div style="text-align:center;flex:2;">
-        <div style="font-size:12px;color:var(--text3);font-family:var(--font);line-height:1.5;">tap <span style="color:#4ade80;">▲</span> to delete · tap <span style="color:#dcd464;">▲</span> to confirm · tap route to add</div>
+        <div style="font-size:12px;color:var(--text3);font-family:var(--font);line-height:1.5;">tap <span style="color:#4ade80;">▲</span> delete · <span style="color:#dcd464;">▲</span> confirm · tap map to add</div>
       </div>
       <button id="trv-next" class="btn" style="flex:1;justify-content:center;font-size:22px;padding:10px;">▶</button>
     </div>
