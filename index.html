@@ -2084,7 +2084,9 @@ function showAlert(s,remKm,r){
 }
 // alert-ok handled via event delegation above
 // ── Turn review overlay buttons — on document since overlay is outside content-wrap ──
-document.addEventListener('click',e=>{
+// Listen for both click (desktop) and touchend (mobile — canvas touchstart preventDefault blocks click)
+function _handleTrvEvent(e){
+  const r=cur();
   if(e.target.id==='trv-exit'){exitTurnReview();return;}
   if(e.target.id==='trv-settings-btn'){
     const p=document.getElementById('trv-settings-panel');
@@ -2120,20 +2122,26 @@ document.addEventListener('click',e=>{
     r.turns=det.turns;r.nearMissTurns=det.nearMiss;
     saveAll();
     UI.turnReviewIdx=0;
+    // Update overlay in-place — render() won't rebuild it since the overlay already exists
     const p=document.getElementById('trv-settings-panel');if(p)p.style.display='none';
-    render();// rebuild overlay with updated counts
+    const all2=allReviewTurns(r);
+    const ctr=document.getElementById('trv-counter');
+    if(ctr)ctr.textContent='1 / '+all2.length;
+    const lbl=document.querySelector('.trv-src-lbl');
+    if(lbl)lbl.textContent=r.turns.length+' confirmed'+(r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':'');
+    const yBtn=document.getElementById('trv-clear-yellow');
+    if(yBtn){yBtn.textContent='🗑 Clear yellows'+(r.nearMissTurns&&r.nearMissTurns.length?' ('+r.nearMissTurns.length+')':'');yBtn.disabled=!r.nearMissTurns||!r.nearMissTurns.length;}
+    goToTurnReviewIdx(0);
     return;
   }
   if(e.target.id==='trv-clear-yellow'&&r){
     r.nearMissTurns=[];
     saveAll();
-    // Update counter and label in place
     const all2=allReviewTurns(r);
     const ctr=document.getElementById('trv-counter');
     if(ctr)ctr.textContent=(Math.min((UI.turnReviewIdx||0)+1,all2.length)||0)+' / '+all2.length;
     const lbl=document.querySelector('.trv-src-lbl');
     if(lbl)lbl.textContent=r.turns.length+' confirmed';
-    // Rebuild settings panel counts
     const btn=document.getElementById('trv-clear-yellow');
     if(btn){btn.textContent='🗑 Clear yellows';btn.disabled=true;}
     redrawMap('turn-review-map');
@@ -2141,7 +2149,18 @@ document.addEventListener('click',e=>{
   }
   if(e.target.id==='trv-next'){goToTurnReviewIdx((UI.turnReviewIdx||0)+1);return;}
   if(e.target.id==='trv-prev'){goToTurnReviewIdx((UI.turnReviewIdx||0)-1);return;}
+}
+document.addEventListener('click',e=>{
+  _handleTrvEvent(e);
 });
+document.addEventListener('touchend',e=>{
+  // Only handle trv buttons — avoid interfering with other touch interactions
+  const trvIds=['trv-exit','trv-settings-btn','trv-settings-close','trv-redetect','trv-clear-yellow','trv-next','trv-prev'];
+  if(trvIds.includes(e.target.id)||e.target.closest('.trv-preset')){
+    e.preventDefault();
+    _handleTrvEvent(e);
+  }
+},{passive:false});
 
 // Arrow keys for turn review on desktop
 document.addEventListener('keydown',e=>{
@@ -4914,7 +4933,7 @@ function renderTurnReview(){
       <div id="trv-counter" style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">1 / ${all.length}</div>
       <div class="trv-src-lbl" style="font-size:12px;color:var(--text3);margin-top:2px;">${confirmed.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}</div>
     </div>
-    <div id="trv-settings-panel" style="display:none;position:absolute;top:12px;left:12px;right:12px;z-index:10002;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:10px;padding:14px 14px 10px;">
+    <div id="trv-settings-panel" style="display:none;position:absolute;top:12px;left:12px;right:12px;z-index:10002;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:10px;padding:14px 14px 10px;touch-action:auto;pointer-events:all;">
       <div style="font-size:13px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Detection Settings</div>
       <div style="display:flex;gap:6px;margin-bottom:10px;">
         ${(()=>{const to=r.turnDetectOpts||{};const md=to.minTurnDeg!==undefined?to.minTurnDeg:45,rt=to.recoveryTol!==undefined?to.recoveryTol:30,sm=to.slightMax!==undefined?to.slightMax:60;return[['Minimal',55,40,45],['Standard',45,30,60],['Detailed',35,20,75],['All',25,10,90]].map(([l,d,rv,s])=>'<button class="btn btn-sm trv-preset" data-d="'+d+'" data-r="'+rv+'" data-s="'+s+'" style="flex:1;justify-content:center;font-size:13px;padding:5px 2px;'+(d===md&&rv===rt&&s===sm?'border-color:var(--accent);color:var(--accent);':'')+'">'+l+'</button>').join('');})()}
@@ -4933,7 +4952,7 @@ function renderTurnReview(){
         <button id="trv-settings-close" class="btn btn-sm" style="flex-shrink:0;">Done</button>
       </div>
     </div>
-    <div style="position:absolute;bottom:0;left:0;right:0;z-index:10001;background:rgba(10,15,10,0.9);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <div style="position:absolute;bottom:0;left:0;right:0;z-index:10001;background:rgba(10,15,10,0.9);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:8px;touch-action:auto;pointer-events:all;">
       <button id="trv-prev" class="btn" style="flex:1;justify-content:center;font-size:22px;padding:10px;">◀</button>
       <div style="text-align:center;flex:2;">
         <div style="font-size:12px;color:var(--text3);font-family:var(--font);line-height:1.5;">tap <span style="color:#4ade80;">▲</span> delete · <span style="color:#dcd464;">▲</span> confirm · tap map to add</div>
