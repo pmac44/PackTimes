@@ -5460,14 +5460,13 @@ function tRoutes(r){
       </button>
       <div style="text-align:center;min-width:70px;">
         <div class="sval" id="tf-val">${r.timeFactor.toFixed(2)} ×${r.estDuration&&r.totalDist?`<br><span style="font-size:16px;color:var(--text3);">(${(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1)} km/h avg)</span>`:''}</div>
-        <div style="font-size:15px;color:var(--text3);margin-top:2px;" id="tf-desc">${factorDesc(r.timeFactor)}</div>
       </div>
       <button class="btn btn-sm" id="tf-faster" style="flex:1;justify-content:center;flex-direction:column;gap:1px;padding:6px 4px;">
         <span style="font-size:22px;">➡</span><span style="font-size:16px;">Faster</span>
       </button>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:10px;">
-      ${[['1.2','Loaded and/or tough course'],['1.0','Average rider / load / course'],['0.8','Strong rider / light load / fast course']].map(([val,label])=>`
+      ${[['1.2','Typical loaded tourer'],['1.0','Fit rider, mixed terrain'],['0.8','Strong rider, fast course']].map(([val,label])=>`
         <button class="btn btn-sm tf-preset" data-val="${val}" style="flex:1;flex-direction:column;gap:2px;padding:6px 4px;text-align:center;align-items:center;min-height:56px;${Math.abs(r.timeFactor-parseFloat(val))<0.01?'border-color:var(--accent);color:var(--accent);':''}">
           <span style="font-size:14px;font-family:var(--font);font-weight:600;">${val} ×</span>
           <span style="font-size:11px;color:var(--text3);white-space:normal;line-height:1.3;">${label}</span>
@@ -7176,7 +7175,14 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;}
   // Route list select
   const rli=e.target.closest('.rli');
-  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){CUR=+rli.dataset.ridx;UI.tab='routes';UI.routeTurnsOpen=null;saveAll();render();return;}
+  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
+    const newIdx=+rli.dataset.ridx;
+    if(newIdx!==CUR&&IS_DESKTOP()){
+      // Reset desktop map so it zooms to fit the newly selected route
+      const s=ms('desktop-map');s.cx=null;s.cy=null;s.zoom=1;
+    }
+    CUR=newIdx;UI.tab='routes';UI.routeTurnsOpen=null;saveAll();render();return;
+  }
   // Toggle turns panel per route
   const rtb=e.target.closest('.route-turns-btn');
   if(rtb){
