@@ -502,7 +502,12 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  ftp:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,
+  ftp:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['done','left','finish'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
+  // Ride average tracking
+  _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
+  _rideAvgSessionKm:null,                  // dist at start of current GPS session
+  _rideAvgSessionTs:null,                  // timestamp at start of current GPS session
+  _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,
@@ -565,7 +570,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -592,6 +597,8 @@ async function loadAll(){
       if(prefs.ftp)UI.ftp=prefs.ftp;
       if(Array.isArray(prefs.hiddenMapTypes))UI.hiddenMapTypes=new Set(prefs.hiddenMapTypes);
       if(prefs.osmOpts)UI.osmOpts=prefs.osmOpts;
+      if(Array.isArray(prefs.liveStatSlots)&&prefs.liveStatSlots.length===3)UI.liveStatSlots=prefs.liveStatSlots;
+      if(prefs.sensorType)UI.sensorType=prefs.sensorType;
     }
     // Restore sun cache
     const sc=await DB.getKV('sunCache').catch(()=>null);
@@ -1509,7 +1516,13 @@ function _resetGpsIdleTimer(){
     UI._adaptiveWindow=[];
     if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
     _lastTurnBeepDist=null;
-    releaseWakeLock(); // let screen sleep independently
+    // Accumulate ride avg session
+    if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null&&UI.gpsDistKm!==null){
+      UI._rideAvgKmAccum+=Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm);
+      UI._rideAvgMsAccum+=Date.now()-UI._rideAvgSessionTs;
+    }
+    UI._rideAvgSessionKm=null;UI._rideAvgSessionTs=null;UI._rideAvgStoppedTs=Date.now();
+    releaseWakeLock();
     UI._gpsAutoPaused=true;
     updateGPSPill();
     if(UI.tab==='live'||UI.tab==='settings')render();
@@ -1518,24 +1531,48 @@ function _resetGpsIdleTimer(){
 
 function startGPS(){
   if(!navigator.geolocation){alert('Geolocation not supported.');return;}
-  // Stop any running or paused simulation before starting real GPS
   if(UI.simRunning||UI.simPaused){if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}UI.simRunning=false;UI.simPaused=false;}
   UI.gpsActive=true;
   UI._gpsAutoPaused=false;
-  UI._lastMovedTs=Date.now(); // assume moving when first started
+  UI._lastMovedTs=Date.now();
   const liveState=ms('live-map');
   liveState._userZoomed=false;liveState._autoZoomed=false;
+
+  // Ride average: check if GPS restarting after a significant gap
+  const now=Date.now();
+  const gap=UI._rideAvgStoppedTs?now-UI._rideAvgStoppedTs:null;
+  const RESET_PROMPT_MS=60*60*1000; // 1hr gap → ask about reset
+  const hasAccum=UI._rideAvgKmAccum>0||UI._rideAvgMsAccum>0;
+  if(gap!==null&&gap>RESET_PROMPT_MS&&hasAccum){
+    // Show non-blocking banner asking about reset — wait for first GPS fix to get current dist
+    UI._rideAvgPendingPrompt=true;
+  } else {
+    UI._rideAvgPendingPrompt=false;
+  }
+  // Session start dist/time set on first GPS fix (in watchPosition callback)
+  UI._rideAvgSessionKm=null;
+  UI._rideAvgSessionTs=null;
+
   UI.gpsWatchId=navigator.geolocation.watchPosition(pos=>{
     UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,speed:pos.coords.speed,ts:pos.timestamp};
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
     const r=cur();
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap)UI.gpsDistKm=snap.dist;}
-    // Reset idle timer if moving, otherwise let it count down
+    // Initialise session start on first fix
+    if(UI._rideAvgSessionKm===null&&UI.gpsDistKm!==null){
+      UI._rideAvgSessionKm=UI.gpsDistKm;
+      UI._rideAvgSessionTs=Date.now();
+      // Show prompt now we have context
+      if(UI._rideAvgPendingPrompt){
+        UI._rideAvgPendingPrompt=false;
+        _showRideAvgResetPrompt();
+      }
+    }
     const speedKmh=(pos.coords.speed||0)*3.6;
     if(speedKmh>=GPS_IDLE_SPEED_KMH){
       UI._lastMovedTs=Date.now();
       _resetGpsIdleTimer();
-    } else if(!_gpsIdleTimer)_resetGpsIdleTimer(); // start timer if not already running
+    } else if(!_gpsIdleTimer)_resetGpsIdleTimer();
     runAdaptiveCalibration();
     checkAlerts();
     if(UI.tab==='live')updateLive();
@@ -1546,9 +1583,39 @@ function startGPS(){
   updateGPSPill();if(UI.tab==='live'||UI.tab==='settings')render();
   requestWakeLock();
 }
+
+function _showRideAvgResetPrompt(){
+  if(document.getElementById('ride-avg-prompt'))return;
+  const el=document.createElement('div');
+  el.id='ride-avg-prompt';
+  el.style.cssText='position:fixed;bottom:calc(env(safe-area-inset-bottom,0px)+72px);left:50%;transform:translateX(-50%);z-index:9998;background:#1a2a1a;border:1px solid rgba(74,222,128,0.5);border-radius:9px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-family:var(--sans);font-size:15px;color:var(--text);box-shadow:0 4px 24px rgba(0,0,0,0.6);max-width:340px;width:calc(100vw - 32px);';
+  el.innerHTML='<span style="font-size:18px;">⏱</span>'
+    +'<span style="flex:1;line-height:1.4;">GPS restarted after a break — reset ride average?</span>'
+    +'<button id="ride-avg-reset" style="background:var(--accent3);color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;">Reset</button>'
+    +'<button id="ride-avg-keep" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:6px 10px;font-size:14px;cursor:pointer;">Keep</button>';
+  document.body.appendChild(el);
+  document.getElementById('ride-avg-reset').addEventListener('click',()=>{
+    UI._rideAvgKmAccum=0;UI._rideAvgMsAccum=0;
+    // Session start is current position
+    UI._rideAvgSessionKm=UI.gpsDistKm;UI._rideAvgSessionTs=Date.now();
+    el.remove();
+  });
+  document.getElementById('ride-avg-keep').addEventListener('click',()=>{el.remove();});
+  setTimeout(()=>{if(document.getElementById('ride-avg-prompt'))el.remove();},20000);
+}
 function stopGPS(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
   if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
+  // Accumulate this GPS session into ride average totals
+  if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null&&UI.gpsDistKm!==null){
+    const sessionKm=Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm);
+    const sessionMs=Date.now()-UI._rideAvgSessionTs;
+    UI._rideAvgKmAccum+=sessionKm;
+    UI._rideAvgMsAccum+=sessionMs;
+  }
+  UI._rideAvgSessionKm=null;
+  UI._rideAvgSessionTs=null;
+  UI._rideAvgStoppedTs=Date.now();
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;UI.gpsWatchId=null;UI.gpsHeading=null;
   UI._gpsAutoPaused=false;
   _offRouteStart=null;_offRouteAlerted=false;_offRouteLastM=0;
@@ -1943,6 +2010,12 @@ document.addEventListener('visibilitychange',()=>{
         UI._adaptiveWindow=[];
         if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
         _lastTurnBeepDist=null;
+        // Accumulate ride avg session
+        if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null&&UI.gpsDistKm!==null){
+          UI._rideAvgKmAccum+=Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm);
+          UI._rideAvgMsAccum+=Date.now()-UI._rideAvgSessionTs;
+        }
+        UI._rideAvgSessionKm=null;UI._rideAvgSessionTs=null;UI._rideAvgStoppedTs=Date.now();
         releaseWakeLock();
         UI._gpsAutoPaused=true;
         updateGPSPill();
@@ -5132,29 +5205,52 @@ function tLiveShell(r){
 
   // Compact progress strip for top of map
   const finDay=sdt&&finEta?dayOff(finEta,sdt):'';
-  const _pz=UI.powerConnected&&UI.powerWatts!==null?powerZone(UI.powerWatts,UI.ftp):null;
-  const powerPill=`<div style="flex:1;background:${_pz?_pz.bg:'rgba(10,15,10,0.72)'};border:1px solid ${_pz?_pz.border:UI.powerConnected?'rgba(251,191,36,0.4)':'rgba(255,255,255,0.12)'};border-radius:7px;padding:4px 8px;text-align:center;cursor:pointer;transition:all .3s;" id="live-power-pill">
-      <div style="font-size:13px;color:${_pz?_pz.color:'var(--text3)'};font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;">${_pz?_pz.label:'watts'}</div>
-      ${UI.powerConnected
-        ?`<div style="font-size:17px;font-weight:600;color:${_pz?_pz.color:'#fbbf24'};font-family:var(--font);" id="live-power-val">${UI.powerWatts!==null?UI.powerWatts+'w':'—'}</div>
-           ${UI.powerCadence!==null?`<div style="font-size:11px;color:${_pz?_pz.color:'var(--text3)'};font-family:var(--font);opacity:0.8;" id="live-cadence-val">${UI.powerCadence}rpm</div>`:'<div style="font-size:11px;color:var(--text3);" id="live-cadence-val"></div>'}`
-        :`<div style="font-size:13px;color:var(--text3);font-family:var(--font);">${UI.ftp?'tap':'set FTP'}</div>`}
+  // Available live stat slot definitions (excludes distbar which is always slot 0)
+  const LIVE_STATS={
+    finish:  {label:'finish',  val:()=>(finDay?finDay.trim()+' ':'')+fmtT(finEta),unit:''},
+    speed:   {label:'speed',   val:()=>{const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;return s!==null&&s>=0.3?s.toFixed(1):'—';},unit:'km/h'},
+    '1hr':   {label:'1hr avg', val:()=>{const win=UI._adaptiveWindow||[];if(win.length<2)return'—';const km=win[win.length-1].dist-win[0].dist,h=(win[win.length-1].ts-win[0].ts)/3600000;return h>0?(km/h).toFixed(1):'—';},unit:'km/h'},
+    rideavg: {label:'ride avg', val:()=>{
+      const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
+      const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsDistKm!==null)?Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm):0;
+      const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
+      const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
+      return totalH>0.01?(totalKm/totalH).toFixed(1):'—';
+    },unit:'km/h'},
+    done:    {label:'done',    val:()=>liveDist.toFixed(1),unit:'km'},
+    left:    {label:'left',    val:()=>(r.totalDist-liveDist).toFixed(1),unit:'km'},
+  };
+  const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
+  const makePill=(slotIdx)=>{
+    const key=(UI.liveStatSlots||['done','left','finish'])[slotIdx]||STAT_ORDER[slotIdx];
+    const stat=LIVE_STATS[key]||LIVE_STATS.done;
+    const valStr=stat.val();
+    return`<div style="flex:1;background:rgba(10,15,10,0.72);border:1px solid rgba(255,255,255,0.12);border-radius:7px;padding:4px 8px;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
+      <div style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;" id="live-lbl-slot${slotIdx}">${stat.label}</div>
+      <div style="font-size:17px;font-weight:600;font-family:var(--font);" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:12px;color:var(--text3);margin-left:2px;">${stat.unit}</span>`:''}</div>
     </div>`;
+  };
+  // Sensor pill — power or HR
+  const sType=UI.sensorType||'power';
+  const sConnected=sType==='power'?UI.powerConnected:UI.hrConnected;
+  const sVal=sType==='power'?(UI.powerWatts!==null?UI.powerWatts+'w':'—'):(UI.hrBpm!==null?UI.hrBpm+' bpm':'—');
+  const sSub=sType==='power'&&UI.powerCadence!==null?UI.powerCadence+'rpm':'';
+  const _pz=sType==='power'&&UI.powerConnected&&UI.powerWatts!==null?powerZone(UI.powerWatts,UI.ftp):null;
+  const sensorBg=_pz?_pz.bg:sConnected?'rgba(251,191,36,0.18)':'rgba(10,15,10,0.72)';
+  const sensorBorder=_pz?_pz.border:sConnected?'rgba(251,191,36,0.6)':'rgba(255,255,255,0.12)';
+  const sensorLabelCol=_pz?'#fff':sConnected?'#fbbf24':'var(--text3)';
+  const sensorValCol=_pz?'#fff':sConnected?'#fbbf24':'var(--text3)';
+  const sensorLabel=_pz?_pz.label:sType==='power'?'watts':'bpm';
+  const sensorPill=`<div style="flex:1;background:${sensorBg};border:2px solid ${sensorBorder};border-radius:7px;padding:4px 8px;text-align:center;cursor:pointer;transition:all .3s;-webkit-tap-highlight-color:transparent;" id="live-sensor-pill">
+    <div style="font-size:13px;color:${sensorLabelCol};font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;font-weight:${_pz?'700':'400'};" id="live-sensor-lbl">${sensorLabel}</div>
+    ${sConnected
+      ?`<div style="font-size:17px;font-weight:700;color:${sensorValCol};font-family:var(--font);" id="live-sensor-val">${sVal}</div>
+         <div style="font-size:11px;color:${sensorLabelCol};font-family:var(--font);opacity:0.85;" id="live-sensor-sub">${sSub}</div>`
+      :`<div style="font-size:13px;color:var(--text3);font-family:var(--font);" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub"></div>`}
+  </div>`;
   const progressOverlay=`<div class="live-progress-bar">
     <div style="display:flex;gap:6px;">
-      <div style="flex:1;background:rgba(10,15,10,0.72);border:1px solid rgba(255,255,255,0.12);border-radius:7px;padding:4px 8px;text-align:center;">
-        <div style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;">done</div>
-        <div style="font-size:17px;font-weight:600;font-family:var(--font);" id="live-done">${liveDist.toFixed(1)}<span style="font-size:12px;color:var(--text3);margin-left:2px;">km</span></div>
-      </div>
-      <div style="flex:1;background:rgba(10,15,10,0.72);border:1px solid rgba(255,255,255,0.12);border-radius:7px;padding:4px 8px;text-align:center;">
-        <div style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;">left</div>
-        <div style="font-size:17px;font-weight:600;font-family:var(--font);" id="live-left">${(r.totalDist-liveDist).toFixed(1)}<span style="font-size:12px;color:var(--text3);margin-left:2px;">km</span></div>
-      </div>
-      <div style="flex:1;background:rgba(10,15,10,0.72);border:1px solid rgba(255,255,255,0.12);border-radius:7px;padding:4px 8px;text-align:center;">
-        <div style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;">finish</div>
-        <div style="font-size:17px;font-weight:600;" id="live-pct">${(finDay?finDay.trim()+' ':'')+fmtT(finEta)}</div>
-      </div>
-      ${powerPill}
+      ${makePill(0)}${makePill(1)}${makePill(2)}${sensorPill}
     </div>
     <div class="prog" style="margin-top:5px;height:3px;display:none;"><div class="progf" id="live-progf" style="width:${(prog*100).toFixed(1)}%"></div></div>
   </div>`;
@@ -6942,10 +7038,34 @@ function updateLive(){
   const nextWater=nextWaterCandidates2.length?nextWaterCandidates2.reduce((a,b)=>a.dist<=b.dist?a:b):null;
   const setText=(id,val)=>{const el=document.getElementById(id);if(el&&el.textContent!==String(val))el.textContent=String(val);};
 
-  setText('live-done',liveDist.toFixed(1));
-  setText('live-left',(r.totalDist-liveDist).toFixed(1));
+  // Update 3 configurable stat slots
   const finEta=etaAt(r.totalDist,r);
-  const finDay=sdt?dayOff(finEta,sdt):'';setText('live-pct',(finDay?finDay.trim()+' ':'')+fmtT(finEta));
+  const finDay=sdt?dayOff(finEta,sdt):'';
+  const LIVE_STAT_VALS={
+    done:    ()=>liveDist.toFixed(1),
+    left:    ()=>(r.totalDist-liveDist).toFixed(1),
+    finish:  ()=>(finDay?finDay.trim()+' ':'')+fmtT(finEta),
+    speed:   ()=>{const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;return s!==null&&s>=0.3?s.toFixed(1):'—';},
+    '1hr':   ()=>{const win=UI._adaptiveWindow||[];if(win.length<2)return'—';const km=win[win.length-1].dist-win[0].dist,h=(win[win.length-1].ts-win[0].ts)/3600000;return h>0?(km/h).toFixed(1):'—';},
+    rideavg: ()=>{
+      const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
+      const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsDistKm!==null)?Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm):0;
+      const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
+      const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
+      return totalH>0.01?(totalKm/totalH).toFixed(1):'—';
+    },
+  };
+  const UNIT_MAP={done:'km',left:'km',finish:'',speed:'km/h','1hr':'km/h',rideavg:'km/h'};
+  (UI.liveStatSlots||['done','left','finish']).forEach((key,i)=>{
+    const fn=LIVE_STAT_VALS[key];if(!fn)return;
+    const el=document.getElementById('live-val-slot'+i);
+    if(el){
+      const u=UNIT_MAP[key]||'';
+      const v=fn();
+      const html=v+(u?`<span style="font-size:12px;color:var(--text3);margin-left:2px;">${u}</span>`:'');
+      if(el.innerHTML!==html)el.innerHTML=html;
+    }
+  });
   const pf=document.getElementById('live-progf');if(pf)pf.style.width=(prog*100).toFixed(1)+'%';
 
   const patchCard=(s,idSuffix)=>{
@@ -7563,9 +7683,55 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Tap weather bar → expand/collapse
-  if(e.target.closest('#live-power-pill')&&UI.tab==='live'){
-    if(UI.powerConnected)disconnectPowerMeter();
-    else connectPowerMeter();
+  // Tap a configurable stat pill → cycle to next metric
+  const sp=e.target.closest('.live-stat-pill');
+  if(sp&&UI.tab==='live'&&sp.dataset.slot!=='dist'){
+    const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
+    const slotIdx=+sp.dataset.slot;
+    const slots=UI.liveStatSlots||['done','left','finish'];
+    const cur=slots[slotIdx]||STAT_ORDER[slotIdx];
+    const nextKey=STAT_ORDER[(STAT_ORDER.indexOf(cur)+1)%STAT_ORDER.length];
+    UI.liveStatSlots=slots.map((k,i)=>i===slotIdx?nextKey:k);
+    saveAll();
+    const lbl=document.getElementById('live-lbl-slot'+slotIdx);
+    if(lbl)lbl.textContent=nextKey;
+    updateLive();
+    return;
+  }
+  // Tap sensor pill → show popover to choose type and pair
+  if(e.target.closest('#live-sensor-pill')&&UI.tab==='live'){
+    // Remove any existing popover
+    const existing=document.getElementById('sensor-popover');
+    if(existing){existing.remove();return;}
+    const pill=document.getElementById('live-sensor-pill');
+    if(!pill)return;
+    const sType=UI.sensorType||'power';
+    const sConn=sType==='power'?UI.powerConnected:UI.hrConnected;
+    const pop=document.createElement('div');
+    pop.id='sensor-popover';
+    pop.style.cssText='position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 72px);left:50%;transform:translateX(-50%);z-index:9999;background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:14px;width:260px;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
+    pop.innerHTML=`
+      <div style="font-size:13px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Sensor</div>
+      <div style="display:flex;gap:6px;margin-bottom:12px;">
+        <button class="btn btn-sm sensor-type-btn" data-type="power" style="flex:1;justify-content:center;${sType==='power'?'border-color:var(--accent);color:var(--accent);':''}">⚡ Power</button>
+        <button class="btn btn-sm sensor-type-btn" data-type="hr" style="flex:1;justify-content:center;${sType==='hr'?'border-color:var(--accent);color:var(--accent);':''}">❤️ Heart Rate</button>
+      </div>
+      <button id="sensor-pair-btn" class="btn btn-sm btn-p btn-full" style="justify-content:center;">${sConn?'⊗ Disconnect':'⊕ Pair device'}</button>
+      <div style="font-size:12px;color:var(--text3);margin-top:6px;text-align:center;">${sConn?'Connected':'Tap to pair via Bluetooth'}</div>
+    `;
+    document.body.appendChild(pop);
+    // Close on outside tap
+    setTimeout(()=>document.addEventListener('click',function h(ev){if(!pop.contains(ev.target)&&ev.target.id!=='live-sensor-pill'){pop.remove();document.removeEventListener('click',h);}},{once:false}),100);
+    pop.querySelectorAll('.sensor-type-btn').forEach(b=>b.addEventListener('click',()=>{
+      UI.sensorType=b.dataset.type;saveAll();pop.remove();renderKeepScroll();
+    }));
+    document.getElementById('sensor-pair-btn').addEventListener('click',()=>{
+      pop.remove();
+      const t=UI.sensorType||'power';
+      const conn=t==='power'?UI.powerConnected:UI.hrConnected;
+      if(conn){t==='power'?disconnectPowerMeter():disconnectHRMonitor();}
+      else{t==='power'?connectPowerMeter():connectHRMonitor();}
+    });
     return;
   }
   if(e.target.closest('#live-weather-bar')&&UI.tab==='live'){
@@ -8310,11 +8476,11 @@ async function connectPowerMeter(){
       const avg=Math.round(_powerWindow.reduce((a,b)=>a+b.watts,0)/_powerWindow.length);
       UI.powerWatts=avg;
       if(cadence!==null&&cadence>=0&&cadence<250)UI.powerCadence=cadence;
-      // Patch power pill directly without full re-render
-      const pill=document.getElementById('live-power-pill');
-      const pw=document.getElementById('live-power-val');
-      const pc=document.getElementById('live-cadence-val');
-      const plbl=pill?.querySelector('div:first-child');
+      // Patch sensor pill directly without full re-render
+      const pill=document.getElementById('live-sensor-pill');
+      const pw=document.getElementById('live-sensor-val');
+      const pc=document.getElementById('live-sensor-sub');
+      const plbl=document.getElementById('live-sensor-lbl');
       if(pw)pw.textContent=avg+'w';
       if(pc&&UI.powerCadence!==null)pc.textContent=UI.powerCadence+'rpm';
       // Update zone colour if FTP is set
@@ -8322,15 +8488,17 @@ async function connectPowerMeter(){
       if(pill&&pz){
         pill.style.background=pz.bg;
         pill.style.borderColor=pz.border;
-        if(plbl){plbl.textContent=pz.label;plbl.style.color=pz.color;}
-        if(pw)pw.style.color=pz.color;
-        if(pc)pc.style.color=pz.color;
+        pill.style.borderWidth='2px';
+        if(plbl){plbl.textContent=pz.label;plbl.style.color='#fff';plbl.style.fontWeight='700';}
+        if(pw)pw.style.color='#fff';
+        if(pc)pc.style.color='#fff';
       } else if(pill&&!pz){
-        pill.style.background='rgba(10,15,10,0.72)';
-        pill.style.borderColor='rgba(251,191,36,0.4)';
-        if(plbl){plbl.textContent='watts';plbl.style.color='var(--text3)';}
+        pill.style.background='rgba(251,191,36,0.18)';
+        pill.style.borderColor='rgba(251,191,36,0.6)';
+        pill.style.borderWidth='2px';
+        if(plbl){plbl.textContent='watts';plbl.style.color='#fbbf24';plbl.style.fontWeight='400';}
         if(pw)pw.style.color='#fbbf24';
-        if(pc)pc.style.color='var(--text3)';
+        if(pc)pc.style.color='#fbbf24';
       }
     });
     UI.powerConnected=true;
@@ -8348,8 +8516,46 @@ function disconnectPowerMeter(){
   if(UI.tab==='live')renderKeepScroll();
 }
 
-// ═══════════════════════════════════════════
-//  REVERSE GEOCODE FOR MANUAL STOPS
+// ─── Heart Rate Monitor ───
+const HR_SERVICE    = 0x180D;
+const HR_MEASUREMENT= 0x2A37;
+let _hrDevice=null,_hrChar=null;
+
+async function connectHRMonitor(){
+  if(!navigator.bluetooth){alert('Web Bluetooth not supported. Use Chrome on Android or desktop.');return;}
+  try{
+    _hrDevice=await navigator.bluetooth.requestDevice({
+      filters:[{services:[HR_SERVICE]}],
+      optionalServices:[HR_SERVICE]
+    });
+    _hrDevice.addEventListener('gattserverdisconnected',()=>{
+      UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
+      if(UI.tab==='live')renderKeepScroll();
+    });
+    const server=await _hrDevice.gatt.connect();
+    const service=await server.getPrimaryService(HR_SERVICE);
+    _hrChar=await service.getCharacteristic(HR_MEASUREMENT);
+    await _hrChar.startNotifications();
+    _hrChar.addEventListener('characteristicvaluechanged',e=>{
+      const d=e.target.value;
+      const flags=d.getUint8(0);
+      const bpm=(flags&0x1)?d.getUint16(1,true):d.getUint8(1);
+      UI.hrBpm=bpm;
+      const val=document.getElementById('live-sensor-val');
+      const sub=document.getElementById('live-sensor-sub');
+      if(val)val.textContent=bpm+' bpm';
+      if(sub)sub.textContent='';
+    });
+    UI.hrConnected=true;UI.hrDeviceName=_hrDevice.name||'HR monitor';
+    if(UI.tab==='live')renderKeepScroll();
+  }catch(e){if(e.name!=='NotFoundError')alert('Could not connect: '+e.message);}
+}
+
+function disconnectHRMonitor(){
+  if(_hrDevice&&_hrDevice.gatt.connected)_hrDevice.gatt.disconnect();
+  UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
+  if(UI.tab==='live')renderKeepScroll();
+}
 // ═══════════════════════════════════════════
 async function geocodeStop(stop,lat,lon,r){
   try{
