@@ -1956,9 +1956,10 @@ function checkAlerts(){
   const offM=snap.off*1000;
   if(offM>5000)return; // More than 5km off — wrong route, don't alert
   if(offM>(UI.offRouteM||150)){
-    // Check if we're near an intentional off-route stop
+    // Check if we're near an intentional off-route stop (one that is itself displaced from the route)
+    // On-route stops should NOT suppress the alert — only stops that are explicitly placed off-route
     const nearOffRoute=r.stops.some(s=>{
-      if(!s.lat||!s.lon)return false;
+      if(!s.lat||!s.lon||!s.offRouteM)return false; // must be an off-route stop
       const d=hav(UI.gpsPos,{lat:s.lat,lon:s.lon})*1000;
       return d<300;
     });
@@ -2611,18 +2612,29 @@ const stripH=IS_DESKTOP()?0:(document.getElementById('live-next-strip')?.offsetH
 const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH));
 
   // Calculate centre and zoom to show BOTH GPS position and target stop
-  // Rider at bottom of map, stop at top — anchor 0.8 means GPS is 80% down the canvas
-  let centreLon=lon,centreLat=lat,kmWidth=1.5,anchor=0.5;
+  // GPS sits at anchor (80% down), stop sits near top (~15% down).
+  // The vertical span covered by the anchor range is (anchor - 0.15) * mapH pixels.
+  // We need the GPS→stop distance in km to fit in that vertical span.
+  const anchor=UI.gpsPos?0.8:0.5;
+  let centreLon=lon,centreLat=lat,kmWidth=1.5;
   if(UI.gpsPos){
     const gLat=UI.gpsPos.lat,gLon=UI.gpsPos.lon;
     const distKm=hav({lat:gLat,lon:gLon},{lat,lon});
     if(distKm>0.1){
-      // Place centre 30% of the way from GPS toward stop (so GPS is ~80% down, stop ~20% down)
+      // Centre point: 30% of the way from GPS toward stop
       centreLat=gLat+(lat-gLat)*0.3;
       centreLon=gLon+(lon-gLon)*0.3;
-      // Width = distance / 0.6 so both points fit within 80% of map height with small margin
-      kmWidth=Math.max(0.5,distKm/0.6);
-      anchor=0.8; // GPS dot sits 80% down the canvas
+      // Derive kmWidth from the vertical geometry.
+      // The visible height fraction between GPS (anchor) and stop top-margin (0.15) is (anchor-0.15).
+      // The map aspect ratio W:H means 1 km vertical = (W/H) km horizontal in a square world,
+      // but we work in kmWidth (horizontal). So:
+      //   targetScale (px/km) so distKm fits in (anchor-0.15)*H px vertically
+      //   kmWidth = W / targetScale
+      // Simplified: kmWidth = distKm * W / ((anchor-0.15) * H) * 1.1 (10% margin)
+      const W=window.innerWidth;
+      const H=mapH;
+      const vertFrac=anchor-0.15; // fraction of map height available between stop and GPS
+      kmWidth=Math.max(0.3, distKm*(W/(H*vertFrac))*1.1);
     }
   }
 
