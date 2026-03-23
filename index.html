@@ -2086,6 +2086,59 @@ function showAlert(s,remKm,r){
 // ── Turn review overlay buttons — on document since overlay is outside content-wrap ──
 document.addEventListener('click',e=>{
   if(e.target.id==='trv-exit'){exitTurnReview();return;}
+  if(e.target.id==='trv-settings-btn'){
+    const p=document.getElementById('trv-settings-panel');
+    if(p)p.style.display=p.style.display==='none'?'block':'none';
+    return;
+  }
+  if(e.target.id==='trv-settings-close'){
+    const p=document.getElementById('trv-settings-panel');
+    if(p)p.style.display='none';
+    return;
+  }
+  // Preset buttons inside review overlay
+  const trp=e.target.closest('.trv-preset');
+  if(trp){
+    const d=+trp.dataset.d,rv=+trp.dataset.r,s=+trp.dataset.s;
+    const degEl=document.getElementById('trv-deg'),recEl=document.getElementById('trv-rec'),slEl=document.getElementById('trv-slight');
+    if(degEl){degEl.value=d;const v=document.getElementById('trv-deg-val');if(v)v.textContent=d+'°';}
+    if(recEl){recEl.value=rv;const v=document.getElementById('trv-rec-val');if(v)v.textContent=rv+'°';}
+    if(slEl){slEl.value=s;const v=document.getElementById('trv-slight-val');if(v)v.textContent=s+'°';}
+    document.querySelectorAll('.trv-preset').forEach(b=>{
+      const act=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
+      b.style.borderColor=act?'var(--accent)':'';b.style.color=act?'var(--accent)':'';
+    });
+    return;
+  }
+  if(e.target.id==='trv-redetect'&&r){
+    const d=+(document.getElementById('trv-deg')?.value||45);
+    const rv=+(document.getElementById('trv-rec')?.value||30);
+    const s=+(document.getElementById('trv-slight')?.value||60);
+    const opts={minTurnDeg:d,recoveryTol:rv,slightMax:s,nearMissMin:Math.max(20,d-15)};
+    r.turnDetectOpts=opts;
+    const det=autoDetectTurns(r.points,opts);
+    r.turns=det.turns;r.nearMissTurns=det.nearMiss;
+    saveAll();
+    UI.turnReviewIdx=0;
+    const p=document.getElementById('trv-settings-panel');if(p)p.style.display='none';
+    render();// rebuild overlay with updated counts
+    return;
+  }
+  if(e.target.id==='trv-clear-yellow'&&r){
+    r.nearMissTurns=[];
+    saveAll();
+    // Update counter and label in place
+    const all2=allReviewTurns(r);
+    const ctr=document.getElementById('trv-counter');
+    if(ctr)ctr.textContent=(Math.min((UI.turnReviewIdx||0)+1,all2.length)||0)+' / '+all2.length;
+    const lbl=document.querySelector('.trv-src-lbl');
+    if(lbl)lbl.textContent=r.turns.length+' confirmed';
+    // Rebuild settings panel counts
+    const btn=document.getElementById('trv-clear-yellow');
+    if(btn){btn.textContent='🗑 Clear yellows';btn.disabled=true;}
+    redrawMap('turn-review-map');
+    return;
+  }
   if(e.target.id==='trv-next'){goToTurnReviewIdx((UI.turnReviewIdx||0)+1);return;}
   if(e.target.id==='trv-prev'){goToTurnReviewIdx((UI.turnReviewIdx||0)-1);return;}
 });
@@ -4861,11 +4914,31 @@ function renderTurnReview(){
       <div id="trv-counter" style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">1 / ${all.length}</div>
       <div class="trv-src-lbl" style="font-size:12px;color:var(--text3);margin-top:2px;">${confirmed.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}</div>
     </div>
-    <div style="position:absolute;bottom:0;left:0;right:0;z-index:10001;background:rgba(10,15,10,0.9);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:12px;">
+    <div id="trv-settings-panel" style="display:none;position:absolute;top:12px;left:12px;right:12px;z-index:10002;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:10px;padding:14px 14px 10px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Detection Settings</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        ${(()=>{const to=r.turnDetectOpts||{};const md=to.minTurnDeg!==undefined?to.minTurnDeg:45,rt=to.recoveryTol!==undefined?to.recoveryTol:30,sm=to.slightMax!==undefined?to.slightMax:60;return[['Minimal',55,40,45],['Standard',45,30,60],['Detailed',35,20,75],['All',25,10,90]].map(([l,d,rv,s])=>'<button class="btn btn-sm trv-preset" data-d="'+d+'" data-r="'+rv+'" data-s="'+s+'" style="flex:1;justify-content:center;font-size:13px;padding:5px 2px;'+(d===md&&rv===rt&&s===sm?'border-color:var(--accent);color:var(--accent);':'')+'">'+l+'</button>').join('');})()}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+        <div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;"><span>Min turn angle</span><span id="trv-deg-val">${r.turnDetectOpts&&r.turnDetectOpts.minTurnDeg!==undefined?r.turnDetectOpts.minTurnDeg:45}°</span></div>
+        <input type="range" id="trv-deg" min="20" max="65" step="5" value="${r.turnDetectOpts&&r.turnDetectOpts.minTurnDeg!==undefined?r.turnDetectOpts.minTurnDeg:45}" style="width:100%;accent-color:var(--accent);"></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;"><span>Recovery filter</span><span id="trv-rec-val">${r.turnDetectOpts&&r.turnDetectOpts.recoveryTol!==undefined?r.turnDetectOpts.recoveryTol:30}°</span></div>
+        <input type="range" id="trv-rec" min="5" max="50" step="5" value="${r.turnDetectOpts&&r.turnDetectOpts.recoveryTol!==undefined?r.turnDetectOpts.recoveryTol:30}" style="width:100%;accent-color:var(--accent);"></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;"><span>Promote slights above</span><span id="trv-slight-val">${r.turnDetectOpts&&r.turnDetectOpts.slightMax!==undefined?r.turnDetectOpts.slightMax:60}°</span></div>
+        <input type="range" id="trv-slight" min="45" max="90" step="5" value="${r.turnDetectOpts&&r.turnDetectOpts.slightMax!==undefined?r.turnDetectOpts.slightMax:60}" style="width:100%;accent-color:var(--accent);"></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="trv-redetect" class="btn btn-sm btn-p" style="flex:1;justify-content:center;">↺ Re-detect</button>
+        <button id="trv-clear-yellow" class="btn btn-sm btn-r" style="flex:1;justify-content:center;"${r.nearMissTurns&&r.nearMissTurns.length?'':' disabled'}>🗑 Clear yellows${r.nearMissTurns&&r.nearMissTurns.length?' ('+r.nearMissTurns.length+')':''}</button>
+        <button id="trv-settings-close" class="btn btn-sm" style="flex-shrink:0;">Done</button>
+      </div>
+    </div>
+    <div style="position:absolute;bottom:0;left:0;right:0;z-index:10001;background:rgba(10,15,10,0.9);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:8px;">
       <button id="trv-prev" class="btn" style="flex:1;justify-content:center;font-size:22px;padding:10px;">◀</button>
       <div style="text-align:center;flex:2;">
         <div style="font-size:12px;color:var(--text3);font-family:var(--font);line-height:1.5;">tap <span style="color:#4ade80;">▲</span> delete · <span style="color:#dcd464;">▲</span> confirm · tap map to add</div>
       </div>
+      <button id="trv-settings-btn" class="btn" style="flex-shrink:0;padding:8px 12px;font-size:18px;" title="Detection settings">⚙</button>
       <button id="trv-next" class="btn" style="flex:1;justify-content:center;font-size:22px;padding:10px;">▶</button>
     </div>
   </div>`;
@@ -5277,51 +5350,23 @@ function tRoutes(r){
     <button class="btn btn-sm btn-full" style="margin-top:8px;" id="btn-demo">▶ Load demo route</button>
     ${r?(()=>{
       const hasTurns=r.turns&&r.turns.length>0;
-      const to=r.turnDetectOpts||{};
-      const minDeg  = to.minTurnDeg  !== undefined ? to.minTurnDeg  : 45;
-      const recTol  = to.recoveryTol !== undefined ? to.recoveryTol : 30;
-      const slightMx= to.slightMax   !== undefined ? to.slightMax   : 60;
-      const PRESETS=[['Minimal',55,40,45],['Standard',45,30,60],['Detailed',35,20,75],['All',25,10,90]];
-      const presetBtns=PRESETS.map(([lbl,d,rv,s])=>{
-        const act=d===minDeg&&rv===recTol&&s===slightMx;
-        return '<button class="btn btn-sm turn-preset" data-d="'+d+'" data-r="'+rv+'" data-s="'+s
-          +'" style="flex:1;justify-content:center;font-size:13px;padding:5px 2px;'
-          +(act?'border-color:var(--accent);color:var(--accent);':'')+'">'+lbl+'</button>';
-      }).join('');
-      const sliders=''
-        +'<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">'
-        +'<div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;">'
-        +'<span>Min turn angle</span><span id="td-deg-val">'+minDeg+'°</span></div>'
-        +'<input type="range" id="td-deg" min="20" max="65" step="5" value="'+minDeg+'" style="width:100%;accent-color:var(--accent);"></div>'
-        +'<div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;">'
-        +'<span>Recovery filter</span><span id="td-rec-val">'+recTol+'°</span></div>'
-        +'<input type="range" id="td-rec" min="5" max="50" step="5" value="'+recTol+'" style="width:100%;accent-color:var(--accent);"></div>'
-        +'<div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;">'
-        +'<span>Promote slights above</span><span id="td-slight-val">'+slightMx+'°</span></div>'
-        +'<input type="range" id="td-slight" min="45" max="90" step="5" value="'+slightMx+'" style="width:100%;accent-color:var(--accent);"></div>'
-        +'</div>';
       if(hasTurns){
         const autoCount=r.turns.filter(t=>t.auto).length;
         const fileCount=r.turns.length-autoCount;
         const src=fileCount>0&&autoCount===0?'from file':fileCount>0?(fileCount+' from file, '+autoCount+' auto'):'auto-detected';
-        const note=fileCount===0&&autoCount>0?'<div style="font-size:13px;color:var(--text3);margin-top:3px;">Auto-detected — review recommended before riding</div>':'';
-        return '<div class="banner ok-bright" style="margin-top:8px;"><div style="flex:1;width:100%;">'
-          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">'
-          +'<span>↩ '+r.turns.length+' turn'+(r.turns.length!==1?'s':'')+' ('+src+')</span>'
+        const note=fileCount===0&&autoCount>0?'<div style="font-size:13px;color:var(--text3);margin-top:3px;">Auto-detected — review before riding</div>':'';
+        return '<div class="banner ok-bright" style="margin-top:8px;display:flex;align-items:flex-start;gap:8px;">'
+          +'<div style="flex:1;">↩ '+r.turns.length+' turn'+(r.turns.length!==1?'s':'')+' ('+src+')'+note+'</div>'
           +'<div style="display:flex;gap:6px;flex-shrink:0;">'
           +'<button class="btn btn-sm" id="btn-review-turns">Review</button>'
           +'<button class="btn btn-sm btn-p" id="btn-auto-turns">↺ Re-detect</button>'
-          +'</div></div>'+note
-          +'<div style="display:flex;gap:4px;margin-top:8px;">'+presetBtns+'</div>'
-          +sliders+'</div></div>';
+          +'</div></div>';
       }
-      return '<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;width:100%;">'
+      return '<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;">'
         +'<div style="font-weight:600;margin-bottom:4px;">No turn navigation</div>'
         +'<div style="font-size:14px;line-height:1.6;margin-bottom:4px;"><strong>Best option:</strong> re-export as <strong>TCX</strong> from RWGPS or Komoot — accurate turn cues from the road network.</div>'
         +'<div style="font-size:14px;line-height:1.6;margin-bottom:8px;color:var(--text3);">Or PackTimes can analyse the GPS line and detect probable turns from bearing changes. Works best on routes with clear turns — review before riding.</div>'
-        +'<div style="display:flex;gap:4px;margin-bottom:8px;">'+presetBtns+'</div>'
-        +sliders
-        +'<button class="btn btn-sm btn-p" id="btn-auto-turns" style="margin-top:8px;width:100%;justify-content:center;">↩ Auto-detect turns</button>'
+        +'<button class="btn btn-sm btn-p" id="btn-auto-turns">↩ Auto-detect turns</button>'
         +'</div></div>';
     })():''}
     `:''}
@@ -7785,15 +7830,18 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
 
 document.getElementById('content-wrap').addEventListener('input',e=>{
   const r=cur();if(!r)return;
-  if(e.target.id==='td-deg'||e.target.id==='td-rec'||e.target.id==='td-slight'){
-    const v=document.getElementById(e.target.id+'-val');
+  if(e.target.id==='td-deg'||e.target.id==='td-rec'||e.target.id==='td-slight'
+    ||e.target.id==='trv-deg'||e.target.id==='trv-rec'||e.target.id==='trv-slight'){
+    const prefix=e.target.id.startsWith('trv-')?'trv-':'td-';
+    const key=e.target.id.replace(prefix,'');
+    const v=document.getElementById(prefix+key+'-val');
     if(v)v.textContent=e.target.value+'°';
-    const d=+document.getElementById('td-deg')?.value;
-    const rv=+document.getElementById('td-rec')?.value;
-    const s=+document.getElementById('td-slight')?.value;
-    document.querySelectorAll('.turn-preset').forEach(b=>{
-      const active=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
-      b.style.borderColor=active?'var(--accent)':'';b.style.color=active?'var(--accent)':'';
+    const d=+(document.getElementById(prefix+'deg')?.value||45);
+    const rv=+(document.getElementById(prefix+'rec')?.value||30);
+    const s=+(document.getElementById(prefix+'slight')?.value||60);
+    document.querySelectorAll(prefix==='trv-'?'.trv-preset':'.turn-preset').forEach(b=>{
+      const act=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
+      b.style.borderColor=act?'var(--accent)':'';b.style.color=act?'var(--accent)':'';
     });
     return;
   }
