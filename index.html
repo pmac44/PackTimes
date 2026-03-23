@@ -2127,17 +2127,17 @@ function _handleTrvEvent(e){
     const det=autoDetectTurns(r.points,opts);
     r.turns=det.turns;r.nearMissTurns=det.nearMiss;
     saveAll();
-    UI.turnReviewIdx=0;
-    // Update overlay in-place — render() won't rebuild it since the overlay already exists
-    const p=document.getElementById('trv-settings-panel');if(p)p.style.display='none';
+    // Update counter and labels in-place — keep panel open, keep current map view
     const all2=allReviewTurns(r);
+    UI.turnReviewIdx=Math.min(UI.turnReviewIdx||0,Math.max(0,all2.length-1));
     const ctr=document.getElementById('trv-counter');
-    if(ctr)ctr.textContent='1 / '+all2.length;
+    if(ctr)ctr.textContent=(all2.length?UI.turnReviewIdx+1:0)+' / '+all2.length;
     const lbl=document.querySelector('.trv-src-lbl');
     if(lbl)lbl.textContent=r.turns.length+' confirmed'+(r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':'');
     const yBtn=document.getElementById('trv-clear-yellow');
     if(yBtn){yBtn.textContent='🗑 Clear yellows'+(r.nearMissTurns&&r.nearMissTurns.length?' ('+r.nearMissTurns.length+')':'');yBtn.disabled=!r.nearMissTurns||!r.nearMissTurns.length;}
-    goToTurnReviewIdx(0);
+    // Redraw map with new turns but don't change the camera position
+    redrawMap('turn-review-map');
     return;
   }
   if(e.target.id==='trv-clear-yellow'&&r){
