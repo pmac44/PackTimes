@@ -61,7 +61,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.3;transform:scale(.6);}}
 .tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .tabs::-webkit-scrollbar{display:none;}
-.tab{flex-shrink:0;min-width:64px;padding:8px 4px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:18px;font-weight:500;cursor:pointer;text-align:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;}
+.tab{flex-shrink:0;min-width:56px;padding:8px 2px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
 .tab-icon{display:block;font-size:18px;margin-bottom:1px;}
 /* Normal scrolling content (most tabs) */
@@ -5489,7 +5489,7 @@ function tRoutes(r){
       <input type="checkbox" id="adaptive-speed-chk" ${r.adaptiveSpeed?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
       <span>Adaptive Speed</span>
     </label>
-    ${r.adaptiveSpeed?`<p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">Compares your actual pace to estimates and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Calibration window scales with ride length — shorter rides adjust every ~10 min, longer rides every ~30 min. Disable to lock the factor.</p>`:''}
+    ${r.adaptiveSpeed?`<p id="adaptive-speed-desc" style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">Compares your actual pace to estimates and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Calibration window scales with ride length — shorter rides adjust every ~10 min, longer rides every ~30 min. Disable to lock the factor.</p>`:'<p id="adaptive-speed-desc" style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;"></p>'}
   </div>
   <div class="card">
     <div class="secrow"><div class="ctitle">Hike-a-bike Sections</div>
@@ -7923,7 +7923,15 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
       r.baseTimeFactor=r.timeFactor;
       UI._adaptiveWindow=[];UI._lastAdaptiveCal=0;
     }
-    saveAll();render();return;
+    saveAll();
+    // Patch the description paragraph in-place — no need for full render
+    const desc=document.getElementById('adaptive-speed-desc');
+    if(desc){
+      desc.textContent=r.adaptiveSpeed
+        ?`Compares your actual pace to estimates and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Calibration window scales with ride length — shorter rides adjust every ~10 min, longer rides every ~30 min. Disable to lock the factor.`
+        :'';
+    }
+    return;
   }
   if(e.target.id==='ftp-input'){
     const v=parseInt(e.target.value);
