@@ -844,8 +844,14 @@ function bearing(a,b){
   return(Math.atan2(y,x)*180/Math.PI+360)%360;
 }
 function angleDiff(a,b){let d=((b-a)+540)%360-180;return d;}
-function autoDetectTurns(pts){
-  if(pts.length<20)return[];
+function autoDetectTurns(pts,opts){
+  if(pts.length<20)return{turns:[],nearMiss:[]};
+  opts=opts||{};
+  // Sensitivity controls — can be overridden by caller
+  const MIN_TURN_DEG  = opts.minTurnDeg   !== undefined ? opts.minTurnDeg   : 45;
+  const RECOVERY_TOL  = opts.recoveryTol  !== undefined ? opts.recoveryTol  : 30;
+  const SLIGHT_MAX    = opts.slightMax    !== undefined ? opts.slightMax    : 60;
+  const NEAR_MISS_MIN = opts.nearMissMin  !== undefined ? opts.nearMissMin  : 30;
 
   // O(n) sliding-pointer forward/backward index builders
   function buildFwd(km){const idx=new Int32Array(pts.length);let j=0;for(let i=0;i<pts.length;i++){if(j<=i)j=i;while(j<pts.length-1&&pts[j].dist-pts[i].dist<km)j++;idx[i]=j;}return idx;}
@@ -857,8 +863,7 @@ function autoDetectTurns(pts){
   const sm=new Float32Array(pts.length);
   for(let i=0;i<pts.length;i++)sm[i]=bearing(pts[i],pts[fwd10[i]]);
 
-  // Pass 1: find all points where bearing changes ≥55° within the next 50m
-  const MIN_TURN_DEG=38;
+  // Pass 1: find all points where bearing changes ≥MIN_TURN_DEG within the next 50m
   const candidates=[];
   for(let i=1;i<pts.length-2;i++){
     const diff=angleDiff(sm[i],sm[fwd05[i]]);
@@ -877,20 +882,28 @@ function autoDetectTurns(pts){
 
   // Pass 3: recovery filter — bearing 150m after must still differ from 150m before
   // Suppresses trail wiggles that recover back to the original direction
-  const RECOVERY_TOL=20;
   const confirmed=[];
   for(const c of clustered){
     const committed=Math.abs(angleDiff(sm[bck15[c.i]],sm[fwd15[c.i]]));
     if(committed>=RECOVERY_TOL)confirmed.push(c);
   }
 
-  // Pass 4: minimum 100m separation, keep sharpest if two are close
+  // Pass 4: minimum 60m separation, keep sharpest if two are close
   const separated=[];let lastDist=-999;
   for(const c of confirmed){
     if(c.dist-lastDist>=0.06){separated.push(c);lastDist=c.dist;}
     else if(separated.length&&Math.abs(c.diff)>Math.abs(separated[separated.length-1].diff)){
       separated[separated.length-1]=c;lastDist=c.dist;
     }
+  }
+
+  // Pass 5: demote "slight" turns to near-miss — they passed all filters but
+  // aren't really navigation-critical and were causing too many green markers
+  const confirmedFinal=[];
+  const demoted=[];
+  for(const c of separated){
+    if(Math.abs(c.diff)<SLIGHT_MAX)demoted.push(c);
+    else confirmedFinal.push(c);
   }
 
   const makeTurn=(c,nm=false)=>{
@@ -902,8 +915,8 @@ function autoDetectTurns(pts){
     return{lat:p.lat,lon:p.lon,dist:p.dist,type,name:'',notes:sharpness+type.toLowerCase()+' turn',auto:true,nearMiss:nm};
   };
 
-  // Near-miss candidates: 25-37°, passed recovery filter — shown faded in review mode
-  const NEAR_MISS_MIN=25;
+  // Near-miss candidates: 30–44°, passed recovery filter — shown faded in review mode
+  // Also includes demoted slight turns (45–59°) from Pass 5
   const nmCandidates=[];
   for(let i=1;i<pts.length-2;i++){
     const diff=angleDiff(sm[i],sm[fwd05[i]]);
@@ -921,12 +934,24 @@ function autoDetectTurns(pts){
   for(const c of nmClustered){
     const committed=Math.abs(angleDiff(sm[bck15[c.i]],sm[fwd15[c.i]]));
     if(committed>=RECOVERY_TOL&&c.dist-nmLastDist>=0.06){
-      const nearConfirmed=separated.some(s=>Math.abs(s.dist-c.dist)<0.08);
+      const nearConfirmed=confirmedFinal.some(s=>Math.abs(s.dist-c.dist)<0.08);
       if(!nearConfirmed){nearMiss.push(makeTurn(c,true));nmLastDist=c.dist;}
     }
   }
+  // Add demoted slight turns to near-miss (skip any already covered by nmCandidates)
+  for(const c of demoted){
+    const alreadyCovered=nearMiss.some(nm=>Math.abs(nm.dist-pts[c.i].dist)<0.08);
+    if(!alreadyCovered)nearMiss.push(makeTurn(c,true));
+  }
+  nearMiss.sort((a,b)=>a.dist-b.dist);
 
-  return{turns:separated.map(c=>makeTurn(c,false)),nearMiss};
+  return{turns:confirmedFinal.map(c=>makeTurn(c,false)),nearMiss};
+}
+function _getTurnDetectOpts(){
+  const d=+(document.getElementById('td-deg')?.value||45);
+  const rv=+(document.getElementById('td-rec')?.value||30);
+  const s=+(document.getElementById('td-slight')?.value||60);
+  return{minTurnDeg:d,recoveryTol:rv,slightMax:s,nearMissMin:Math.max(20,d-15)};
 }
 function elevGain(pts){
   // Use a rolling threshold to filter GPS noise — only count gain after 10m continuous climb
@@ -5264,27 +5289,56 @@ function tRoutes(r){
     <button class="btn btn-sm btn-full" style="margin-top:8px;" id="btn-demo">▶ Load demo route</button>
     ${r?(()=>{
       const hasTurns=r.turns&&r.turns.length>0;
+      // Saved sensitivity opts, or defaults
+      const to=r.turnDetectOpts||{};
+      const minDeg  = to.minTurnDeg  !== undefined ? to.minTurnDeg  : 45;
+      const recTol  = to.recoveryTol !== undefined ? to.recoveryTol : 30;
+      const slightMx= to.slightMax   !== undefined ? to.slightMax   : 60;
+      // Preset definitions: [label, minTurnDeg, recoveryTol, slightMax]
+      const PRESETS=[['Minimal',55,40,45],['Standard',45,30,60],['Detailed',35,20,75],['All',25,10,90]];
+      const presetBtns=PRESETS.map(([lbl,d,rv,s])=>{
+        const active=d===minDeg&&rv===recTol&&s===slightMx;
+        return`<button class="btn btn-sm turn-preset" data-d="${d}" data-r="${rv}" data-s="${s}" style="flex:1;justify-content:center;font-size:13px;padding:5px 2px;${active?'border-color:var(--accent);color:var(--accent);':''}">${lbl}</button>`;
+      }).join('');
+      const sliders=`<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;"><span>Min turn angle</span><span id="td-deg-val">${minDeg}°</span></div>
+          <input type="range" id="td-deg" min="20" max="65" step="5" value="${minDeg}" style="width:100%;accent-color:var(--accent);">
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;"><span>Recovery filter</span><span id="td-rec-val">${recTol}°</span></div>
+          <input type="range" id="td-rec" min="5" max="50" step="5" value="${recTol}" style="width:100%;accent-color:var(--accent);">
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);font-family:var(--font);margin-bottom:2px;"><span>Promote slights above</span><span id="td-slight-val">${slightMx}°</span></div>
+          <input type="range" id="td-slight" min="45" max="90" step="5" value="${slightMx}" style="width:100%;accent-color:var(--accent);">
+        </div>
+      </div>`;
       if(hasTurns){
         const autoCount=r.turns.filter(t=>t.auto).length;
         const fileCount=r.turns.length-autoCount;
         const src=fileCount>0&&autoCount===0?'from file':fileCount>0?`${fileCount} from file, ${autoCount} auto`:'auto-detected';
         const note=fileCount===0&&autoCount>0?'<div style="font-size:13px;color:var(--text3);margin-top:3px;">Auto-detected — review recommended before riding</div>':'';
-        return`<div class="banner ok-bright" style="margin-top:8px;">
-          <div style="flex:1;">
-            <div>↩ ${r.turns.length} turn${r.turns.length!==1?'s':''} (${src})</div>
-            ${note}
+        return`<div class="banner ok-bright" style="margin-top:8px;"><div style="flex:1;width:100%;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>↩ ${r.turns.length} turn${r.turns.length!==1?'s':''} (${src})</span>
+            <div style="display:flex;gap:6px;flex-shrink:0;">
+              <button class="btn btn-sm" id="btn-review-turns">Review</button>
+              <button class="btn btn-sm btn-p" id="btn-auto-turns">↺ Re-detect</button>
+            </div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0;margin-top:${note?'4':'0'}px;">
-            <button class="btn btn-sm" id="btn-review-turns">Review Turns</button>
-            <button class="btn btn-sm" id="btn-auto-turns">↺ Re-detect</button>
-          </div>
-        </div>`;
+          ${note}
+          <div style="display:flex;gap:4px;margin-top:8px;">${presetBtns}</div>
+          ${sliders}
+        </div></div>`;
       }
-      return`<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;">
+      return`<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;width:100%;">
         <div style="font-weight:600;margin-bottom:4px;">No turn navigation</div>
-        <div style="font-size:14px;line-height:1.6;margin-bottom:4px;"><strong>Best option:</strong> re-export your route as <strong>TCX</strong> from RWGPS or Komoot. TCX embeds turn cues generated from the road network — accurate left/right/straight instructions at every junction.</div>
-        <div style="font-size:14px;line-height:1.6;margin-bottom:8px;color:var(--text3);">If TCX isn't available, PackTimes can analyse the GPS line and detect probable turns based on bearing changes. This is a fallback — it works well on routes with clear 90° turns on open roads, but may miss turns or add false ones on winding trails. Review detected turns before riding.</div>
-        <button class="btn btn-sm btn-p" id="btn-auto-turns">↩ Auto-detect turns</button>
+        <div style="font-size:14px;line-height:1.6;margin-bottom:4px;"><strong>Best option:</strong> re-export as <strong>TCX</strong> from RWGPS or Komoot — accurate turn cues from the road network.</div>
+        <div style="font-size:14px;line-height:1.6;margin-bottom:8px;color:var(--text3);">Or PackTimes can analyse the GPS line and detect probable turns from bearing changes. Works best on routes with clear turns — review before riding.</div>
+        <div style="display:flex;gap:4px;margin-bottom:8px;">${presetBtns}</div>
+        ${sliders}
+        <button class="btn btn-sm btn-p" id="btn-auto-turns" style="margin-top:8px;width:100%;justify-content:center;">↩ Auto-detect turns</button>
       </div></div>`;
     })():''}
     `:''}
@@ -7525,10 +7579,31 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.id==='btn-review-turns'){const r=cur();if(r)enterTurnReview();return;}
   if(e.target.closest('#btn-auto-turns')&&r){
     if(UI.simRunning||UI.simPaused)simStop();
-    const det=autoDetectTurns(r.points);
+    const opts=_getTurnDetectOpts();
+    r.turnDetectOpts=opts;
+    const det=autoDetectTurns(r.points,opts);
     r.turns=det.turns;r.nearMissTurns=det.nearMiss;
     saveAll();render();return;
   }
+  // Preset buttons — update sliders + highlight, don't re-detect yet
+  const tp=e.target.closest('.turn-preset');
+  if(tp&&r){
+    const d=+tp.dataset.d,rv=+tp.dataset.r,s=+tp.dataset.s;
+    const degEl=document.getElementById('td-deg');
+    const recEl=document.getElementById('td-rec');
+    const slEl=document.getElementById('td-slight');
+    if(degEl){degEl.value=d;document.getElementById('td-deg-val').textContent=d+'°';}
+    if(recEl){recEl.value=rv;document.getElementById('td-rec-val').textContent=rv+'°';}
+    if(slEl){slEl.value=s;document.getElementById('td-slight-val').textContent=s+'°';}
+    // Update active highlight on preset buttons
+    document.querySelectorAll('.turn-preset').forEach(b=>{
+      const active=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
+      b.style.borderColor=active?'var(--accent)':'';
+      b.style.color=active?'var(--accent)':'';
+    });
+    return;
+  }
+
   if(e.target.closest('#turn-popup')){
     const r=cur();if(r&&r.turns){
       const liveDist=UI.gpsDistKm||0;
@@ -7733,7 +7808,21 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
 
 document.getElementById('content-wrap').addEventListener('input',e=>{
   const r=cur();if(!r)return;
-  if(e.target.id==='alert-sl'){
+  if(e.target.id==='td-deg'||e.target.id==='td-rec'||e.target.id==='td-slight'){
+    const el=e.target;
+    const valEl=document.getElementById(el.id+'-val');
+    if(valEl)valEl.textContent=el.value+'°';
+    // Update active preset highlight
+    const d=+document.getElementById('td-deg')?.value;
+    const rv=+document.getElementById('td-rec')?.value;
+    const s=+document.getElementById('td-slight')?.value;
+    document.querySelectorAll('.turn-preset').forEach(b=>{
+      const active=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
+      b.style.borderColor=active?'var(--accent)':'';
+      b.style.color=active?'var(--accent)':'';
+    });
+    return;
+  }
     UI.alertKm=+e.target.value;
     const v=document.getElementById('alert-km-val');
     if(v)v.textContent=UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):((UI.alertKm*1000).toFixed(0)+'m');
