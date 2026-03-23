@@ -59,7 +59,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .gpsoff{color:var(--text3);border-color:var(--border);}
 .pulse{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.4s infinite;}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.3;transform:scale(.6);}}
-.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:0 4px;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:1;min-width:0;padding:8px 2px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
@@ -4040,9 +4040,13 @@ async function dbxHandleRedirect(){
     if(data.access_token){
       UI.dbxToken=data.access_token;
       if(data.refresh_token)UI.dbxRefreshToken=data.refresh_token;
+      // Restore the tab the user was on before the auth redirect
+      const returnTab=sessionStorage.getItem('dbx_return_tab');
+      if(returnTab)UI.tab=returnTab;
+      sessionStorage.removeItem('dbx_return_tab');
       await saveAll();
       dbxSetStatus('✓ Connected to Dropbox');
-      if(UI.tab==='settings')render();
+      render();
       dbxSave(true);
     } else {
       dbxSetStatus('Auth failed: '+(data.error_description||data.error||JSON.stringify(data)),'err');
@@ -7663,7 +7667,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(_wakeLock){_wakeLock.release();_wakeLock=null;}
     return;
   }
-  if(e.target.closest('#btn-dbx-connect')){window.location.href=dbxAuthURL();return;}
+  if(e.target.closest('#btn-dbx-connect')){sessionStorage.setItem('dbx_return_tab',UI.tab);window.location.href=dbxAuthURL();return;}
   if(e.target.closest('#btn-dbx-save')){dbxSave(false);return;}
   if(e.target.closest('#btn-dbx-load')){dbxLoad(true);return;}
   if(e.target.closest('#btn-dbx-disconnect')){UI.dbxToken=null;UI.dbxSavedAt=null;saveAll();render();return;}
