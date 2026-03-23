@@ -4013,7 +4013,13 @@ async function dbxLoad(force){
     const idx=data.cur?ROUTES.findIndex(r=>r.id===data.cur):-1;
     CUR=idx>=0?idx:(ROUTES.length?0:-1);
     UI.dbxSavedAt=cloudTime;
-    await saveAll();
+    // Save locally only — do NOT call dbxScheduleSave, we just loaded from cloud
+    // so there is nothing new to write back. Calling saveAll() here would trigger
+    // another upload and start a ping-pong loop between devices.
+    for(const r of ROUTES)await DB.put(packRoute(r)).catch(()=>{});
+    await DB.setKV('cur',CUR>=0?ROUTES[CUR].id:null).catch(()=>{});
+    await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
+    await DB.setKV('dbxSavedAt',cloudTime).catch(()=>{});
     dbxSetStatus('✓ Loaded from Dropbox — '+(new Date(cloudTime).toLocaleTimeString()));
     render();
   }catch(e){dbxSetStatus('Load error: '+e.message,'err');}
@@ -4074,6 +4080,9 @@ function dbxShowStaleBanner(cloudMs){
   });
   document.getElementById('dbx-stale-no').addEventListener('click',()=>{
     banner.remove();
+    // Remember we've seen this version — prevents the same cloud file re-triggering the banner
+    UI.dbxSavedAt=Math.max(UI.dbxSavedAt||0,cloudMs);
+    DB.setKV('dbxSavedAt',UI.dbxSavedAt).catch(()=>{});
   });
   setTimeout(()=>{if(document.getElementById('dbx-stale-banner'))banner.remove();},30000);
 }
