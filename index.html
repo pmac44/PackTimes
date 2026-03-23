@@ -502,7 +502,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  ftp:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['done','left','finish'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
+  ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['done','left','finish'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
   _rideAvgSessionKm:null,                  // dist at start of current GPS session
@@ -570,7 +570,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -595,6 +595,7 @@ async function loadAll(){
       if(prefs.gpsZoom!==undefined)UI.gpsZoom=prefs.gpsZoom;
       if(prefs.weatherSpacingKm!==undefined)UI.weatherSpacingKm=prefs.weatherSpacingKm;
       if(prefs.ftp)UI.ftp=prefs.ftp;
+      if(prefs.maxHr)UI.maxHr=prefs.maxHr;
       if(Array.isArray(prefs.hiddenMapTypes))UI.hiddenMapTypes=new Set(prefs.hiddenMapTypes);
       if(prefs.osmOpts)UI.osmOpts=prefs.osmOpts;
       if(Array.isArray(prefs.liveStatSlots)&&prefs.liveStatSlots.length===3)UI.liveStatSlots=prefs.liveStatSlots;
@@ -4922,6 +4923,15 @@ function powerZone(watts,ftp){
   if(pct<1.20)return{z:6,label:'Z6 VO2 Max',    color:'#f97316',bg:'rgba(249,115,22,0.15)', border:'rgba(249,115,22,0.35)'};
   return          {z:7,label:'Z7 Anaerobic',   color:'#f87171',bg:'rgba(248,113,113,0.15)',border:'rgba(248,113,113,0.35)'};
 }
+function hrZone(bpm,maxHr){
+  if(!maxHr||!bpm)return null;
+  const pct=bpm/maxHr;
+  if(pct<0.60)return{z:1,label:'Z1 Recovery',  color:'#9ca3af',bg:'rgba(156,163,175,0.15)',border:'rgba(156,163,175,0.35)'};
+  if(pct<0.70)return{z:2,label:'Z2 Aerobic',   color:'#60a5fa',bg:'rgba(96,165,250,0.15)', border:'rgba(96,165,250,0.35)'};
+  if(pct<0.80)return{z:3,label:'Z3 Tempo',     color:'#34d399',bg:'rgba(52,211,153,0.15)', border:'rgba(52,211,153,0.35)'};
+  if(pct<0.90)return{z:4,label:'Z4 Threshold', color:'#fbbf24',bg:'rgba(251,191,36,0.15)', border:'rgba(251,191,36,0.35)'};
+  return        {z:5,label:'Z5 Max',           color:'#f87171',bg:'rgba(248,113,113,0.15)',border:'rgba(248,113,113,0.35)'};
+}
 
 // ─── Turn Review Mode ───────────────────────────────────────────────────────
 function enterTurnReview(){
@@ -5235,7 +5245,9 @@ function tLiveShell(r){
   const sConnected=sType==='power'?UI.powerConnected:UI.hrConnected;
   const sVal=sType==='power'?(UI.powerWatts!==null?UI.powerWatts+'w':'—'):(UI.hrBpm!==null?UI.hrBpm+' bpm':'—');
   const sSub=sType==='power'&&UI.powerCadence!==null?UI.powerCadence+'rpm':'';
-  const _pz=sType==='power'&&UI.powerConnected&&UI.powerWatts!==null?powerZone(UI.powerWatts,UI.ftp):null;
+  const _pz=sType==='power'&&UI.powerConnected&&UI.powerWatts!==null?powerZone(UI.powerWatts,UI.ftp)
+           :sType==='hr'&&UI.hrConnected&&UI.hrBpm!==null?hrZone(UI.hrBpm,UI.maxHr)
+           :null;
   const sensorBg=_pz?_pz.bg:sConnected?'rgba(251,191,36,0.18)':'rgba(10,15,10,0.72)';
   const sensorBorder=_pz?_pz.border:sConnected?'rgba(251,191,36,0.6)':'rgba(255,255,255,0.12)';
   const sensorLabelCol=_pz?'#fff':sConnected?'#fbbf24':'var(--text3)';
@@ -5755,7 +5767,7 @@ function tSettings(r){
       [6,'Z6 VO2 Max',   '106 - 120%', Math.round(ftp*1.06)+' - '+Math.round(ftp*1.20),'#f97316','rgba(249,115,22,0.15)','rgba(249,115,22,0.35)'],
       [7,'Z7 Anaerobic', 'over 120%',  'over '+Math.round(ftp*1.20),'#f87171','rgba(248,113,113,0.15)','rgba(248,113,113,0.35)'],
     ];
-    return '<div style="margin-top:14px;display:flex;flex-direction:column;gap:4px;">'
+    return '<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">'
       +zones.map(function(row){
         var z=row[0],name=row[1],pct=row[2],range=row[3],col=row[4],bg=row[5],border=row[6];
         return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;background:'+bg+';border:1px solid '+border+';">'
@@ -5767,14 +5779,47 @@ function tSettings(r){
       }).join('')+'</div>';
   })();
 
-  const ftpBody='<p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">Set your FTP to see Wahoo-style power zones on the ride screen. The watts display changes colour based on your current zone.</p>'
-    +'<div class="field"><label class="lbl">FTP &mdash; <span id="ftp-val">'+(UI.ftp?UI.ftp+'w':'Not set')+'</span></label>'
+  const hrZoneRows=(()=>{
+    if(!UI.maxHr)return'';
+    const mhr=UI.maxHr;
+    const zones=[
+      [1,'Z1 Recovery', 'under 60%', 'under '+Math.round(mhr*0.60), '#9ca3af','rgba(156,163,175,0.15)','rgba(156,163,175,0.35)'],
+      [2,'Z2 Aerobic',  '60 – 69%',  Math.round(mhr*0.60)+' – '+Math.round(mhr*0.69), '#60a5fa','rgba(96,165,250,0.15)','rgba(96,165,250,0.35)'],
+      [3,'Z3 Tempo',    '70 – 79%',  Math.round(mhr*0.70)+' – '+Math.round(mhr*0.79), '#34d399','rgba(52,211,153,0.15)','rgba(52,211,153,0.35)'],
+      [4,'Z4 Threshold','80 – 89%',  Math.round(mhr*0.80)+' – '+Math.round(mhr*0.89), '#fbbf24','rgba(251,191,36,0.15)','rgba(251,191,36,0.35)'],
+      [5,'Z5 Max',      '90 – 100%', Math.round(mhr*0.90)+' – '+mhr,                  '#f87171','rgba(248,113,113,0.15)','rgba(248,113,113,0.35)'],
+    ];
+    return '<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">'
+      +zones.map(function(row){
+        var z=row[0],name=row[1],pct=row[2],range=row[3],col=row[4],bg=row[5],border=row[6];
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;background:'+bg+';border:1px solid '+border+';">'
+          +'<div style="width:6px;height:6px;border-radius:50%;background:'+col+';flex-shrink:0;"></div>'
+          +'<div style="flex:1;font-size:15px;font-weight:500;color:'+col+';">Z'+z+' '+name+'</div>'
+          +'<div style="font-size:13px;color:'+col+';font-family:var(--font);opacity:0.8;">'+pct+'</div>'
+          +'<div style="font-size:13px;color:'+col+';font-family:var(--font);font-weight:600;">'+range+' bpm</div>'
+          +'</div>';
+      }).join('')+'</div>';
+  })();
+
+  const ftpBody=''
+    +'<p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">Set your FTP and max heart rate to see colour-coded zones on the ride screen. The sensor display changes colour based on your current zone.</p>'
+    // FTP
+    +'<div class="field"><label class="lbl">⚡ FTP &mdash; <span id="ftp-val">'+(UI.ftp?UI.ftp+'w':'Not set')+'</span></label>'
     +'<div style="display:flex;gap:8px;align-items:center;">'
     +'<input type="number" id="ftp-input" min="50" max="600" step="1" value="'+(UI.ftp||'')+'" placeholder="e.g. 250" style="width:100px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;">'
     +'<span style="font-size:16px;color:var(--text3);">watts</span>'
     +(UI.ftp?'<button class="btn btn-sm btn-r" id="ftp-clear">Clear</button>':'')
     +'</div></div>'
-    +ftpZoneRows;
+    +ftpZoneRows
+    // Max HR
+    +'<div class="field" style="margin-top:16px;"><label class="lbl">❤️ Max Heart Rate &mdash; <span id="maxhr-val">'+(UI.maxHr?UI.maxHr+' bpm':'Not set')+'</span></label>'
+    +'<p style="font-size:14px;color:var(--text3);margin-bottom:8px;line-height:1.5;">A rough guide: 220 minus your age. You can refine this from your highest recorded HR during hard efforts.</p>'
+    +'<div style="display:flex;gap:8px;align-items:center;">'
+    +'<input type="number" id="maxhr-input" min="100" max="220" step="1" value="'+(UI.maxHr||'')+'" placeholder="e.g. 178" style="width:100px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;">'
+    +'<span style="font-size:16px;color:var(--text3);">bpm</span>'
+    +(UI.maxHr?'<button class="btn btn-sm btn-r" id="maxhr-clear">Clear</button>':'')
+    +'</div></div>'
+    +hrZoneRows;
 
   return`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
@@ -5782,7 +5827,7 @@ function tSettings(r){
   </div>
   ${section('dropbox','Dropbox Sync',dropboxBody)}
   ${section('alerts','Proximity Alerts',alertsBody,!!r)}
-  ${section('ftp','⚡ Power Zones',ftpBody)}
+  ${section('ftp','⚡❤️ Sensors & Zones',ftpBody)}
   ${section('zoom','GPS Map Zoom',zoomBody,!!r)}
   ${section('weather','Weather Map Spacing',weatherBody,!!r)}
   ${section('offline','Offline Storage',offlineBody)}
@@ -7295,6 +7340,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   const r=cur();
   // FTP clear
   if(e.target.id==='ftp-clear'){UI.ftp=null;saveAll();if(UI.tab==='settings')render();return;}
+  if(e.target.id==='maxhr-clear'){UI.maxHr=null;saveAll();if(UI.tab==='settings')render();return;}
   // OSM all/none toggle
   if(e.target.closest('#osm-all-toggle')){
     const keys=['towns','water','crossings','toilets','stockwater','food','fuel','shops','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks'];
@@ -8111,6 +8157,15 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     if(UI.tab==='settings')render();
     return;
   }
+  if(e.target.id==='maxhr-input'){
+    const v=parseInt(e.target.value);
+    UI.maxHr=(v>=100&&v<=220)?v:null;
+    const lbl=document.getElementById('maxhr-val');
+    if(lbl)lbl.textContent=UI.maxHr?UI.maxHr+' bpm':'Not set';
+    saveAll();
+    if(UI.tab==='settings')render();
+    return;
+  }
   if(e.target.classList.contains('gps-zoom-opt')){
     UI.gpsZoom=parseFloat(e.target.value);
     saveAll();render();return;
@@ -8543,8 +8598,21 @@ async function connectHRMonitor(){
       UI.hrBpm=bpm;
       const val=document.getElementById('live-sensor-val');
       const sub=document.getElementById('live-sensor-sub');
+      const lbl=document.getElementById('live-sensor-lbl');
+      const pill=document.getElementById('live-sensor-pill');
       if(val)val.textContent=bpm+' bpm';
       if(sub)sub.textContent='';
+      // Apply HR zone colour
+      const hz=hrZone(bpm,UI.maxHr);
+      if(pill&&hz){
+        pill.style.background=hz.bg;pill.style.borderColor=hz.border;pill.style.borderWidth='2px';
+        if(lbl){lbl.textContent=hz.label;lbl.style.color='#fff';lbl.style.fontWeight='700';}
+        if(val)val.style.color='#fff';
+      } else if(pill&&!hz){
+        pill.style.background='rgba(248,113,113,0.18)';pill.style.borderColor='rgba(248,113,113,0.6)';pill.style.borderWidth='2px';
+        if(lbl){lbl.textContent='bpm';lbl.style.color='#f87171';lbl.style.fontWeight='400';}
+        if(val)val.style.color='#f87171';
+      }
     });
     UI.hrConnected=true;UI.hrDeviceName=_hrDevice.name||'HR monitor';
     if(UI.tab==='live')renderKeepScroll();
