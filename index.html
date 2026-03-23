@@ -1564,8 +1564,6 @@ function stopGPS(){
 // ═══════════════════════════════════════════
 //  ADAPTIVE SPEED CALIBRATION
 // ═══════════════════════════════════════════
-const ADAPTIVE_WINDOW_MIN_MS=25*60*1000;  // need 25min of clean data
-const ADAPTIVE_COOLDOWN_MS=30*60*1000;    // recalibrate at most every 30min
 const ADAPTIVE_GAP_MS=20*60*1000;         // reset window if GPS gap > 20min
 const ADAPTIVE_MIN_SPEED_KMH=4;           // below this = stopped, exclude
 const ADAPTIVE_MAX_GRADE_PCT=8;           // exclude steep climb/descent segments
@@ -1573,11 +1571,24 @@ const ADAPTIVE_BLEND=0.4;                 // weight of new signal vs existing fa
 const ADAPTIVE_MAX_DRIFT=0.30;            // hard cap: ±30% from baseTimeFactor
 const ADAPTIVE_WARN_DRIFT=0.25;           // warn if drift exceeds ±25%
 
+function adaptiveTimings(r){
+  // Scale window and cooldown to estimated ride duration so short rides get
+  // meaningful calibration before the ride is nearly over.
+  const estH=(r.estDuration||0)*r.timeFactor; // adjusted hours
+  if(estH>0&&estH<3){
+    return{windowMs:10*60*1000,cooldownMs:10*60*1000}; // <3h: 10min window, 10min cooldown
+  } else if(estH<6){
+    return{windowMs:15*60*1000,cooldownMs:15*60*1000}; // <6h: 15min window, 15min cooldown
+  }
+  return{windowMs:25*60*1000,cooldownMs:30*60*1000};   // multi-day: original settings
+}
+
 function runAdaptiveCalibration(){
   const r=cur();
   if(!r||!r.adaptiveSpeed||!UI.gpsActive||UI.gpsDistKm===null||!UI.gpsPos)return;
   if(!UI._adaptiveWindow)UI._adaptiveWindow=[];
 
+  const{windowMs:ADAPTIVE_WINDOW_MIN_MS,cooldownMs:ADAPTIVE_COOLDOWN_MS}=adaptiveTimings(r);
   const now=UI.gpsPos.ts;
   const dist=UI.gpsDistKm;
   const pts=r.points;
@@ -5478,7 +5489,7 @@ function tRoutes(r){
       <input type="checkbox" id="adaptive-speed-chk" ${r.adaptiveSpeed?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
       <span>Adaptive Speed</span>
     </label>
-    ${r.adaptiveSpeed?`<p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">Compares your actual pace to estimates every 30 min and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Disable to lock the factor.</p>`:''}
+    ${r.adaptiveSpeed?`<p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">Compares your actual pace to estimates and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Calibration window scales with ride length — shorter rides adjust every ~10 min, longer rides every ~30 min. Disable to lock the factor.</p>`:''}
   </div>
   <div class="card">
     <div class="secrow"><div class="ctitle">Hike-a-bike Sections</div>
