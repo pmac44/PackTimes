@@ -502,7 +502,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  ftp:null,turnReview:false,turnReviewIdx:0,
+  ftp:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,
@@ -946,6 +946,12 @@ function _getTurnDetectOpts(){
   const d=+(document.getElementById('td-deg')?.value||45);
   const rv=+(document.getElementById('td-rec')?.value||30);
   const s=+(document.getElementById('td-slight')?.value||60);
+  return{minTurnDeg:d,recoveryTol:rv,slightMax:s,nearMissMin:Math.max(20,d-15)};
+}
+function _getTurnDetectOptsForRoute(i){
+  const d=+(document.getElementById('td-deg-'+i)?.value||45);
+  const rv=+(document.getElementById('td-rec-'+i)?.value||30);
+  const s=+(document.getElementById('td-slight-'+i)?.value||60);
   return{minTurnDeg:d,recoveryTol:rv,slightMax:s,nearMissMin:Math.max(20,d-15)};
 }
 function elevGain(pts){
@@ -5294,7 +5300,7 @@ function tRoutes(r){
         <span style="font-family:var(--font);font-size:13px;text-transform:uppercase;letter-spacing:.6px;">More detail</span>
       </div>
       ${UI.helloDetailOpen?`
-      <div style="display:flex;flex-direction:column;gap:14px;">
+      <div id="hello-more-detail" style="display:flex;flex-direction:column;gap:14px;">
 
         <div>
           <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
@@ -5342,52 +5348,30 @@ function tRoutes(r){
     ${actuallyExpanded?`
     <button class="btn btn-sm btn-p btn-full" id="btn-upload-route">↑ Upload GPX / TCX / KML / FIT</button>
     <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
-    ${ROUTES.length?ROUTES.map((rt,i)=>{
+    ${ROUTES.length?ROUTES.map((rt,i)=>({rt,i})).reverse().map(({rt,i})=>{
       const autoCount=rt.turns?rt.turns.filter(t=>t.auto).length:0;
       const fileCount=rt.turns?(rt.turns.length-autoCount):0;
-      const turnMeta=rt.turns&&rt.turns.length
-        ?(fileCount>0&&autoCount>0
-          ?` · ${rt.turns.length} turns (${fileCount} file, ${autoCount} auto)`
-          :fileCount>0
-            ?` · ${rt.turns.length} turns (from file)`
-            :` · ${rt.turns.length} turns (auto)`)
-        :'';
-      return`
-      <div class="rli ${i===CUR?'active':''}" data-ridx="${i}">
-        <div class="ri-inf">
-          <div class="ri-name" style="font-size:17px;">${rt.label||rt.name}</div>
-          ${rt.sourceId?`<div style="font-size:12px;color:var(--text3);font-family:var(--font);margin-top:1px;opacity:0.7;">v ${formatSourceId(rt.sourceId)}</div>`:''}
-          <div class="ri-meta">${rt.totalDist?rt.totalDist.toFixed(0)+'km · ':''} ${rt.startDate||'no date'} · ${rt.stops.length} stops${turnMeta}</div>
-        </div>
-        <div style="display:flex;gap:4px;flex-shrink:0;">
-          <button class="btn btn-sm rename-route" data-ridx="${i}" title="Rename">✎</button>
-          <button class="btn btn-sm btn-r del-route" data-ridx="${i}">✕</button>
-        </div>
-      </div>`;
+      const turnCount=rt.turns?rt.turns.length:0;
+      const turnLabel=turnCount===0?'<span style="font-size:18px;">↩</span>':('<span style="font-size:18px;">↩</span><span style="font-size:13px;font-family:var(--font);margin-left:2px;">'+turnCount+'</span>');
+      return'<div class="rli '+(i===CUR?'active':'')+'" data-ridx="'+i+'">'
+        +'<div class="ri-inf">'
+        +'<div style="display:flex;align-items:center;gap:6px;">'
+        +'<div class="ri-name" id="ri-name-'+i+'" style="font-size:17px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(rt.label||rt.name)+'</div>'
+        +'</div>'
+        +(rt.sourceId?'<div style="font-size:12px;color:var(--text3);font-family:var(--font);margin-top:1px;opacity:0.7;">v '+formatSourceId(rt.sourceId)+'</div>':'')
+        +'<div class="ri-meta">'+(rt.totalDist?rt.totalDist.toFixed(0)+'km · ':'')+' '+(rt.startDate||'no date')+' · '+rt.stops.length+' stops</div>'
+        +'</div>'
+        +'<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">'
+        +'<div style="display:flex;gap:4px;">'
+        +'<button class="btn btn-sm rename-route" data-ridx="'+i+'" title="Rename" style="font-size:15px;">✎</button>'
+        +'<button class="btn btn-sm route-turns-btn" data-ridx="'+i+'" title="Turn navigation" style="'+(turnCount>0?'color:var(--accent);border-color:rgba(74,222,128,0.5);':'')+'">'+turnLabel+'</button>'
+        +'<button class="btn btn-sm btn-r del-route" data-ridx="'+i+'">✕</button>'
+        +'</div>'
+        +'</div>'
+        +'</div>';
     }).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX / KML / FIT above to get started.</p>`}
     </div>
     <button class="btn btn-sm btn-full" style="margin-top:8px;" id="btn-demo">▶ Load demo route</button>
-    ${r?(()=>{
-      const hasTurns=r.turns&&r.turns.length>0;
-      if(hasTurns){
-        const autoCount=r.turns.filter(t=>t.auto).length;
-        const fileCount=r.turns.length-autoCount;
-        const src=fileCount>0&&autoCount===0?'from file':fileCount>0?(fileCount+' from file, '+autoCount+' auto'):'auto-detected';
-        const note=fileCount===0&&autoCount>0?'<div style="font-size:13px;color:var(--text3);margin-top:3px;">Auto-detected — review before riding</div>':'';
-        return '<div class="banner ok-bright" style="margin-top:8px;display:flex;align-items:flex-start;gap:8px;">'
-          +'<div style="flex:1;">↩ '+r.turns.length+' turn'+(r.turns.length!==1?'s':'')+' ('+src+')'+note+'</div>'
-          +'<div style="display:flex;gap:6px;flex-shrink:0;">'
-          +'<button class="btn btn-sm" id="btn-review-turns">Review</button>'
-          +'<button class="btn btn-sm btn-p" id="btn-auto-turns">↺ Re-detect</button>'
-          +'</div></div>';
-      }
-      return '<div class="banner info" style="margin-top:8px;"><span>↩</span><div style="flex:1;">'
-        +'<div style="font-weight:600;margin-bottom:4px;">No turn navigation</div>'
-        +'<div style="font-size:14px;line-height:1.6;margin-bottom:4px;"><strong>Best option:</strong> re-export as <strong>TCX</strong> from RWGPS or Komoot — accurate turn cues from the road network.</div>'
-        +'<div style="font-size:14px;line-height:1.6;margin-bottom:8px;color:var(--text3);">Or PackTimes can analyse the GPS line and detect probable turns from bearing changes. Works best on routes with clear turns — review before riding.</div>'
-        +'<button class="btn btn-sm btn-p" id="btn-auto-turns">↩ Auto-detect turns</button>'
-        +'</div></div>';
-    })():''}
     `:''}
   </div>
   <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-input" style="display:none;">`;
@@ -5498,7 +5482,7 @@ function tRoutes(r){
       <button class="btn btn-sm btn-p" id="btn-add-pace">+ Add</button>
     </div>
     <p style="font-size:15px;color:var(--text3);margin-bottom:8px;">Define particularly slow sections that are not estimated well by route planning apps</p>
-    ${(r.paceSegs||[]).length===0?'<p style="font-size:15px;color:var(--text3);">No hike-a-bike sections yet.</p>':
+    ${(r.paceSegs||[]).length===0?'<p style="font-size:15px;color:var(--text3);">No hike-a-bike sections for <em>'+(r.label||r.name)+'</em> yet.</p>':
       (r.paceSegs||[]).map((seg,i)=>{
         const dist=seg.to-seg.from;
         const spd=(dist/seg.hours).toFixed(1);
@@ -6476,6 +6460,7 @@ function tPlan(r){
                 +'</div>'
                 +'<div style="display:flex;gap:4px;flex-shrink:0;">'
                   +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85);" title="Edit stop">'+ICON_EDIT+'</button>'
+                  +'<button class="no-cluster-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 8px;display:flex;align-items:center;justify-content:center;border:1px solid '+(s.noCluster?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.22)')+';color:'+(s.noCluster?'#fbbf24':'rgba(255,255,255,0.85)')+';font-size:12px;font-family:var(--font);" title="'+(s.noCluster?'Re-join cluster':'Split from cluster')+'">'+(s.noCluster?'⊞ rejoin':'⊟ split')+'</button>'
                   +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
                 +'</div>'
               +'</div>';
@@ -6496,6 +6481,7 @@ function tPlan(r){
                 +'</div>'
                 +'<div style="display:flex;gap:4px;flex-shrink:0;">'
                   +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85);" title="Edit stop">'+ICON_EDIT+'</button>'
+                  +'<button class="no-cluster-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 8px;display:flex;align-items:center;justify-content:center;border:1px solid '+(s.noCluster?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.22)')+';color:'+(s.noCluster?'#fbbf24':'rgba(255,255,255,0.85)')+';font-size:12px;font-family:var(--font);" title="'+(s.noCluster?'Re-join cluster':'Split from cluster')+'">'+(s.noCluster?'⊞ rejoin':'⊟ split')+'</button>'
                   +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
                 +'</div>'
               +'</div>'
@@ -6709,17 +6695,12 @@ function tFood(r){
   let nextCard='';
   const fromStart=allMeals.filter(m=>m.source==='start');
 
-  if(!isLive&&fromStart.length){
-    // Not started yet — show what to pack first
-    nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.5);background:rgba(251,191,36,0.06);">
-      ${fmtGrouped(fromStart,'Before you leave — pack these')}
-    </div>`;
-  } else if(!nextActionStop){
+  if(isLive&&!nextActionStop){
     nextCard=`<div class="card" style="border-color:rgba(251,191,36,0.4);">
       <div style="font-size:16px;color:#fbbf24;font-weight:600;">🎉 All food stops passed</div>
       <div style="font-size:14px;color:var(--text3);margin-top:4px;">Nothing more to buy or eat.</div>
     </div>`;
-  } else {
+  } else if(isLive&&nextActionStop){
     const distToNext=(nextActionStop.dist-liveDist).toFixed(1);
     const eta=etaAt(nextActionStop.dist,r);
     const day=sdt&&eta?dayOff(eta,sdt):'';
@@ -6748,12 +6729,10 @@ function tFood(r){
   // ── Per-day breakdown ──
   const totalDays=sdt&&finEta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():1;
   const mealsByDay={};
-  for(let d=1;d<=totalDays;d++)mealsByDay[d]={meals:0,snacks:0};
+  for(let d=1;d<=totalDays;d++)mealsByDay[d]={meals:0,snacks:0,items:[]};
   allMeals.forEach(m=>{
-    // Use arrival ETA as base, then add before-meal durations and sleep if this is an after-sleep meal
     let eta=etaAt(m.stop.dist,r);
     if(eta&&m.when==='after'){
-      // after-sleep meal: add duration of before-sleep meals + sleep itself
       const s=m.stop;
       const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
       if(hasSleep){
@@ -6763,8 +6742,9 @@ function tFood(r){
       }
     }
     const day=sdt&&eta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<=eta){n++;d.setDate(d.getDate()+1);}return n;})():1;
-    if(!mealsByDay[day])mealsByDay[day]={meals:0,snacks:0};
+    if(!mealsByDay[day])mealsByDay[day]={meals:0,snacks:0,items:[]};
     if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
+    mealsByDay[day].items.push({m,eta});
   });
 
   return'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 6px;">Food Plan</div>'
@@ -6783,11 +6763,24 @@ function tFood(r){
     +'</div>'
     +'<div class="card">'
       +`<div style="${lbl}margin-top:0;">Eaten per day</div>`
-      +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks}])=>{
+      +Object.entries(mealsByDay).sort((a,b)=>+a[0]-+b[0]).map(([day,{meals,snacks,items}])=>{
         const total=meals+snacks;
-        const txt=total===0?'<span style="color:rgba(251,191,36,0.4);">no food planned</span>':
+        const summary=total===0?'<span style="color:rgba(251,191,36,0.4);">no food planned</span>':
           (meals>0?meals+' meal'+(meals!==1?'s':''):'')+(meals>0&&snacks>0?' + ':'')+(snacks>0?snacks+' snack'+(snacks!==1?'s':''):'');
-        return`<div style="font-size:15px;color:var(--text2);margin-bottom:2px;">Day ${day}: ${txt}</div>`;
+        const itemLines=items.map(({m,eta})=>{
+          const timeStr=eta?fmtT(eta):'';
+          const stopName=m.stop?m.stop.name:'';
+          const icon=m.type==='snack'?ICON_SNACK:ICON_MEAL;
+          return'<div style="display:flex;align-items:center;gap:8px;padding:3px 0 3px 10px;border-left:2px solid rgba(251,191,36,0.25);">'
+            +'<span style="font-size:13px;color:var(--text3);font-family:var(--font);min-width:38px;">'+timeStr+'</span>'
+            +'<span style="padding:2px 8px;border-radius:8px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;font-size:13px;">'+icon+' '+(m.name||m.type)+'</span>'
+            +(stopName?'<span style="font-size:12px;color:var(--text3);">@ '+stopName+'</span>':'')
+            +'</div>';
+        }).join('');
+        return'<div style="margin-bottom:8px;">'
+          +'<div style="font-size:15px;color:var(--text2);margin-bottom:4px;"><span style="font-weight:600;color:var(--text);">Day '+day+'</span>  <span style="color:var(--text3);">'+summary+'</span></div>'
+          +(itemLines?'<div style="display:flex;flex-direction:column;gap:1px;">'+itemLines+'</div>':'')
+          +'</div>';
       }).join('')
     +'</div>';
 }
@@ -7179,17 +7172,65 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;}
   // Route list select
   const rli=e.target.closest('.rli');
-  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')){CUR=+rli.dataset.ridx;UI.tab='routes';saveAll();render();return;}
-  // Rename route
+  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){CUR=+rli.dataset.ridx;UI.tab='routes';UI.routeTurnsOpen=null;saveAll();render();return;}
+  // Toggle turns panel per route
+  const rtb=e.target.closest('.route-turns-btn');
+  if(rtb){
+    const i=+rtb.dataset.ridx;
+    CUR=i;
+    saveAll();
+    enterTurnReview();
+    return;
+  }
+  // Detect/re-detect turns for a specific route
+  const rdt=e.target.closest('.route-detect-turns');
+  if(rdt){
+    const i=+rdt.dataset.ridx;const rt=ROUTES[i];if(!rt)return;
+    const opts=_getTurnDetectOptsForRoute(i);
+    rt.turnDetectOpts=opts;
+    const det=autoDetectTurns(rt.points,opts);
+    rt.turns=det.turns;rt.nearMissTurns=det.nearMiss;
+    saveAll();render();return;
+  }
+  // Preset buttons in route tile turns panel
+  const tp=e.target.closest('.turn-preset');
+  if(tp&&tp.dataset.ridx!==undefined){
+    const i=+tp.dataset.ridx;
+    const d=+tp.dataset.d,rv=+tp.dataset.r,s=+tp.dataset.s;
+    const degEl=document.getElementById('td-deg-'+i);
+    const recEl=document.getElementById('td-rec-'+i);
+    const slEl=document.getElementById('td-slight-'+i);
+    if(degEl){degEl.value=d;const v=document.getElementById('td-deg-val-'+i);if(v)v.textContent=d+'°';}
+    if(recEl){recEl.value=rv;const v=document.getElementById('td-rec-val-'+i);if(v)v.textContent=rv+'°';}
+    if(slEl){slEl.value=s;const v=document.getElementById('td-slight-val-'+i);if(v)v.textContent=s+'°';}
+    document.querySelectorAll('.turn-preset[data-ridx="'+i+'"]').forEach(b=>{
+      const act=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
+      b.style.borderColor=act?'var(--accent)':'';b.style.color=act?'var(--accent)':'';
+    });
+    return;
+  }
+  // Rename route — activate inline edit
   const rr=e.target.closest('.rename-route');
   if(rr){
     const i=+rr.dataset.ridx;const rt=ROUTES[i];if(!rt)return;
+    const nameDiv=document.getElementById('ri-name-'+i);
+    if(!nameDiv)return;
     const current=rt.label||rt.name;
-    const newName=prompt('Rename route:',current);
-    if(newName&&newName.trim()&&newName.trim()!==current){
-      rt.label=newName.trim();rt._userLabel=true;
-      saveAll();render();
-    }
+    const inp=document.createElement('input');
+    inp.type='text';inp.value=current;
+    inp.style.cssText='width:100%;background:var(--bg3);border:1px solid var(--accent);border-radius:5px;color:var(--text);font-family:var(--sans);font-size:17px;font-weight:500;padding:2px 6px;outline:none;';
+    nameDiv.innerHTML='';nameDiv.appendChild(inp);
+    inp.focus();inp.select();
+    const commit=()=>{
+      const v=inp.value.trim();
+      if(v&&v!==current){rt.label=v;rt._userLabel=true;saveAll();}
+      render();
+    };
+    inp.addEventListener('blur',commit);
+    inp.addEventListener('keydown',e2=>{
+      if(e2.key==='Enter'){e2.preventDefault();inp.blur();}
+      if(e2.key==='Escape'){inp.value=current;inp.blur();}
+    });
     return;
   }
   // Delete route
@@ -7484,8 +7525,11 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const sid=nc.dataset.sid;
     const stop=r.stops.find(s=>String(s.id)===String(sid));
     if(stop){stop.noCluster=!stop.noCluster;saveAll();}
+    // Rebuild whichever list is visible
     const rows=document.getElementById('stops-list-rows');
     if(rows)rows.innerHTML=clusteredStopRows(r,startDT(r));
+    // If triggered from plan tab cluster edit, do a full re-render
+    if(UI.tab==='plan')render();
     return;
   }
   const ls=e.target.closest('.live-stop');
@@ -7608,7 +7652,46 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.isTrusted&&(e.target.id==='btn-sim-stop'||e.target.closest('#btn-sim-stop')===e.target.parentElement)){const b=document.getElementById('btn-sim-stop');if(b&&!b.disabled)simStop();return;}
   if(e.target.closest('#route-mgmt-hdr')){UI.routeMgmtExpanded=!UI.routeMgmtExpanded;render();return;}
   if(e.target.closest('#hello-hdr')){UI.helloExpanded=!(UI.helloExpanded!==null?UI.helloExpanded:!cur());render();return;}
-  if(e.target.closest('#hello-more-toggle')){UI.helloDetailOpen=!UI.helloDetailOpen;render();return;}
+  if(e.target.closest('#hello-more-toggle')){
+    UI.helloDetailOpen=!UI.helloDetailOpen;
+    // Toggle in-place — avoid render() which resets scroll position
+    const wrap=document.getElementById('hello-more-wrap');
+    const arrow=wrap?.querySelector('#hello-more-toggle span:first-child');
+    if(arrow)arrow.textContent=UI.helloDetailOpen?'▼':'▶';
+    // Find or remove the detail div
+    let detail=wrap?.querySelector('#hello-more-detail');
+    if(UI.helloDetailOpen&&wrap&&!detail){
+      detail=document.createElement('div');
+      detail.id='hello-more-detail';
+      detail.innerHTML=`<div style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RWGPS, Komoot, Strava, or Garmin Connect. GPX, TCX, KML and FIT files are all supported.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">A plain GPX file of GPS coordinates is ideal. PackTimes calculates your ride time from distance and elevation using a formula calibrated against real bikepacking ride data — this is more reliable than timestamps embedded in exported files, which often encode unrealistic speeds.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy is tied to your ride history on their servers and is not in the exported file. For turn-by-turn navigation, <strong>TCX format is strongly recommended</strong> — RWGPS and Komoot embed accurate turn cues derived from the road network into TCX exports, which PackTimes uses directly for audio turn alerts on the ride screen.</p>
+        </div>
+        <div style="border-top:1px solid var(--border);"></div>
+        <div>
+          <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Building your mission plan</div>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Search OpenStreetMap for stops and star the ones you want in your Mission list, or add stops manually.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Assign sleep and food to stops and ETAs adjust automatically.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">The route line shifts from blue to black to show day and night segments, based on your start date, time and pace.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Tap a dark section of the route line to add a sleep stop there — it turns blue again once sleep is planned.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Add food to stops and nominate where you'll buy it — the food planner then tells you what to pick up and when.</p>
+        </div>
+        <div style="border-top:1px solid var(--border);"></div>
+        <div>
+          <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Riding</div>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Live GPS map with your next water, food and sleep stops and arrival estimates.</p>
+          <p style="font-size:15px;color:var(--text2);line-height:1.6;">Connect a power meter or heart rate monitor to track effort alongside your progress.</p>
+        </div>
+      </div>`;
+      wrap.appendChild(detail);
+    } else if(!UI.helloDetailOpen&&detail){
+      detail.remove();
+    }
+    return;
+  }
   const settingsHdr=e.target.closest('[id^="settings-hdr-"]');
   if(settingsHdr){
     const key=settingsHdr.id.replace('settings-hdr-','');
@@ -7620,7 +7703,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
-  if(e.target.id==='btn-review-turns'){const r=cur();if(r)enterTurnReview();return;}
+  if(e.target.id==='btn-review-turns'){
+    const tile=e.target.closest('.rli');
+    if(tile)CUR=+tile.dataset.ridx;
+    const rt=cur();if(rt)enterTurnReview();
+    return;
+  }
   if(e.target.closest('#btn-auto-turns')&&r){
     if(UI.simRunning||UI.simPaused)simStop();
     const opts=_getTurnDetectOpts();
@@ -7628,22 +7716,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const det=autoDetectTurns(r.points,opts);
     r.turns=det.turns;r.nearMissTurns=det.nearMiss;
     saveAll();render();return;
-  }
-  // Preset buttons — snap sliders and highlight
-  const tp=e.target.closest('.turn-preset');
-  if(tp&&r){
-    const d=+tp.dataset.d,rv=+tp.dataset.r,s=+tp.dataset.s;
-    const degEl=document.getElementById('td-deg');
-    const recEl=document.getElementById('td-rec');
-    const slEl=document.getElementById('td-slight');
-    if(degEl){degEl.value=d;const v=document.getElementById('td-deg-val');if(v)v.textContent=d+'°';}
-    if(recEl){recEl.value=rv;const v=document.getElementById('td-rec-val');if(v)v.textContent=rv+'°';}
-    if(slEl){slEl.value=s;const v=document.getElementById('td-slight-val');if(v)v.textContent=s+'°';}
-    document.querySelectorAll('.turn-preset').forEach(b=>{
-      const active=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
-      b.style.borderColor=active?'var(--accent)':'';b.style.color=active?'var(--accent)':'';
-    });
-    return;
   }
   if(e.target.closest('#turn-popup')){
     const r=cur();if(r&&r.turns){
@@ -7721,7 +7793,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-go-food')){UI.tab='food';render();return;}
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
-  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.cluster-edit-btn')&&!e.target.closest('.cluster-unstar-stop')&&!e.target.closest('.cluster-edit-stop')){
+  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.cluster-edit-btn')&&!e.target.closest('.cluster-unstar-stop')&&!e.target.closest('.cluster-edit-stop')&&!e.target.closest('.no-cluster-stop')){
     const sid=mn.dataset.sid;
     if(sid){
       _highlightStopId=sid;
@@ -7859,6 +7931,21 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     const rv=+(document.getElementById(prefix+'rec')?.value||30);
     const s=+(document.getElementById(prefix+'slight')?.value||60);
     document.querySelectorAll(prefix==='trv-'?'.trv-preset':'.turn-preset').forEach(b=>{
+      const act=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
+      b.style.borderColor=act?'var(--accent)':'';b.style.color=act?'var(--accent)':'';
+    });
+    return;
+  }
+  // Per-route sliders in route tile (td-deg-N, td-rec-N, td-slight-N)
+  if(e.target.dataset.ridx!==undefined&&(e.target.id.startsWith('td-deg-')||e.target.id.startsWith('td-rec-')||e.target.id.startsWith('td-slight-'))){
+    const i=e.target.dataset.ridx;
+    const key=e.target.id.startsWith('td-deg-')?'deg':e.target.id.startsWith('td-rec-')?'rec':'slight';
+    const v=document.getElementById('td-'+key+'-val-'+i);
+    if(v)v.textContent=e.target.value+'°';
+    const d=+(document.getElementById('td-deg-'+i)?.value||45);
+    const rv=+(document.getElementById('td-rec-'+i)?.value||30);
+    const s=+(document.getElementById('td-slight-'+i)?.value||60);
+    document.querySelectorAll('.turn-preset[data-ridx="'+i+'"]').forEach(b=>{
       const act=+b.dataset.d===d&&+b.dataset.r===rv&&+b.dataset.s===s;
       b.style.borderColor=act?'var(--accent)':'';b.style.color=act?'var(--accent)':'';
     });
