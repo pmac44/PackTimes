@@ -5323,7 +5323,6 @@ function tLiveShell(r){
       </div>
   </div>`;
 }
-
 function initLiveMap(r){
   const cvs=document.getElementById('live-map');if(!cvs)return;
   const sizeLiveMap=()=>{
@@ -5351,8 +5350,8 @@ function initLiveMap(r){
     } else {
       const ideal=Math.round(viewW*20/9);
       const strip=document.getElementById('live-next-strip');
-      const progressBar=document.getElementById('live-progress-bar')||document.querySelector('.live-progress-bar');
-      // Use actual height if rendered, otherwise reserve space for expected compact strip (3 rows ~105px) + weather bar (~56px)
+      const progressBar=document.querySelector('.live-progress-bar');
+      // Subtract strip and progress bar — both are flow elements above/below the map
       const stripH=strip&&strip.offsetHeight>0?strip.offsetHeight:105;
       const progressBarH=progressBar&&progressBar.offsetHeight>0?progressBar.offsetHeight:44;
       const avail=viewH-tabsH-stripH-progressBarH-4;
