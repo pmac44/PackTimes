@@ -87,7 +87,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .turn-dist{font-size:22px;font-weight:700;color:var(--accent);font-family:var(--font);}
 .turn-label{font-size:16px;color:var(--text2);margin-top:2px;}
 .turn-auto{font-size:12px;color:var(--text3);margin-top:2px;}
-.live-progress-bar{position:absolute;top:0;left:0;right:0;padding:6px 8px;z-index:10;}
+.live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
 /* Stops tab: fixed map + scrollable below */
 .stops-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 .stops-map-panel{flex-shrink:0;background:#0a0f0a;position:relative;}
@@ -5217,27 +5217,27 @@ function tLiveShell(r){
   const finDay=sdt&&finEta?dayOff(finEta,sdt):'';
   // Available live stat slot definitions (excludes distbar which is always slot 0)
   const LIVE_STATS={
-    finish:  {label:'finish',  val:()=>(finDay?finDay.trim()+' ':'')+fmtT(finEta),unit:''},
-    speed:   {label:'speed',   val:()=>{const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;return s!==null&&s>=0.3?s.toFixed(1):'—';},unit:'km/h'},
-    '1hr':   {label:'1hr avg', val:()=>{const win=UI._adaptiveWindow||[];if(win.length<2)return'—';const km=win[win.length-1].dist-win[0].dist,h=(win[win.length-1].ts-win[0].ts)/3600000;return h>0?(km/h).toFixed(1):'—';},unit:'km/h'},
-    rideavg: {label:'ride avg', val:()=>{
+    finish:  {label:'Finish',    val:()=>(finDay?finDay.trim()+' ':'')+fmtT(finEta),unit:''},
+    speed:   {label:'Speed',     val:()=>{const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;return s!==null&&s>=0.3?s.toFixed(1):'—';},unit:'km/h'},
+    '1hr':   {label:'1hr',       val:()=>{const win=UI._adaptiveWindow||[];if(win.length<2)return'—';const km=win[win.length-1].dist-win[0].dist,h=(win[win.length-1].ts-win[0].ts)/3600000;return h>0?(km/h).toFixed(1):'—';},unit:'km/h'},
+    rideavg: {label:'Ride Avg',  val:()=>{
       const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
       const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsDistKm!==null)?Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm):0;
       const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       return totalH>0.01?(totalKm/totalH).toFixed(1):'—';
     },unit:'km/h'},
-    done:    {label:'done',    val:()=>liveDist.toFixed(1),unit:'km'},
-    left:    {label:'left',    val:()=>(r.totalDist-liveDist).toFixed(1),unit:'km'},
+    done:    {label:'Done',      val:()=>liveDist.toFixed(1),unit:'km'},
+    left:    {label:'To go',     val:()=>(r.totalDist-liveDist).toFixed(1),unit:'km'},
   };
   const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
   const makePill=(slotIdx)=>{
     const key=(UI.liveStatSlots||['done','left','finish'])[slotIdx]||STAT_ORDER[slotIdx];
     const stat=LIVE_STATS[key]||LIVE_STATS.done;
     const valStr=stat.val();
-    return`<div style="flex:1;background:rgba(10,15,10,0.72);border:1px solid rgba(255,255,255,0.12);border-radius:7px;padding:4px 8px;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
-      <div style="font-size:13px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;" id="live-lbl-slot${slotIdx}">${stat.label}</div>
-      <div style="font-size:17px;font-weight:600;font-family:var(--font);" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:12px;color:var(--text3);margin-left:2px;">${stat.unit}</span>`:''}</div>
+    return`<div style="flex:1;background:#000;border:1px solid #222;border-radius:6px;padding:3px 6px;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
+      <div style="font-size:11px;color:#888;font-family:var(--font);letter-spacing:.3px;white-space:nowrap;" id="live-lbl-slot${slotIdx}">${stat.label}</div>
+      <div style="font-size:16px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:11px;color:#888;margin-left:1px;">${stat.unit}</span>`:''}</div>
     </div>`;
   };
   // Sensor pill — power or HR
@@ -5248,17 +5248,17 @@ function tLiveShell(r){
   const _pz=sType==='power'&&UI.powerConnected&&UI.powerWatts!==null?powerZone(UI.powerWatts,UI.ftp)
            :sType==='hr'&&UI.hrConnected&&UI.hrBpm!==null?hrZone(UI.hrBpm,UI.maxHr)
            :null;
-  const sensorBg=_pz?_pz.bg:sConnected?'rgba(251,191,36,0.18)':'rgba(10,15,10,0.72)';
-  const sensorBorder=_pz?_pz.border:sConnected?'rgba(251,191,36,0.6)':'rgba(255,255,255,0.12)';
-  const sensorLabelCol=_pz?'#fff':sConnected?'#fbbf24':'var(--text3)';
-  const sensorValCol=_pz?'#fff':sConnected?'#fbbf24':'var(--text3)';
-  const sensorLabel=_pz?_pz.label:sType==='power'?'watts':'bpm';
-  const sensorPill=`<div style="flex:1;background:${sensorBg};border:2px solid ${sensorBorder};border-radius:7px;padding:4px 8px;text-align:center;cursor:pointer;transition:all .3s;-webkit-tap-highlight-color:transparent;" id="live-sensor-pill">
-    <div style="font-size:13px;color:${sensorLabelCol};font-family:var(--font);text-transform:uppercase;letter-spacing:.4px;font-weight:${_pz?'700':'400'};" id="live-sensor-lbl">${sensorLabel}</div>
+  const sensorBg=_pz?_pz.bg:'#000';
+  const sensorBorder=_pz?_pz.border:sConnected?'rgba(251,191,36,0.6)':'#222';
+  const sensorLabelCol=_pz?'#fff':sConnected?'#fbbf24':'#888';
+  const sensorValCol=_pz?'#fff':sConnected?'#fbbf24':'#fff';
+  const sensorLabel=_pz?_pz.label:sType==='power'?'Watts':'bpm';
+  const sensorPill=`<div style="flex:1;background:${sensorBg};border:2px solid ${sensorBorder};border-radius:6px;padding:3px 6px;text-align:center;cursor:pointer;transition:all .3s;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" id="live-sensor-pill">
+    <div style="font-size:11px;color:${sensorLabelCol};font-family:var(--font);letter-spacing:.3px;font-weight:${_pz?'700':'400'};white-space:nowrap;" id="live-sensor-lbl">${sensorLabel}</div>
     ${sConnected
-      ?`<div style="font-size:17px;font-weight:700;color:${sensorValCol};font-family:var(--font);" id="live-sensor-val">${sVal}</div>
+      ?`<div style="font-size:16px;font-weight:500;color:${sensorValCol};font-family:var(--sans);white-space:nowrap;" id="live-sensor-val">${sVal}</div>
          <div style="font-size:11px;color:${sensorLabelCol};font-family:var(--font);opacity:0.85;" id="live-sensor-sub">${sSub}</div>`
-      :`<div style="font-size:13px;color:var(--text3);font-family:var(--font);" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub"></div>`}
+      :`<div style="font-size:12px;color:#888;font-family:var(--font);white-space:nowrap;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub"></div>`}
   </div>`;
   const progressOverlay=`<div class="live-progress-bar">
     <div style="display:flex;gap:6px;">
@@ -5269,10 +5269,10 @@ function tLiveShell(r){
 
   return`
   <div class="live-outer" id="live-scroller">
+      ${progressOverlay}
       <div class="live-map-section" id="live-map-section">
         <canvas id="live-map"></canvas>
         ${mapCtrlHTML('live-map',true)}
-        ${progressOverlay}
         <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:10;">${weatherBarHTML()}</div>
         <div id="adaptive-msg-bar-wrap" style="position:absolute;top:56px;left:8px;right:8px;z-index:11;">
         ${(()=>{
