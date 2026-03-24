@@ -2380,9 +2380,10 @@ function drawMap(cvs,r,opts){
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
+  const padTop=id==='desktop-map'?60:6; // mobile: pills now above map so no top clearance needed
   const padBottom=id==='desktop-map'?160:pad; // extra bottom clearance for elevation profile
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
-  const baseScale=Math.min((W-pad*2)/lonKm,(H-pad-padBottom)/latKm);
+  const baseScale=Math.min((W-pad*2)/lonKm,(H-padTop-padBottom)/latKm);
   const scale=baseScale*state.zoom;
   let cLon=state.cx!==null?state.cx:(maxLon+minLon)/2;
   const visibleMidY=id==='desktop-map'?(pad+(H-padBottom-pad)/2)/H:0.5;
@@ -7936,7 +7937,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       UI.settingsExp[key]=!UI.settingsExp[key];
       // Use setTimeout to defer render past any touch event propagation
       // This prevents ghost taps on newly revealed buttons (e.g. sim Play button)
-      setTimeout(()=>render(),50);
+      setTimeout(()=>renderKeepScroll(),50);
     }
     return;
   }
