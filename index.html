@@ -5351,9 +5351,11 @@ function initLiveMap(r){
     } else {
       const ideal=Math.round(viewW*20/9);
       const strip=document.getElementById('live-next-strip');
+      const progressBar=document.getElementById('live-progress-bar')||document.querySelector('.live-progress-bar');
       // Use actual height if rendered, otherwise reserve space for expected compact strip (3 rows ~105px) + weather bar (~56px)
       const stripH=strip&&strip.offsetHeight>0?strip.offsetHeight:105;
-      const avail=viewH-tabsH-stripH-4;
+      const progressBarH=progressBar&&progressBar.offsetHeight>0?progressBar.offsetHeight:44;
+      const avail=viewH-tabsH-stripH-progressBarH-4;
       mapH=Math.min(ideal,Math.max(200,avail));
     }
     // Suppress micro-fluctuations (strip/weather bar text changes during GPS ticks
@@ -6258,7 +6260,7 @@ function weatherBarHTML(){
       <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
       ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
       <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
-      ${alert?`<div style="margin-left:auto;font-size:12px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);border-radius:4px;padding:2px 6px;animation:pulse 1.4s infinite;">⚠ ${alert}</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">${_weatherExpanded?'▲':'▼'}</div>`}
+      ${alert?`<div style="margin-left:auto;font-size:12px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);border-radius:4px;padding:2px 6px;">⚠ ${alert}</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">${_weatherExpanded?'▲':'▼'}</div>`}
     </div>
     ${expandedHTML}
   </div>`;
