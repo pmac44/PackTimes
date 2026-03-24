@@ -5257,8 +5257,8 @@ function tLiveShell(r){
     <div style="font-size:11px;color:${sensorLabelCol};font-family:var(--font);letter-spacing:.3px;font-weight:${_pz?'700':'400'};white-space:nowrap;" id="live-sensor-lbl">${sensorLabel}</div>
     ${sConnected
       ?`<div style="font-size:16px;font-weight:500;color:${sensorValCol};font-family:var(--sans);white-space:nowrap;" id="live-sensor-val">${sVal}</div>
-         <div style="font-size:11px;color:${sensorLabelCol};font-family:var(--font);opacity:0.85;" id="live-sensor-sub">${sSub}</div>`
-      :`<div style="font-size:12px;color:#888;font-family:var(--font);white-space:nowrap;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub"></div>`}
+         <div style="font-size:16px;font-weight:500;color:${sensorValCol};font-family:var(--sans);white-space:nowrap;" id="live-sensor-sub">${sSub}</div>`
+      :`<div style="font-size:16px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub"></div>`}
   </div>`;
   const progressOverlay=`<div class="live-progress-bar">
     <div style="display:flex;gap:6px;">
@@ -7107,7 +7107,7 @@ function updateLive(){
     if(el){
       const u=UNIT_MAP[key]||'';
       const v=fn();
-      const html=v+(u?`<span style="font-size:12px;color:var(--text3);margin-left:2px;">${u}</span>`:'');
+      const html=v+(u?`<span style="font-size:16px;font-weight:500;color:var(--text);font-family:var(--sans);margin-left:1px;">${u}</span>`:'');
       if(el.innerHTML!==html)el.innerHTML=html;
     }
   });
@@ -7739,8 +7739,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const nextKey=STAT_ORDER[(STAT_ORDER.indexOf(cur)+1)%STAT_ORDER.length];
     UI.liveStatSlots=slots.map((k,i)=>i===slotIdx?nextKey:k);
     saveAll();
+    const LABEL_MAP={done:'Done',left:'To go',finish:'Finish',speed:'Speed','1hr':'1hr',rideavg:'Ride Avg'};
     const lbl=document.getElementById('live-lbl-slot'+slotIdx);
-    if(lbl)lbl.textContent=nextKey;
+    if(lbl)lbl.textContent=LABEL_MAP[nextKey]||nextKey;
     updateLive();
     return;
   }
