@@ -5237,7 +5237,7 @@ function tLiveShell(r){
     const valStr=stat.val();
     return`<div style="flex:1;background:#000;border:1px solid #222;border-radius:6px;padding:3px 6px;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
       <div style="font-size:11px;color:#888;font-family:var(--font);letter-spacing:.3px;white-space:nowrap;" id="live-lbl-slot${slotIdx}">${stat.label}</div>
-      <div style="font-size:16px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:11px;color:#888;margin-left:1px;">${stat.unit}</span>`:''}</div>
+      <div style="font-size:16px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:16px;font-weight:500;color:var(--text);font-family:var(--sans);margin-left:1px;">${stat.unit}</span>`:''}</div>
     </div>`;
   };
   // Sensor pill — power or HR
