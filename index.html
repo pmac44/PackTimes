@@ -2381,7 +2381,9 @@ function drawMap(cvs,r,opts){
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
   const padTop=id==='desktop-map'?60:6; // mobile: pills now above map so no top clearance needed
-  const padBottom=id==='desktop-map'?160:pad; // extra bottom clearance for elevation profile
+  const weatherBar=id==='live-map'?document.getElementById('live-weather-bar'):null;
+  const weatherBarH=weatherBar&&weatherBar.offsetHeight>0?weatherBar.offsetHeight:36;
+  const padBottom=id==='desktop-map'?160:weatherBarH+6; // mobile: clear the weather bar overlay
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
   const baseScale=Math.min((W-pad*2)/lonKm,(H-padTop-padBottom)/latKm);
   const scale=baseScale*state.zoom;
