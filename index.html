@@ -1235,20 +1235,34 @@ function etaAt(distKm,r){
       // real wall-clock time is past the planned departure — if so, anchor from now
       const riderNearby=savedDist!==null&&savedDist>=s.dist-2;
       if(riderNearby){
-        let rideHrsToStop;
-        const crStop=cumRidingAt(s.dist,r);
-        if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
-        else{rideHrsToStop=targetTotal*(s.dist/r.totalDist);}
-        const plannedArrival=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
-        const plannedSleepH=sleepHoursFor(s,plannedArrival);
-        const plannedDepart=new Date(plannedArrival.getTime()+plannedSleepH*3600000);
-        if(now>plannedDepart.getTime()){
-          // Rider is past this stop and past planned departure — anchor all future
-          // ETAs from real time now, discarding accumulated planned offset
+        const sleepH=s.sleepH||(s.departTime?(()=>{
+          let rideHrsToStop;
+          const crStop=cumRidingAt(s.dist,r);
+          if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
+          else{rideHrsToStop=targetTotal*(s.dist/r.totalDist);}
+          const plannedArr=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
+          return sleepHoursFor(s,plannedArr);
+        })():10);
+        // Two ways to detect sleep is already done:
+        // 1. The saved GPS timestamp is more than sleepH hours old (arrived, slept, still here)
+        // 2. Real time is past the planned departure from this stop
+        const gpsSaveAge=UI.gpsPos&&UI.gpsPos.ts?(now-UI.gpsPos.ts)/3600000:null;
+        const sleepAlreadyDone=
+          (gpsSaveAge!==null&&gpsSaveAge>sleepH) || // GPS was saved >sleepH hours ago
+          (()=>{                                     // OR real time past planned departure
+            let rideHrsToStop;
+            const crStop=cumRidingAt(s.dist,r);
+            if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
+            else{rideHrsToStop=targetTotal*(s.dist/r.totalDist);}
+            const plannedArr=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
+            const plannedDepart=new Date(plannedArr.getTime()+sleepH*3600000);
+            return now>plannedDepart.getTime();
+          })();
+        if(sleepAlreadyDone){
           realTimeAnchor=now;
-          sleepOffset=0; // reset — remaining offset calculated from real anchor
+          sleepOffset=0;
           hrs=0;
-          return; // skip adding sleep hours for this stop
+          return;
         }
       }
       if(s.departTime){
