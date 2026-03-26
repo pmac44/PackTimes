@@ -612,6 +612,7 @@ async function loadAll(){
         // Restore position for map display but update timestamp to now
         // so time-based ETA calculations are not anchored to the stale saved time
         if(lastGps.pos)UI.gpsPos={...lastGps.pos,ts:Date.now()};
+        UI._lastGpsState=lastGps; // preserve arrivedAt for sleep detection
       }
     }
     // Restore sun cache
@@ -1184,6 +1185,9 @@ function etaAt(distKm,r){
     }
     // Add stop durations for stops strictly between current position and destination
     let stopOffset=0;
+    // Use arrivedAt (time first reached this area) not current GPS fix time
+    const _arrivedAt=UI._lastGpsState&&UI._lastGpsState.arrivedAt?UI._lastGpsState.arrivedAt:null;
+    const gpsSaveAgeH=_arrivedAt?(Date.now()-_arrivedAt)/3600000:null;
     const aheadStops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist>nowDist&&s.dist<distKm)
       .sort((a,b)=>a.dist-b.dist);
     aheadStops.forEach(s=>{
@@ -1191,6 +1195,14 @@ function etaAt(distKm,r){
       const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
       stopOffset+=beforeMealH;
       if(hasSleep){
+        // If this sleep stop is within 2km ahead and GPS shows we've been near here
+        // longer than the sleep duration, treat sleep as already completed
+        const nearbyAhead=s.dist-nowDist<=2;
+        if(nearbyAhead&&gpsSaveAgeH!==null&&gpsSaveAgeH>(s.sleepH||10)){
+          const afterMealH2=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+          stopOffset+=afterMealH2;
+          return;
+        }
         if(s.departTime){
           // Estimate arrival at this stop from now
           let remToStop;
@@ -1246,7 +1258,8 @@ function etaAt(distKm,r){
         // Two ways to detect sleep is already done:
         // 1. The saved GPS timestamp is more than sleepH hours old (arrived, slept, still here)
         // 2. Real time is past the planned departure from this stop
-        const gpsSaveAge=UI.gpsPos&&UI.gpsPos.ts?(now-UI.gpsPos.ts)/3600000:null;
+        const _arr=UI._lastGpsState&&UI._lastGpsState.arrivedAt?UI._lastGpsState.arrivedAt:null;
+        const gpsSaveAge=_arr?(now-_arr)/3600000:null;
         const sleepAlreadyDone=
           (gpsSaveAge!==null&&gpsSaveAge>sleepH) || // GPS was saved >sleepH hours ago
           (()=>{                                     // OR real time past planned departure
@@ -1630,7 +1643,11 @@ function startGPS(){
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap){UI.gpsDistKm=snap.dist;}}
     // Persist last known position so app remembers progress after restart
     if(UI.gpsDistKm!==null){
-      DB.setKV('lastGpsState',{dist:UI.gpsDistKm,pos:UI.gpsPos,routeId:r?r.id:null}).catch(()=>{});
+      // Preserve original arrivedAt time — don't overwrite once set near a stop
+      const prevState=UI._lastGpsState||{};
+      const arrivedAt=prevState.arrivedAt&&Math.abs((prevState.dist||0)-UI.gpsDistKm)<2?prevState.arrivedAt:Date.now();
+      UI._lastGpsState={dist:UI.gpsDistKm,pos:UI.gpsPos,routeId:r?r.id:null,arrivedAt};
+      DB.setKV('lastGpsState',UI._lastGpsState).catch(()=>{});
     }
     // Initialise session start on first fix
     if(UI._rideAvgSessionKm===null&&UI.gpsDistKm!==null){
