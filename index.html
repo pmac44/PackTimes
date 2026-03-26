@@ -602,6 +602,16 @@ async function loadAll(){
       if(prefs.sensorType)UI.sensorType=prefs.sensorType;
       if(prefs.tab)UI.tab=prefs.tab;
     }
+    // Restore last known GPS position so ride progress is visible before GPS reconnects
+    const lastGps=await DB.getKV('lastGpsState').catch(()=>null);
+    if(lastGps&&lastGps.dist!=null){
+      // Only restore if it matches the current route
+      const curRoute=ROUTES[CUR>=0?CUR:0];
+      if(!lastGps.routeId||!curRoute||lastGps.routeId===curRoute.id){
+        UI.gpsDistKm=lastGps.dist;
+        if(lastGps.pos)UI.gpsPos=lastGps.pos;
+      }
+    }
     // Restore sun cache
     const sc=await DB.getKV('sunCache').catch(()=>null);
     if(sc){
@@ -1559,7 +1569,11 @@ function startGPS(){
     UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,speed:pos.coords.speed,ts:pos.timestamp};
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
     const r=cur();
-    if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap)UI.gpsDistKm=snap.dist;}
+    if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap){UI.gpsDistKm=snap.dist;}}
+    // Persist last known position so app remembers progress after restart
+    if(UI.gpsDistKm!==null){
+      DB.setKV('lastGpsState',{dist:UI.gpsDistKm,pos:UI.gpsPos,routeId:r?r.id:null}).catch(()=>{});
+    }
     // Initialise session start on first fix
     if(UI._rideAvgSessionKm===null&&UI.gpsDistKm!==null){
       UI._rideAvgSessionKm=UI.gpsDistKm;
@@ -8680,6 +8694,7 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
   if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
   UI.simRunning=false;UI.simPaused=false;_simPts=null;_simIdx=0;
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;
+  DB.setKV('lastGpsState',null).catch(()=>{});
   initDesktop();render();
   // Auto-load from Dropbox if connected and cloud is newer
   if(UI.dbxToken)dbxAutoLoad();
