@@ -2275,6 +2275,7 @@ const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://se
 // Tile cache: key = 'mode/z/x/y'
 const _tileCache={};
 let _mapDragging=false;
+let _liveDrawRaf=null; // RAF handle for throttled live map draws
 const OSM_URL='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 // Convert lon/lat to OSM tile x,y at zoom z
 function lonLatToTile(lon,lat,z){
@@ -2290,12 +2291,17 @@ function tileToLat(y,z){const n=Math.PI-2*Math.PI*y/Math.pow(2,z);return 180/Mat
 
 function getTile(z,x,y,redrawId){
   const key=_tileMode+'/'+z+'/'+x+'/'+y;
-  if(_tileCache[key]) return _tileCache[key];
+  const cached=_tileCache[key];
+  if(cached) return cached; // includes 'loading' and 'error' — never re-request
   const img=new Image();
   img.crossOrigin='anonymous';
   _tileCache[key]='loading';
   img.onload=()=>{_tileCache[key]=img;if(redrawId&&!_mapDragging)redrawMap(redrawId);};
-  img.onerror=()=>{_tileCache[key]='error';};
+  img.onerror=()=>{
+    _tileCache[key]='error';
+    // Clear error after 30s so tiles retry when connection returns, but don't hammer offline
+    setTimeout(()=>{if(_tileCache[key]==='error')delete _tileCache[key];},30000);
+  };
   const tileUrl=TILE_URLS[_tileMode]||OSM_URL;
   img.src=tileUrl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
   return 'loading';
@@ -7149,7 +7155,11 @@ function updateLive(){
     }
   }
   // Also refresh weather cache for current GPS position
-  if(r)ensureWeatherCache(r);
+  // Only check weather cache at most every 60s — not on every GPS tick
+  if(r&&(!updateLive._lastWeatherCheck||Date.now()-updateLive._lastWeatherCheck>60000)){
+    updateLive._lastWeatherCheck=Date.now();
+    ensureWeatherCache(r);
+  }
 
   // Rebuild stop list to hide passed stops and update next cards
   const stopList=document.getElementById('live-stop-list');
@@ -7283,7 +7293,14 @@ function updateLive(){
         state.zoom=zoomForKmWidth('live-map',UI.gpsZoom||0.15);
         state._autoZoomed=true;
       }
-      drawMap(mc,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
+      // RAF throttle — coalesce rapid GPS ticks into one draw per frame
+      if(!_liveDrawRaf){
+        _liveDrawRaf=requestAnimationFrame(()=>{
+          _liveDrawRaf=null;
+          const mc2=document.getElementById('live-map');
+          if(mc2)drawMap(mc2,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
+        });
+      }
     }
   }
 }
