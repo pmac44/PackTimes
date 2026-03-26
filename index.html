@@ -1195,10 +1195,11 @@ function etaAt(distKm,r){
       const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
       stopOffset+=beforeMealH;
       if(hasSleep){
-        // If this sleep stop is within 2km ahead and GPS shows we've been near here
-        // longer than the sleep duration, treat sleep as already completed
+        // If this sleep stop has a recorded actual arrival, or is within 2km and
+        // arrivedAt shows we've been here longer than sleep duration — already done
         const nearbyAhead=s.dist-nowDist<=2;
-        if(nearbyAhead&&gpsSaveAgeH!==null&&gpsSaveAgeH>(s.sleepH||10)){
+        const alreadySlept=s.actualArrival||(nearbyAhead&&gpsSaveAgeH!==null&&gpsSaveAgeH>(s.sleepH||10));
+        if(alreadySlept){
           const afterMealH2=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
           stopOffset+=afterMealH2;
           return;
@@ -1221,11 +1222,77 @@ function etaAt(distKm,r){
     return new Date(nowTime.getTime()+(remRidingHrs+stopOffset)*3600000);
   }
 
-  // No GPS — use planned start time as anchor (planning mode)
-  // But if the rider has already reached and passed a sleep stop (based on saved GPS
-  // distance and wall-clock time), anchor ETAs from real time at that point instead.
-  const savedDist=UI.gpsDistKm; // may be restored from DB even when GPS is off
+  // No GPS active — use planned start or last actual recorded time as anchor
   const now=Date.now();
+
+  // Find the last stop before distKm that has a recorded actualArrival — this is our
+  // most recent known-good time anchor. Everything before it is fact; everything after
+  // is estimated forward from that real time.
+  const recordedStops=r.stops.filter(s=>s.actualArrival&&s.dist<=distKm)
+    .sort((a,b)=>b.dist-a.dist); // most recent first
+  const lastRecorded=recordedStops[0]||null;
+
+  if(lastRecorded){
+    // Anchor from the actual recorded time at the last known stop
+    const hasSleep=lastRecorded.type==='sleep'||(lastRecorded.type==='stop'&&(lastRecorded.sleepAt||lastRecorded.sleepH))||lastRecorded.sleepAt;
+    let anchorTime;
+    if(hasSleep){
+      const arrivalDate=new Date(lastRecorded.actualArrival);
+      if(lastRecorded.departTime){
+        // Fixed wake time — find next occurrence of that clock time after actual arrival
+        // This takes precedence over sleepH entirely
+        const [dh,dm]=lastRecorded.departTime.split(':').map(Number);
+        const wake=new Date(arrivalDate);
+        wake.setHours(dh,dm,0,0);
+        if(wake<=arrivalDate)wake.setDate(wake.getDate()+1);
+        anchorTime=wake.getTime();
+      } else {
+        // Duration-based sleep
+        const sleepH=lastRecorded.sleepH||10;
+        anchorTime=lastRecorded.actualArrival+sleepH*3600000;
+      }
+      // If planned departure is in the past and rider is still here, ETAs
+      // should slide forward continuously from now — not be stuck in the past
+      if(anchorTime<now&&distKm>lastRecorded.dist)anchorTime=now;
+    } else {
+      anchorTime=lastRecorded.actualArrival;
+    }
+    // Riding time from last recorded stop to destination
+    const crFrom=cumRidingAt(lastRecorded.dist,r),crDest=cumRidingAt(distKm,r);
+    let remRidingHrs;
+    if(crFrom!==null&&crDest!==null&&crTot&&crTot>0){
+      remRidingHrs=Math.max(0,crDest-crFrom)*(targetTotal/crTot);
+    } else {
+      remRidingHrs=targetTotal*(Math.max(0,distKm-lastRecorded.dist)/r.totalDist);
+    }
+    // Add sleep/meal offsets for stops between last recorded and destination
+    let fwdOffset=0;
+    r.stops.filter(s=>s.dist>lastRecorded.dist&&s.dist<distKm)
+      .sort((a,b)=>a.dist-b.dist)
+      .forEach(s=>{
+        const hs=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+        const bm=(s.meals||[]).filter(m=>!hs||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+        fwdOffset+=bm;
+        if(hs){
+          if(s.actualArrival){
+            // This intermediate stop also has a recorded time — use it to anchor further
+            const hs2=sleepHoursFor(s,new Date(s.actualArrival));
+            anchorTime=s.actualArrival+hs2*3600000;
+            remRidingHrs=0;fwdOffset=0;
+          } else if(s.departTime){
+            const arrEta=new Date(anchorTime+remRidingHrs*3600000+fwdOffset*3600000);
+            fwdOffset+=sleepHoursFor(s,arrEta);
+          } else {
+            fwdOffset+=s.sleepH||(s.type==='stop'?0.25:10);
+          }
+        }
+        const am=hs?(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0):0;
+        fwdOffset+=am;
+      });
+    return new Date(anchorTime+(remRidingHrs+fwdOffset)*3600000);
+  }
+
+  // No recorded stops — pure planning mode from planned start time
   let hrs;
   const crHere=cumRidingAt(distKm,r);
   if(crHere!==null&&crTot&&crTot>0){
@@ -1233,9 +1300,7 @@ function etaAt(distKm,r){
   } else {
     hrs=targetTotal*(distKm/r.totalDist);
   }
-  // Add stop durations for stops strictly before this point
   let sleepOffset=0;
-  let realTimeAnchor=null; // set when we detect rider has already passed a sleep stop
   const sortedStops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist<distKm)
     .sort((a,b)=>a.dist-b.dist);
   sortedStops.forEach(s=>{
@@ -1243,47 +1308,12 @@ function etaAt(distKm,r){
     const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
     sleepOffset+=beforeMealH;
     if(hasSleep){
-      // Check if rider has reached this sleep stop cluster (within 2km) and
-      // real wall-clock time is past the planned departure — if so, anchor from now
-      const riderNearby=savedDist!==null&&savedDist>=s.dist-2;
-      if(riderNearby){
-        const sleepH=s.sleepH||(s.departTime?(()=>{
-          let rideHrsToStop;
-          const crStop=cumRidingAt(s.dist,r);
-          if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
-          else{rideHrsToStop=targetTotal*(s.dist/r.totalDist);}
-          const plannedArr=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
-          return sleepHoursFor(s,plannedArr);
-        })():10);
-        // Two ways to detect sleep is already done:
-        // 1. The saved GPS timestamp is more than sleepH hours old (arrived, slept, still here)
-        // 2. Real time is past the planned departure from this stop
-        const _arr=UI._lastGpsState&&UI._lastGpsState.arrivedAt?UI._lastGpsState.arrivedAt:null;
-        const gpsSaveAge=_arr?(now-_arr)/3600000:null;
-        const sleepAlreadyDone=
-          (gpsSaveAge!==null&&gpsSaveAge>sleepH) || // GPS was saved >sleepH hours ago
-          (()=>{                                     // OR real time past planned departure
-            let rideHrsToStop;
-            const crStop=cumRidingAt(s.dist,r);
-            if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
-            else{rideHrsToStop=targetTotal*(s.dist/r.totalDist);}
-            const plannedArr=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
-            const plannedDepart=new Date(plannedArr.getTime()+sleepH*3600000);
-            return now>plannedDepart.getTime();
-          })();
-        if(sleepAlreadyDone){
-          realTimeAnchor=now;
-          sleepOffset=0;
-          hrs=0;
-          return;
-        }
-      }
       if(s.departTime){
         let rideHrsToStop;
         const crStop=cumRidingAt(s.dist,r);
         if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
         else{rideHrsToStop=targetTotal*(s.dist/r.totalDist);}
-        const arrivalEta=new Date((realTimeAnchor||base.getTime())+(rideHrsToStop+sleepOffset)*3600000);
+        const arrivalEta=new Date(base.getTime()+(rideHrsToStop+sleepOffset)*3600000);
         sleepOffset+=sleepHoursFor(s,arrivalEta);
       } else {
         sleepOffset+=s.sleepH||(s.type==='stop'?0.25:10);
@@ -1293,18 +1323,6 @@ function etaAt(distKm,r){
     sleepOffset+=afterMealH;
   });
   hrs+=sleepOffset;
-  // If a real-time anchor was found, compute remaining riding time from now
-  if(realTimeAnchor!==null){
-    const crAnchorDist=savedDist!==null?cumRidingAt(savedDist,r):null;
-    const crDest=cumRidingAt(distKm,r);
-    let remRidingHrs;
-    if(crAnchorDist!==null&&crDest!==null&&crTot&&crTot>0){
-      remRidingHrs=Math.max(0,crDest-crAnchorDist)*(targetTotal/crTot);
-    } else {
-      remRidingHrs=targetTotal*(Math.max(0,distKm-(savedDist||0))/r.totalDist);
-    }
-    return new Date(realTimeAnchor+(remRidingHrs+sleepOffset)*3600000);
-  }
   return new Date(base.getTime()+hrs*3600000);
 }
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
@@ -1641,6 +1659,19 @@ function startGPS(){
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
     const r=cur();
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap){UI.gpsDistKm=snap.dist;}}
+    // Record actual arrival times against stops when GPS passes within alertKm
+    if(r&&UI.gpsDistKm!==null){
+      const alertKm=UI.alertKm||0.5;
+      r.stops.forEach(s=>{
+        if(s.actualArrival)return; // already recorded
+        const starred=s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
+        if(!starred)return;
+        if(Math.abs(s.dist-UI.gpsDistKm)<=alertKm){
+          s.actualArrival=Date.now();
+          saveAll();
+        }
+      });
+    }
     // Persist last known position so app remembers progress after restart
     if(UI.gpsDistKm!==null){
       // Preserve original arrivedAt time — don't overwrite once set near a stop
@@ -7483,7 +7514,36 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       // Reset desktop map so it zooms to fit the newly selected route
       const s=ms('desktop-map');s.cx=null;s.cy=null;s.zoom=1;
     }
-    CUR=newIdx;UI.tab='routes';UI.routeTurnsOpen=null;saveAll();render();return;
+    const newRoute=ROUTES[newIdx];
+    const hasRecords=newRoute&&newRoute.stops&&newRoute.stops.some(s=>s.actualArrival);
+    const switchRoute=()=>{CUR=newIdx;UI.tab='routes';UI.routeTurnsOpen=null;saveAll();render();};
+    if(hasRecords&&newIdx!==CUR){
+      // Route has recorded GPS times — prompt user
+      if(document.getElementById('gps-records-prompt'))document.getElementById('gps-records-prompt').remove();
+      const el=document.createElement('div');
+      el.id='gps-records-prompt';
+      el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+      el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:20px 16px 32px;width:100%;max-width:500px;">
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px;">📍 GPS times recorded</div>
+        <div style="font-size:15px;color:var(--text2);line-height:1.5;margin-bottom:18px;">This route has real arrival times recorded from a previous ride. Continue from where you left off, or start fresh?</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button id="gps-rec-keep" class="btn btn-p btn-full" style="justify-content:center;">Continue from last position</button>
+          <button id="gps-rec-wipe" class="btn btn-full btn-r" style="justify-content:center;">Start fresh — wipe recorded times</button>
+          <button id="gps-rec-cancel" class="btn btn-full" style="justify-content:center;">Cancel</button>
+        </div>
+      </div>`;
+      document.body.appendChild(el);
+      document.getElementById('gps-rec-keep').onclick=()=>{el.remove();switchRoute();};
+      document.getElementById('gps-rec-wipe').onclick=()=>{
+        el.remove();
+        ROUTES[newIdx].stops.forEach(s=>{delete s.actualArrival;});
+        switchRoute();
+      };
+      document.getElementById('gps-rec-cancel').onclick=()=>el.remove();
+    } else {
+      switchRoute();
+    }
+    return;
   }
   // Toggle turns panel per route
   const rtb=e.target.closest('.route-turns-btn');
