@@ -1125,7 +1125,10 @@ function fmtOHSummary(rules,ohRaw){
 //  TIME CALC
 // ═══════════════════════════════════════════
 function startDT(r){
-  if(!r||!r.startDate||!r.startTime)return null;
+  if(!r)return null;
+  // Use actual recorded start time if GPS captured it — overrides planned start
+  if(r.actualStartTime)return new Date(r.actualStartTime);
+  if(!r.startDate||!r.startTime)return null;
   return new Date(`${r.startDate}T${r.startTime}:00`);
 }
 // Get effective sleep hours for a stop — handles fixed departure time
@@ -1292,7 +1295,69 @@ function etaAt(distKm,r){
     return new Date(anchorTime+(remRidingHrs+fwdOffset)*3600000);
   }
 
-  // No recorded stops — pure planning mode from planned start time
+  // No recorded stops — use saved GPS position as implicit anchor if available,
+  // otherwise fall back to pure planning mode from planned start time.
+  const savedDist=UI.gpsDistKm; // may be restored from DB even when GPS is off
+  if(savedDist!==null){
+    // We know where the rider is (or was). Anchor future ETAs from now,
+    // skipping all sleep offsets for stops already behind the saved position.
+    // For the last sleep stop at or just behind savedDist, check if it's done
+    // using the same arrivedAt heuristic.
+    const _arr=UI._lastGpsState&&UI._lastGpsState.arrivedAt?UI._lastGpsState.arrivedAt:null;
+    let anchorTime=now;
+    // Find any sleep stop within 2km behind or at savedDist — check if already slept
+    const nearSleep=r.stops.filter(s=>{
+      const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+      return hasSleep&&s.dist<=savedDist+2&&s.dist>=savedDist-2;
+    }).sort((a,b)=>b.dist-a.dist)[0]||null;
+    if(nearSleep){
+      const sleepH=nearSleep.sleepH||10;
+      const gpsSaveAgeH=_arr?(now-_arr)/3600000:null;
+      const sleepDone=gpsSaveAgeH!==null&&gpsSaveAgeH>sleepH;
+      if(!sleepDone){
+        // Still in sleep window — calculate departure as anchor
+        if(nearSleep.departTime){
+          const [dh,dm]=nearSleep.departTime.split(':').map(Number);
+          const wake=new Date(_arr?new Date(_arr):new Date());
+          wake.setHours(dh,dm,0,0);
+          if(wake.getTime()<=(_arr||now))wake.setDate(wake.getDate()+1);
+          anchorTime=Math.max(wake.getTime(),now);
+        } else {
+          anchorTime=Math.max((_arr||now)+sleepH*3600000,now);
+        }
+      }
+    }
+    // Riding time from savedDist to destination
+    const crFrom=cumRidingAt(savedDist,r),crDest=cumRidingAt(distKm,r);
+    let remRidingHrs;
+    if(crFrom!==null&&crDest!==null&&crTot&&crTot>0){
+      remRidingHrs=Math.max(0,crDest-crFrom)*(targetTotal/crTot);
+    } else {
+      remRidingHrs=targetTotal*(Math.max(0,distKm-savedDist)/r.totalDist);
+    }
+    // Add sleep/meal offsets for stops between savedDist and destination
+    let fwdOffset=0;
+    r.stops.filter(s=>s.dist>savedDist+2&&s.dist<distKm)
+      .sort((a,b)=>a.dist-b.dist)
+      .forEach(s=>{
+        const hs=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+        const bm=(s.meals||[]).filter(m=>!hs||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+        fwdOffset+=bm;
+        if(hs){
+          if(s.departTime){
+            const arrEta=new Date(anchorTime+remRidingHrs*3600000+fwdOffset*3600000);
+            fwdOffset+=sleepHoursFor(s,arrEta);
+          } else {
+            fwdOffset+=s.sleepH||(s.type==='stop'?0.25:10);
+          }
+        }
+        const am=hs?(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0):0;
+        fwdOffset+=am;
+      });
+    return new Date(anchorTime+(remRidingHrs+fwdOffset)*3600000);
+  }
+
+  // No GPS position at all — pure planning mode from planned start time
   let hrs;
   const crHere=cumRidingAt(distKm,r);
   if(crHere!==null&&crTot&&crTot>0){
@@ -1633,6 +1698,10 @@ function _resetGpsIdleTimer(){
 function startGPS(){
   if(!navigator.geolocation){alert('Geolocation not supported.');return;}
   if(UI.simRunning||UI.simPaused){if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}UI.simRunning=false;UI.simPaused=false;}
+  _doStartGPS();
+}
+
+function _doStartGPS(){
   UI.gpsActive=true;
   UI._gpsAutoPaused=false;
   UI._lastMovedTs=Date.now();
@@ -1659,24 +1728,36 @@ function startGPS(){
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
     const r=cur();
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap){UI.gpsDistKm=snap.dist;}}
-    // Record actual arrival times against stops when GPS passes within alertKm
     if(r&&UI.gpsDistKm!==null){
       const alertKm=UI.alertKm||0.5;
+      const nowTs=Date.now();
+      let needsSave=false;
+
+      // Record actualArrival for every stop (starred or not) when GPS passes within alertKm.
+      // Unstarred stops don't show on mission list but their times anchor ETAs silently.
       r.stops.forEach(s=>{
-        if(s.actualArrival)return; // already recorded
-        const starred=s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
-        if(!starred)return;
+        if(s.actualArrival)return;
         if(Math.abs(s.dist-UI.gpsDistKm)<=alertKm){
-          s.actualArrival=Date.now();
-          saveAll();
+          s.actualArrival=nowTs;
+          needsSave=true;
         }
       });
+
+      // Start time override — if GPS first fixes within 5km of route start,
+      // record the real start time on the route. startDT() will use this.
+      if(!r.actualStartTime&&UI.gpsDistKm<=5){
+        r.actualStartTime=nowTs;
+        needsSave=true;
+      }
+
+      if(needsSave)saveAll();
     }
-    // Persist last known position so app remembers progress after restart
+    // Last recorded position — single entry, continuously overwritten.
+    // Preserves arrivedAt (time first reached this area) separately from GPS fix time.
     if(UI.gpsDistKm!==null){
-      // Preserve original arrivedAt time — don't overwrite once set near a stop
       const prevState=UI._lastGpsState||{};
-      const arrivedAt=prevState.arrivedAt&&Math.abs((prevState.dist||0)-UI.gpsDistKm)<2?prevState.arrivedAt:Date.now();
+      const movedFar=Math.abs((prevState.dist||0)-UI.gpsDistKm)>2;
+      const arrivedAt=movedFar?Date.now():(prevState.arrivedAt||Date.now());
       UI._lastGpsState={dist:UI.gpsDistKm,pos:UI.gpsPos,routeId:r?r.id:null,arrivedAt};
       DB.setKV('lastGpsState',UI._lastGpsState).catch(()=>{});
     }
@@ -7537,6 +7618,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       document.getElementById('gps-rec-wipe').onclick=()=>{
         el.remove();
         ROUTES[newIdx].stops.forEach(s=>{delete s.actualArrival;});
+        ROUTES[newIdx].actualStartTime=null;
         switchRoute();
       };
       document.getElementById('gps-rec-cancel').onclick=()=>el.remove();
