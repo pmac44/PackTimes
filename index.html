@@ -5472,7 +5472,7 @@ function tLiveShell(r){
       :`<div style="font-size:20px;font-weight:500;color:var(--text);font-family:var(--sans);line-height:1.2;word-break:break-word;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub"></div>`}
   </div>`;
   const progressOverlay=`<div class="live-progress-bar">
-    <div style="display:flex;gap:6px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
       ${makePill(0)}${makePill(1)}${makePill(2)}${sensorPill}
     </div>
     <div class="prog" style="margin-top:5px;height:3px;display:none;"><div class="progf" id="live-progf" style="width:${(prog*100).toFixed(1)}%"></div></div>
