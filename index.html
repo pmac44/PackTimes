@@ -8929,28 +8929,76 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
 });
 </script>
 <script>
-// PWA manifest is in manifest.json alongside this file
-
 // Register inline service worker for PWA installability (skip in iframes)
 if('serviceWorker' in navigator && window.self===window.top){
+  // Pass the real page URL into the SW via the blob — blob's self.location.href
+  // is the ephemeral blob URL which dies on page close, so we must capture the
+  // real URL here in the page context and embed it in the SW code.
+  const PAGE_URL=location.href.split('?')[0].split('#')[0];
+  const CACHE_NAME='packtimes-v3';
   const swCode=`
-    const CACHE='packtimes-v2';
-    const OFFLINE_URL=self.location.href;
+    const CACHE='${CACHE_NAME}';
+    const PAGE_URL='${PAGE_URL}';
     self.addEventListener('install',e=>{
-      e.waitUntil(caches.open(CACHE).then(c=>c.addAll([OFFLINE_URL])).then(()=>self.skipWaiting()));
+      e.waitUntil(
+        caches.open(CACHE)
+          .then(c=>c.add(new Request(PAGE_URL,{cache:'reload'})))
+          .then(()=>self.skipWaiting())
+          .catch(()=>self.skipWaiting()) // install succeeds even if offline
+      );
     });
     self.addEventListener('activate',e=>{
-      e.waitUntil(clients.claim());
+      // Clear any old caches from previous SW versions
+      e.waitUntil(
+        caches.keys().then(keys=>Promise.all(
+          keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))
+        )).then(()=>clients.claim())
+      );
     });
     self.addEventListener('fetch',e=>{
-      if(e.request.mode==='navigate'){
-        e.respondWith(caches.match(OFFLINE_URL).then(r=>r||fetch(e.request)));
+      // Only handle same-origin navigation and the page itself
+      const url=new URL(e.request.url);
+      const isNavigate=e.request.mode==='navigate';
+      const isPage=url.href===PAGE_URL||url.pathname===new URL(PAGE_URL).pathname;
+      if(isNavigate||isPage){
+        e.respondWith(
+          // Network first — get fresh version if online
+          fetch(e.request)
+            .then(res=>{
+              if(res&&res.ok){
+                const clone=res.clone();
+                caches.open(CACHE).then(c=>c.put(PAGE_URL,clone));
+              }
+              return res;
+            })
+            .catch(()=>
+              // Offline — serve from cache
+              caches.match(PAGE_URL).then(cached=>cached||new Response(
+                '<h2>Loading PackTimes...</h2><p>Open the app from your home screen while online first to enable offline use.</p>',
+                {headers:{'Content-Type':'text/html'}}
+              ))
+            )
+        );
       }
+      // All other requests (tiles, weather, fonts) — let them go to network normally.
+      // They will fail gracefully offline — the app handles that already.
     });
   `;
   const blob=new Blob([swCode],{type:'application/javascript'});
   const swUrl=URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swUrl,{scope:'./'}).catch(()=>{});
+  navigator.serviceWorker.register(swUrl,{scope:'./'})
+    .then(reg=>{
+      // When a new SW is waiting, activate it immediately
+      if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});
+      reg.addEventListener('updatefound',()=>{
+        const sw=reg.installing;
+        if(sw)sw.addEventListener('statechange',()=>{
+          if(sw.state==='installed'&&navigator.serviceWorker.controller)
+            sw.postMessage({type:'SKIP_WAITING'});
+        });
+      });
+    })
+    .catch(()=>{});
 }
 </script>
 </body>
