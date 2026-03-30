@@ -3220,8 +3220,9 @@ function drawMap(cvs,r,opts){
 
   // Direction arrows along route line — white/cyan so they contrast with green line
   {
-    const arrowSpacingPx=120; // min pixels between arrows
-    let distSinceArrow=arrowSpacingPx; // start offset so first arrow isn't at very start
+    ctx.save();
+    const arrowSpacingPx=120;
+    let distSinceArrow=arrowSpacingPx;
     for(let i=1;i<pts.length;i++){
       const x0=px(pts[i-1].lon),y0=py(pts[i-1].lat);
       const x1=px(pts[i].lon),y1=py(pts[i].lat);
@@ -3244,6 +3245,7 @@ function drawMap(cvs,r,opts){
         ctx.restore();
       }
     }
+    ctx.restore();
   }
 
   // Stop dots (with off-route connectors for auto-stops with real coords)
@@ -3364,7 +3366,7 @@ function drawMap(cvs,r,opts){
 
   // km markers — true pxPerKm from total route screen length
   if(!(UI.hiddenMapTypes.has('kmmarkers')&&(cvs.id==='desktop-map'||id==='stops-map'))){
-  {
+    ctx.save();
     let totalScreenPx=0;
     for(let i=1;i<pts.length;i++){
       const dx=px(pts[i].lon)-px(pts[i-1].lon),dy=py(pts[i].lat)-py(pts[i-1].lat);
@@ -3382,11 +3384,9 @@ function drawMap(cvs,r,opts){
       const mi=cidx(r,km);if(!pts[mi])continue;
       const mx=px(pts[mi].lon),my=py(pts[mi].lat);
       if(mx<-30||mx>W+30||my<-30||my>H+30)continue;
-      // Dark dot matching label colour
       ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);
       ctx.fillStyle='rgba(0,0,0,0.75)';ctx.fill();
       ctx.strokeStyle='#e8f5e8';ctx.lineWidth=1.2;ctx.stroke();
-      // Label — dark semi-transparent pill on desktop, white on mobile
       const lbl=km+'km';
       const isDesktopMap=id==='desktop-map';
       const fSize=isDesktopMap?10:mapFontSm;
@@ -3401,7 +3401,7 @@ function drawMap(cvs,r,opts){
       ctx.fillStyle=isDesktopMap?'rgba(200,230,200,0.9)':'#111';
       ctx.fillText(lbl,mx,pillY+pillH-1);
     }
-  }
+    ctx.restore();
   } // end km markers toggle
 
   // GPS dot
