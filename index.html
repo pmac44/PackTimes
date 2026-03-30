@@ -8509,9 +8509,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.isTrusted&&(e.target.id==='btn-sim-start'||e.target.closest('#btn-sim-start')===e.target.parentElement)){const b=document.getElementById('btn-sim-start');if(b&&!b.disabled)simStart();return;}
   if(e.isTrusted&&(e.target.id==='btn-sim-pause'||e.target.closest('#btn-sim-pause')===e.target.parentElement)){simPause();return;}
   if(e.isTrusted&&(e.target.id==='btn-sim-stop'||e.target.closest('#btn-sim-stop')===e.target.parentElement)){const b=document.getElementById('btn-sim-stop');if(b&&!b.disabled)simStop();return;}
-  if(e.target.closest('#route-mgmt-hdr')){UI.routeMgmtExpanded=!UI.routeMgmtExpanded;render();return;}
-  if(e.target.closest('#hike-card-hdr')&&!e.target.closest('#btn-add-pace')&&!e.target.closest('#btn-autodetect-hike')){UI.hikeExpanded=!UI.hikeExpanded;render();return;}
-  if(e.target.closest('#hello-hdr')){UI.helloExpanded=!(UI.helloExpanded!==null?UI.helloExpanded:!cur());render();return;}
+  if(e.target.closest('#route-mgmt-hdr')){UI.routeMgmtExpanded=!UI.routeMgmtExpanded;setTimeout(()=>renderKeepScroll(),50);return;}
+  if(e.target.closest('#hike-card-hdr')&&!e.target.closest('#btn-add-pace')&&!e.target.closest('#btn-autodetect-hike')){UI.hikeExpanded=!UI.hikeExpanded;setTimeout(()=>renderKeepScroll(),50);return;}
+  if(e.target.closest('#hello-hdr')){UI.helloExpanded=!(UI.helloExpanded!==null?UI.helloExpanded:!cur());setTimeout(()=>renderKeepScroll(),50);return;}
   if(e.target.closest('#hello-more-toggle')){
     UI.helloDetailOpen=!UI.helloDetailOpen;
     // Toggle in-place — avoid render() which resets scroll position
