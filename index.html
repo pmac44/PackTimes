@@ -496,7 +496,7 @@ const DB=(()=>{
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
   id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
-  name:name||'New Route',points:[],hasTS:false,totalDist:0,estDuration:null,numDays:null,
+  name:name||'New Route',points:[],hasTS:false,totalDist:0,estDuration:null,
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
   adaptiveSpeed:true,baseTimeFactor:1.0,
 });
@@ -510,9 +510,8 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
-  helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,showDayMarkers:true,
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,
-  showSurface:false,surfaceStatus:'idle',surfaceMsg:''};
+  helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -1058,28 +1057,6 @@ function rebuildPace(r){
   if(!r||!r.points.length)return;
   r.cumRiding=buildCumRiding(r.points,r.paceSegs||[]);
 }
-// Compute km positions of day-boundary markers for a given numDays split.
-// Returns array of {dist, dayNum} — length = numDays-1
-function computeDayMarkers(r){
-  const nd=r.numDays;
-  if(!nd||nd<2||!r.cumRiding||!r.points.length)return[];
-  const pts=r.points,cr=r.cumRiding;
-  const totalRiding=cr[cr.length-1];
-  const estTotal=r.estDuration?r.estDuration*r.timeFactor:totalRiding;
-  const markers=[];
-  for(let d=1;d<nd;d++){
-    const targetCr=totalRiding*(d/nd);
-    // Binary search for the point where cumRiding crosses targetCr
-    let lo=0,hi=pts.length-1;
-    while(hi-lo>1){const mid=(lo+hi)>>1;if(cr[mid]<=targetCr)lo=mid;else hi=mid;}
-    const span=cr[hi]-cr[lo];
-    const t=span>0?(targetCr-cr[lo])/span:0;
-    const dist=pts[lo].dist+(pts[hi].dist-pts[lo].dist)*t;
-    markers.push({dist,dayNum:d});
-  }
-  return markers;
-}
-
 function cumRidingAt(distKm,r){
   const pts=r.points,cr=r.cumRiding;
   if(!cr||!pts.length)return null;
@@ -1450,18 +1427,10 @@ function shopSt(s,r){
 // ═══════════════════════════════════════════
 //  OVERPASS
 // ═══════════════════════════════════════════
-
 // ─── Surface type fetch ──────────────────────────────────────────────────────
-// Colour for each surface category used in map overlay
 const SURFACE_COLS={
-  road:'#4a6080',       // sealed road — dark blue-grey
-  road_minor:'#c8a97a', // minor/unsealed road — lightest brown
-  grade1:'#b8925a',     // track G1 compacted — light brown
-  grade2:'#a07840',     // track G2 gravel/dirt — medium brown
-  grade3:'#886030',     // track G3 dirt — brown
-  grade4:'#704820',     // track G4 rough — dark brown
-  grade5:'#583010',     // track G5 barely passable — darkest brown
-  path:'#c0392b',       // path/footway/singletrack — red (distinct, most challenging)
+  road:'#4a6080',road_minor:'#c8a97a',grade1:'#b8925a',grade2:'#a07840',
+  grade3:'#886030',grade4:'#704820',grade5:'#583010',path:'#c0392b',
 };
 
 function surfaceCategory(highway,tracktype,surface){
@@ -1477,36 +1446,27 @@ function surfaceCategory(highway,tracktype,surface){
     if(tracktype==='grade3')return'grade3';
     if(tracktype==='grade4')return'grade4';
     if(tracktype==='grade5')return'path';
-    // No tracktype — infer from surface tag
     if(surface==='asphalt'||surface==='concrete'||surface==='paved')return'grade1';
     if(surface==='compacted'||surface==='fine_gravel'||surface==='gravel')return'grade2';
     if(surface==='dirt'||surface==='unpaved'||surface==='earth'||surface==='ground')return'grade3';
     if(surface==='grass'||surface==='sand'||surface==='mud')return'grade4';
-    return'grade2'; // untagged track — assume moderate
+    return'grade2';
   }
   return null;
 }
 
-// Snap a lat/lon to the nearest point on any of the returned way segments
-// Returns {cat, dist_along_way} or null if further than maxOffM metres
 function snapToWay(lat,lon,ways,maxOffM){
   let best=null,bd=Infinity;
-  const deg2rad=Math.PI/180;
-  const R=6371000;
+  const deg2rad=Math.PI/180,R=6371000;
   ways.forEach(w=>{
     const nodes=w.nodes;
     for(let i=0;i<nodes.length-1;i++){
-      const ax=nodes[i].lon,ay=nodes[i].lat;
-      const bx=nodes[i+1].lon,by=nodes[i+1].lat;
-      // Project point onto segment in approx Cartesian (good enough for <1km)
-      const dx=bx-ax,dy=by-ay;
-      const len2=dx*dx+dy*dy;
+      const ax=nodes[i].lon,ay=nodes[i].lat,bx=nodes[i+1].lon,by=nodes[i+1].lat;
+      const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
       if(len2<1e-14)continue;
       const t=Math.max(0,Math.min(1,((lon-ax)*dx+(lat-ay)*dy)/len2));
       const nx=ax+t*dx,ny=ay+t*dy;
-      // Approx distance in metres
-      const dlat=(lat-ny)*deg2rad*R;
-      const dlon=(lon-nx)*Math.cos(lat*deg2rad)*deg2rad*R;
+      const dlat=(lat-ny)*deg2rad*R,dlon=(lon-nx)*Math.cos(lat*deg2rad)*deg2rad*R;
       const d=Math.sqrt(dlat*dlat+dlon*dlon);
       if(d<bd){bd=d;best={cat:w.cat,offM:d};}
     }
@@ -1518,27 +1478,19 @@ async function fetchSurfaceData(){
   const r=cur();
   if(!r||r.points.length<2)return;
   if(r.surfaceSegs&&r.surfaceSegs.length){
-    // Already fetched — just toggle display
     if(UI.hiddenMapTypes.has('surface'))UI.hiddenMapTypes.delete('surface');
     else UI.hiddenMapTypes.add('surface');
     ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
     renderDesktopMap();
     return;
   }
-  UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data…';renderKeepScroll();
-
-  // Sample every ~200m along route for snapping
+  UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data\u2026';renderKeepScroll();
   const SAMPLE_M=200;
   const samples=[];
-  let lastSampleDist=-999;
+  let lastDist=-999;
   for(const p of r.points){
-    if(p.dist-lastSampleDist>=SAMPLE_M/1000){
-      samples.push({lat:p.lat,lon:p.lon,dist:p.dist});
-      lastSampleDist=p.dist;
-    }
+    if(p.dist-lastDist>=SAMPLE_M/1000){samples.push({lat:p.lat,lon:p.lon,dist:p.dist});lastDist=p.dist;}
   }
-
-  // Split samples into ~50km chunks with 1km overlap
   const CHUNK_KM=50,OVERLAP_KM=1;
   const chunks=[];
   let chunkStart=0;
@@ -1546,79 +1498,54 @@ async function fetchSurfaceData(){
     const startDist=samples[chunkStart].dist;
     let end=chunkStart;
     while(end<samples.length&&samples[end].dist-startDist<CHUNK_KM)end++;
-    // Overlap — include a bit past end
     let extEnd=end;
     while(extEnd<samples.length&&samples[extEnd].dist-samples[end>0?end-1:0].dist<OVERLAP_KM)extEnd++;
     chunks.push(samples.slice(chunkStart,extEnd||end+1));
     chunkStart=end>chunkStart?end:chunkStart+1;
   }
-
-  const MAX_OFF_M=30; // max metres off route to snap
-  // Result: one entry per sample, null if no road found within 30m
+  const MAX_OFF_M=30;
   const result=new Array(samples.length).fill(null);
-  let lastErr='';
-
-  // Build index map for O(1) sample lookup
   const sampleIdxMap=new Map(samples.map((s,i)=>[s,i]));
-
+  let lastErr='';
+  const SURF_MIRRORS=['https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
   for(let ci=0;ci<chunks.length;ci++){
     const chunk=chunks[ci];
-    UI.surfaceMsg=`Fetching surface data… ${ci+1}/${chunks.length}`;
-    // Update progress without full render
+    UI.surfaceMsg=`Fetching surface data\u2026 ${ci+1}/${chunks.length}`;
     const msgEl=document.getElementById('surface-status-msg');
     if(msgEl)msgEl.textContent=UI.surfaceMsg;
-
-    // Bounding box with ~100m buffer
     const lats=chunk.map(p=>p.lat),lons=chunk.map(p=>p.lon);
-    const buf=0.001; // ~110m
+    const buf=0.001;
     const bb=`${(Math.min(...lats)-buf).toFixed(5)},${(Math.min(...lons)-buf).toFixed(5)},${(Math.max(...lats)+buf).toFixed(5)},${(Math.max(...lons)+buf).toFixed(5)}`;
     const q=`[out:json][timeout:30][maxsize:16000000];(`+
-      `way["highway"="primary"](${bb});`+
-      `way["highway"="secondary"](${bb});`+
-      `way["highway"="tertiary"](${bb});`+
-      `way["highway"="unclassified"](${bb});`+
-      `way["highway"="residential"](${bb});`+
-      `way["highway"="service"](${bb});`+
-      `way["highway"="track"](${bb});`+
-      `way["highway"="path"](${bb});`+
-      `way["highway"="footway"](${bb});`+
-      `way["highway"="bridleway"](${bb});`+
-      `way["highway"="cycleway"](${bb});`+
-      `way["highway"="trunk"](${bb});`+
+      `way["highway"="primary"](${bb});way["highway"="secondary"](${bb});`+
+      `way["highway"="tertiary"](${bb});way["highway"="unclassified"](${bb});`+
+      `way["highway"="residential"](${bb});way["highway"="service"](${bb});`+
+      `way["highway"="track"](${bb});way["highway"="path"](${bb});`+
+      `way["highway"="footway"](${bb});way["highway"="bridleway"](${bb});`+
+      `way["highway"="cycleway"](${bb});way["highway"="trunk"](${bb});`+
       `);out geom qt tags;`;
-
     let fetched=false;
-    for(const mirror of MIRRORS){
+    for(const mirror of SURF_MIRRORS){
       try{
         const res=await fetch(mirror+'?data='+encodeURIComponent(q),{mode:'cors'});
         if(!res.ok)throw new Error('HTTP '+res.status);
         const json=await res.json();
-        // Build way objects with pre-computed category
         const ways=json.elements.filter(el=>el.type==='way'&&el.geometry&&el.geometry.length>1).map(el=>({
           nodes:el.geometry.map(n=>({lat:n.lat,lon:n.lon})),
           cat:surfaceCategory(el.tags?.highway,el.tags?.tracktype,el.tags?.surface),
         })).filter(w=>w.cat!==null);
-
-        // Snap each sample in this chunk
         chunk.forEach(s=>{
           const idx=sampleIdxMap.get(s);
-          if(idx===undefined||result[idx]!==null)return; // already snapped from overlap
+          if(idx===undefined||result[idx]!==null)return;
           const snap=snapToWay(s.lat,s.lon,ways,MAX_OFF_M);
           result[idx]=snap?snap.cat:null;
         });
         fetched=true;break;
       }catch(e){lastErr=e.message;}
     }
-    if(!fetched){
-      UI.surfaceStatus='error';
-      UI.surfaceMsg=`Surface fetch failed (${lastErr})`;
-      renderKeepScroll();return;
-    }
-    // Small yield between chunks
+    if(!fetched){UI.surfaceStatus='error';UI.surfaceMsg=`Surface fetch failed (${lastErr})`;renderKeepScroll();return;}
     await new Promise(res=>setTimeout(res,300));
   }
-
-  // Compress into runs: [{fromDist, toDist, cat}]
   const segs=[];
   let runCat=result[0],runFrom=samples[0].dist;
   for(let i=1;i<samples.length;i++){
@@ -1628,267 +1555,183 @@ async function fetchSurfaceData(){
     }
   }
   if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[samples.length-1].dist,cat:runCat});
-
   r.surfaceSegs=segs;
   UI.surfaceStatus='done';
   UI.surfaceMsg=`Surface data loaded (${segs.length} segments)`;
-  UI.hiddenMapTypes.delete('surface'); // show by default after fetch
+  UI.hiddenMapTypes.delete('surface');
   await saveAll();
   renderKeepScroll();
   ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
   renderDesktopMap();
 }
 
-
 // ─── Hike-a-bike auto detection ─────────────────────────────────────────────
-let _hikeReview = null;
+let _hikeReview=null;
 
-function detectHikeCandidates(r, gradThresh, minLenM) {
-  const pts = r.points;
-  if (!pts || pts.length < 3) return [];
-
-  // Window-based gradient: compute grade over a fixed-distance window regardless
-  // of GPX point density. Window size = 2x minLenM so we detect sections
-  // at least that long. Minimum window 30m to avoid noise on dense GPX.
-  const WIN_M = Math.max(30, minLenM);
-  const winKm = WIN_M / 1000;
-
-  // For each point, find the point ~WIN_M ahead and compute grade between them.
-  // Also look WIN_M behind for a symmetric estimate, take the steeper of the two.
-  const n = pts.length;
-  const grad = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    // Forward window
-    let jf = i;
-    while (jf < n - 1 && (pts[jf].dist - pts[i].dist) < winKm) jf++;
-    const dxf = (pts[jf].dist - pts[i].dist) * 1000;
-    const gf = dxf > 5 ? (pts[jf].ele - pts[i].ele) / dxf * 100 : 0;
-    // Backward window
-    let jb = i;
-    while (jb > 0 && (pts[i].dist - pts[jb].dist) < winKm) jb--;
-    const dxb = (pts[i].dist - pts[jb].dist) * 1000;
-    const gb = dxb > 5 ? (pts[i].ele - pts[jb].ele) / dxb * 100 : 0;
-    // Use the steeper of forward/backward (catches peaks of climbs)
-    grad[i] = Math.max(gf, gb);
+function detectHikeCandidates(r,gradThresh,minLenM){
+  const pts=r.points;
+  if(!pts||pts.length<3)return[];
+  const minLenKm=minLenM/1000;
+  const WIN_M=Math.max(30,minLenM);
+  const winKm=WIN_M/1000;
+  const n=pts.length;
+  const grad=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    let jf=i;
+    while(jf<n-1&&(pts[jf].dist-pts[i].dist)<winKm)jf++;
+    const dxf=(pts[jf].dist-pts[i].dist)*1000;
+    const gf=dxf>5?(pts[jf].ele-pts[i].ele)/dxf*100:0;
+    let jb=i;
+    while(jb>0&&(pts[i].dist-pts[jb].dist)<winKm)jb--;
+    const dxb=(pts[i].dist-pts[jb].dist)*1000;
+    const gb=dxb>5?(pts[i].ele-pts[jb].ele)/dxb*100:0;
+    grad[i]=Math.max(gf,gb);
   }
-
-  // Flag points above threshold, then merge runs with a gap tolerance.
-  // Gap tolerance = minLenM so short flat/descent interruptions don't split a climb.
-  const GAP_M = Math.max(25, minLenM * 0.5);
-  const flagged = new Uint8Array(n);
-  for (let i = 0; i < n; i++) flagged[i] = grad[i] >= gradThresh ? 1 : 0;
-
-  // Bridge gaps: if a run of sub-threshold points is shorter than GAP_M, flag them too
-  let gapStart = -1;
-  for (let i = 0; i < n; i++) {
-    if (!flagged[i]) {
-      if (gapStart < 0) gapStart = i;
-    } else {
-      if (gapStart >= 0) {
-        const gapM = (pts[i].dist - pts[gapStart].dist) * 1000;
-        if (gapM <= GAP_M) for (let k = gapStart; k < i; k++) flagged[k] = 1;
-        gapStart = -1;
-      }
-    }
+  const GAP_M=Math.max(25,minLenM*0.5);
+  const flagged=new Uint8Array(n);
+  for(let i=0;i<n;i++)flagged[i]=grad[i]>=gradThresh?1:0;
+  let gapStart=-1;
+  for(let i=0;i<n;i++){
+    if(!flagged[i]){if(gapStart<0)gapStart=i;}
+    else{if(gapStart>=0){const gapM=(pts[i].dist-pts[gapStart].dist)*1000;if(gapM<=GAP_M)for(let k=gapStart;k<i;k++)flagged[k]=1;gapStart=-1;}}
   }
-
-  // Collect contiguous flagged runs into candidates
-  const candidates = [];
-  let inRun = false, runStart = 0, runMaxGrad = 0, runSumGrad = 0, runCount = 0;
-  const closeRun = (endIdx) => {
-    const lenKm = pts[endIdx].dist - pts[runStart].dist;
-    if (lenKm * 1000 >= minLenM) {
-      let surfaceCat = null;
-      if (r.surfaceSegs && r.surfaceSegs.length) {
-        const midDist = (pts[runStart].dist + pts[endIdx].dist) / 2;
-        const seg = r.surfaceSegs.find(s => midDist >= s.fromDist && midDist <= s.toDist);
-        if (seg) surfaceCat = seg.cat;
+  const candidates=[];
+  let inRun=false,runStart=0,runMaxGrad=0,runSumGrad=0,runCount=0;
+  const closeRun=(endIdx)=>{
+    const lenKm=pts[endIdx].dist-pts[runStart].dist;
+    if(lenKm*1000>=minLenM){
+      let surfaceCat=null;
+      if(r.surfaceSegs&&r.surfaceSegs.length){
+        const midDist=(pts[runStart].dist+pts[endIdx].dist)/2;
+        const seg=r.surfaceSegs.find(s=>midDist>=s.fromDist&&midDist<=s.toDist);
+        if(seg)surfaceCat=seg.cat;
       }
-      candidates.push({ from: pts[runStart].dist, to: pts[endIdx].dist,
-        maxGrad: Math.round(runMaxGrad), avgGrad: Math.round(runSumGrad / runCount),
-        lenKm, surfaceCat });
+      candidates.push({from:pts[runStart].dist,to:pts[endIdx].dist,
+        maxGrad:Math.round(runMaxGrad),avgGrad:Math.round(runSumGrad/runCount),lenKm,surfaceCat});
     }
   };
-  for (let i = 0; i < n; i++) {
-    if (flagged[i]) {
-      if (!inRun) { inRun = true; runStart = i; runMaxGrad = 0; runSumGrad = 0; runCount = 0; }
-      if (grad[i] > 0) { runMaxGrad = Math.max(runMaxGrad, grad[i]); runSumGrad += grad[i]; runCount++; }
-    } else {
-      if (inRun) { inRun = false; closeRun(i - 1); }
-    }
+  for(let i=0;i<n;i++){
+    if(flagged[i]){
+      if(!inRun){inRun=true;runStart=i;runMaxGrad=0;runSumGrad=0;runCount=0;}
+      if(grad[i]>0){runMaxGrad=Math.max(runMaxGrad,grad[i]);runSumGrad+=grad[i];runCount++;}
+    }else{if(inRun){inRun=false;closeRun(i-1);}}
   }
-  if (inRun) closeRun(n - 1);
+  if(inRun)closeRun(n-1);
   return candidates;
 }
 
-function surfaceCatLabel(cat) {
-  if (!cat) return null;
-  const labels = {road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',
+function surfaceCatLabel(cat){
+  if(!cat)return null;
+  const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',
     grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};
-  return labels[cat] || cat;
+  return labels[cat]||cat;
 }
 
-function openHikeReview() {
-  const r = cur(); if (!r) return;
-  if (!_hikeReview) _hikeReview = { candidates:[], idx:0, gradThresh:8, minLenM:25, walkKmh:3.5 };
-  _hikeReview.candidates = detectHikeCandidates(r, _hikeReview.gradThresh, _hikeReview.minLenM);
+function openHikeReview(){
+  const r=cur();if(!r)return;
+  if(!_hikeReview)_hikeReview={candidates:[],idx:0,gradThresh:8,minLenM:25,walkKmh:3.5};
+  _hikeReview.candidates=detectHikeCandidates(r,_hikeReview.gradThresh,_hikeReview.minLenM);
   renderHikeReview();
 }
 
-function renderHikeReview() {
-  const hr = _hikeReview;
-  const r = cur();
-  if (!hr || !r) { document.getElementById('hike-review-overlay')?.remove(); return; }
-
-  let el = document.getElementById('hike-review-overlay');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'hike-review-overlay';
-    el.style.cssText = 'position:fixed;inset:0;z-index:10500;background:#0a0f0a;display:flex;flex-direction:column;';
-    document.body.insertAdjacentElement('beforeend', el);
+function renderHikeReview(){
+  const hr=_hikeReview,r=cur();
+  if(!hr||!r){document.getElementById('hike-review-overlay')?.remove();return;}
+  let el=document.getElementById('hike-review-overlay');
+  if(!el){
+    el=document.createElement('div');el.id='hike-review-overlay';
+    el.style.cssText='position:fixed;inset:0;z-index:10500;background:#0a0f0a;display:flex;flex-direction:column;';
+    document.body.insertAdjacentElement('beforeend',el);
   }
-
-  if (hr.idx >= hr.candidates.length) hr.idx = Math.max(0, hr.candidates.length - 1);
-  const fc = hr.candidates[hr.idx];
-  const surfLbl = fc ? surfaceCatLabel(fc.surfaceCat) : null;
-  const surfCol = fc && fc.surfaceCat ? (SURFACE_COLS[fc.surfaceCat] || '#888') : null;
-  const alreadyAdded = fc && (r.paceSegs||[]).some(s => Math.abs(s.from-fc.from)<0.2 && Math.abs(s.to-fc.to)<0.2);
-  const estHours = fc ? fc.lenKm / hr.walkKmh : 0;
-  const hh = Math.floor(estHours), mm = Math.round((estHours - hh) * 60);
-
-  el.innerHTML = `
-    <canvas id="hkr-map" style="flex:1;display:block;width:100%;touch-action:none;"></canvas>
-
+  if(hr.idx>=hr.candidates.length)hr.idx=Math.max(0,hr.candidates.length-1);
+  const fc=hr.candidates[hr.idx];
+  const surfLbl=fc?surfaceCatLabel(fc.surfaceCat):null;
+  const surfCol=fc&&fc.surfaceCat?(SURFACE_COLS[fc.surfaceCat]||'#888'):null;
+  const alreadyAdded=fc&&(r.paceSegs||[]).some(s=>Math.abs(s.from-fc.from)<0.2&&Math.abs(s.to-fc.to)<0.2);
+  const estHours=fc?fc.lenKm/hr.walkKmh:0;
+  const hh=Math.floor(estHours),mm=Math.round((estHours-hh)*60);
+  el.innerHTML=`<canvas id="hkr-map" style="flex:1;display:block;width:100%;touch-action:none;"></canvas>
     <div style="position:absolute;top:12px;right:12px;z-index:10502;">
       <button id="hkr-close" style="width:44px;height:44px;background:rgba(248,113,113,0.15);border:2px solid rgba(248,113,113,0.6);border-radius:50%;color:#f87171;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#x2715;</button>
     </div>
-
     <div style="position:absolute;top:12px;left:12px;z-index:10502;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;min-width:220px;max-width:300px;">
       <div style="font-size:11px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;">Hike-a-bike Detection</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px;">
-        <div>
-          <div style="font-size:9px;color:#555;font-family:var(--font);">Min gradient</div>
-          <div style="display:flex;align-items:center;gap:3px;">
-            <input type="range" id="hkr-grad" min="5" max="35" step="1" value="${hr.gradThresh}" style="width:54px;accent-color:var(--accent);">
-            <span id="hkr-grad-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:26px;">${hr.gradThresh}%</span>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:9px;color:#555;font-family:var(--font);">Min length</div>
-          <div style="display:flex;align-items:center;gap:3px;">
-            <input type="range" id="hkr-len" min="25" max="500" step="25" value="${hr.minLenM}" style="width:54px;accent-color:var(--accent);">
-            <span id="hkr-len-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:34px;">${hr.minLenM}m</span>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:9px;color:#555;font-family:var(--font);">Walk km/h</div>
-          <div style="display:flex;align-items:center;gap:3px;">
-            <input type="range" id="hkr-walk" min="1.5" max="5" step="0.5" value="${hr.walkKmh}" style="width:54px;accent-color:var(--accent);">
-            <span id="hkr-walk-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:22px;">${hr.walkKmh}</span>
-          </div>
-        </div>
+        <div><div style="font-size:9px;color:#555;font-family:var(--font);">Min gradient</div>
+          <div style="display:flex;align-items:center;gap:3px;"><input type="range" id="hkr-grad" min="5" max="35" step="1" value="${hr.gradThresh}" style="width:54px;accent-color:var(--accent);">
+          <span id="hkr-grad-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:26px;">${hr.gradThresh}%</span></div></div>
+        <div><div style="font-size:9px;color:#555;font-family:var(--font);">Min length</div>
+          <div style="display:flex;align-items:center;gap:3px;"><input type="range" id="hkr-len" min="25" max="500" step="25" value="${hr.minLenM}" style="width:54px;accent-color:var(--accent);">
+          <span id="hkr-len-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:34px;">${hr.minLenM}m</span></div></div>
+        <div><div style="font-size:9px;color:#555;font-family:var(--font);">Walk km/h</div>
+          <div style="display:flex;align-items:center;gap:3px;"><input type="range" id="hkr-walk" min="1.5" max="5" step="0.5" value="${hr.walkKmh}" style="width:54px;accent-color:var(--accent);">
+          <span id="hkr-walk-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:22px;">${hr.walkKmh}</span></div></div>
       </div>
       <div style="font-size:12px;color:var(--text3);font-family:var(--font);">${hr.candidates.length} candidate${hr.candidates.length!==1?'s':''} found</div>
     </div>
-
     <div style="position:absolute;bottom:0;left:0;right:0;z-index:10502;background:rgba(10,15,10,0.92);border-top:1px solid var(--border2);padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));">
       ${hr.candidates.length===0
-        ? '<div style="text-align:center;color:var(--text3);font-size:14px;padding:4px 0;">No candidates — try lowering the sliders</div><div style="margin-top:8px;"><button id="hkr-done" style="width:100%;background:var(--card);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:14px;padding:8px 0;cursor:pointer;">Done</button></div>'
-        : `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        ?'<div style="text-align:center;color:var(--text3);font-size:14px;padding:4px 0;">No candidates — try lowering the sliders</div><div style="margin-top:8px;"><button id="hkr-done" style="width:100%;background:var(--card);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:14px;padding:8px 0;cursor:pointer;">Done</button></div>'
+        :`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
             <button id="hkr-prev" style="background:var(--card);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:18px;padding:6px 14px;cursor:pointer;${hr.idx===0?'opacity:0.35;':''}" ${hr.idx===0?'disabled':''}>&#9664;</button>
-            <div style="flex:1;min-width:0;">
-              ${fc ? `<div style="font-size:15px;font-weight:600;color:var(--text);">${fc.from.toFixed(1)}&ndash;${fc.to.toFixed(1)}&thinsp;km &nbsp;<span style="font-size:12px;font-weight:400;color:var(--text3);">${fc.lenKm.toFixed(2)} km &nbsp; ${hr.idx+1}/${hr.candidates.length}</span></div>
+            <div style="flex:1;min-width:0;">${fc?`<div style="font-size:15px;font-weight:600;color:var(--text);">${fc.from.toFixed(1)}&ndash;${fc.to.toFixed(1)}&thinsp;km <span style="font-size:12px;font-weight:400;color:var(--text3);">${fc.lenKm.toFixed(2)} km &nbsp; ${hr.idx+1}/${hr.candidates.length}</span></div>
               <div style="display:flex;gap:6px;margin-top:3px;flex-wrap:wrap;align-items:center;">
                 <span style="font-size:12px;color:#f97316;">&#8599; ${fc.maxGrad}% max</span>
                 <span style="font-size:12px;color:var(--text3);">${fc.avgGrad}% avg</span>
                 <span style="font-size:12px;color:var(--accent);">${hh}h ${mm}m est</span>
                 ${surfLbl?`<span style="font-size:11px;padding:1px 6px;border-radius:8px;background:${surfCol};color:#fff;">${surfLbl}</span>`:''}
                 ${alreadyAdded?'<span style="font-size:12px;color:var(--accent);">&#10003; added</span>':''}
-              </div>` : ''}
-            </div>
+              </div>`:''}</div>
             <button id="hkr-next" style="background:var(--card);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:18px;padding:6px 14px;cursor:pointer;${hr.idx===hr.candidates.length-1?'opacity:0.35;':''}" ${hr.idx===hr.candidates.length-1?'disabled':''}>&#9654;</button>
           </div>
           <div style="display:flex;gap:8px;">
             <button id="hkr-done" style="flex:1;background:var(--card);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:14px;padding:8px 0;cursor:pointer;">Done</button>
             <button id="hkr-skip" style="flex:1;background:var(--card);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:14px;padding:8px 0;cursor:pointer;">Skip</button>
             <button id="hkr-add" style="flex:2;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.5);border-radius:8px;color:#f97316;font-size:14px;font-weight:600;padding:8px 0;cursor:pointer;">${alreadyAdded?'&#10003; Added':'+ Add to sections'}</button>
-          </div>`
-      }
+          </div>`}
     </div>`;
-
-  // Draw map centred on current candidate section
-  setTimeout(() => {
-    const cvs = document.getElementById('hkr-map');
-    if (!cvs || !fc) return;
-    cvs.width = cvs.offsetWidth || window.innerWidth;
-    cvs.height = cvs.offsetHeight || (window.innerHeight - 160);
-    const state = _ms['hkr-map'] || (_ms['hkr-map'] = {zoom:1,cx:null,cy:null});
-    const midDist = (fc.from + fc.to) / 2;
-    const midPt = r.points.reduce((b,p) => Math.abs(p.dist-midDist)<Math.abs(b.dist-midDist)?p:b, r.points[0]);
-    state.cx = midPt.lon; state.cy = midPt.lat;
-    const spanKm = Math.max(0.5, fc.lenKm * 3);
-    state.zoom = zoomForKmWidth('hkr-map', spanKm);
-    drawMap(cvs, r, {showGPS:false, followGPS:false});
-    // Highlight the candidate section in orange over the route
-    const ctx = cvs.getContext('2d');
-    const {_px:px, _py:py} = cvs;
-    if (px && py) {
-      const segPts = r.points.filter(p => p.dist >= fc.from && p.dist <= fc.to);
-      if (segPts.length >= 2) {
-        ctx.beginPath(); ctx.moveTo(px(segPts[0].lon), py(segPts[0].lat));
-        for (let i=1;i<segPts.length;i++) ctx.lineTo(px(segPts[i].lon), py(segPts[i].lat));
-        ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=7; ctx.stroke();
-        ctx.strokeStyle='#f97316'; ctx.lineWidth=4; ctx.stroke();
+  setTimeout(()=>{
+    const cvs=document.getElementById('hkr-map');if(!cvs||!fc)return;
+    cvs.width=cvs.offsetWidth||window.innerWidth;cvs.height=cvs.offsetHeight||(window.innerHeight-160);
+    const state=_ms['hkr-map']||(_ms['hkr-map']={zoom:1,cx:null,cy:null});
+    const midDist=(fc.from+fc.to)/2;
+    const midPt=r.points.reduce((b,p)=>Math.abs(p.dist-midDist)<Math.abs(b.dist-midDist)?p:b,r.points[0]);
+    state.cx=midPt.lon;state.cy=midPt.lat;
+    state.zoom=zoomForKmWidth('hkr-map',Math.max(0.5,fc.lenKm*3));
+    drawMap(cvs,r,{showGPS:false,followGPS:false});
+    const ctx=cvs.getContext('2d');const{_px:px,_py:py}=cvs;
+    if(px&&py){
+      const segPts=r.points.filter(p=>p.dist>=fc.from&&p.dist<=fc.to);
+      if(segPts.length>=2){
+        ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
+        for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
+        ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=7;ctx.stroke();
+        ctx.strokeStyle='#f97316';ctx.lineWidth=4;ctx.stroke();
       }
     }
-    attachMap(cvs, null);
-  }, 30);
-
-  const redetect = () => {
-    _hikeReview.candidates = detectHikeCandidates(r, _hikeReview.gradThresh, _hikeReview.minLenM);
-    if (_hikeReview.idx >= _hikeReview.candidates.length) _hikeReview.idx = Math.max(0, _hikeReview.candidates.length-1);
-    renderHikeReview();
-  };
-  document.getElementById('hkr-grad').addEventListener('input', function() {
-    _hikeReview.gradThresh = +this.value;
-    document.getElementById('hkr-grad-lbl').textContent = this.value+'%';
-    clearTimeout(_hikeReview._t); _hikeReview._t = setTimeout(redetect, 300);
-  });
-  document.getElementById('hkr-len').addEventListener('input', function() {
-    _hikeReview.minLenM = +this.value;
-    document.getElementById('hkr-len-lbl').textContent = this.value+'m';
-    clearTimeout(_hikeReview._t); _hikeReview._t = setTimeout(redetect, 300);
-  });
-  document.getElementById('hkr-walk').addEventListener('input', function() {
-    _hikeReview.walkKmh = +this.value;
-    document.getElementById('hkr-walk-lbl').textContent = this.value;
-    clearTimeout(_hikeReview._t); _hikeReview._t = setTimeout(renderHikeReview, 200);
-  });
-  const closeReview = () => { _hikeReview = null; document.getElementById('hike-review-overlay')?.remove(); delete _ms['hkr-map']; };
-  document.getElementById('hkr-close').addEventListener('click', closeReview);
-  document.getElementById('hkr-done').addEventListener('click', closeReview);
-  document.getElementById('hkr-prev')?.addEventListener('click', () => { if (_hikeReview.idx>0){_hikeReview.idx--;renderHikeReview();} });
-  document.getElementById('hkr-next')?.addEventListener('click', () => { if (_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();} });
-  document.getElementById('hkr-skip')?.addEventListener('click', () => {
-    if (_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();}
-    else closeReview();
-  });
-  document.getElementById('hkr-add')?.addEventListener('click', () => {
-    const r2=cur(); if(!r2||!_hikeReview)return;
-    const fc2=_hikeReview.candidates[_hikeReview.idx]; if(!fc2)return;
+    attachMap(cvs,null);
+  },30);
+  const redetect=()=>{_hikeReview.candidates=detectHikeCandidates(r,_hikeReview.gradThresh,_hikeReview.minLenM);if(_hikeReview.idx>=_hikeReview.candidates.length)_hikeReview.idx=Math.max(0,_hikeReview.candidates.length-1);renderHikeReview();};
+  document.getElementById('hkr-grad').addEventListener('input',function(){_hikeReview.gradThresh=+this.value;document.getElementById('hkr-grad-lbl').textContent=this.value+'%';clearTimeout(_hikeReview._t);_hikeReview._t=setTimeout(redetect,300);});
+  document.getElementById('hkr-len').addEventListener('input',function(){_hikeReview.minLenM=+this.value;document.getElementById('hkr-len-lbl').textContent=this.value+'m';clearTimeout(_hikeReview._t);_hikeReview._t=setTimeout(redetect,300);});
+  document.getElementById('hkr-walk').addEventListener('input',function(){_hikeReview.walkKmh=+this.value;document.getElementById('hkr-walk-lbl').textContent=this.value;clearTimeout(_hikeReview._t);_hikeReview._t=setTimeout(renderHikeReview,200);});
+  const closeReview=()=>{_hikeReview=null;document.getElementById('hike-review-overlay')?.remove();delete _ms['hkr-map'];};
+  document.getElementById('hkr-close').addEventListener('click',closeReview);
+  document.getElementById('hkr-done').addEventListener('click',closeReview);
+  document.getElementById('hkr-prev')?.addEventListener('click',()=>{if(_hikeReview.idx>0){_hikeReview.idx--;renderHikeReview();}});
+  document.getElementById('hkr-next')?.addEventListener('click',()=>{if(_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();}});
+  document.getElementById('hkr-skip')?.addEventListener('click',()=>{if(_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();}else closeReview();});
+  document.getElementById('hkr-add')?.addEventListener('click',()=>{
+    const r2=cur();if(!r2||!_hikeReview)return;
+    const fc2=_hikeReview.candidates[_hikeReview.idx];if(!fc2)return;
     const already=(r2.paceSegs||[]).some(s=>Math.abs(s.from-fc2.from)<0.2&&Math.abs(s.to-fc2.to)<0.2);
-    if(!already){
-      if(!r2.paceSegs)r2.paceSegs=[];
-      r2.paceSegs.push({from:fc2.from,to:fc2.to,hours:fc2.lenKm/_hikeReview.walkKmh,name:'Auto '+fc2.from.toFixed(1)+'km'});
-      r2.paceSegs.sort((a,b)=>a.from-b.from);
-      rebuildPace(r2);saveAll();
-    }
-    if(_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();}
-    else renderHikeReview();
+    if(!already){if(!r2.paceSegs)r2.paceSegs=[];r2.paceSegs.push({from:fc2.from,to:fc2.to,hours:fc2.lenKm/_hikeReview.walkKmh,name:'Auto '+fc2.from.toFixed(1)+'km'});r2.paceSegs.sort((a,b)=>a.from-b.from);rebuildPace(r2);saveAll();}
+    if(_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();}else renderHikeReview();
   });
 }
 
-const MIRRORS=['https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
+
+const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 async function fetchOverpass(){
   const r=cur();if(!r||!r.points.length)return;
   UI.opStatus='loading';UI.opMsg='Searching OSM…';renderKeepScroll();
@@ -3149,40 +2992,17 @@ function drawMap(cvs,r,opts){
   }
   }
 
-  // Surface type overlay — drawn on top of day/night line when toggled on
+  // Surface type overlay
   if(!UI.hiddenMapTypes.has('surface')&&r.surfaceSegs&&r.surfaceSegs.length&&(id==='desktop-map'||id==='stops-map')){
-    const segs=r.surfaceSegs;
-    for(const seg of segs){
+    ctx.save();
+    for(const seg of r.surfaceSegs){
       const segPts=pts.filter(p=>p.dist>=seg.fromDist-0.05&&p.dist<=seg.toDist+0.05);
       if(segPts.length<2)continue;
-      const col=SURFACE_COLS[seg.cat];
-      if(!col)continue;
+      const col=SURFACE_COLS[seg.cat];if(!col)continue;
       ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
       for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
       ctx.strokeStyle=col;ctx.lineWidth=3;ctx.stroke();
     }
-  }
-
-  // Day-split markers
-  if(UI.showDayMarkers&&r.numDays&&r.numDays>=2){
-    const markers=computeDayMarkers(r);
-    ctx.save();
-    markers.forEach(m=>{
-      const closest=r.points.reduce((b,p)=>Math.abs(p.dist-m.dist)<Math.abs(b.dist-m.dist)?p:b,r.points[0]);
-      const mx=px(closest.lon),my=py(closest.lat);
-      const s=isDesktop?9:7;
-      // Dark outline
-      ctx.beginPath();ctx.moveTo(mx,my-s-1.5);ctx.lineTo(mx+s+1.5,my);ctx.lineTo(mx,my+s+1.5);ctx.lineTo(mx-s-1.5,my);ctx.closePath();
-      ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fill();
-      // Diamond fill
-      ctx.beginPath();ctx.moveTo(mx,my-s);ctx.lineTo(mx+s,my);ctx.lineTo(mx,my+s);ctx.lineTo(mx-s,my);ctx.closePath();
-      ctx.fillStyle='#f0c040';ctx.fill();
-      ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.stroke();
-      // Day label
-      ctx.fillStyle='#000';ctx.font=`bold ${isDesktop?10:8}px sans-serif`;
-      ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillText(m.dayNum,mx,my);
-    });
     ctx.restore();
   }
 
@@ -3191,18 +3011,14 @@ function drawMap(cvs,r,opts){
     (opts.paceTo!==undefined&&opts.paceTo!==null?[{from:opts.paceFrom,to:opts.paceTo}]:(opts.paceFrom!==null?[{from:opts.paceFrom,to:opts.paceFrom}]:[])):
     (r.paceSegs||[]);
   const hikeHidden=UI.hiddenMapTypes.has('hike')&&opts.paceFrom===undefined;
-  if(!hikeHidden)paceSegs.forEach((seg,si)=>{
+  if(!hikeHidden)paceSegs.forEach(seg=>{
     if(seg.from===null||seg.from===undefined)return;
     const segPts=pts.filter(p=>p.dist>=seg.from&&p.dist<=seg.to);
     if(segPts.length<2)return;
-    const isHighlightedSeg=UI._highlightPaceIdx!==null&&(r.paceSegs||[])[UI._highlightPaceIdx]===seg;
     ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
     for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
-    ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=isHighlightedSeg?11:7;ctx.stroke();
-    ctx.strokeStyle=isHighlightedSeg?'#fff':'#f97316';ctx.lineWidth=isHighlightedSeg?7:4;ctx.stroke();
-    ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
-    for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
-    if(isHighlightedSeg){ctx.strokeStyle='#f97316';ctx.lineWidth=4;ctx.stroke();}
+    ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=7;ctx.stroke();
+    ctx.strokeStyle='#f97316';ctx.lineWidth=4;ctx.stroke();
     // Start/end markers
     [segPts[0],segPts[segPts.length-1]].forEach((p,pi)=>{
       ctx.beginPath();ctx.arc(px(p.lon),py(p.lat),6,0,Math.PI*2);
@@ -3220,9 +3036,8 @@ function drawMap(cvs,r,opts){
 
   // Direction arrows along route line — white/cyan so they contrast with green line
   {
-    ctx.save();
-    const arrowSpacingPx=120;
-    let distSinceArrow=arrowSpacingPx;
+    const arrowSpacingPx=120; // min pixels between arrows
+    let distSinceArrow=arrowSpacingPx; // start offset so first arrow isn't at very start
     for(let i=1;i<pts.length;i++){
       const x0=px(pts[i-1].lon),y0=py(pts[i-1].lat);
       const x1=px(pts[i].lon),y1=py(pts[i].lat);
@@ -3245,7 +3060,6 @@ function drawMap(cvs,r,opts){
         ctx.restore();
       }
     }
-    ctx.restore();
   }
 
   // Stop dots (with off-route connectors for auto-stops with real coords)
@@ -3384,9 +3198,11 @@ function drawMap(cvs,r,opts){
       const mi=cidx(r,km);if(!pts[mi])continue;
       const mx=px(pts[mi].lon),my=py(pts[mi].lat);
       if(mx<-30||mx>W+30||my<-30||my>H+30)continue;
+      // Dark dot matching label colour
       ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);
       ctx.fillStyle='rgba(0,0,0,0.75)';ctx.fill();
       ctx.strokeStyle='#e8f5e8';ctx.lineWidth=1.2;ctx.stroke();
+      // Label — dark semi-transparent pill on desktop, white on mobile
       const lbl=km+'km';
       const isDesktopMap=id==='desktop-map';
       const fSize=isDesktopMap?10:mapFontSm;
@@ -4516,9 +4332,8 @@ function renderDesktopMap(){
   const legend=document.getElementById('desktop-legend');
   if(legend&&r){
     const filtered=sortedLayers(r);
-    const surfKey='surface:'+(UI.hiddenMapTypes.has('surface')?'0':'1');
-    if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()+surfKey){
-      legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()+surfKey;
+    if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()){
+      legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join();
       const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
       const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
       // "All" toggle row — same style as layer rows, white dot when all visible, empty when any hidden
@@ -4591,7 +4406,6 @@ function renderDesktopMap(){
         if(allHidden2){filtered2.forEach(t=>UI.hiddenMapTypes.delete(t.type));}
         else{filtered2.forEach(t=>UI.hiddenMapTypes.add(t.type));}
         legend.dataset.rendered='';
-        saveAll();
         renderDesktopMap();
         return;
       }
@@ -5447,7 +5261,7 @@ function tStopsShell(r){
           ${(()=>{
             const filtered=sortedLayers(r);
             const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
-            const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type)&&!UI.hiddenMapTypes.has('surface'));
+            const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
             const allDot=`<div id="mob-layer-all" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;margin-bottom:4px;opacity:${allVisible?1:0.45};background:rgba(0,0,0,0.52);border-radius:20px;">
               <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${allVisible?'#fff':'none'}" stroke="#fff" stroke-width="1.4"/></svg>
               <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">All</span>
@@ -5987,11 +5801,12 @@ function tLiveShell(r){
   const sensorLabelCol=_pz?_zText:sConnected?'#fbbf24':'#888';
   const sensorValCol=_pz?(_pz.textDark?'#000':'#fff'):sConnected?'#fbbf24':'#fff';
   const sensorLabel=_pz?_pz.label:sType==='power'?'Watts':'bpm';
-  const sensorPill=`<div style="flex:1;background:${sensorBg};border:2px solid ${sensorBorder};border-radius:6px;padding:4px 7px;cursor:pointer;transition:background .3s,border-color .3s;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" id="live-sensor-pill">
-    <div style="font-size:10px;color:${sensorLabelCol};font-family:var(--font);letter-spacing:.3px;font-weight:${_pz?'700':'400'};white-space:nowrap;" id="live-sensor-lbl">${sensorLabel}</div>
+  const sensorPill=`<div style="flex:1;background:${sensorBg};border:2px solid ${sensorBorder};border-radius:6px;padding:3px 6px;text-align:center;cursor:pointer;transition:all .3s;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" id="live-sensor-pill">
+    <div style="font-size:11px;color:${sensorLabelCol};font-family:var(--font);letter-spacing:.3px;font-weight:${_pz?'700':'400'};white-space:nowrap;" id="live-sensor-lbl">${sensorLabel}</div>
     ${sConnected
-      ?`<div style="font-size:19px;font-weight:500;color:${sensorValCol};font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-sensor-val">${sVal}${sSub?'<span style="font-size:13px;margin-left:3px;">'+ sSub +'</span>':''}</div><div id="live-sensor-sub" style="display:none;"></div>`
-      :`<div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub" style="display:none;"></div>`}
+      ?`<div style="font-size:20px;font-weight:500;color:${sensorValCol};font-family:var(--sans);line-height:1.2;" id="live-sensor-val">${sVal}</div>
+         <div style="font-size:20px;font-weight:500;color:${sensorValCol};font-family:var(--sans);line-height:1.2;" id="live-sensor-sub">${sSub}</div>`
+      :`<div style="font-size:20px;font-weight:500;color:var(--text);font-family:var(--sans);line-height:1.2;word-break:break-word;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub"></div>`}
   </div>`;
   const progressOverlay=`<div class="live-progress-bar">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">
@@ -6305,43 +6120,23 @@ function tRoutes(r){
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
             return'<span style="'+accent+'color:var(--text2);display:block;margin-top:10px;" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>';
           })():'')
-          +(adjDur?'<div style="margin-top:12px;display:flex;align-items:center;gap:8px;">'
-            +'<span style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">Day splits</span>'
-            +'<input type="number" id="inp-num-days" value="'+(r.numDays||'')+'" min="2" max="30" step="1" placeholder="days" style="width:64px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);" />'
-            +(r.numDays&&r.numDays>=2?'<button id="btn-toggle-daymarkers" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 7px;font-size:14px;cursor:pointer;color:'+(UI.showDayMarkers?'var(--accent)':'var(--text3)')+';" title="Show/hide day split markers">'+(UI.showDayMarkers?'👁':'👁')+'</button>':'')
-            +(r.numDays&&r.numDays>=2?(()=>{
-              const markers=computeDayMarkers(r);
-              const perDay=adjDur/r.numDays;
-              const ph=Math.floor(perDay),pm=Math.round((perDay-ph)*60);
-              const pmStr=pm>0?' '+String(pm).padStart(2,'0')+'m':'';
-              return'<span style="font-size:13px;color:var(--text3);">'+markers.length+' markers · '+ph+'h'+pmStr+'  per day</span>';
-            })():'<span style="font-size:13px;color:var(--text3);">enter number of days</span>')
-            +'</div>':'')
         +'</div>'
       +'</div>';
     })()}
   </div>
   <div class="card">
-        <div class="secrow">
-          <div class="ctitle">Surface Data</div>
-          <button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData()" ${UI.surfaceStatus==='loading'?'disabled':''}>
-            ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':r&&r.surfaceSegs?'↺ Refresh':'⛰ Fetch Surface'}
-          </button>
-        </div>
-        ${UI.surfaceStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="surface-status-msg">${UI.surfaceMsg}</span></div>`:''}
-        ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
-        ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
-        ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Once loaded, toggle via the Surface layer in the map legend.</p>`:''}
-        ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${
-          Object.entries(SURFACE_COLS).map(([cat,col])=>{
-            const count=r.surfaceSegs.filter(s=>s.cat===cat).length;
-            if(!count)return'';
-            const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};
-            const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);
-            return `<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;
-          }).join('')
-        }</div>`:''}
-      </div>
+    <div class="secrow">
+      <div class="ctitle">Surface Data</div>
+      <button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData()" ${UI.surfaceStatus==='loading'?'disabled':''}>
+        ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':r&&r.surfaceSegs?'↺ Refresh':'⛰ Fetch Surface'}
+      </button>
+    </div>
+    ${UI.surfaceStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="surface-status-msg">${UI.surfaceMsg}</span></div>`:''}
+    ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
+    ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
+    ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle via the Surface layer in the map legend.</p>`:''}
+    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}</div>`:''}
+  </div>
   <div class="card">
     <div class="ctitle">Speed Factor</div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
@@ -6370,7 +6165,7 @@ function tRoutes(r){
     </label>
     ${r.adaptiveSpeed?`<p id="adaptive-speed-desc" style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">Compares your actual pace to estimates and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Calibration window scales with ride length — shorter rides adjust every ~10 min, longer rides every ~30 min. Disable to lock the factor.</p>`:'<p id="adaptive-speed-desc" style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;"></p>'}
   </div>
-  <div class="card" style="padding:${UI.hikeExpanded?'14px 12px':'10px 12px'};">
+  <div class="card">
     <div id="hike-card-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${UI.hikeExpanded?'margin-bottom:10px;':''}">
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:16px;color:var(--text3);">${UI.hikeExpanded?'▼':'▶'}</span>
@@ -6382,26 +6177,24 @@ function tRoutes(r){
         <button class="btn btn-sm btn-p" id="btn-add-pace" onclick="event.stopPropagation()">+ Add</button>
       </div>
     </div>
-    ${UI.hikeExpanded?`
-    <p style="font-size:15px;color:var(--text3);margin-bottom:8px;">Define particularly slow sections that are not estimated well by route planning apps</p>
+    ${UI.hikeExpanded?`<p style="font-size:15px;color:var(--text3);margin-bottom:8px;">Define particularly slow sections that are not estimated well by route planning apps</p>
     ${(r.paceSegs||[]).length===0?'<p style="font-size:15px;color:var(--text3);">No hike-a-bike sections for <em>'+(r.label||r.name)+'</em> yet.</p>':
       (r.paceSegs||[]).map((seg,i)=>{
         const dist=seg.to-seg.from;
         const spd=(dist/seg.hours).toFixed(1);
         const hh=Math.floor(seg.hours),mm=Math.round((seg.hours-hh)*60);
-        return'<div class="pace-seg-row" data-idx="'+i+'" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:5px;cursor:pointer;" title="Click to highlight on map">'
-          +'<div>'
-            +'<div style="font-size:16px;font-weight:600;color:var(--text);"><span style="color:#f97316;">🥾</span> '+(seg.name||('Section '+(i+1)))+' <span style="font-size:13px;color:var(--text3);">'+seg.from.toFixed(1)+'\u2013'+seg.to.toFixed(1)+' km ('+dist.toFixed(1)+' km)</span></div>'
-            +'<div style="font-size:14px;color:var(--accent);font-family:var(--font);">'+hh+'h '+mm+'m \u00b7 '+spd+' km/h avg</div>'
-          +'</div>'
-          +'<div style="display:flex;gap:5px;">'
-            +'<button class="btn btn-sm edit-pace" data-idx="'+i+'" title="Rename" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);">'+ICON_EDIT+'</button>'
-            +'<button class="btn btn-r btn-sm del-pace" data-idx="'+i+'">\u2715</button>'
-          +'</div>'
-        +'</div>';
+        return`<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:5px;">
+          <div>
+            <div style="font-size:16px;font-weight:600;color:var(--text);">${seg.name||('Section '+(i+1))} <span style="font-size:13px;color:var(--text3);">${seg.from.toFixed(1)}–${seg.to.toFixed(1)} km (${dist.toFixed(1)} km)</span></div>
+            <div style="font-size:14px;color:var(--accent);font-family:var(--font);">${hh}h ${mm}m · ${spd} km/h avg</div>
+          </div>
+          <div style="display:flex;gap:5px;">
+            <button class="btn btn-sm edit-pace" data-idx="${i}" title="Rename" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);">${ICON_EDIT}</button>
+            <button class="btn btn-r btn-sm del-pace" data-idx="${i}">✕</button>
+          </div>
+        </div>`;
       }).join('')}
-    `:''}
-  </div>
+    `:''}  </div>
   `}
 
 // ─── Settings tab ───
@@ -8307,17 +8100,10 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#mob-layer-all')){
     const r2=cur();if(!r2)return;
     const allTypes=sortedLayers(r2).map(t=>t.type);
-    if(r2&&r2.surfaceSegs&&r2.surfaceSegs.length)allTypes.unshift('surface');
     const allHidden=allTypes.every(t=>UI.hiddenMapTypes.has(t));
     if(allHidden){allTypes.forEach(t=>UI.hiddenMapTypes.delete(t));}
     else{allTypes.forEach(t=>UI.hiddenMapTypes.add(t));}
-    saveAll();
-    document.querySelectorAll('.mob-layer-btn').forEach(el=>{
-      el.style.opacity=UI.hiddenMapTypes.has(el.dataset.ltype)?'0.45':'1';
-    });
-    const allDot=document.getElementById('mob-layer-all');
-    if(allDot)allDot.style.opacity=allHidden?'1':'0.45';
-    redrawMap('stops-map');
+    renderKeepScroll();redrawMap('stops-map');
     return;
   }
   // Mobile layer toggle dots on stops map
@@ -8326,13 +8112,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const t=mob.dataset.ltype;
     if(UI.hiddenMapTypes.has(t))UI.hiddenMapTypes.delete(t);
     else UI.hiddenMapTypes.add(t);
-    saveAll();
-    // Re-render just the legend pill opacity without full DOM rebuild
-    document.querySelectorAll('.mob-layer-btn').forEach(el=>{
-      const lt=el.dataset.ltype;
-      el.style.opacity=UI.hiddenMapTypes.has(lt)?'0.45':'1';
-    });
-    redrawMap('stops-map');
+    renderKeepScroll();redrawMap('stops-map');
     return;
   }
   // Direct unsleep from mission tile — now handled via sleep picker
@@ -8673,7 +8453,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Buttons
-    if(e.target.closest('#btn-open-dt-picker')||e.target.closest('#btn-mission-dt-edit')){
+  if(e.target.closest('#btn-open-dt-picker')||e.target.closest('#btn-mission-dt-edit')){
     const r=cur();if(r)openDTPicker(r);return;
   }
   if(e.target.closest('#tf-faster')||e.target.closest('#tf-slower')){
@@ -8913,26 +8693,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   if(e.target.closest('#btn-add-pace')&&r){openPaceModal(-1);return;}
-  const psr=e.target.closest('.pace-seg-row');
-  if(psr&&r&&!e.target.closest('.edit-pace')&&!e.target.closest('.del-pace')){
-    const idx=+psr.dataset.idx;
-    const seg=(r.paceSegs||[])[idx];
-    if(seg&&IS_DESKTOP()){
-      UI._highlightPaceIdx=UI._highlightPaceIdx===idx?null:idx;
-      // Zoom desktop map to the section
-      const cvs=document.getElementById('desktop-map');
-      if(cvs&&UI._highlightPaceIdx!==null){
-        const state=_ms['desktop-map']||(_ms['desktop-map']={zoom:1,cx:null,cy:null});
-        const midDist=(seg.from+seg.to)/2;
-        const midPt=r.points.reduce((b,p)=>Math.abs(p.dist-midDist)<Math.abs(b.dist-midDist)?p:b,r.points[0]);
-        state.cx=midPt.lon;state.cy=midPt.lat;
-        const spanKm=Math.max(1,(seg.to-seg.from)*3);
-        state.zoom=zoomForKmWidth('desktop-map',spanKm);
-      }
-      renderDesktopMap();
-    }
-    return;
-  }
   if(e.target.closest('.edit-pace')&&r){
     const idx=+e.target.closest('.edit-pace').dataset.idx;
     openPaceModal(idx);return;}
@@ -9120,24 +8880,6 @@ document.getElementById('content-wrap').addEventListener('keydown',e=>{
 });
 
 document.getElementById('content-wrap').addEventListener('change',e=>{
-  if(e.target.closest('#btn-toggle-daymarkers')){
-    UI.showDayMarkers=!UI.showDayMarkers;
-    renderKeepScroll();
-    ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
-    renderDesktopMap();
-    return;
-  }
-  if(e.target.id==='inp-num-days'){
-    const r=cur();if(!r)return;
-    const v=parseInt(e.target.value);
-    r.numDays=(v>=2&&v<=30)?v:null;
-    if(!r.numDays)e.target.value='';
-    saveAll();
-    renderKeepScroll();
-    ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
-    renderDesktopMap();
-    return;
-  }
   if(e.target.classList.contains('osm-opt')){
     if(!UI.osmOpts)UI.osmOpts={towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,camp:false,caravan:false,huts:false,hotels:false,halls:false,churches:false,schools:false,fire:false,police:false,peaks:false};
     UI.osmOpts[e.target.dataset.key]=e.target.checked;
