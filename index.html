@@ -3873,7 +3873,7 @@ function mapCtrlHTML(mapId,showGPS){
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${recenterBtn}
     ${mapId==='live-map'?gpsBtn:''}
-    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Toggle surface type" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${!UI.hiddenMapTypes.has('surface')&&r&&r.surfaceSegs?'color:var(--accent);border-color:var(--accent3);':''}">SURF</button>`:''}
+    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Toggle surface type" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${!UI.hiddenMapTypes.has('surface')&&cur()&&cur().surfaceSegs?'color:var(--accent);border-color:var(--accent3);':''}">SURF</button>`:''}
   </div>`;
 }
 function zoomBtnsHTML(mapId){return mapCtrlHTML(mapId,false);}
