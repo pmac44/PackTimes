@@ -1820,6 +1820,8 @@ function renderHikeReview() {
   setTimeout(() => {
     const cvs = document.getElementById('hkr-map');
     if (!cvs || !fc) return;
+    cvs.width = cvs.offsetWidth || window.innerWidth;
+    cvs.height = cvs.offsetHeight || (window.innerHeight - 160);
     const state = _ms['hkr-map'] || (_ms['hkr-map'] = {zoom:1,cx:null,cy:null});
     const midDist = (fc.from + fc.to) / 2;
     const midPt = r.points.reduce((b,p) => Math.abs(p.dist-midDist)<Math.abs(b.dist-midDist)?p:b, r.points[0]);
@@ -1862,7 +1864,7 @@ function renderHikeReview() {
     document.getElementById('hkr-walk-lbl').textContent = this.value;
     clearTimeout(_hikeReview._t); _hikeReview._t = setTimeout(renderHikeReview, 200);
   });
-  const closeReview = () => { _hikeReview = null; document.getElementById('hike-review-overlay')?.remove(); };
+  const closeReview = () => { _hikeReview = null; document.getElementById('hike-review-overlay')?.remove(); delete _ms['hkr-map']; };
   document.getElementById('hkr-close').addEventListener('click', closeReview);
   document.getElementById('hkr-done').addEventListener('click', closeReview);
   document.getElementById('hkr-prev')?.addEventListener('click', () => { if (_hikeReview.idx>0){_hikeReview.idx--;renderHikeReview();} });
@@ -4508,8 +4510,9 @@ function renderDesktopMap(){
   const legend=document.getElementById('desktop-legend');
   if(legend&&r){
     const filtered=sortedLayers(r);
-    if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()){
-      legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join();
+    const surfKey='surface:'+(UI.hiddenMapTypes.has('surface')?'0':'1');
+    if(legend.dataset.rendered!==filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()+surfKey){
+      legend.dataset.rendered=filtered.map(t=>t.type+UI.hiddenMapTypes.has(t.type)).join()+surfKey;
       const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
       const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
       // "All" toggle row — same style as layer rows, white dot when all visible, empty when any hidden
@@ -5437,7 +5440,7 @@ function tStopsShell(r){
           ${(()=>{
             const filtered=sortedLayers(r);
             const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
-            const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
+            const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type)&&!UI.hiddenMapTypes.has('surface'));
             const allDot=`<div id="mob-layer-all" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;margin-bottom:4px;opacity:${allVisible?1:0.45};background:rgba(0,0,0,0.52);border-radius:20px;">
               <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${allVisible?'#fff':'none'}" stroke="#fff" stroke-width="1.4"/></svg>
               <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">All</span>
@@ -8288,13 +8291,18 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Mobile "All" layer toggle
   if(e.target.closest('#mob-layer-all')){
     const r2=cur();if(!r2)return;
-    const r2surf=cur();
     const allTypes=sortedLayers(r2).map(t=>t.type);
-    if(r2surf&&r2surf.surfaceSegs&&r2surf.surfaceSegs.length)allTypes.unshift('surface');
+    if(r2&&r2.surfaceSegs&&r2.surfaceSegs.length)allTypes.unshift('surface');
     const allHidden=allTypes.every(t=>UI.hiddenMapTypes.has(t));
     if(allHidden){allTypes.forEach(t=>UI.hiddenMapTypes.delete(t));}
     else{allTypes.forEach(t=>UI.hiddenMapTypes.add(t));}
-    renderKeepScroll();redrawMap('stops-map');
+    saveAll();
+    document.querySelectorAll('.mob-layer-btn').forEach(el=>{
+      el.style.opacity=UI.hiddenMapTypes.has(el.dataset.ltype)?'0.45':'1';
+    });
+    const allDot=document.getElementById('mob-layer-all');
+    if(allDot)allDot.style.opacity=allHidden?'1':'0.45';
+    redrawMap('stops-map');
     return;
   }
   // Mobile layer toggle dots on stops map
@@ -8303,7 +8311,13 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const t=mob.dataset.ltype;
     if(UI.hiddenMapTypes.has(t))UI.hiddenMapTypes.delete(t);
     else UI.hiddenMapTypes.add(t);
-    renderKeepScroll();redrawMap('stops-map');
+    saveAll();
+    // Re-render just the legend pill opacity without full DOM rebuild
+    document.querySelectorAll('.mob-layer-btn').forEach(el=>{
+      const lt=el.dataset.ltype;
+      el.style.opacity=UI.hiddenMapTypes.has(lt)?'0.45':'1';
+    });
+    redrawMap('stops-map');
     return;
   }
   // Direct unsleep from mission tile — now handled via sleep picker
