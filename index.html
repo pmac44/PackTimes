@@ -510,7 +510,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
-  helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,
+  helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,showDayMarkers:true,
   powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,
   showSurface:false,surfaceStatus:'idle',surfaceMsg:''};
 function todayStr(){return new Date().toISOString().slice(0,10);}
@@ -3164,7 +3164,7 @@ function drawMap(cvs,r,opts){
   }
 
   // Day-split markers
-  if(!UI.hiddenMapTypes.has('daymarkers')&&r.numDays&&r.numDays>=2){
+  if(UI.showDayMarkers&&r.numDays&&r.numDays>=2){
     const markers=computeDayMarkers(r);
     ctx.save();
     markers.forEach(m=>{
@@ -5323,7 +5323,6 @@ const LAYER_TYPES=[
   {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
   {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
   {type:'hike',col:'#f97316',label:'Hike-a-bike'},
-  {type:'daymarkers',col:'#f0c040',label:'Day splits'},
   {type:'sleep',col:'#b39ddb',label:'Bivi'},
   {type:'food',col:'#fbbf24',label:'Food'},
   {type:'wc',col:'#2dd4bf',label:'Toilets'},
@@ -5355,7 +5354,6 @@ function sortedLayers(r){
   if(r&&r.stops.some(s=>s.type==='stop'))present.add('stop');
   if(r&&r.stops.some(s=>s.starred!==false))present.add('mission');
   if(r&&r.paceSegs&&r.paceSegs.length)present.add('hike');
-  if(r&&r.numDays&&r.numDays>=2)present.add('daymarkers');
   return LAYER_TYPES.filter(t=>present.has(t.type)).sort((a,b)=>{
     const ai=PRIORITY.indexOf(a.type),bi=PRIORITY.indexOf(b.type);
     if(ai>=0&&bi>=0)return ai-bi;
@@ -6310,6 +6308,7 @@ function tRoutes(r){
           +(adjDur?'<div style="margin-top:12px;display:flex;align-items:center;gap:8px;">'
             +'<span style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">Day splits</span>'
             +'<input type="number" id="inp-num-days" value="'+(r.numDays||'')+'" min="2" max="30" step="1" placeholder="days" style="width:64px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);" />'
+            +(r.numDays&&r.numDays>=2?'<button id="btn-toggle-daymarkers" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 7px;font-size:14px;cursor:pointer;color:'+(UI.showDayMarkers?'var(--accent)':'var(--text3)')+';" title="Show/hide day split markers">'+(UI.showDayMarkers?'👁':'👁')+'</button>':'')
             +(r.numDays&&r.numDays>=2?(()=>{
               const markers=computeDayMarkers(r);
               const perDay=adjDur/r.numDays;
@@ -9121,6 +9120,13 @@ document.getElementById('content-wrap').addEventListener('keydown',e=>{
 });
 
 document.getElementById('content-wrap').addEventListener('change',e=>{
+  if(e.target.closest('#btn-toggle-daymarkers')){
+    UI.showDayMarkers=!UI.showDayMarkers;
+    renderKeepScroll();
+    ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
+    renderDesktopMap();
+    return;
+  }
   if(e.target.id==='inp-num-days'){
     const r=cur();if(!r)return;
     const v=parseInt(e.target.value);
