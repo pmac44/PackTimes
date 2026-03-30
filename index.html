@@ -502,7 +502,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['done','left','finish'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
+  ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['done','left','finish','speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
   _rideAvgSessionKm:null,                  // dist at start of current GPS session
@@ -598,7 +598,7 @@ async function loadAll(){
       if(prefs.maxHr)UI.maxHr=prefs.maxHr;
       if(Array.isArray(prefs.hiddenMapTypes))UI.hiddenMapTypes=new Set(prefs.hiddenMapTypes);
       if(prefs.osmOpts)UI.osmOpts=prefs.osmOpts;
-      if(Array.isArray(prefs.liveStatSlots)&&prefs.liveStatSlots.length===3)UI.liveStatSlots=prefs.liveStatSlots;
+      if(Array.isArray(prefs.liveStatSlots)&&prefs.liveStatSlots.length===5)UI.liveStatSlots=prefs.liveStatSlots;
       if(prefs.sensorType)UI.sensorType=prefs.sensorType;
       if(prefs.tab)UI.tab=prefs.tab;
     }
@@ -5127,22 +5127,22 @@ function handleStopsScroll(e){
 function powerZone(watts,ftp){
   if(!ftp||!watts)return null;
   const pct=watts/ftp;
-  if(pct<0.55)return{z:1,label:'Z1 Recovery',   color:'#9ca3af',bg:'rgba(156,163,175,0.15)',border:'rgba(156,163,175,0.35)'};
-  if(pct<0.75)return{z:2,label:'Z2 Endurance',  color:'#60a5fa',bg:'rgba(96,165,250,0.15)', border:'rgba(96,165,250,0.35)'};
-  if(pct<0.85)return{z:3,label:'Z3 Tempo',      color:'#34d399',bg:'rgba(52,211,153,0.15)', border:'rgba(52,211,153,0.35)'};
-  if(pct<0.95)return{z:4,label:'Z4 Sweet Spot', color:'#a3e635',bg:'rgba(163,230,53,0.15)', border:'rgba(163,230,53,0.35)'};
-  if(pct<1.05)return{z:5,label:'Z5 Threshold',  color:'#fbbf24',bg:'rgba(251,191,36,0.15)', border:'rgba(251,191,36,0.35)'};
-  if(pct<1.20)return{z:6,label:'Z6 VO2 Max',    color:'#f97316',bg:'rgba(249,115,22,0.15)', border:'rgba(249,115,22,0.35)'};
-  return          {z:7,label:'Z7 Anaerobic',   color:'#f87171',bg:'rgba(248,113,113,0.15)',border:'rgba(248,113,113,0.35)'};
+  if(pct<0.55)return{z:1,label:'Z1 Recovery',   color:'#fff',bg:'#4b5563',border:'#6b7280',textDark:false};
+  if(pct<0.75)return{z:2,label:'Z2 Endurance',  color:'#fff',bg:'#1d4ed8',border:'#3b82f6',textDark:false};
+  if(pct<0.85)return{z:3,label:'Z3 Tempo',      color:'#000',bg:'#34d399',border:'#10b981',textDark:true};
+  if(pct<0.95)return{z:4,label:'Z4 Sweet Spot', color:'#000',bg:'#a3e635',border:'#84cc16',textDark:true};
+  if(pct<1.05)return{z:5,label:'Z5 Threshold',  color:'#000',bg:'#fbbf24',border:'#f59e0b',textDark:true};
+  if(pct<1.20)return{z:6,label:'Z6 VO2 Max',    color:'#fff',bg:'#c2410c',border:'#f97316',textDark:false};
+  return          {z:7,label:'Z7 Anaerobic',   color:'#fff',bg:'#991b1b',border:'#f87171',textDark:false};
 }
 function hrZone(bpm,maxHr){
   if(!maxHr||!bpm)return null;
   const pct=bpm/maxHr;
-  if(pct<0.60)return{z:1,label:'Z1 Recovery',  color:'#9ca3af',bg:'rgba(156,163,175,0.15)',border:'rgba(156,163,175,0.35)'};
-  if(pct<0.70)return{z:2,label:'Z2 Aerobic',   color:'#60a5fa',bg:'rgba(96,165,250,0.15)', border:'rgba(96,165,250,0.35)'};
-  if(pct<0.80)return{z:3,label:'Z3 Tempo',     color:'#34d399',bg:'rgba(52,211,153,0.15)', border:'rgba(52,211,153,0.35)'};
-  if(pct<0.90)return{z:4,label:'Z4 Threshold', color:'#fbbf24',bg:'rgba(251,191,36,0.15)', border:'rgba(251,191,36,0.35)'};
-  return        {z:5,label:'Z5 Max',           color:'#f87171',bg:'rgba(248,113,113,0.15)',border:'rgba(248,113,113,0.35)'};
+  if(pct<0.60)return{z:1,label:'Z1 Recovery',  color:'#fff',bg:'#4b5563',border:'#6b7280',textDark:false};
+  if(pct<0.70)return{z:2,label:'Z2 Aerobic',   color:'#fff',bg:'#1d4ed8',border:'#3b82f6',textDark:false};
+  if(pct<0.80)return{z:3,label:'Z3 Tempo',     color:'#000',bg:'#34d399',border:'#10b981',textDark:true};
+  if(pct<0.90)return{z:4,label:'Z4 Threshold', color:'#000',bg:'#fbbf24',border:'#f59e0b',textDark:true};
+  return        {z:5,label:'Z5 Max',           color:'#fff',bg:'#991b1b',border:'#f87171',textDark:false};
 }
 
 // ─── Turn Review Mode ───────────────────────────────────────────────────────
@@ -5444,7 +5444,7 @@ function tLiveShell(r){
   };
   const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
   const makePill=(slotIdx)=>{
-    const key=(UI.liveStatSlots||['done','left','finish'])[slotIdx]||STAT_ORDER[slotIdx];
+    const key=(UI.liveStatSlots||['done','left','finish','speed','rideavg'])[slotIdx]||STAT_ORDER[slotIdx];
     const stat=LIVE_STATS[key]||LIVE_STATS.done;
     const valStr=stat.val();
     return`<div style="flex:1;background:#000;border:1px solid #222;border-radius:6px;padding:4px 8px;display:flex;align-items:baseline;justify-content:center;gap:5px;cursor:pointer;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
@@ -5462,8 +5462,9 @@ function tLiveShell(r){
            :null;
   const sensorBg=_pz?_pz.bg:'#000';
   const sensorBorder=_pz?_pz.border:sConnected?'rgba(251,191,36,0.6)':'#222';
-  const sensorLabelCol=_pz?'#fff':sConnected?'#fbbf24':'#888';
-  const sensorValCol=_pz?'#fff':sConnected?'#fbbf24':'#fff';
+  const _zText=_pz?(_pz.textDark?'rgba(0,0,0,0.7)':'#fff'):null;
+  const sensorLabelCol=_pz?_zText:sConnected?'#fbbf24':'#888';
+  const sensorValCol=_pz?(_pz.textDark?'#000':'#fff'):sConnected?'#fbbf24':'#fff';
   const sensorLabel=_pz?_pz.label:sType==='power'?'Watts':'bpm';
   const sensorPill=`<div style="flex:1;background:${sensorBg};border:2px solid ${sensorBorder};border-radius:6px;padding:4px 8px;display:flex;align-items:baseline;justify-content:center;gap:5px;cursor:pointer;transition:all .3s;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" id="live-sensor-pill">
     <div style="font-size:11px;color:${sensorLabelCol};font-family:var(--font);letter-spacing:.3px;font-weight:${_pz?'700':'400'};white-space:nowrap;flex-shrink:0;" id="live-sensor-lbl">${sensorLabel}</div>
@@ -5472,8 +5473,8 @@ function tLiveShell(r){
       :`<div style="font-size:20px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub" style="display:none;"></div>`}
   </div>`;
   const progressOverlay=`<div class="live-progress-bar">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-      ${makePill(0)}${makePill(1)}${makePill(2)}${sensorPill}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">
+      ${makePill(0)}${makePill(1)}${makePill(2)}${makePill(3)}${makePill(4)}${sensorPill}
     </div>
     <div class="prog" style="margin-top:5px;height:3px;display:none;"><div class="progf" id="live-progf" style="width:${(prog*100).toFixed(1)}%"></div></div>
   </div>`;
@@ -7324,7 +7325,7 @@ function updateLive(){
     },
   };
   const UNIT_MAP={done:'km',left:'km',finish:'',speed:'km/h','1hr':'km/h',rideavg:'km/h'};
-  (UI.liveStatSlots||['done','left','finish']).forEach((key,i)=>{
+  (UI.liveStatSlots||['done','left','finish','speed','rideavg']).forEach((key,i)=>{
     const fn=LIVE_STAT_VALS[key];if(!fn)return;
     const el=document.getElementById('live-val-slot'+i);
     if(el){
@@ -7998,7 +7999,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(sp&&UI.tab==='live'&&sp.dataset.slot!=='dist'){
     const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
     const slotIdx=+sp.dataset.slot;
-    const slots=UI.liveStatSlots||['done','left','finish'];
+    const slots=UI.liveStatSlots||['done','left','finish','speed','rideavg'];
     const cur=slots[slotIdx]||STAT_ORDER[slotIdx];
     const nextKey=STAT_ORDER[(STAT_ORDER.indexOf(cur)+1)%STAT_ORDER.length];
     UI.liveStatSlots=slots.map((k,i)=>i===slotIdx?nextKey:k);
@@ -8806,17 +8807,19 @@ async function connectPowerMeter(){
       // Update zone colour if FTP is set
       const pz=powerZone(avg,UI.ftp);
       if(pill&&pz){
+        const _ptc=pz.textDark?'rgba(0,0,0,0.7)':'#fff';
+        const _pvc=pz.textDark?'#000':'#fff';
         pill.style.background=pz.bg;
         pill.style.borderColor=pz.border;
         pill.style.borderWidth='2px';
-        if(plbl){plbl.textContent=pz.label;plbl.style.color='#fff';plbl.style.fontWeight='700';}
-        if(pw)pw.style.color='#fff';
-        if(pc)pc.style.color='#fff';
+        if(plbl){plbl.textContent=pz.label;plbl.style.color=_ptc;plbl.style.fontWeight='700';}
+        if(pw)pw.style.color=_pvc;
+        if(pc)pc.style.color=_pvc;
       } else if(pill&&!pz){
-        pill.style.background='rgba(251,191,36,0.18)';
+        pill.style.background='#000';
         pill.style.borderColor='rgba(251,191,36,0.6)';
         pill.style.borderWidth='2px';
-        if(plbl){plbl.textContent='watts';plbl.style.color='#fbbf24';plbl.style.fontWeight='400';}
+        if(plbl){plbl.textContent='Watts';plbl.style.color='#fbbf24';plbl.style.fontWeight='400';}
         if(pw)pw.style.color='#fbbf24';
         if(pc)pc.style.color='#fbbf24';
       }
@@ -8870,11 +8873,13 @@ async function connectHRMonitor(){
       // Apply HR zone colour
       const hz=hrZone(bpm,UI.maxHr);
       if(pill&&hz){
+        const _htc=hz.textDark?'rgba(0,0,0,0.7)':'#fff';
+        const _hvc=hz.textDark?'#000':'#fff';
         pill.style.background=hz.bg;pill.style.borderColor=hz.border;pill.style.borderWidth='2px';
-        if(lbl){lbl.textContent=hz.label;lbl.style.color='#fff';lbl.style.fontWeight='700';}
-        if(val)val.style.color='#fff';
+        if(lbl){lbl.textContent=hz.label;lbl.style.color=_htc;lbl.style.fontWeight='700';}
+        if(val)val.style.color=_hvc;
       } else if(pill&&!hz){
-        pill.style.background='rgba(248,113,113,0.18)';pill.style.borderColor='rgba(248,113,113,0.6)';pill.style.borderWidth='2px';
+        pill.style.background='#000';pill.style.borderColor='rgba(248,113,113,0.6)';pill.style.borderWidth='2px';
         if(lbl){lbl.textContent='bpm';lbl.style.color='#f87171';lbl.style.fontWeight='400';}
         if(val)val.style.color='#f87171';
       }
