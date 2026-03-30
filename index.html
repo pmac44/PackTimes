@@ -496,7 +496,7 @@ const DB=(()=>{
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
   id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
-  name:name||'New Route',points:[],hasTS:false,totalDist:0,estDuration:null,
+  name:name||'New Route',points:[],hasTS:false,totalDist:0,estDuration:null,numDays:null,
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
   adaptiveSpeed:true,baseTimeFactor:1.0,
 });
@@ -1058,6 +1058,28 @@ function rebuildPace(r){
   if(!r||!r.points.length)return;
   r.cumRiding=buildCumRiding(r.points,r.paceSegs||[]);
 }
+// Compute km positions of day-boundary markers for a given numDays split.
+// Returns array of {dist, dayNum} — length = numDays-1
+function computeDayMarkers(r){
+  const nd=r.numDays;
+  if(!nd||nd<2||!r.cumRiding||!r.points.length)return[];
+  const pts=r.points,cr=r.cumRiding;
+  const totalRiding=cr[cr.length-1];
+  const estTotal=r.estDuration?r.estDuration*r.timeFactor:totalRiding;
+  const markers=[];
+  for(let d=1;d<nd;d++){
+    const targetCr=totalRiding*(d/nd);
+    // Binary search for the point where cumRiding crosses targetCr
+    let lo=0,hi=pts.length-1;
+    while(hi-lo>1){const mid=(lo+hi)>>1;if(cr[mid]<=targetCr)lo=mid;else hi=mid;}
+    const span=cr[hi]-cr[lo];
+    const t=span>0?(targetCr-cr[lo])/span:0;
+    const dist=pts[lo].dist+(pts[hi].dist-pts[lo].dist)*t;
+    markers.push({dist,dayNum:d});
+  }
+  return markers;
+}
+
 function cumRidingAt(distKm,r){
   const pts=r.points,cr=r.cumRiding;
   if(!cr||!pts.length)return null;
@@ -1677,17 +1699,18 @@ function openHikeReview() {
 }
 
 function renderHikeReview() {
+  const hr = _hikeReview;
+  const r = cur();
+  if (!hr || !r) { document.getElementById('hike-review-overlay')?.remove(); return; }
+
   let el = document.getElementById('hike-review-overlay');
   if (!el) {
     el = document.createElement('div');
     el.id = 'hike-review-overlay';
-    // Outer backdrop — full screen, high z-index to beat map canvas stacking contexts
-    el.style.cssText = 'position:fixed;inset:0;z-index:10500;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;';
+    el.style.cssText = 'position:fixed;inset:0;z-index:10500;background:#0a0f0a;display:flex;flex-direction:column;';
     document.body.insertAdjacentElement('beforeend', el);
   }
-  const hr = _hikeReview;
-  const r = cur();
-  if (!hr || !r) { el.remove(); return; }
+
   if (hr.idx >= hr.candidates.length) hr.idx = Math.max(0, hr.candidates.length - 1);
   const fc = hr.candidates[hr.idx];
   const surfLbl = fc ? surfaceCatLabel(fc.surfaceCat) : null;
@@ -1696,86 +1719,105 @@ function renderHikeReview() {
   const estHours = fc ? fc.lenKm / hr.walkKmh : 0;
   const hh = Math.floor(estHours), mm = Math.round((estHours - hh) * 60);
 
-  el.innerHTML = `<div style="width:100%;max-width:560px;min-height:100vh;background:#0d1a0d;display:flex;flex-direction:column;">
-    <div style="padding:12px 16px;background:#0d1a0d;border-bottom:1px solid #1a2d1a;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <div style="font-size:17px;font-weight:600;color:var(--accent);font-family:var(--sans);">Hike-a-bike Candidates</div>
-      <button id="hkr-close" style="background:rgba(248,113,113,0.15);border:2px solid rgba(248,113,113,0.6);border-radius:50%;color:#f87171;font-size:20px;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#x2715;</button>
+  el.innerHTML = `
+    <canvas id="hkr-map" style="flex:1;display:block;width:100%;touch-action:none;"></canvas>
+
+    <div style="position:absolute;top:12px;right:12px;z-index:10502;">
+      <button id="hkr-close" style="width:44px;height:44px;background:rgba(248,113,113,0.15);border:2px solid rgba(248,113,113,0.6);border-radius:50%;color:#f87171;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#x2715;</button>
     </div>
-    <div style="padding:12px 16px;background:#0a140a;border-bottom:1px solid #1a2d1a;flex-shrink:0;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div><div style="font-size:10px;color:#666;font-family:var(--font);margin-bottom:3px;">Min gradient %</div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <input type="range" id="hkr-grad" min="10" max="35" step="1" value="${hr.gradThresh}" style="flex:1;accent-color:var(--accent);">
-            <span id="hkr-grad-lbl" style="font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:32px;">${hr.gradThresh}%</span>
-          </div></div>
-        <div><div style="font-size:10px;color:#666;font-family:var(--font);margin-bottom:3px;">Min length (m)</div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <input type="range" id="hkr-len" min="50" max="500" step="25" value="${hr.minLenM}" style="flex:1;accent-color:var(--accent);">
-            <span id="hkr-len-lbl" style="font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:38px;">${hr.minLenM}m</span>
-          </div></div>
-        <div><div style="font-size:10px;color:#666;font-family:var(--font);margin-bottom:3px;">Walk speed km/h</div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <input type="range" id="hkr-walk" min="1.5" max="5" step="0.5" value="${hr.walkKmh}" style="flex:1;accent-color:var(--accent);">
-            <span id="hkr-walk-lbl" style="font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:38px;">${hr.walkKmh}</span>
-          </div></div>
-        <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
-          <span style="font-size:13px;color:var(--text3);font-family:var(--font);">${hr.candidates.length} candidate${hr.candidates.length!==1?'s':''} found</span>
+
+    <div style="position:absolute;top:12px;left:12px;z-index:10502;background:rgba(10,15,10,0.92);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;min-width:220px;max-width:300px;">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;">Hike-a-bike Detection</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px;">
+        <div>
+          <div style="font-size:9px;color:#555;font-family:var(--font);">Min gradient</div>
+          <div style="display:flex;align-items:center;gap:3px;">
+            <input type="range" id="hkr-grad" min="10" max="35" step="1" value="${hr.gradThresh}" style="width:54px;accent-color:var(--accent);">
+            <span id="hkr-grad-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:26px;">${hr.gradThresh}%</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:#555;font-family:var(--font);">Min length</div>
+          <div style="display:flex;align-items:center;gap:3px;">
+            <input type="range" id="hkr-len" min="50" max="500" step="25" value="${hr.minLenM}" style="width:54px;accent-color:var(--accent);">
+            <span id="hkr-len-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:34px;">${hr.minLenM}m</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:#555;font-family:var(--font);">Walk km/h</div>
+          <div style="display:flex;align-items:center;gap:3px;">
+            <input type="range" id="hkr-walk" min="1.5" max="5" step="0.5" value="${hr.walkKmh}" style="width:54px;accent-color:var(--accent);">
+            <span id="hkr-walk-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:22px;">${hr.walkKmh}</span>
+          </div>
         </div>
       </div>
+      <div style="font-size:12px;color:var(--text3);font-family:var(--font);">${hr.candidates.length} candidate${hr.candidates.length!==1?'s':''} found</div>
     </div>
-    <div style="flex:1;overflow-y:auto;padding:12px 16px;">
+
+    <div style="position:absolute;bottom:0;left:0;right:0;z-index:10502;background:rgba(10,15,10,0.92);border-top:1px solid var(--border2);padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));">
       ${hr.candidates.length===0
-        ? '<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:16px;line-height:1.8;">No candidates found.<br><span style="font-size:14px;">Try lowering the gradient or length sliders.</span></div>'
-        : `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <button id="hkr-prev" style="background:var(--card);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:18px;padding:6px 16px;cursor:pointer;${hr.idx===0?'opacity:0.35;':''}" ${hr.idx===0?'disabled':''}>&#9664;</button>
-            <span style="font-size:14px;color:var(--text3);font-family:var(--font);">${hr.idx+1} / ${hr.candidates.length}</span>
-            <button id="hkr-next" style="background:var(--card);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:18px;padding:6px 16px;cursor:pointer;${hr.idx===hr.candidates.length-1?'opacity:0.35;':''}" ${hr.idx===hr.candidates.length-1?'disabled':''}>&#9654;</button>
-          </div>
-          ${fc ? `<div style="background:var(--card);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
-            <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px;">${fc.from.toFixed(1)}&ndash;${fc.to.toFixed(1)}&thinsp;km <span style="font-size:13px;font-weight:400;color:var(--text3);">${fc.lenKm.toFixed(2)} km</span></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px;">
-              <div style="background:#000;border:1px solid #222;border-radius:6px;padding:4px 7px;">
-                <div style="font-size:10px;color:#666;">Max grad</div>
-                <div style="font-size:18px;font-weight:500;color:#f97316;">${fc.maxGrad}%</div>
-              </div>
-              <div style="background:#000;border:1px solid #222;border-radius:6px;padding:4px 7px;">
-                <div style="font-size:10px;color:#666;">Avg grad</div>
-                <div style="font-size:18px;font-weight:500;color:var(--text);">${fc.avgGrad}%</div>
-              </div>
-              <div style="background:#000;border:1px solid #222;border-radius:6px;padding:4px 7px;">
-                <div style="font-size:10px;color:#666;">Est. time</div>
-                <div style="font-size:18px;font-weight:500;color:var(--accent);">${hh}h ${mm}m</div>
-              </div>
+        ? '<div style="text-align:center;color:var(--text3);font-size:14px;padding:4px 0;">No candidates — try lowering the sliders</div><div style="margin-top:8px;"><button id="hkr-done" style="width:100%;background:var(--card);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:14px;padding:8px 0;cursor:pointer;">Done</button></div>'
+        : `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <button id="hkr-prev" style="background:var(--card);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:18px;padding:6px 14px;cursor:pointer;${hr.idx===0?'opacity:0.35;':''}" ${hr.idx===0?'disabled':''}>&#9664;</button>
+            <div style="flex:1;min-width:0;">
+              ${fc ? `<div style="font-size:15px;font-weight:600;color:var(--text);">${fc.from.toFixed(1)}&ndash;${fc.to.toFixed(1)}&thinsp;km &nbsp;<span style="font-size:12px;font-weight:400;color:var(--text3);">${fc.lenKm.toFixed(2)} km &nbsp; ${hr.idx+1}/${hr.candidates.length}</span></div>
+              <div style="display:flex;gap:6px;margin-top:3px;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:12px;color:#f97316;">&#8599; ${fc.maxGrad}% max</span>
+                <span style="font-size:12px;color:var(--text3);">${fc.avgGrad}% avg</span>
+                <span style="font-size:12px;color:var(--accent);">${hh}h ${mm}m est</span>
+                ${surfLbl?`<span style="font-size:11px;padding:1px 6px;border-radius:8px;background:${surfCol};color:#fff;">${surfLbl}</span>`:''}
+                ${alreadyAdded?'<span style="font-size:12px;color:var(--accent);">&#10003; added</span>':''}
+              </div>` : ''}
             </div>
-            ${surfLbl
-              ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><span style="font-size:12px;padding:2px 8px;border-radius:10px;background:${surfCol};color:#fff;">${surfLbl}</span><span style="font-size:12px;color:var(--text3);">surface type</span></div>`
-              : '<div style="font-size:12px;color:var(--text3);margin-bottom:6px;">No surface data &mdash; run Fetch Surface for more detail</div>'}
-            ${alreadyAdded ? '<div style="font-size:13px;color:var(--accent);">&#10003; Already added to hike-a-bike sections</div>' : ''}
+            <button id="hkr-next" style="background:var(--card);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:18px;padding:6px 14px;cursor:pointer;${hr.idx===hr.candidates.length-1?'opacity:0.35;':''}" ${hr.idx===hr.candidates.length-1?'disabled':''}>&#9654;</button>
           </div>
           <div style="display:flex;gap:8px;">
-            <button id="hkr-skip" style="flex:1;background:var(--card);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:15px;padding:10px 0;cursor:pointer;">Skip</button>
-            <button id="hkr-add" style="flex:2;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.5);border-radius:8px;color:#f97316;font-size:15px;font-weight:600;padding:10px 0;cursor:pointer;">${alreadyAdded ? '&#10003; Added' : '+ Add to sections'}</button>
-          </div>` : ''}
-      `}
-    </div>
-    <div style="padding:10px 16px;background:#0d1a0d;border-top:1px solid #1a2d1a;flex-shrink:0;">
-      <button id="hkr-done" style="width:100%;background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.5);border-radius:8px;color:var(--accent);font-size:16px;font-weight:600;padding:12px 0;cursor:pointer;">Done</button>
-    </div>
-  </div>`;
+            <button id="hkr-done" style="flex:1;background:var(--card);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:14px;padding:8px 0;cursor:pointer;">Done</button>
+            <button id="hkr-skip" style="flex:1;background:var(--card);border:1px solid var(--border2);border-radius:8px;color:var(--text3);font-size:14px;padding:8px 0;cursor:pointer;">Skip</button>
+            <button id="hkr-add" style="flex:2;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.5);border-radius:8px;color:#f97316;font-size:14px;font-weight:600;padding:8px 0;cursor:pointer;">${alreadyAdded?'&#10003; Added':'+ Add to sections'}</button>
+          </div>`
+      }
+    </div>`;
+
+  // Draw map centred on current candidate section
+  setTimeout(() => {
+    const cvs = document.getElementById('hkr-map');
+    if (!cvs || !fc) return;
+    const state = _ms['hkr-map'] || (_ms['hkr-map'] = {zoom:1,cx:null,cy:null});
+    const midDist = (fc.from + fc.to) / 2;
+    const midPt = r.points.reduce((b,p) => Math.abs(p.dist-midDist)<Math.abs(b.dist-midDist)?p:b, r.points[0]);
+    state.cx = midPt.lon; state.cy = midPt.lat;
+    const spanKm = Math.max(0.5, fc.lenKm * 3);
+    state.zoom = zoomForKmWidth('hkr-map', spanKm);
+    drawMap(cvs, r, {showGPS:false, followGPS:false});
+    // Highlight the candidate section in orange over the route
+    const ctx = cvs.getContext('2d');
+    const {_px:px, _py:py} = cvs;
+    if (px && py) {
+      const segPts = r.points.filter(p => p.dist >= fc.from && p.dist <= fc.to);
+      if (segPts.length >= 2) {
+        ctx.beginPath(); ctx.moveTo(px(segPts[0].lon), py(segPts[0].lat));
+        for (let i=1;i<segPts.length;i++) ctx.lineTo(px(segPts[i].lon), py(segPts[i].lat));
+        ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=7; ctx.stroke();
+        ctx.strokeStyle='#f97316'; ctx.lineWidth=4; ctx.stroke();
+      }
+    }
+    attachMap(cvs, null);
+  }, 30);
 
   const redetect = () => {
     _hikeReview.candidates = detectHikeCandidates(r, _hikeReview.gradThresh, _hikeReview.minLenM);
-    if (_hikeReview.idx >= _hikeReview.candidates.length) _hikeReview.idx = Math.max(0, _hikeReview.candidates.length - 1);
+    if (_hikeReview.idx >= _hikeReview.candidates.length) _hikeReview.idx = Math.max(0, _hikeReview.candidates.length-1);
     renderHikeReview();
   };
   document.getElementById('hkr-grad').addEventListener('input', function() {
     _hikeReview.gradThresh = +this.value;
-    document.getElementById('hkr-grad-lbl').textContent = this.value + '%';
+    document.getElementById('hkr-grad-lbl').textContent = this.value+'%';
     clearTimeout(_hikeReview._t); _hikeReview._t = setTimeout(redetect, 300);
   });
   document.getElementById('hkr-len').addEventListener('input', function() {
     _hikeReview.minLenM = +this.value;
-    document.getElementById('hkr-len-lbl').textContent = this.value + 'm';
+    document.getElementById('hkr-len-lbl').textContent = this.value+'m';
     clearTimeout(_hikeReview._t); _hikeReview._t = setTimeout(redetect, 300);
   });
   document.getElementById('hkr-walk').addEventListener('input', function() {
@@ -1786,23 +1828,23 @@ function renderHikeReview() {
   const closeReview = () => { _hikeReview = null; document.getElementById('hike-review-overlay')?.remove(); };
   document.getElementById('hkr-close').addEventListener('click', closeReview);
   document.getElementById('hkr-done').addEventListener('click', closeReview);
-  document.getElementById('hkr-prev')?.addEventListener('click', () => { if (_hikeReview.idx > 0) { _hikeReview.idx--; renderHikeReview(); } });
-  document.getElementById('hkr-next')?.addEventListener('click', () => { if (_hikeReview.idx < _hikeReview.candidates.length - 1) { _hikeReview.idx++; renderHikeReview(); } });
+  document.getElementById('hkr-prev')?.addEventListener('click', () => { if (_hikeReview.idx>0){_hikeReview.idx--;renderHikeReview();} });
+  document.getElementById('hkr-next')?.addEventListener('click', () => { if (_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();} });
   document.getElementById('hkr-skip')?.addEventListener('click', () => {
-    if (_hikeReview.idx < _hikeReview.candidates.length - 1) { _hikeReview.idx++; renderHikeReview(); }
+    if (_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();}
     else closeReview();
   });
   document.getElementById('hkr-add')?.addEventListener('click', () => {
-    const r2 = cur(); if (!r2 || !_hikeReview) return;
-    const fc2 = _hikeReview.candidates[_hikeReview.idx]; if (!fc2) return;
-    const already = (r2.paceSegs||[]).some(s => Math.abs(s.from-fc2.from)<0.2 && Math.abs(s.to-fc2.to)<0.2);
-    if (!already) {
-      if (!r2.paceSegs) r2.paceSegs = [];
-      r2.paceSegs.push({ from:fc2.from, to:fc2.to, hours:fc2.lenKm / _hikeReview.walkKmh, name:'Auto '+fc2.from.toFixed(1)+'km' });
-      r2.paceSegs.sort((a,b) => a.from - b.from);
-      rebuildPace(r2); saveAll();
+    const r2=cur(); if(!r2||!_hikeReview)return;
+    const fc2=_hikeReview.candidates[_hikeReview.idx]; if(!fc2)return;
+    const already=(r2.paceSegs||[]).some(s=>Math.abs(s.from-fc2.from)<0.2&&Math.abs(s.to-fc2.to)<0.2);
+    if(!already){
+      if(!r2.paceSegs)r2.paceSegs=[];
+      r2.paceSegs.push({from:fc2.from,to:fc2.to,hours:fc2.lenKm/_hikeReview.walkKmh,name:'Auto '+fc2.from.toFixed(1)+'km'});
+      r2.paceSegs.sort((a,b)=>a.from-b.from);
+      rebuildPace(r2);saveAll();
     }
-    if (_hikeReview.idx < _hikeReview.candidates.length - 1) { _hikeReview.idx++; renderHikeReview(); }
+    if(_hikeReview.idx<_hikeReview.candidates.length-1){_hikeReview.idx++;renderHikeReview();}
     else renderHikeReview();
   });
 }
@@ -3080,6 +3122,27 @@ function drawMap(cvs,r,opts){
       for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
       ctx.strokeStyle=col;ctx.lineWidth=3;ctx.stroke();
     }
+  }
+
+  // Day-split markers
+  if(!UI.hiddenMapTypes.has('daymarkers')&&r.numDays&&r.numDays>=2){
+    const markers=computeDayMarkers(r);
+    markers.forEach(m=>{
+      const closest=r.points.reduce((b,p)=>Math.abs(p.dist-m.dist)<Math.abs(b.dist-m.dist)?p:b,r.points[0]);
+      const mx=px(closest.lon),my=py(closest.lat);
+      const s=isDesktop?9:7; // half-size of diamond
+      // Dark outline
+      ctx.beginPath();ctx.moveTo(mx,my-s-1.5);ctx.lineTo(mx+s+1.5,my);ctx.lineTo(mx,my+s+1.5);ctx.lineTo(mx-s-1.5,my);ctx.closePath();
+      ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fill();
+      // Diamond fill
+      ctx.beginPath();ctx.moveTo(mx,my-s);ctx.lineTo(mx+s,my);ctx.lineTo(mx,my+s);ctx.lineTo(mx-s,my);ctx.closePath();
+      ctx.fillStyle='#f0c040';ctx.fill();
+      ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.stroke();
+      // Day number label
+      ctx.fillStyle='#000';ctx.font=`bold ${isDesktop?10:8}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(m.dayNum,mx,my);
+      ctx.textAlign='left';ctx.textBaseline='alphabetic';
+    });
   }
 
   // Pace segment overlays — orange highlight over route line
@@ -5211,6 +5274,7 @@ const LAYER_TYPES=[
   {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
   {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
   {type:'hike',col:'#f97316',label:'Hike-a-bike'},
+  {type:'daymarkers',col:'#f0c040',label:'Day splits'},
   {type:'sleep',col:'#b39ddb',label:'Bivi'},
   {type:'food',col:'#fbbf24',label:'Food'},
   {type:'wc',col:'#2dd4bf',label:'Toilets'},
@@ -5231,7 +5295,7 @@ const LAYER_TYPES=[
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['kmmarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
+  const PRIORITY=['kmmarkers','daymarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
@@ -5242,6 +5306,7 @@ function sortedLayers(r){
   if(r&&r.stops.some(s=>s.type==='stop'))present.add('stop');
   if(r&&r.stops.some(s=>s.starred!==false))present.add('mission');
   if(r&&r.paceSegs&&r.paceSegs.length)present.add('hike');
+  if(r&&r.numDays&&r.numDays>=2)present.add('daymarkers');
   return LAYER_TYPES.filter(t=>present.has(t.type)).sort((a,b)=>{
     const ai=PRIORITY.indexOf(a.type),bi=PRIORITY.indexOf(b.type);
     if(ai>=0&&bi>=0)return ai-bi;
@@ -6193,6 +6258,17 @@ function tRoutes(r){
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
             return'<span style="'+accent+'color:var(--text2);display:block;margin-top:10px;" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>';
           })():'')
+          +(adjDur?'<div style="margin-top:12px;display:flex;align-items:center;gap:8px;">'
+            +'<span style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">Day splits</span>'
+            +'<input type="number" id="inp-num-days" value="'+(r.numDays||'')+'" min="2" max="30" step="1" placeholder="days" style="width:64px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);" />'
+            +(r.numDays&&r.numDays>=2?(()=>{
+              const markers=computeDayMarkers(r);
+              const perDay=adjDur/r.numDays;
+              const ph=Math.floor(perDay),pm=Math.round((perDay-ph)*60);
+              const pmStr=pm>0?' '+String(pm).padStart(2,'0')+'m':'';
+              return'<span style="font-size:13px;color:var(--text3);">'+markers.length+' markers · '+ph+'h'+pmStr+'  per day</span>';
+            })():'<span style="font-size:13px;color:var(--text3);">enter number of days</span>')
+            +'</div>':'')
         +'</div>'
       +'</div>';
     })()}
@@ -8531,7 +8607,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Buttons
-  if(e.target.closest('#btn-open-dt-picker')||e.target.closest('#btn-mission-dt-edit')){
+    if(e.target.closest('#btn-open-dt-picker')||e.target.closest('#btn-mission-dt-edit')){
     const r=cur();if(r)openDTPicker(r);return;
   }
   if(e.target.closest('#tf-faster')||e.target.closest('#tf-slower')){
@@ -8957,6 +9033,17 @@ document.getElementById('content-wrap').addEventListener('keydown',e=>{
 });
 
 document.getElementById('content-wrap').addEventListener('change',e=>{
+  if(e.target.id==='inp-num-days'){
+    const r=cur();if(!r)return;
+    const v=parseInt(e.target.value);
+    r.numDays=(v>=2&&v<=30)?v:null;
+    if(!r.numDays)e.target.value='';
+    saveAll();
+    renderKeepScroll();
+    ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
+    renderDesktopMap();
+    return;
+  }
   if(e.target.classList.contains('osm-opt')){
     if(!UI.osmOpts)UI.osmOpts={towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,shops:false,pubs:false,camp:false,caravan:false,huts:false,hotels:false,halls:false,churches:false,schools:false,fire:false,police:false,peaks:false};
     UI.osmOpts[e.target.dataset.key]=e.target.checked;
