@@ -511,7 +511,8 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false};
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,
+  showSurface:false,surfaceStatus:'idle',surfaceMsg:''};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -1427,6 +1428,188 @@ function shopSt(s,r){
 // ═══════════════════════════════════════════
 //  OVERPASS
 // ═══════════════════════════════════════════
+
+// ─── Surface type fetch ──────────────────────────────────────────────────────
+// Colour for each surface category used in map overlay
+const SURFACE_COLS={
+  road:'#94a3b8',       // sealed road — blue-grey
+  road_minor:'#b0bec5', // residential/service — lighter
+  grade1:'#d4b483',     // compacted gravel — tan
+  grade2:'#c4924a',     // gravel/dirt — orange-tan
+  grade3:'#a0672a',     // dirt — brown
+  grade4:'#7a4a1a',     // rough dirt/grass — dark brown
+  grade5:'#c0392b',     // barely passable — red-brown
+  path:'#e74c3c',       // path/footway/singletrack — red
+};
+
+function surfaceCategory(highway,tracktype,surface){
+  if(!highway)return null;
+  if(highway==='primary'||highway==='secondary'||highway==='trunk'||highway==='motorway')return'road';
+  if(highway==='tertiary'||highway==='unclassified')return'road_minor';
+  if(highway==='residential'||highway==='service'||highway==='living_street')return'road_minor';
+  if(highway==='cycleway')return'grade1';
+  if(highway==='path'||highway==='footway'||highway==='bridleway')return'path';
+  if(highway==='track'){
+    if(tracktype==='grade1')return'grade1';
+    if(tracktype==='grade2')return'grade2';
+    if(tracktype==='grade3')return'grade3';
+    if(tracktype==='grade4')return'grade4';
+    if(tracktype==='grade5')return'path';
+    // No tracktype — infer from surface tag
+    if(surface==='asphalt'||surface==='concrete'||surface==='paved')return'grade1';
+    if(surface==='compacted'||surface==='fine_gravel'||surface==='gravel')return'grade2';
+    if(surface==='dirt'||surface==='unpaved'||surface==='earth'||surface==='ground')return'grade3';
+    if(surface==='grass'||surface==='sand'||surface==='mud')return'grade4';
+    return'grade2'; // untagged track — assume moderate
+  }
+  return null;
+}
+
+// Snap a lat/lon to the nearest point on any of the returned way segments
+// Returns {cat, dist_along_way} or null if further than maxOffM metres
+function snapToWay(lat,lon,ways,maxOffM){
+  let best=null,bd=Infinity;
+  const deg2rad=Math.PI/180;
+  const R=6371000;
+  ways.forEach(w=>{
+    const nodes=w.nodes;
+    for(let i=0;i<nodes.length-1;i++){
+      const ax=nodes[i].lon,ay=nodes[i].lat;
+      const bx=nodes[i+1].lon,by=nodes[i+1].lat;
+      // Project point onto segment in approx Cartesian (good enough for <1km)
+      const dx=bx-ax,dy=by-ay;
+      const len2=dx*dx+dy*dy;
+      if(len2<1e-14)continue;
+      const t=Math.max(0,Math.min(1,((lon-ax)*dx+(lat-ay)*dy)/len2));
+      const nx=ax+t*dx,ny=ay+t*dy;
+      // Approx distance in metres
+      const dlat=(lat-ny)*deg2rad*R;
+      const dlon=(lon-nx)*Math.cos(lat*deg2rad)*deg2rad*R;
+      const d=Math.sqrt(dlat*dlat+dlon*dlon);
+      if(d<bd){bd=d;best={cat:w.cat,offM:d};}
+    }
+  });
+  return best&&best.offM<=maxOffM?best:null;
+}
+
+async function fetchSurfaceData(){
+  const r=cur();
+  if(!r||r.points.length<2)return;
+  if(r.surfaceSegs&&r.surfaceSegs.length){
+    // Already fetched — just toggle display
+    UI.showSurface=!UI.showSurface;
+    ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
+    // Update SURF button active state
+    ['desktop-map','stops-map'].forEach(id=>{
+      const b=document.getElementById('btn-surface-'+id);
+      if(b){b.style.color=UI.showSurface?'var(--accent)':'';b.style.borderColor=UI.showSurface?'var(--accent3)':'';}
+    });
+    return;
+  }
+  UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data…';renderKeepScroll();
+
+  // Sample every ~200m along route for snapping
+  const SAMPLE_M=200;
+  const samples=[];
+  let lastSampleDist=-999;
+  for(const p of r.points){
+    if(p.dist-lastSampleDist>=SAMPLE_M/1000){
+      samples.push({lat:p.lat,lon:p.lon,dist:p.dist});
+      lastSampleDist=p.dist;
+    }
+  }
+
+  // Split samples into ~50km chunks with 1km overlap
+  const CHUNK_KM=50,OVERLAP_KM=1;
+  const chunks=[];
+  let chunkStart=0;
+  while(chunkStart<samples.length){
+    const startDist=samples[chunkStart].dist;
+    let end=chunkStart;
+    while(end<samples.length&&samples[end].dist-startDist<CHUNK_KM)end++;
+    // Overlap — include a bit past end
+    let extEnd=end;
+    while(extEnd<samples.length&&samples[extEnd].dist-samples[end>0?end-1:0].dist<OVERLAP_KM)extEnd++;
+    chunks.push(samples.slice(chunkStart,extEnd||end+1));
+    chunkStart=end>chunkStart?end:chunkStart+1;
+  }
+
+  const MAX_OFF_M=30; // max metres off route to snap
+  // Result: one entry per sample, null if no road found within 30m
+  const result=new Array(samples.length).fill(null);
+  let lastErr='';
+
+  // Build index map for O(1) sample lookup
+  const sampleIdxMap=new Map(samples.map((s,i)=>[s,i]));
+
+  for(let ci=0;ci<chunks.length;ci++){
+    const chunk=chunks[ci];
+    UI.surfaceMsg=`Fetching surface data… ${ci+1}/${chunks.length}`;
+    // Update progress without full render
+    const msgEl=document.getElementById('surface-status-msg');
+    if(msgEl)msgEl.textContent=UI.surfaceMsg;
+
+    // Bounding box with ~100m buffer
+    const lats=chunk.map(p=>p.lat),lons=chunk.map(p=>p.lon);
+    const buf=0.001; // ~110m
+    const bb=`${(Math.min(...lats)-buf).toFixed(5)},${(Math.min(...lons)-buf).toFixed(5)},${(Math.max(...lats)+buf).toFixed(5)},${(Math.max(...lons)+buf).toFixed(5)}`;
+    const q=`[out:json][timeout:25];way[highway~"^(primary|secondary|tertiary|residential|unclassified|service|living_street|track|path|footway|bridleway|cycleway|trunk|motorway)$"](${bb});out geom tags;`;
+
+    let fetched=false;
+    for(const mirror of MIRRORS){
+      try{
+        const res=await fetch(mirror+'?data='+encodeURIComponent(q),{mode:'cors'});
+        if(!res.ok)throw new Error('HTTP '+res.status);
+        const json=await res.json();
+        // Build way objects with pre-computed category
+        const ways=json.elements.filter(el=>el.type==='way'&&el.geometry&&el.geometry.length>1).map(el=>({
+          nodes:el.geometry.map(n=>({lat:n.lat,lon:n.lon})),
+          cat:surfaceCategory(el.tags?.highway,el.tags?.tracktype,el.tags?.surface),
+        })).filter(w=>w.cat!==null);
+
+        // Snap each sample in this chunk
+        chunk.forEach(s=>{
+          const idx=sampleIdxMap.get(s);
+          if(idx===undefined||result[idx]!==null)return; // already snapped from overlap
+          const snap=snapToWay(s.lat,s.lon,ways,MAX_OFF_M);
+          result[idx]=snap?snap.cat:null;
+        });
+        fetched=true;break;
+      }catch(e){lastErr=e.message;}
+    }
+    if(!fetched){
+      UI.surfaceStatus='error';
+      UI.surfaceMsg=`Surface fetch failed (${lastErr})`;
+      renderKeepScroll();return;
+    }
+    // Small yield between chunks
+    await new Promise(res=>setTimeout(res,300));
+  }
+
+  // Compress into runs: [{fromDist, toDist, cat}]
+  const segs=[];
+  let runCat=result[0],runFrom=samples[0].dist;
+  for(let i=1;i<samples.length;i++){
+    if(result[i]!==runCat){
+      if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[i-1].dist,cat:runCat});
+      runCat=result[i];runFrom=samples[i].dist;
+    }
+  }
+  if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[samples.length-1].dist,cat:runCat});
+
+  r.surfaceSegs=segs;
+  UI.surfaceStatus='done';
+  UI.surfaceMsg=`Surface data loaded (${segs.length} segments)`;
+  UI.showSurface=true;
+  await saveAll();
+  renderKeepScroll();
+  ['desktop-map','stops-map'].forEach(id=>{
+    redrawMap(id);
+    const b=document.getElementById('btn-surface-'+id);
+    if(b){b.style.color='var(--accent)';b.style.borderColor='var(--accent3)';}
+  });
+}
+
 const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 async function fetchOverpass(){
   const r=cur();if(!r||!r.points.length)return;
@@ -2688,6 +2871,20 @@ function drawMap(cvs,r,opts){
   }
   }
 
+  // Surface type overlay — drawn on top of day/night line when toggled on
+  if(UI.showSurface&&r.surfaceSegs&&r.surfaceSegs.length&&(id==='desktop-map'||id==='stops-map')){
+    const segs=r.surfaceSegs;
+    for(const seg of segs){
+      const segPts=pts.filter(p=>p.dist>=seg.fromDist-0.05&&p.dist<=seg.toDist+0.05);
+      if(segPts.length<2)continue;
+      const col=SURFACE_COLS[seg.cat];
+      if(!col)continue;
+      ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
+      for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
+      ctx.strokeStyle=col;ctx.lineWidth=3;ctx.stroke();
+    }
+  }
+
   // Pace segment overlays — orange highlight over route line
   const paceSegs=(opts.paceFrom!==undefined)?
     (opts.paceTo!==undefined&&opts.paceTo!==null?[{from:opts.paceFrom,to:opts.paceTo}]:(opts.paceFrom!==null?[{from:opts.paceFrom,to:opts.paceFrom}]:[])):
@@ -3377,6 +3574,7 @@ function mapCtrlHTML(mapId,showGPS){
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${recenterBtn}
     ${mapId==='live-map'?gpsBtn:''}
+    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Toggle surface type" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.showSurface?'color:var(--accent);border-color:var(--accent3);':''}">SURF</button>`:''}
   </div>`;
 }
 function zoomBtnsHTML(mapId){return mapCtrlHTML(mapId,false);}
@@ -5011,6 +5209,31 @@ function tStopsShell(r){
         ${UI.opStatus==='error'?`<div class="banner err" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✗</span><span>${UI.opMsg}</span></div>`:''}
         ${UI.tsStatus==='done'?`<div class="banner ok" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✓</span><span>${UI.tsMsg}</span></div>`:''}
         ${UI.tsStatus==='error'?`<div class="banner err" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✗</span><span>${UI.tsMsg}</span></div>`:''}
+      </div>
+      <div class="card">
+        <div class="secrow">
+          <div class="ctitle">Surface Data</div>
+          <button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData()" ${UI.surfaceStatus==='loading'?'disabled':''}>
+            ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':r&&r.surfaceSegs?'↺ Refresh':'⛰ Fetch Surface'}
+          </button>
+        </div>
+        ${UI.surfaceStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="surface-status-msg">${UI.surfaceMsg}</span></div>`:''}
+        ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
+        ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
+        ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle on desktop and stops maps with the SURF button.</p>`:''}
+        ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${
+          Object.entries(SURFACE_COLS).map(([cat,col])=>{
+            const count=r.surfaceSegs.filter(s=>s.cat===cat).length;
+            if(!count)return'';
+            const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};
+            const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);
+            return `<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;
+          }).join('')
+        }</div>
+        <label style="font-size:14px;color:var(--text3);margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="chk-show-surface" ${UI.showSurface?'checked':''} onchange="UI.showSurface=this.checked;['desktop-map','stops-map'].forEach(id=>{redrawMap(id);const b=document.getElementById('btn-surface-'+id);if(b){b.style.color=UI.showSurface?'var(--accent)':'';b.style.borderColor=UI.showSurface?'var(--accent3)':'';}});">
+          Show on map
+        </label>`:''}
       </div>
       ${r.stops.length?`<div class="card">
         <div class="secrow">
