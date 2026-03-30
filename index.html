@@ -510,7 +510,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,danger:false},
-  helloExpanded:null,helloDetailOpen:false,
+  helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,
   powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,
   showSurface:false,surfaceStatus:'idle',surfaceMsg:''};
 function todayStr(){return new Date().toISOString().slice(0,10);}
@@ -3166,10 +3166,11 @@ function drawMap(cvs,r,opts){
   // Day-split markers
   if(!UI.hiddenMapTypes.has('daymarkers')&&r.numDays&&r.numDays>=2){
     const markers=computeDayMarkers(r);
+    ctx.save();
     markers.forEach(m=>{
       const closest=r.points.reduce((b,p)=>Math.abs(p.dist-m.dist)<Math.abs(b.dist-m.dist)?p:b,r.points[0]);
       const mx=px(closest.lon),my=py(closest.lat);
-      const s=isDesktop?9:7; // half-size of diamond
+      const s=isDesktop?9:7;
       // Dark outline
       ctx.beginPath();ctx.moveTo(mx,my-s-1.5);ctx.lineTo(mx+s+1.5,my);ctx.lineTo(mx,my+s+1.5);ctx.lineTo(mx-s-1.5,my);ctx.closePath();
       ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fill();
@@ -3177,11 +3178,12 @@ function drawMap(cvs,r,opts){
       ctx.beginPath();ctx.moveTo(mx,my-s);ctx.lineTo(mx+s,my);ctx.lineTo(mx,my+s);ctx.lineTo(mx-s,my);ctx.closePath();
       ctx.fillStyle='#f0c040';ctx.fill();
       ctx.strokeStyle='#fff';ctx.lineWidth=1.2;ctx.stroke();
-      // Day number label
-      ctx.fillStyle='#000';ctx.font=`bold ${isDesktop?10:8}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      // Day label
+      ctx.fillStyle='#000';ctx.font=`bold ${isDesktop?10:8}px sans-serif`;
+      ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText(m.dayNum,mx,my);
-      ctx.textAlign='left';ctx.textBaseline='alphabetic';
     });
+    ctx.restore();
   }
 
   // Pace segment overlays — orange highlight over route line
@@ -3189,14 +3191,18 @@ function drawMap(cvs,r,opts){
     (opts.paceTo!==undefined&&opts.paceTo!==null?[{from:opts.paceFrom,to:opts.paceTo}]:(opts.paceFrom!==null?[{from:opts.paceFrom,to:opts.paceFrom}]:[])):
     (r.paceSegs||[]);
   const hikeHidden=UI.hiddenMapTypes.has('hike')&&opts.paceFrom===undefined;
-  if(!hikeHidden)paceSegs.forEach(seg=>{
+  if(!hikeHidden)paceSegs.forEach((seg,si)=>{
     if(seg.from===null||seg.from===undefined)return;
     const segPts=pts.filter(p=>p.dist>=seg.from&&p.dist<=seg.to);
     if(segPts.length<2)return;
+    const isHighlightedSeg=UI._highlightPaceIdx!==null&&(r.paceSegs||[])[UI._highlightPaceIdx]===seg;
     ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
     for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
-    ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=7;ctx.stroke();
-    ctx.strokeStyle='#f97316';ctx.lineWidth=4;ctx.stroke();
+    ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=isHighlightedSeg?11:7;ctx.stroke();
+    ctx.strokeStyle=isHighlightedSeg?'#fff':'#f97316';ctx.lineWidth=isHighlightedSeg?7:4;ctx.stroke();
+    ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
+    for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
+    if(isHighlightedSeg){ctx.strokeStyle='#f97316';ctx.lineWidth=4;ctx.stroke();}
     // Start/end markers
     [segPts[0],segPts[segPts.length-1]].forEach((p,pi)=>{
       ctx.beginPath();ctx.arc(px(p.lon),py(p.lat),6,0,Math.PI*2);
@@ -6362,30 +6368,37 @@ function tRoutes(r){
     </label>
     ${r.adaptiveSpeed?`<p id="adaptive-speed-desc" style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">Compares your actual pace to estimates and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Calibration window scales with ride length — shorter rides adjust every ~10 min, longer rides every ~30 min. Disable to lock the factor.</p>`:'<p id="adaptive-speed-desc" style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;"></p>'}
   </div>
-  <div class="card">
-    <div class="secrow"><div class="ctitle">Hike-a-bike Sections</div>
+  <div class="card" style="padding:${UI.hikeExpanded?'14px 12px':'10px 12px'};">
+    <div id="hike-card-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${UI.hikeExpanded?'margin-bottom:10px;':''}">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:16px;color:var(--text3);">${UI.hikeExpanded?'▼':'▶'}</span>
+        <span class="ctitle" style="margin-bottom:0;">Hike-a-bike Sections</span>
+        ${(r.paceSegs||[]).length?`<span style="font-size:13px;color:var(--text3);">(${(r.paceSegs||[]).length})</span>`:''}
+      </div>
       <div style="display:flex;gap:5px;">
-        <button class="btn btn-sm" id="btn-autodetect-hike" onclick="openHikeReview()" title="Auto-detect from gradient">&#9741; Detect</button>
-        <button class="btn btn-sm btn-p" id="btn-add-pace">+ Add</button>
+        <button class="btn btn-sm" id="btn-autodetect-hike" onclick="event.stopPropagation();openHikeReview()" title="Auto-detect from gradient">&#9741; Detect</button>
+        <button class="btn btn-sm btn-p" id="btn-add-pace" onclick="event.stopPropagation()">+ Add</button>
       </div>
     </div>
+    ${UI.hikeExpanded?`
     <p style="font-size:15px;color:var(--text3);margin-bottom:8px;">Define particularly slow sections that are not estimated well by route planning apps</p>
     ${(r.paceSegs||[]).length===0?'<p style="font-size:15px;color:var(--text3);">No hike-a-bike sections for <em>'+(r.label||r.name)+'</em> yet.</p>':
       (r.paceSegs||[]).map((seg,i)=>{
         const dist=seg.to-seg.from;
         const spd=(dist/seg.hours).toFixed(1);
         const hh=Math.floor(seg.hours),mm=Math.round((seg.hours-hh)*60);
-        return`<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:5px;">
-          <div>
-            <div style="font-size:16px;font-weight:600;color:var(--text);">${seg.name||('Section '+(i+1))} <span style="font-size:13px;color:var(--text3);">${seg.from.toFixed(1)}–${seg.to.toFixed(1)} km (${dist.toFixed(1)} km)</span></div>
-            <div style="font-size:14px;color:var(--accent);font-family:var(--font);">${hh}h ${mm}m · ${spd} km/h avg</div>
-          </div>
-          <div style="display:flex;gap:5px;">
-            <button class="btn btn-sm edit-pace" data-idx="${i}" title="Rename" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);">${ICON_EDIT}</button>
-            <button class="btn btn-r btn-sm del-pace" data-idx="${i}">✕</button>
-          </div>
-        </div>`;
+        return'<div class="pace-seg-row" data-idx="'+i+'" style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:5px;cursor:pointer;" title="Click to highlight on map">'
+          +'<div>'
+            +'<div style="font-size:16px;font-weight:600;color:var(--text);"><span style="color:#f97316;">🥾</span> '+(seg.name||('Section '+(i+1)))+' <span style="font-size:13px;color:var(--text3);">'+seg.from.toFixed(1)+'\u2013'+seg.to.toFixed(1)+' km ('+dist.toFixed(1)+' km)</span></div>'
+            +'<div style="font-size:14px;color:var(--accent);font-family:var(--font);">'+hh+'h '+mm+'m \u00b7 '+spd+' km/h avg</div>'
+          +'</div>'
+          +'<div style="display:flex;gap:5px;">'
+            +'<button class="btn btn-sm edit-pace" data-idx="'+i+'" title="Rename" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);">'+ICON_EDIT+'</button>'
+            +'<button class="btn btn-r btn-sm del-pace" data-idx="'+i+'">\u2715</button>'
+          +'</div>'
+        +'</div>';
       }).join('')}
+    `:''}
   </div>
   `}
 
@@ -8715,6 +8728,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.isTrusted&&(e.target.id==='btn-sim-pause'||e.target.closest('#btn-sim-pause')===e.target.parentElement)){simPause();return;}
   if(e.isTrusted&&(e.target.id==='btn-sim-stop'||e.target.closest('#btn-sim-stop')===e.target.parentElement)){const b=document.getElementById('btn-sim-stop');if(b&&!b.disabled)simStop();return;}
   if(e.target.closest('#route-mgmt-hdr')){UI.routeMgmtExpanded=!UI.routeMgmtExpanded;render();return;}
+  if(e.target.closest('#hike-card-hdr')&&!e.target.closest('#btn-add-pace')&&!e.target.closest('#btn-autodetect-hike')){UI.hikeExpanded=!UI.hikeExpanded;render();return;}
   if(e.target.closest('#hello-hdr')){UI.helloExpanded=!(UI.helloExpanded!==null?UI.helloExpanded:!cur());render();return;}
   if(e.target.closest('#hello-more-toggle')){
     UI.helloDetailOpen=!UI.helloDetailOpen;
@@ -8897,6 +8911,26 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   if(e.target.closest('#btn-add-pace')&&r){openPaceModal(-1);return;}
+  const psr=e.target.closest('.pace-seg-row');
+  if(psr&&r&&!e.target.closest('.edit-pace')&&!e.target.closest('.del-pace')){
+    const idx=+psr.dataset.idx;
+    const seg=(r.paceSegs||[])[idx];
+    if(seg&&IS_DESKTOP()){
+      UI._highlightPaceIdx=UI._highlightPaceIdx===idx?null:idx;
+      // Zoom desktop map to the section
+      const cvs=document.getElementById('desktop-map');
+      if(cvs&&UI._highlightPaceIdx!==null){
+        const state=_ms['desktop-map']||(_ms['desktop-map']={zoom:1,cx:null,cy:null});
+        const midDist=(seg.from+seg.to)/2;
+        const midPt=r.points.reduce((b,p)=>Math.abs(p.dist-midDist)<Math.abs(b.dist-midDist)?p:b,r.points[0]);
+        state.cx=midPt.lon;state.cy=midPt.lat;
+        const spanKm=Math.max(1,(seg.to-seg.from)*3);
+        state.zoom=zoomForKmWidth('desktop-map',spanKm);
+      }
+      renderDesktopMap();
+    }
+    return;
+  }
   if(e.target.closest('.edit-pace')&&r){
     const idx=+e.target.closest('.edit-pace').dataset.idx;
     openPaceModal(idx);return;}
