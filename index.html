@@ -1646,21 +1646,58 @@ let _hikeReview = null;
 function detectHikeCandidates(r, gradThresh, minLenM) {
   const pts = r.points;
   if (!pts || pts.length < 3) return [];
-  const minLenKm = minLenM / 1000;
-  const candidates = [];
-  const SMOOTH_M = 50;
-  const grad = new Float32Array(pts.length);
-  for (let i = 0; i < pts.length; i++) {
-    let j = i;
-    while (j < pts.length - 1 && (pts[j].dist - pts[i].dist) * 1000 < SMOOTH_M) j++;
-    const dx = (pts[j].dist - pts[i].dist) * 1000;
-    const dz = pts[j].ele - pts[i].ele;
-    grad[i] = dx > 1 ? (dz / dx) * 100 : 0;
+
+  // Window-based gradient: compute grade over a fixed-distance window regardless
+  // of GPX point density. Window size = 2x minLenM so we detect sections
+  // at least that long. Minimum window 30m to avoid noise on dense GPX.
+  const WIN_M = Math.max(30, minLenM);
+  const winKm = WIN_M / 1000;
+
+  // For each point, find the point ~WIN_M ahead and compute grade between them.
+  // Also look WIN_M behind for a symmetric estimate, take the steeper of the two.
+  const n = pts.length;
+  const grad = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    // Forward window
+    let jf = i;
+    while (jf < n - 1 && (pts[jf].dist - pts[i].dist) < winKm) jf++;
+    const dxf = (pts[jf].dist - pts[i].dist) * 1000;
+    const gf = dxf > 5 ? (pts[jf].ele - pts[i].ele) / dxf * 100 : 0;
+    // Backward window
+    let jb = i;
+    while (jb > 0 && (pts[i].dist - pts[jb].dist) < winKm) jb--;
+    const dxb = (pts[i].dist - pts[jb].dist) * 1000;
+    const gb = dxb > 5 ? (pts[i].ele - pts[jb].ele) / dxb * 100 : 0;
+    // Use the steeper of forward/backward (catches peaks of climbs)
+    grad[i] = Math.max(gf, gb);
   }
+
+  // Flag points above threshold, then merge runs with a gap tolerance.
+  // Gap tolerance = minLenM so short flat/descent interruptions don't split a climb.
+  const GAP_M = Math.max(25, minLenM * 0.5);
+  const flagged = new Uint8Array(n);
+  for (let i = 0; i < n; i++) flagged[i] = grad[i] >= gradThresh ? 1 : 0;
+
+  // Bridge gaps: if a run of sub-threshold points is shorter than GAP_M, flag them too
+  let gapStart = -1;
+  for (let i = 0; i < n; i++) {
+    if (!flagged[i]) {
+      if (gapStart < 0) gapStart = i;
+    } else {
+      if (gapStart >= 0) {
+        const gapM = (pts[i].dist - pts[gapStart].dist) * 1000;
+        if (gapM <= GAP_M) for (let k = gapStart; k < i; k++) flagged[k] = 1;
+        gapStart = -1;
+      }
+    }
+  }
+
+  // Collect contiguous flagged runs into candidates
+  const candidates = [];
   let inRun = false, runStart = 0, runMaxGrad = 0, runSumGrad = 0, runCount = 0;
   const closeRun = (endIdx) => {
     const lenKm = pts[endIdx].dist - pts[runStart].dist;
-    if (lenKm >= minLenKm) {
+    if (lenKm * 1000 >= minLenM) {
       let surfaceCat = null;
       if (r.surfaceSegs && r.surfaceSegs.length) {
         const midDist = (pts[runStart].dist + pts[endIdx].dist) / 2;
@@ -1672,15 +1709,15 @@ function detectHikeCandidates(r, gradThresh, minLenM) {
         lenKm, surfaceCat });
     }
   };
-  for (let i = 0; i < pts.length; i++) {
-    if (grad[i] >= gradThresh) {
+  for (let i = 0; i < n; i++) {
+    if (flagged[i]) {
       if (!inRun) { inRun = true; runStart = i; runMaxGrad = 0; runSumGrad = 0; runCount = 0; }
-      runMaxGrad = Math.max(runMaxGrad, grad[i]); runSumGrad += grad[i]; runCount++;
+      if (grad[i] > 0) { runMaxGrad = Math.max(runMaxGrad, grad[i]); runSumGrad += grad[i]; runCount++; }
     } else {
       if (inRun) { inRun = false; closeRun(i - 1); }
     }
   }
-  if (inRun) closeRun(pts.length - 1);
+  if (inRun) closeRun(n - 1);
   return candidates;
 }
 
@@ -1693,7 +1730,7 @@ function surfaceCatLabel(cat) {
 
 function openHikeReview() {
   const r = cur(); if (!r) return;
-  if (!_hikeReview) _hikeReview = { candidates:[], idx:0, gradThresh:20, minLenM:100, walkKmh:3.5 };
+  if (!_hikeReview) _hikeReview = { candidates:[], idx:0, gradThresh:8, minLenM:25, walkKmh:3.5 };
   _hikeReview.candidates = detectHikeCandidates(r, _hikeReview.gradThresh, _hikeReview.minLenM);
   renderHikeReview();
 }
@@ -1732,14 +1769,14 @@ function renderHikeReview() {
         <div>
           <div style="font-size:9px;color:#555;font-family:var(--font);">Min gradient</div>
           <div style="display:flex;align-items:center;gap:3px;">
-            <input type="range" id="hkr-grad" min="10" max="35" step="1" value="${hr.gradThresh}" style="width:54px;accent-color:var(--accent);">
+            <input type="range" id="hkr-grad" min="5" max="35" step="1" value="${hr.gradThresh}" style="width:54px;accent-color:var(--accent);">
             <span id="hkr-grad-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:26px;">${hr.gradThresh}%</span>
           </div>
         </div>
         <div>
           <div style="font-size:9px;color:#555;font-family:var(--font);">Min length</div>
           <div style="display:flex;align-items:center;gap:3px;">
-            <input type="range" id="hkr-len" min="50" max="500" step="25" value="${hr.minLenM}" style="width:54px;accent-color:var(--accent);">
+            <input type="range" id="hkr-len" min="25" max="500" step="25" value="${hr.minLenM}" style="width:54px;accent-color:var(--accent);">
             <span id="hkr-len-lbl" style="font-size:12px;font-weight:600;color:var(--accent);font-family:var(--font);min-width:34px;">${hr.minLenM}m</span>
           </div>
         </div>
