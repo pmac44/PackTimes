@@ -5447,9 +5447,9 @@ function tLiveShell(r){
     const key=(UI.liveStatSlots||['done','left','finish','speed','rideavg'])[slotIdx]||STAT_ORDER[slotIdx];
     const stat=LIVE_STATS[key]||LIVE_STATS.done;
     const valStr=stat.val();
-    return`<div style="flex:1;background:#000;border:1px solid #222;border-radius:6px;padding:4px 8px;display:flex;align-items:baseline;justify-content:center;gap:5px;cursor:pointer;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
-      <div style="font-size:11px;color:#888;font-family:var(--font);letter-spacing:.3px;white-space:nowrap;flex-shrink:0;" id="live-lbl-slot${slotIdx}">${stat.label}</div>
-      <div style="font-size:20px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:15px;font-weight:500;color:var(--text);font-family:var(--sans);margin-left:1px;">${stat.unit}</span>`:''}</div>
+    return`<div style="flex:1;background:#000;border:1px solid #222;border-radius:6px;padding:4px 7px;cursor:pointer;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
+      <div style="font-size:10px;color:#666;font-family:var(--font);letter-spacing:.3px;white-space:nowrap;" id="live-lbl-slot${slotIdx}">${stat.label}</div>
+      <div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${stat.unit}</span>`:''}</div>
     </div>`;
   };
   // Sensor pill — power or HR
@@ -5466,11 +5466,11 @@ function tLiveShell(r){
   const sensorLabelCol=_pz?_zText:sConnected?'#fbbf24':'#888';
   const sensorValCol=_pz?(_pz.textDark?'#000':'#fff'):sConnected?'#fbbf24':'#fff';
   const sensorLabel=_pz?_pz.label:sType==='power'?'Watts':'bpm';
-  const sensorPill=`<div style="flex:1;background:${sensorBg};border:2px solid ${sensorBorder};border-radius:6px;padding:4px 8px;display:flex;align-items:baseline;justify-content:center;gap:5px;cursor:pointer;transition:all .3s;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" id="live-sensor-pill">
-    <div style="font-size:11px;color:${sensorLabelCol};font-family:var(--font);letter-spacing:.3px;font-weight:${_pz?'700':'400'};white-space:nowrap;flex-shrink:0;" id="live-sensor-lbl">${sensorLabel}</div>
+  const sensorPill=`<div style="flex:1;background:${sensorBg};border:2px solid ${sensorBorder};border-radius:6px;padding:4px 7px;cursor:pointer;transition:background .3s,border-color .3s;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" id="live-sensor-pill">
+    <div style="font-size:10px;color:${sensorLabelCol};font-family:var(--font);letter-spacing:.3px;font-weight:${_pz?'700':'400'};white-space:nowrap;" id="live-sensor-lbl">${sensorLabel}</div>
     ${sConnected
-      ?`<div style="font-size:20px;font-weight:500;color:${sensorValCol};font-family:var(--sans);white-space:nowrap;" id="live-sensor-val">${sVal}${sSub?'<span style="font-size:13px;margin-left:3px;">'+ sSub +'</span>':''}</div><div id="live-sensor-sub" style="display:none;"></div>`
-      :`<div style="font-size:20px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub" style="display:none;"></div>`}
+      ?`<div style="font-size:19px;font-weight:500;color:${sensorValCol};font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-sensor-val">${sVal}${sSub?'<span style="font-size:13px;margin-left:3px;">'+ sSub +'</span>':''}</div><div id="live-sensor-sub" style="display:none;"></div>`
+      :`<div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub" style="display:none;"></div>`}
   </div>`;
   const progressOverlay=`<div class="live-progress-bar">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">
@@ -7331,7 +7331,7 @@ function updateLive(){
     if(el){
       const u=UNIT_MAP[key]||'';
       const v=fn();
-      const html=v+(u?`<span style="font-size:15px;font-weight:500;color:var(--text);font-family:var(--sans);margin-left:1px;">${u}</span>`:'');
+      const html=v+(u?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${u}</span>`:'');
       if(el.innerHTML!==html)el.innerHTML=html;
     }
   });
