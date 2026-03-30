@@ -4591,6 +4591,7 @@ function renderDesktopMap(){
         if(allHidden2){filtered2.forEach(t=>UI.hiddenMapTypes.delete(t.type));}
         else{filtered2.forEach(t=>UI.hiddenMapTypes.add(t.type));}
         legend.dataset.rendered='';
+        saveAll();
         renderDesktopMap();
         return;
       }
@@ -4599,6 +4600,8 @@ function renderDesktopMap(){
       const t=li.dataset.ltype;
       if(UI.hiddenMapTypes.has(t))UI.hiddenMapTypes.delete(t);
       else UI.hiddenMapTypes.add(t);
+      legend.dataset.rendered='';
+      saveAll();
       renderDesktopMap();
     });
   }
@@ -5341,7 +5344,7 @@ const LAYER_TYPES=[
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['kmmarkers','daymarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
+  const PRIORITY=['kmmarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
