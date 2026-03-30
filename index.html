@@ -1553,7 +1553,20 @@ async function fetchSurfaceData(){
     const lats=chunk.map(p=>p.lat),lons=chunk.map(p=>p.lon);
     const buf=0.001; // ~110m
     const bb=`${(Math.min(...lats)-buf).toFixed(5)},${(Math.min(...lons)-buf).toFixed(5)},${(Math.max(...lats)+buf).toFixed(5)},${(Math.max(...lons)+buf).toFixed(5)}`;
-    const q=`[out:json][timeout:25];way[highway~"^(primary|secondary|tertiary|residential|unclassified|service|living_street|track|path|footway|bridleway|cycleway|trunk|motorway)$"](${bb});out geom tags;`;
+    const q=`[out:json][timeout:30][maxsize:16000000];(`+
+      `way["highway"="primary"](${bb});`+
+      `way["highway"="secondary"](${bb});`+
+      `way["highway"="tertiary"](${bb});`+
+      `way["highway"="unclassified"](${bb});`+
+      `way["highway"="residential"](${bb});`+
+      `way["highway"="service"](${bb});`+
+      `way["highway"="track"](${bb});`+
+      `way["highway"="path"](${bb});`+
+      `way["highway"="footway"](${bb});`+
+      `way["highway"="bridleway"](${bb});`+
+      `way["highway"="cycleway"](${bb});`+
+      `way["highway"="trunk"](${bb});`+
+      `);out geom qt tags;`;
 
     let fetched=false;
     for(const mirror of MIRRORS){
@@ -1797,7 +1810,7 @@ function renderHikeReview() {
   });
 }
 
-const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+const MIRRORS=['https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
 async function fetchOverpass(){
   const r=cur();if(!r||!r.points.length)return;
   UI.opStatus='loading';UI.opMsg='Searching OSM…';renderKeepScroll();
@@ -5397,31 +5410,6 @@ function tStopsShell(r){
         ${UI.tsStatus==='done'?`<div class="banner ok" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✓</span><span>${UI.tsMsg}</span></div>`:''}
         ${UI.tsStatus==='error'?`<div class="banner err" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✗</span><span>${UI.tsMsg}</span></div>`:''}
       </div>
-      <div class="card">
-        <div class="secrow">
-          <div class="ctitle">Surface Data</div>
-          <button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData()" ${UI.surfaceStatus==='loading'?'disabled':''}>
-            ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':r&&r.surfaceSegs?'↺ Refresh':'⛰ Fetch Surface'}
-          </button>
-        </div>
-        ${UI.surfaceStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="surface-status-msg">${UI.surfaceMsg}</span></div>`:''}
-        ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
-        ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
-        ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle on desktop and stops maps with the SURF button.</p>`:''}
-        ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${
-          Object.entries(SURFACE_COLS).map(([cat,col])=>{
-            const count=r.surfaceSegs.filter(s=>s.cat===cat).length;
-            if(!count)return'';
-            const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};
-            const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);
-            return `<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;
-          }).join('')
-        }</div>
-        <label style="font-size:14px;color:var(--text3);margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="chk-show-surface" ${UI.showSurface?'checked':''} onchange="UI.showSurface=this.checked;['desktop-map','stops-map'].forEach(id=>{redrawMap(id);const b=document.getElementById('btn-surface-'+id);if(b){b.style.color=UI.showSurface?'var(--accent)':'';b.style.borderColor=UI.showSurface?'var(--accent3)':'';}});">
-          Show on map
-        </label>`:''}
-      </div>
       ${r.stops.length?`<div class="card">
         <div class="secrow">
           <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).length:r.stops.length})</div>
@@ -6198,6 +6186,31 @@ function tRoutes(r){
       +'</div>';
     })()}
   </div>
+  <div class="card">
+        <div class="secrow">
+          <div class="ctitle">Surface Data</div>
+          <button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData()" ${UI.surfaceStatus==='loading'?'disabled':''}>
+            ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':r&&r.surfaceSegs?'↺ Refresh':'⛰ Fetch Surface'}
+          </button>
+        </div>
+        ${UI.surfaceStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="surface-status-msg">${UI.surfaceMsg}</span></div>`:''}
+        ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
+        ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
+        ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle on desktop and stops maps with the SURF button.</p>`:''}
+        ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${
+          Object.entries(SURFACE_COLS).map(([cat,col])=>{
+            const count=r.surfaceSegs.filter(s=>s.cat===cat).length;
+            if(!count)return'';
+            const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};
+            const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);
+            return `<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;
+          }).join('')
+        }</div>
+        <label style="font-size:14px;color:var(--text3);margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="chk-show-surface" ${UI.showSurface?'checked':''} onchange="UI.showSurface=this.checked;['desktop-map','stops-map'].forEach(id=>{redrawMap(id);const b=document.getElementById('btn-surface-'+id);if(b){b.style.color=UI.showSurface?'var(--accent)':'';b.style.borderColor=UI.showSurface?'var(--accent3)':'';}});">
+          Show on map
+        </label>`:''}
+      </div>
   <div class="card">
     <div class="ctitle">Speed Factor</div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
