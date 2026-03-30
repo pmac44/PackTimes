@@ -1432,14 +1432,14 @@ function shopSt(s,r){
 // ─── Surface type fetch ──────────────────────────────────────────────────────
 // Colour for each surface category used in map overlay
 const SURFACE_COLS={
-  road:'#94a3b8',       // sealed road — blue-grey
-  road_minor:'#b0bec5', // residential/service — lighter
-  grade1:'#d4b483',     // compacted gravel — tan
-  grade2:'#c4924a',     // gravel/dirt — orange-tan
-  grade3:'#a0672a',     // dirt — brown
-  grade4:'#7a4a1a',     // rough dirt/grass — dark brown
-  grade5:'#c0392b',     // barely passable — red-brown
-  path:'#e74c3c',       // path/footway/singletrack — red
+  road:'#4a6080',       // sealed road — dark blue-grey
+  road_minor:'#c8a97a', // minor/unsealed road — lightest brown
+  grade1:'#b8925a',     // track G1 compacted — light brown
+  grade2:'#a07840',     // track G2 gravel/dirt — medium brown
+  grade3:'#886030',     // track G3 dirt — brown
+  grade4:'#704820',     // track G4 rough — dark brown
+  grade5:'#583010',     // track G5 barely passable — darkest brown
+  path:'#c0392b',       // path/footway/singletrack — red (distinct, most challenging)
 };
 
 function surfaceCategory(highway,tracktype,surface){
@@ -1497,13 +1497,10 @@ async function fetchSurfaceData(){
   if(!r||r.points.length<2)return;
   if(r.surfaceSegs&&r.surfaceSegs.length){
     // Already fetched — just toggle display
-    UI.showSurface=!UI.showSurface;
+    if(UI.hiddenMapTypes.has('surface'))UI.hiddenMapTypes.delete('surface');
+    else UI.hiddenMapTypes.add('surface');
     ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
-    // Update SURF button active state
-    ['desktop-map','stops-map'].forEach(id=>{
-      const b=document.getElementById('btn-surface-'+id);
-      if(b){b.style.color=UI.showSurface?'var(--accent)':'';b.style.borderColor=UI.showSurface?'var(--accent3)':'';}
-    });
+    renderDesktopMap();
     return;
   }
   UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data…';renderKeepScroll();
@@ -1613,14 +1610,11 @@ async function fetchSurfaceData(){
   r.surfaceSegs=segs;
   UI.surfaceStatus='done';
   UI.surfaceMsg=`Surface data loaded (${segs.length} segments)`;
-  UI.showSurface=true;
+  UI.hiddenMapTypes.delete('surface'); // show by default after fetch
   await saveAll();
   renderKeepScroll();
-  ['desktop-map','stops-map'].forEach(id=>{
-    redrawMap(id);
-    const b=document.getElementById('btn-surface-'+id);
-    if(b){b.style.color='var(--accent)';b.style.borderColor='var(--accent3)';}
-  });
+  ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
+  renderDesktopMap();
 }
 
 
@@ -1687,8 +1681,9 @@ function renderHikeReview() {
   if (!el) {
     el = document.createElement('div');
     el.id = 'hike-review-overlay';
-    el.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;overflow:hidden;';
-    document.body.appendChild(el);
+    // Outer backdrop — full screen, high z-index to beat map canvas stacking contexts
+    el.style.cssText = 'position:fixed;inset:0;z-index:10500;background:rgba(0,0,0,0.75);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;';
+    document.body.insertAdjacentElement('beforeend', el);
   }
   const hr = _hikeReview;
   const r = cur();
@@ -1701,7 +1696,8 @@ function renderHikeReview() {
   const estHours = fc ? fc.lenKm / hr.walkKmh : 0;
   const hh = Math.floor(estHours), mm = Math.round((estHours - hh) * 60);
 
-  el.innerHTML = `<div style="padding:12px 16px;background:#0d1a0d;border-bottom:1px solid #1a2d1a;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+  el.innerHTML = `<div style="width:100%;max-width:560px;min-height:100vh;background:#0d1a0d;display:flex;flex-direction:column;">
+    <div style="padding:12px 16px;background:#0d1a0d;border-bottom:1px solid #1a2d1a;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
       <div style="font-size:17px;font-weight:600;color:var(--accent);font-family:var(--sans);">Hike-a-bike Candidates</div>
       <button id="hkr-close" style="background:rgba(248,113,113,0.15);border:2px solid rgba(248,113,113,0.6);border-radius:50%;color:#f87171;font-size:20px;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#x2715;</button>
     </div>
@@ -1764,7 +1760,8 @@ function renderHikeReview() {
     </div>
     <div style="padding:10px 16px;background:#0d1a0d;border-top:1px solid #1a2d1a;flex-shrink:0;">
       <button id="hkr-done" style="width:100%;background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.5);border-radius:8px;color:var(--accent);font-size:16px;font-weight:600;padding:12px 0;cursor:pointer;">Done</button>
-    </div>`;
+    </div>
+  </div>`;
 
   const redetect = () => {
     _hikeReview.candidates = detectHikeCandidates(r, _hikeReview.gradThresh, _hikeReview.minLenM);
@@ -3072,7 +3069,7 @@ function drawMap(cvs,r,opts){
   }
 
   // Surface type overlay — drawn on top of day/night line when toggled on
-  if(UI.showSurface&&r.surfaceSegs&&r.surfaceSegs.length&&(id==='desktop-map'||id==='stops-map')){
+  if(!UI.hiddenMapTypes.has('surface')&&r.surfaceSegs&&r.surfaceSegs.length&&(id==='desktop-map'||id==='stops-map')){
     const segs=r.surfaceSegs;
     for(const seg of segs){
       const segPts=pts.filter(p=>p.dist>=seg.fromDist-0.05&&p.dist<=seg.toDist+0.05);
@@ -3774,7 +3771,7 @@ function mapCtrlHTML(mapId,showGPS){
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${recenterBtn}
     ${mapId==='live-map'?gpsBtn:''}
-    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Toggle surface type" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.showSurface?'color:var(--accent);border-color:var(--accent3);':''}">SURF</button>`:''}
+    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Toggle surface type" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${!UI.hiddenMapTypes.has('surface')&&r&&r.surfaceSegs?'color:var(--accent);border-color:var(--accent3);':''}">SURF</button>`:''}
   </div>`;
 }
 function zoomBtnsHTML(mapId){return mapCtrlHTML(mapId,false);}
@@ -4420,6 +4417,13 @@ function renderDesktopMap(){
           <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${allVisible?'rgba(255,255,255,0.85)':'none'}" stroke="rgba(255,255,255,0.85)" stroke-width="1.5"/></svg>
           <span style="font-size:12px;color:${allHidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;font-weight:600;">All</span>
         </div>`
+        +(r.surfaceSegs&&r.surfaceSegs.length?(()=>{
+          const hidden=UI.hiddenMapTypes.has('surface');
+          return`<div class="map-legend-item" data-ltype="surface" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);margin-bottom:2px;opacity:${hidden?0.45:1};">
+            <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><rect x="1" y="4" width="10" height="4" rx="2" fill="${hidden?'none':'#b8925a'}" stroke="#b8925a" stroke-width="1.2"/></svg>
+            <span style="font-size:12px;color:${hidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;">Surface</span>
+          </div>`;
+        })():'')
         +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
         return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
@@ -5343,7 +5347,14 @@ function tStopsShell(r){
                 <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">${t.label}</span>
               </div>`;
             };
-            return allDot+filtered.map(dotHTML).join('');
+            const surfacePill=(r.surfaceSegs&&r.surfaceSegs.length)?(()=>{
+              const hidden=UI.hiddenMapTypes.has('surface');
+              return`<div class="mob-layer-btn" data-ltype="surface" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;background:rgba(0,0,0,0.52);border-radius:20px;opacity:${hidden?0.45:1};margin-bottom:2px;">
+                <svg width="14" height="8" viewBox="0 0 14 8" style="flex-shrink:0;"><rect x="1" y="2" width="12" height="4" rx="2" fill="${hidden?'none':'#b8925a'}" stroke="${hidden?'#b8925a':'#fff'}" stroke-width="1.2"/></svg>
+                <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">Surface</span>
+              </div>`;
+            })():'';
+            return allDot+surfacePill+filtered.map(dotHTML).join('');
           })()}
         </div>
         <div id="mobile-map-legend-r" style="display:none;"></div>`:''}
@@ -6196,7 +6207,7 @@ function tRoutes(r){
         ${UI.surfaceStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="surface-status-msg">${UI.surfaceMsg}</span></div>`:''}
         ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
         ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
-        ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle on desktop and stops maps with the SURF button.</p>`:''}
+        ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Once loaded, toggle via the Surface layer in the map legend.</p>`:''}
         ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${
           Object.entries(SURFACE_COLS).map(([cat,col])=>{
             const count=r.surfaceSegs.filter(s=>s.cat===cat).length;
@@ -6205,11 +6216,7 @@ function tRoutes(r){
             const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);
             return `<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;
           }).join('')
-        }</div>
-        <label style="font-size:14px;color:var(--text3);margin-top:6px;display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="chk-show-surface" ${UI.showSurface?'checked':''} onchange="UI.showSurface=this.checked;['desktop-map','stops-map'].forEach(id=>{redrawMap(id);const b=document.getElementById('btn-surface-'+id);if(b){b.style.color=UI.showSurface?'var(--accent)':'';b.style.borderColor=UI.showSurface?'var(--accent3)':'';}});">
-          Show on map
-        </label>`:''}
+        }</div>`:''}
       </div>
   <div class="card">
     <div class="ctitle">Speed Factor</div>
@@ -8168,7 +8175,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Mobile "All" layer toggle
   if(e.target.closest('#mob-layer-all')){
     const r2=cur();if(!r2)return;
+    const r2surf=cur();
     const allTypes=sortedLayers(r2).map(t=>t.type);
+    if(r2surf&&r2surf.surfaceSegs&&r2surf.surfaceSegs.length)allTypes.unshift('surface');
     const allHidden=allTypes.every(t=>UI.hiddenMapTypes.has(t));
     if(allHidden){allTypes.forEach(t=>UI.hiddenMapTypes.delete(t));}
     else{allTypes.forEach(t=>UI.hiddenMapTypes.add(t));}
