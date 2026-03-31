@@ -1029,9 +1029,13 @@ const FLAT_KMH_BY_SURFACE={
   grade1:12,grade2:12,grade3:9,grade4:4,grade5:4,path:4,
   _default:12
 };
+const DESC_FACTOR={
+  road:0.28,road_minor:0.22,grade1:0.18,grade2:0.14,grade3:0.08,grade4:0.04,grade5:0.03,path:0.04,
+  _default:0.12
+};
 const MAX_DESC_KMH={
-  road:55,road_minor:40,grade1:30,grade2:25,grade3:18,grade4:12,grade5:8,path:8,
-  _default:25
+  road:52,road_minor:38,grade1:34,grade2:26,grade3:20,grade4:11,grade5:7,path:8,
+  _default:20
 };
 const RIDER_MULT={
   social: {vam:0.82,spd:0.87},
@@ -1058,10 +1062,12 @@ function segTimeH(dx,dz,cat,rm,lm){
     // Climbing: VAM governs vertical progress; take max of VAM-time and flat-time
     return Math.max(dz/vam, dx/flatSpd);
   } else if(dz<0){
-    // Descending: flat speed with gradient bonus, capped by surface
-    const descGrade=Math.abs(dz)/(dx*1000); // fraction
-    const descSpd=Math.min(flatSpd*(1+descGrade*3),(MAX_DESC_KMH[cat]||MAX_DESC_KMH._default));
-    return dx/Math.max(descSpd,flatSpd*0.5);
+    // Descending: surface-specific gradient bonus
+    // Road can coast freely; rough track requires braking regardless of gradient
+    const descGradePct=Math.abs(dz)/(dx*1000)*100;
+    const df=DESC_FACTOR[cat]||DESC_FACTOR._default;
+    const descSpd=Math.min(flatSpd*(1+descGradePct*df),(MAX_DESC_KMH[cat]||MAX_DESC_KMH._default));
+    return dx/Math.max(descSpd,flatSpd*0.6);
   } else {
     return dx/flatSpd;
   }
@@ -1071,18 +1077,9 @@ function naismith(pts,d,r){
   // Two-regime VAM model. If r provided, uses surface/rider/load presets.
   // Falls back to calibrated Naismith formula if no r or no surface data.
   if(!r||!pts||pts.length<2)return d/21.19+elevGain(pts)/1164;
-  const rm=RIDER_MULT[r.riderPreset||'regular']||RIDER_MULT.regular;
-  const lm=LOAD_MULT[r.loadPreset||'moderate']||LOAD_MULT.moderate;
-  let totalH=0;
-  for(let i=1;i<pts.length;i++){
-    const dx=hav(pts[i-1],pts[i]);
-    if(dx<0.0001)continue;
-    const dz=(pts[i].ele||0)-(pts[i-1].ele||0);
-    const midDist=(pts[i-1].dist+pts[i].dist)/2;
-    const cat=surfaceCatAt(midDist,r)||'grade2';
-    totalH+=segTimeH(dx,dz,cat,rm,lm);
-  }
-  return totalH;
+  // Use buildCumRiding total for consistency (includes elevation smoothing)
+  const cr=buildCumRiding(pts,r.paceSegs||[],r);
+  return cr?cr[cr.length-1]:(d/21.19+elevGain(pts)/1164);
 }
 
 // Per-point cumulative time in hours using the VAM model.
@@ -1092,6 +1089,14 @@ function buildCumRiding(pts,paceSegs,r){
   paceSegs=paceSegs||[];
   const rm=RIDER_MULT[(r&&r.riderPreset)||'regular']||RIDER_MULT.regular;
   const lm=LOAD_MULT[(r&&r.loadPreset)||'moderate']||LOAD_MULT.moderate;
+  // Smooth elevation to reduce GPS noise (route GPX can overcount gain by 1.5-2x)
+  const W=10,n=pts.length;
+  const sEle=new Float64Array(n);
+  for(let i=0;i<n;i++){
+    const lo=Math.max(0,i-W>>1),hi=Math.min(n,i+(W>>1)+1);
+    let s=0;for(let k=lo;k<hi;k++)s+=(pts[k].ele||0);
+    sEle[i]=s/(hi-lo);
+  }
   const out=[0];
   for(let i=1;i<pts.length;i++){
     const dx=hav(pts[i-1],pts[i]);
@@ -1102,7 +1107,7 @@ function buildCumRiding(pts,paceSegs,r){
       const segSpeedKmh=(seg.to-seg.from)/seg.hours;
       timeH=dx/Math.max(segSpeedKmh,0.1);
     } else {
-      const dz=(pts[i].ele||0)-(pts[i-1].ele||0);
+      const dz=sEle[i]-sEle[i-1];
       const cat=surfaceCatAt(midDist,r)||'grade2';
       timeH=segTimeH(dx,dz,cat,rm,lm);
     }
@@ -4160,7 +4165,7 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
   }
   const fallbackName='Stop at '+dist.toFixed(1)+'km';
   const stopName=name||fallbackName;
-  addStop(r,dist,t,stopName,{sleepH:null,departTime:null,ohRaw,ohRules});
+  addStop(r,dist,t,stopName,{sleepH:isWakeMode?null:sleepH,departTime:isWakeMode?departTime:null,ohRaw,ohRules});
   saveAll();closeModal();render();
   if(t==='stop'&&!name){
     const newStop=r.stops.slice().reverse().find(s=>s.type==='stop'&&Math.abs(s.dist-dist)<0.1);
@@ -6086,7 +6091,7 @@ function tRoutes(r){
         ${(r.paceSegs||[]).length?`<span style="font-size:13px;color:var(--text3);">(${(r.paceSegs||[]).length})</span>`:''}
       </div>
       <div style="display:flex;gap:5px;">
-        <button class="btn btn-sm btn-p" id="btn-add-pace" onclick="event.stopPropagation()">+ Add</button>
+        <button class="btn btn-sm btn-p" id="btn-add-pace" onclick="event.stopPropagation();openPaceModal(-1)">+ Add</button>
       </div>
     </div>
     ${UI.hikeExpanded?`<p style="font-size:15px;color:var(--text3);margin-bottom:8px;">Define particularly slow sections that are not estimated well by route planning apps</p>
