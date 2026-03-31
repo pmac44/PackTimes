@@ -389,7 +389,7 @@ select option{background:var(--bg3);}
       </div>
       <div id="m-sleep-wake-row" style="display:none;align-items:center;gap:6px;">
         <span style="font-size:14px;color:#b39ddb;">⏰ Wake:</span>
-        <input type="time" id="m-sleep-wake" value="07:00" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);">
+        <input type="time" id="m-sleep-wake" value="07:00" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;padding:3px 6px;font-family:var(--font);"><span style="font-size:11px;color:var(--text3);margin-left:2px;">24hr</span>
       </div>
     </div>
     <div id="m-hike-row" style="display:none;" class="field">
@@ -1089,13 +1089,18 @@ function buildCumRiding(pts,paceSegs,r){
   paceSegs=paceSegs||[];
   const rm=RIDER_MULT[(r&&r.riderPreset)||'regular']||RIDER_MULT.regular;
   const lm=LOAD_MULT[(r&&r.loadPreset)||'moderate']||LOAD_MULT.moderate;
-  // Smooth elevation to reduce GPS noise (route GPX can overcount gain by 1.5-2x)
-  const W=10,n=pts.length;
+  // Surface-aware elevation smoothing — GPS noise is worse on smooth sealed roads
+  // than on rough tracks where elevation changes are real terrain variation
+  const n=pts.length;
   const sEle=new Float64Array(n);
   for(let i=0;i<n;i++){
-    const lo=Math.max(0,i-W>>1),hi=Math.min(n,i+(W>>1)+1);
-    let s=0;for(let k=lo;k<hi;k++)s+=(pts[k].ele||0);
-    sEle[i]=s/(hi-lo);
+    const midDist=(pts[i].dist+((i+1<n)?pts[i+1].dist:pts[i].dist))/2;
+    const cat=surfaceCatAt(midDist,r)||'grade2';
+    // Larger window = more smoothing. Sealed roads have more GPS elevation noise.
+    const W=cat==='road'||cat==='road_minor'?25:(cat==='grade1'||cat==='grade2'?10:(cat==='grade3'?5:3));
+    const lo=Math.max(0,i-(W>>1)),hi=Math.min(n,i+(W>>1)+1);
+    let sv=0;for(let k=lo;k<hi;k++)sv+=(pts[k].ele||0);
+    sEle[i]=sv/(hi-lo);
   }
   const out=[0];
   for(let i=1;i<pts.length;i++){
@@ -1213,7 +1218,7 @@ function sleepHoursFor(s,arrivalEta){
   // If result is unreasonably long (>14h), the wake time must be early morning
   // and arrival was also early morning — advance wake by one more day would be wrong,
   // so instead cap at the sleepH fallback or 10h
-  if(hrs>14)return s.sleepH||10;
+  if(hrs>23)return s.sleepH||10;
   return Math.max(1,hrs);
 }
 
@@ -8061,7 +8066,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         </div>
         <div class="sdp-dep-row" style="display:${isDeparture?'flex':'none'};align-items:center;gap:6px;">
           <span style="font-size:14px;color:#b39ddb;">⏰ Wake:</span>
-          <input type="time" class="sdp-depart" value="${currentDepart}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);">
+          <input type="time" class="sdp-depart" value="${currentDepart}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:15px;padding:2px 4px;font-family:var(--font);"><span style="font-size:11px;color:var(--text3);margin-left:2px;">24hr</span>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-sm btn-p sleep-dur-ok" style="padding:2px 10px;">✓</button>
