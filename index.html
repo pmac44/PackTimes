@@ -540,10 +540,12 @@ function unpackRoute(r){
   });}
 
   if(!out.baseTimeFactor)out.baseTimeFactor=out.timeFactor||1.0;
-  if(!out.cumRiding&&out.points.length>1)out.cumRiding=buildCumRiding(out.points,out.paceSegs||[]);
-  // Always recalculate estDuration from naismith — never trust stored value which
-  // may have been set from unreliable file timestamps before that approach was abandoned
-  if(out.points.length>1)out.estDuration=naismith(out.points,out.totalDist);
+  if(out.points.length>1){
+    out.cumRiding=buildCumRiding(out.points,out.paceSegs||[],out);
+    // Always recalculate estDuration — never trust stored value from old formula
+    const _crm=out.cumRiding;
+    out.estDuration=_crm?_crm[_crm.length-1]:naismith(out.points,out.totalDist,out);
+  }
   // Restore ohRules Sets (lost in JSON.stringify)
   // Also migrate any stops with short/numeric IDs to proper alphanumeric IDs
   let needsSave=false;
@@ -1223,7 +1225,7 @@ function totalMealHours(r){
 function etaAt(distKm,r){
   if(!r||!r.points.length)return null;
   const base=startDT(r);if(!base)return null;
-  const estTotal=r.estDuration||naismith(r.points,r.totalDist);
+  const estTotal=r.estDuration||naismith(r.points,r.totalDist,r);
   if(!estTotal||!r.totalDist)return null;
   const targetTotal=estTotal*r.timeFactor;
   const crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
@@ -2109,7 +2111,7 @@ function runAdaptiveCalibration(){
   if(actualKmh<1)return; // sanity check
 
   // Compute expected km/h at current timeFactor
-  const estTotal=r.estDuration||naismith(r.points,r.totalDist);
+  const estTotal=r.estDuration||naismith(r.points,r.totalDist,r);
   if(!estTotal)return;
   const expectedKmh=r.totalDist/(estTotal*r.timeFactor);
   if(expectedKmh<0.5)return;
