@@ -4158,9 +4158,10 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
   const t=document.getElementById('m-type').value;
   const name=document.getElementById('m-name').value.trim();
   const dist=parseFloat(document.getElementById('m-dist').value);
-  // Sleep: check if wake mode or duration mode
-  const isWakeMode=document.getElementById('m-sleep-wake-row').style.display!=='none';
-  const sleepH=isWakeMode?null:parseFloat(document.getElementById('m-sleep').value||10);
+  // Sleep: check if wake mode or duration mode — only relevant when sleep row is shown
+  const sleepRowVisible=document.getElementById('m-sleep-row').style.display!=='none';
+  const isWakeMode=sleepRowVisible&&document.getElementById('m-sleep-wake-row').style.display!=='none';
+  const sleepH=sleepRowVisible&&!isWakeMode?parseFloat(document.getElementById('m-sleep').value||10):null;
   const departTime=isWakeMode?document.getElementById('m-sleep-wake').value:null;
   const hasHours=document.getElementById('m-has-hours').checked;
   let ohRaw=null,ohRules=null;
