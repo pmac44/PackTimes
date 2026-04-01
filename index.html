@@ -1491,7 +1491,8 @@ function addStop(r,dist,type,name,opts){
     lat:opts.lat||null,lon:opts.lon||null,
     offRouteM:opts.offRouteM||null,
     noCluster:opts.noCluster||false,
-    snapIdx:opts.snapIdx!==undefined?opts.snapIdx:null});
+    snapIdx:opts.snapIdx!==undefined?opts.snapIdx:null,
+    bookingUrl:opts.bookingUrl||null});
   r.stops.sort((a,b)=>a.dist-b.dist);
 }
 function delStop(r,id){r.stops=r.stops.filter(s=>String(s.id)!==String(id));}
