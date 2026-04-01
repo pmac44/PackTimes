@@ -511,7 +511,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false};
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food'};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -539,6 +539,7 @@ function unpackRoute(r){
     return s;
   });}
 
+  if(!out.gearChecklist)out.gearChecklist=null; // null = use defaults, [] = user cleared
   if(!out.baseTimeFactor)out.baseTimeFactor=out.timeFactor||1.0;
   if(out.points.length>1){
     out.cumRiding=buildCumRiding(out.points,out.paceSegs||[],out);
@@ -574,7 +575,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -606,6 +607,7 @@ async function loadAll(){
       if(Array.isArray(prefs.liveStatSlots)&&prefs.liveStatSlots.length===5)UI.liveStatSlots=prefs.liveStatSlots;
       if(prefs.sensorType)UI.sensorType=prefs.sensorType;
       if(prefs.tab)UI.tab=prefs.tab;
+      if(prefs.foodSubTab)UI.foodSubTab=prefs.foodSubTab;
     }
     // Restore last known GPS position so ride progress is visible before GPS reconnects
     const lastGps=await DB.getKV('lastGpsState').catch(()=>null);
@@ -4937,7 +4939,7 @@ const TABS=[
   {id:'routes',icon:'≡',label:'Route'},
   {id:'stops',icon:'⊙',label:'Stops'},
   {id:'plan',icon:'✦',label:'Mission'},
-  {id:'food',icon:'<svg viewBox="0 0 18 18" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="display:inline-block;vertical-align:middle;"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>',label:'Food'},
+  {id:'food',icon:'<svg viewBox="0 0 18 18" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="display:inline-block;vertical-align:middle;"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>',label:'Supplies'},
   {id:'live',icon:'▶',label:'Ride'},
   {id:'settings',icon:'⚙',label:'Settings'},
 ];
@@ -5199,7 +5201,7 @@ function _render(){
     let html='';
     if(UI.tab==='routes')html=r?tRoutes(r):tRoutes(null);
     else if(UI.tab==='plan')html=r?tPlan(r):`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`;
-    else if(UI.tab==='food')html=r?tFood(r):`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`;
+    else if(UI.tab==='food')html=r?tFood(r):(UI.foodSubTab==='gear'?`<div class="banner info"><span>ℹ️</span><span>Select a route to use the gear checklist.</span></div>`:`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`);
     else if(UI.tab==='settings')html=tSettings(r);
     else html=`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`;
     wrap.innerHTML=`<div class="content" style="flex:1;">${html}</div>`;
@@ -7401,7 +7403,112 @@ function tPlan(r){
     +(r.stops.some(s=>s.meals&&s.meals.length)?'<div class="card" style="cursor:pointer;border-color:rgba(251,191,36,0.4);" id="btn-go-food"><div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-flex;align-items:center;color:#fbbf24;font-size:20px;">'+ICON_FOOD+'</span><div><div style="font-size:15px;font-weight:600;color:#fbbf24;">Food plan</div><div style="font-size:13px;color:var(--text3);">'+r.stops.filter(s=>s.meals&&s.meals.length).length+' stops with food assigned — tap to view</div></div></div></div>':'');
 }
 
+// ─── Default bikepacking gear checklist ───
+const DEFAULT_GEAR=[
+  {cat:'Bike',items:['Bike (checked & tuned)','Frame bag','Seat pack / saddle bag','Handlebar bag / roll','Top tube bag','Stem bag / feed bag','Water bottle cages (×2–3)','Bike computer / GPS']},
+  {cat:'Tools & Spares',items:['Multi-tool','Tyre levers','Spare inner tubes (×2)','Patch kit','Mini pump / CO₂ inflator','Chain breaker + quick links','Spare brake pads','Spare derailleur hanger','Spoke wrench','Zip ties & electrical tape','Small bottle of chain lube']},
+  {cat:'Navigation & Electronics',items:['Phone + mount','Battery pack / power bank','Charging cables','Front light','Rear light','Spare batteries / backup light','Offline maps downloaded']},
+  {cat:'Sleep System',items:['Bivvy bag or tent','Sleeping bag / quilt','Sleeping mat','Pillow (inflatable / stuff sack)']},
+  {cat:'Clothing – Riding',items:['Cycling shorts / bibs','Cycling jersey(s)','Base layer','Arm warmers / leg warmers','Cycling gloves','Helmet','Cycling shoes','Socks (×2–3 pairs)']},
+  {cat:'Clothing – Weather',items:['Rain jacket','Rain pants / leg covers','Gilet / wind vest','Warm layer (fleece / down)','Buff / neck gaiter','Skull cap / beanie','Overshoes / shoe covers','Waterproof gloves']},
+  {cat:'Clothing – Off-Bike',items:['Casual shorts / pants','T-shirt / top','Thongs / sandals','Warm hat / beanie']},
+  {cat:'Food & Water',items:['Water bottles','Water filter / purification','Snacks & energy bars','Electrolyte tabs','Stove + fuel (if cooking)','Pot / mug','Spork']},
+  {cat:'Personal & Safety',items:['Sunscreen','Chamois cream','Lip balm','Toothbrush + toothpaste','ID & cards & cash','First aid kit','Emergency blanket','Whistle','Insect repellent','Sunglasses','Ear plugs']}
+];
+
+function getGearChecklist(r){
+  if(r.gearChecklist)return r.gearChecklist;
+  // Initialize from defaults
+  const list=[];
+  DEFAULT_GEAR.forEach(g=>{
+    g.items.forEach(name=>{
+      list.push({id:makeStopId(),cat:g.cat,name,bring:false,packed:false,custom:false});
+    });
+  });
+  r.gearChecklist=list;
+  return list;
+}
+
+function tGear(r){
+  const gear=getGearChecklist(r);
+  const cats=[...new Set(gear.map(g=>g.cat))];
+  const bringCount=gear.filter(g=>g.bring).length;
+  const packedCount=gear.filter(g=>g.packed).length;
+
+  let html='<div style="margin-bottom:12px;">';
+  // Summary strip
+  html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="font-size:14px;color:var(--text3);font-family:var(--font);">
+      <span style="color:var(--accent);font-weight:600;">${bringCount}</span> bringing · <span style="color:#fbbf24;font-weight:600;">${packedCount}</span> packed
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-sm" id="gear-reset" style="font-size:12px;">Reset list</button>
+    </div>
+  </div>`;
+
+  // Add custom item
+  html+=`<div style="display:flex;gap:6px;margin-bottom:12px;">
+    <select id="gear-add-cat" class="inp" style="flex:0 0 auto;width:140px;font-size:14px;padding:6px 8px;">
+      ${cats.map(c=>`<option value="${c}">${c}</option>`).join('')}
+      <option value="__new">+ New category</option>
+    </select>
+    <input id="gear-add-name" type="text" class="inp" placeholder="Add item…" style="flex:1;font-size:14px;padding:6px 8px;">
+    <button class="btn btn-p btn-sm" id="gear-add-btn" style="flex-shrink:0;">+</button>
+  </div>`;
+
+  // Categories
+  cats.forEach(cat=>{
+    const items=gear.filter(g=>g.cat===cat);
+    const catBring=items.filter(g=>g.bring).length;
+    const catPacked=items.filter(g=>g.packed).length;
+    const catId=cat.replace(/[^a-zA-Z0-9]/g,'_');
+    html+=`<div style="margin-bottom:8px;">
+      <div class="gear-cat-hdr" data-cat="${cat}" style="display:flex;align-items:center;gap:8px;padding:8px 0 4px;cursor:pointer;border-bottom:1px solid var(--border);">
+        <span style="font-size:14px;font-weight:600;color:var(--accent);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;flex:1;">${cat}</span>
+        <span style="font-size:12px;color:var(--text3);font-family:var(--font);">${catBring}/${items.length} · ${catPacked} packed</span>
+      </div>
+      <div class="gear-cat-items" data-cat="${cat}">`;
+    items.forEach(g=>{
+      const bringChecked=g.bring?'checked':'';
+      const packedChecked=g.packed?'checked':'';
+      const dimStyle=!g.bring?'opacity:0.45;':'';
+      html+=`<div class="gear-row" data-gid="${g.id}" style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--bg3);${dimStyle}">
+        <label style="display:flex;align-items:center;cursor:pointer;flex-shrink:0;" title="Bring">
+          <input type="checkbox" class="gear-bring" data-gid="${g.id}" ${bringChecked} style="accent-color:var(--accent);width:18px;height:18px;">
+        </label>
+        <label style="display:flex;align-items:center;cursor:pointer;flex-shrink:0;" title="Packed">
+          <input type="checkbox" class="gear-packed" data-gid="${g.id}" ${packedChecked} ${!g.bring?'disabled':''} style="accent-color:#fbbf24;width:18px;height:18px;">
+        </label>
+        <span style="flex:1;font-size:15px;color:${g.bring?'var(--text)':'var(--text3)'};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${g.name}</span>
+        ${g.custom?`<button class="gear-del" data-gid="${g.id}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;" title="Remove">✕</button>`:''}
+      </div>`;
+    });
+    html+=`</div></div>`;
+  });
+  html+='</div>';
+
+  // Legend
+  html+=`<div style="display:flex;gap:16px;padding:8px 4px;font-size:13px;color:var(--text3);">
+    <span><span style="color:var(--accent);">☑</span> = bringing</span>
+    <span><span style="color:#fbbf24;">☑</span> = packed</span>
+  </div>`;
+
+  return html;
+}
+
 function tFood(r){
+  // Sub-tab bar
+  const subTab=UI.foodSubTab||'food';
+  let html='<div style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--border);">';
+  html+=`<button class="food-sub-tab" data-foodtab="food" style="flex:1;padding:8px 4px;background:none;border:none;border-bottom:2px solid ${subTab==='food'?'var(--accent)':'transparent'};color:${subTab==='food'?'var(--accent)':'var(--text3)'};font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:-2px;">🍴 Food</button>`;
+  html+=`<button class="food-sub-tab" data-foodtab="gear" style="flex:1;padding:8px 4px;background:none;border:none;border-bottom:2px solid ${subTab==='gear'?'var(--accent)':'transparent'};color:${subTab==='gear'?'var(--accent)':'var(--text3)'};font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:-2px;">🎒 Gear</button>`;
+  html+='</div>';
+
+  if(subTab==='gear'){
+    return html+tGear(r);
+  }
+
+  // Original food tab content below
   const sdt=startDT(r);
   const finEta=etaAt(r.totalDist,r);
   const allMeals=r.stops.flatMap(s=>(s.meals||[]).map(m=>({...m,stop:s})));
@@ -8700,7 +8807,37 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   if(e.target.closest('#btn-print-mission')){printMission();return;}
-  if(e.target.closest('#btn-go-food')){UI.tab='food';render();return;}
+  if(e.target.closest('#btn-go-food')){UI.tab='food';UI.foodSubTab='food';render();return;}
+  // Food/Gear sub-tab switching
+  const fst=e.target.closest('.food-sub-tab');
+  if(fst&&fst.dataset.foodtab){UI.foodSubTab=fst.dataset.foodtab;saveAll();render();return;}
+  // Gear checklist: add item
+  if(e.target.closest('#gear-add-btn')){
+    const r=cur();if(!r)return;
+    const catSel=document.getElementById('gear-add-cat');
+    const nameInp=document.getElementById('gear-add-name');
+    if(!nameInp||!nameInp.value.trim())return;
+    let cat=catSel?catSel.value:'Other';
+    if(cat==='__new'){cat=prompt('New category name:');if(!cat)return;}
+    const gear=getGearChecklist(r);
+    gear.push({id:makeStopId(),cat,name:nameInp.value.trim(),bring:true,packed:false,custom:true});
+    saveAll();render();return;
+  }
+  // Gear checklist: delete custom item
+  const gdel=e.target.closest('.gear-del');
+  if(gdel){
+    const r=cur();if(!r)return;
+    const gid=gdel.dataset.gid;
+    r.gearChecklist=getGearChecklist(r).filter(g=>g.id!==gid);
+    saveAll();render();return;
+  }
+  // Gear checklist: reset
+  if(e.target.closest('#gear-reset')){
+    if(!confirm('Reset gear list to defaults? Custom items will be removed.'))return;
+    const r=cur();if(!r)return;
+    r.gearChecklist=null;
+    saveAll();render();return;
+  }
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
   if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.cluster-edit-btn')&&!e.target.closest('.cluster-unstar-stop')&&!e.target.closest('.cluster-edit-stop')&&!e.target.closest('.no-cluster-stop')){
@@ -8802,6 +8939,26 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
 
 document.getElementById('content-wrap').addEventListener('change',e=>{
   const r=cur();if(!r)return;
+  // Gear checklist: bring checkbox
+  if(e.target.classList.contains('gear-bring')){
+    const gid=e.target.dataset.gid;
+    const gear=getGearChecklist(r);
+    const item=gear.find(g=>g.id===gid);
+    if(item){
+      item.bring=e.target.checked;
+      if(!item.bring)item.packed=false;
+      saveAll();render();
+    }
+    return;
+  }
+  // Gear checklist: packed checkbox
+  if(e.target.classList.contains('gear-packed')){
+    const gid=e.target.dataset.gid;
+    const gear=getGearChecklist(r);
+    const item=gear.find(g=>g.id===gid);
+    if(item){item.packed=e.target.checked;saveAll();render();}
+    return;
+  }
   if(e.target.id==='inp-date'){r.startDate=e.target.value;saveAll();setTimeout(()=>render(),50);}
   if(e.target.id==='inp-time'){r.startTime=e.target.value;saveAll();setTimeout(()=>render(),50);}
   if(e.target.id==='toggle-turn-audio'){
@@ -9427,3 +9584,4 @@ if('serviceWorker' in navigator && window.self===window.top){
 </script>
 </body>
 </html>
+
