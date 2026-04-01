@@ -5339,6 +5339,7 @@ function tStopsShell(r){
         ${UI.tsStatus==='done'?`<div class="banner ok" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✓</span><span>${UI.tsMsg}</span></div>`:''}
         ${UI.tsStatus==='error'?`<div class="banner err" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✗</span><span>${UI.tsMsg}</span></div>`:''}
       </div>
+      </div>
       ${r.stops.length?`<div class="card">
         <div class="secrow">
           <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).length:r.stops.length})</div>
