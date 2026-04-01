@@ -345,6 +345,10 @@ select option{background:var(--bg3);}
         <input type="checkbox" id="em-oh-none"> No set hours
       </label>
     </div>
+    <div id="em-cluster-row" class="field" style="display:none;">
+      <label class="lbl">Cluster</label>
+      <div id="em-cluster-btns" style="display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
     <button class="btn btn-p btn-full" id="em-save">Save</button>
   </div>
 </div>
@@ -4192,7 +4196,21 @@ document.getElementById('qr-json-dl').addEventListener('click',e=>{
   a.download=(btn.dataset.name||'route')+'-plan.json';a.click();
 });
 document.getElementById('edit-modal-x').addEventListener('click',closeEditModal);
-document.getElementById('edit-modal').addEventListener('click',e=>{if(e.target===document.getElementById('edit-modal'))closeEditModal();});
+document.getElementById('edit-modal').addEventListener('click',e=>{
+  if(e.target===document.getElementById('edit-modal'))closeEditModal();
+  const cBtn=e.target.closest('.em-cluster-action');
+  if(cBtn){
+    const r=cur();if(!r)return;
+    const modal=document.getElementById('edit-modal');
+    const s=r.stops.find(s=>String(s.id)===String(modal.dataset.sid));
+    if(s){
+      if(cBtn.dataset.action==='remove'){s.noCluster=true;}
+      else if(cBtn.dataset.action==='add'){s.noCluster=false;}
+      saveAll();closeEditModal();render();
+    }
+    return;
+  }
+});
 document.getElementById('em-save').addEventListener('click',()=>{
   const r=cur();if(!r)return;
   const modal=document.getElementById('edit-modal');
@@ -6491,7 +6509,6 @@ function stopRow(s,r,sdt,inCluster){
         <button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);">${ICON_EDIT}</button>
         ${(()=>{const lat=s.lat||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lat;const lon=s.lon||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lon;return lat&&lon?`<a href="https://maps.google.com/?q=${lat.toFixed(5)},${lon.toFixed(5)}" target="_blank" class="btn btn-sm" title="Open in Google Maps" style="text-decoration:none;font-size:12px;font-family:var(--font);font-weight:600;padding:3px 8px;background:rgba(10,15,10,0.85);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);gap:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>GMap</a>`:'';})()}
         ${s.bookingUrl?`<a href="${s.bookingUrl}" target="_blank" class="btn btn-sm" title="Search on Booking.com" style="text-decoration:none;font-size:12px;font-family:var(--font);font-weight:600;padding:3px 8px;background:rgba(10,15,10,0.85);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(96,165,250,0.5);color:#60a5fa;gap:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>Book</a>`:''}
-        ${(inCluster||s.noCluster)?'<button class="btn btn-sm no-cluster-stop" data-sid="'+s.id+'" title="'+(s.noCluster?'Re-join cluster':'Break out of cluster')+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:3px 8px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(s.noCluster?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.22)')+';color:'+(s.noCluster?'#fbbf24':'rgba(255,255,255,0.85)')+';font-size:12px;font-family:var(--font);font-weight:600;">'+(s.noCluster?'+ cluster':'- cluster')+'</button>':''}
         <button class="btn btn-r btn-sm del-stop" data-sid="${s.id}" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.5" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
     </div>
@@ -8211,7 +8228,37 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         if(noneChk)noneChk.checked=true;
       }
       const modal=document.getElementById('edit-modal');
-      if(modal){modal.style.display='flex';modal.dataset.sid=s.id;}
+      if(modal){
+        modal.style.display='flex';modal.dataset.sid=s.id;
+        // Cluster controls
+        const clRow=document.getElementById('em-cluster-row');
+        const clBtns=document.getElementById('em-cluster-btns');
+        if(clRow&&clBtns){
+          const allStops=UI.stopsShowStarred?r.stops.filter(ss=>ss.starred!==false||ss.type==='sleep'||ss.sleepAt||(ss.type==='stop'&&(ss.sleepAt||ss.sleepH))):r.stops;
+          const clusters=clusterStops(allStops);
+          const myCl=clusters.find(cl=>cl.stops.some(cs=>String(cs.id)===String(s.id)));
+          const inCluster=myCl&&myCl.stops.length>1;
+          // Find nearby cluster this stop could join (if currently split out)
+          const CLUSTER_KM_VAL=typeof CLUSTER_KM!=='undefined'?CLUSTER_KM:5;
+          const nearbyCl=!inCluster&&clusters.find(cl=>cl.stops.length>0&&cl.stops.some(cs=>String(cs.id)!==String(s.id)&&Math.abs(cs.dist-s.dist)<=CLUSTER_KM_VAL));
+          if(inCluster||nearbyCl||s.noCluster){
+            clRow.style.display='';
+            let html='';
+            if(inCluster&&!s.noCluster){
+              html+=`<button class="btn btn-full em-cluster-action" data-action="remove" style="font-size:14px;padding:8px 12px;">Remove from cluster</button>`;
+            }
+            if(s.noCluster&&nearbyCl){
+              html+=`<button class="btn btn-p btn-full em-cluster-action" data-action="add" style="font-size:14px;padding:8px 12px;">Add to nearby cluster</button>`;
+            } else if(s.noCluster&&!nearbyCl){
+              html+=`<button class="btn btn-p btn-full em-cluster-action" data-action="add" style="font-size:14px;padding:8px 12px;">Add to nearby cluster</button>`;
+            }
+            clBtns.innerHTML=html;
+          } else {
+            clRow.style.display='none';
+            clBtns.innerHTML='';
+          }
+        }
+      }
     }
     return;
   }
@@ -8802,7 +8849,34 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         if(m&&openI&&closeI){openI.value=m[1];closeI.value=m[2];}
       }
       const modal=document.getElementById('edit-modal');
-      if(modal){modal.style.display='flex';modal.dataset.sid=s.id;}
+      if(modal){
+        modal.style.display='flex';modal.dataset.sid=s.id;
+        // Cluster controls
+        const clRow=document.getElementById('em-cluster-row');
+        const clBtns=document.getElementById('em-cluster-btns');
+        if(clRow&&clBtns){
+          const allStops=UI.stopsShowStarred?r.stops.filter(ss=>ss.starred!==false||ss.type==='sleep'||ss.sleepAt||(ss.type==='stop'&&(ss.sleepAt||ss.sleepH))):r.stops;
+          const clusters=clusterStops(allStops);
+          const myCl=clusters.find(cl=>cl.stops.some(cs=>String(cs.id)===String(s.id)));
+          const inCluster=myCl&&myCl.stops.length>1;
+          const CLUSTER_KM_VAL=typeof CLUSTER_KM!=='undefined'?CLUSTER_KM:5;
+          const nearbyCl=!inCluster&&clusters.find(cl=>cl.stops.length>0&&cl.stops.some(cs=>String(cs.id)!==String(s.id)&&Math.abs(cs.dist-s.dist)<=CLUSTER_KM_VAL));
+          if(inCluster||nearbyCl||s.noCluster){
+            clRow.style.display='';
+            let html='';
+            if(inCluster&&!s.noCluster){
+              html+=`<button class="btn btn-full em-cluster-action" data-action="remove" style="font-size:14px;padding:8px 12px;">Remove from cluster</button>`;
+            }
+            if(s.noCluster){
+              html+=`<button class="btn btn-p btn-full em-cluster-action" data-action="add" style="font-size:14px;padding:8px 12px;">Add to nearby cluster</button>`;
+            }
+            clBtns.innerHTML=html;
+          } else {
+            clRow.style.display='none';
+            clBtns.innerHTML='';
+          }
+        }
+      }
     }
     return;
   }
