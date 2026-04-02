@@ -7570,15 +7570,17 @@ function tPlan(r){
 
 // ─── Default bikepacking gear checklist ───
 const DEFAULT_GEAR=[
-  {cat:'Bike',items:['Bike (checked & tuned)','Frame bag','Seat pack / saddle bag','Handlebar bag / roll','Top tube bag','Stem bag / feed bag','Water bottle cages','Bike computer / GPS']},
-  {cat:'Tools & Spares',items:['Multi-tool','Tyre levers','Spare inner tubes','Patch kit','Mini pump / CO2 inflator','Chain breaker + quick links','Spare brake pads','Spare derailleur hanger','Spoke wrench','Zip ties & electrical tape','Chain lube']},
-  {cat:'Navigation & Electronics',items:['Phone + mount','Battery pack / power bank','Charging cables','Front light','Rear light','Spare batteries / backup light','Offline maps downloaded']},
-  {cat:'Sleep System',items:['Bivvy bag or tent','Sleeping bag / quilt','Sleeping mat','Pillow (inflatable / stuff sack)']},
-  {cat:'Clothing \u2013 Riding',items:['Cycling shorts / bibs','Cycling jersey(s)','Base layer','Arm warmers / leg warmers','Cycling gloves','Helmet','Cycling shoes','Socks']},
-  {cat:'Clothing \u2013 Weather',items:['Rain jacket','Rain pants / leg covers','Gilet / wind vest','Warm layer (fleece / down)','Buff / neck gaiter','Skull cap / beanie','Overshoes / shoe covers','Waterproof gloves']},
+  {cat:'Bike',items:['Bike (checked & tuned)']},
+  {cat:'Bags',items:['Frame bag','Seat pack / saddle bag','Handlebar bag / roll','Top tube bag','Stem bag / feed bag']},
+  {cat:'Tools & Spares',items:['Tyre levers','Spare inner tubes','Patch kit','Tyre plugs','Sidewall patch','Floss and needle','Mini pump / CO2 inflator','Spare sealant','Multi-tool','Chain breaker + quick links','Spare brake pads','Spare derailleur hanger','Spoke wrench','Zip ties & electrical tape','Chain lube + cloth','Spare cleat with screws','Emergency spoke','Spare derailleur battery','Derailleur battery charger','Spare shifter batteries','Shifter / brake cable']},
+  {cat:'Navigation & Electronics',items:['Bike computer / GPS','Phone + mount','Battery pack / power bank','Charging cables','Front light','Rear light','Helmet lamp','Spare batteries / backup light','Offline maps downloaded','Backup Nav (electronic / paper)']},
+  {cat:'Sleep System',items:['Bivvy bag or tent','Ground sheet','Sleeping bag / quilt','Sleeping mat','Sleeping bag liner','Booties','Pillow (inflatable / stuff sack)']},
+  {cat:'Clothing \u2013 Riding',items:['Cycling shorts / bibs','Cycling jersey(s)','Base layer','Arm warmers','Knee / leg warmers','Gloves','Helmet','Sun hood','Cycling shoes','Socks']},
+  {cat:'Clothing \u2013 Weather',items:['Rain jacket','Rain pants / leg covers','Gilet / wind vest','Warm layer (fleece / down)','Buff / neck gaiter','Skull cap / beanie','Overshoes / shoe covers','Waterproof gloves','Waterproof socks']},
   {cat:'Clothing \u2013 Off-Bike',items:['Casual shorts / pants','T-shirt / top','Thongs / sandals','Warm hat / beanie']},
-  {cat:'Food & Water',items:['Water bottles','Water filter / purification','Snacks & energy bars','Electrolyte tabs','Stove + fuel (if cooking)','Pot / mug','Spork']},
-  {cat:'Personal & Safety',items:['Sunscreen','Chamois cream','Lip balm','Toothbrush + toothpaste','ID & cards & cash','First aid kit','Emergency blanket','Whistle','Insect repellent','Sunglasses','Ear plugs']}
+  {cat:'Water',items:['Water bottle cages','Water Bladder','Water bottles','Water filter','Water purification tablets','Water UV steriliser','Electrolyte tabs','Salt tablets / sachets / bulk','Energy powder']},
+  {cat:'Food',items:['Snacks & energy bars','Meals (see food planner)','Stove','Stove fuel','Pot / mug','Matches / lighter','Spork / spoon','Cleaning kit']},
+  {cat:'Personal & Safety',items:['Sunscreen','Chamois cream','Lip balm','Toothbrush + toothpaste','Wipes / hygiene','Toilet paper','ID & cards & cash','First aid kit','Emergency blanket','Whistle','Insect repellent','Sunglasses','Ear plugs','Snake bandage','Epipen / medication','Bear spray','Rubbish bags']}
 ];
 
 function getGearChecklist(r){
