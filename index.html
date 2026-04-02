@@ -7513,7 +7513,7 @@ function tGear(r){
         <label style="display:flex;align-items:center;cursor:pointer;flex-shrink:0;" title="Packed">
           <input type="checkbox" class="gear-packed" data-gid="${g.id}" ${packedChecked} ${!g.bring?'disabled':''} style="accent-color:#fbbf24;width:18px;height:18px;">
         </label>
-        <span style="flex:1;font-size:15px;color:${g.bring?'var(--text)':'var(--text3)'};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${g.name}</span>
+        <span style="flex:1;font-size:15px;color:${g.bring?'var(--text)':'var(--text2)'};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${g.name}</span>
         ${g.custom?`<button class="gear-del" data-gid="${g.id}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;" title="Remove">\u2715</button>`:''}
       </div>`;
     });
