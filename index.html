@@ -8974,7 +8974,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
 document.getElementById('content-wrap').addEventListener('change',e=>{
   const r=cur();if(!r)return;
 
-  // ─── Gear checklist change handlers (in-place, no scroll reset) ───
+  // ─── Gear checklist change handlers ───
   if(e.target.classList.contains('gear-bring')){
     const gid=e.target.dataset.gid;
     const gear=getGearChecklist(r);
@@ -8982,6 +8982,8 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     if(item){
       item.bring=e.target.checked;
       if(!item.bring)item.packed=false;
+      saveAll();
+      if(UI.gearFilter&&UI.gearFilter!=='all'){render();return;}
       const row=e.target.closest('.gear-row');
       if(row){
         row.style.opacity=item.bring?'1':'0.45';
@@ -8991,7 +8993,6 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
         if(nameSpan)nameSpan.style.color=item.bring?'var(--text)':'var(--text3)';
       }
       _updateGearSummary(r);
-      saveAll();
     }
     return;
   }
@@ -9001,8 +9002,9 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     const item=gear.find(g=>g.id===gid);
     if(item){
       item.packed=e.target.checked;
-      _updateGearSummary(r);
       saveAll();
+      if(UI.gearFilter==='topack'){render();return;}
+      _updateGearSummary(r);
     }
     return;
   }
