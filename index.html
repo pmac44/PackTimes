@@ -1586,7 +1586,12 @@ async function fetchSurfaceData(){
   if(r.surfaceSegs&&r.surfaceSegs.length){
     if(UI.hiddenMapTypes.has('surface'))UI.hiddenMapTypes.delete('surface');
     else UI.hiddenMapTypes.add('surface');
-    ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
+    const surfVisible=!UI.hiddenMapTypes.has('surface');
+    ['desktop-map','stops-map'].forEach(id=>{
+      const btn=document.getElementById('btn-surface-'+id);
+      if(btn){btn.style.color=surfVisible?'var(--accent)':'';btn.style.borderColor=surfVisible?'var(--accent3)':'';}
+      redrawMap(id);
+    });
     renderDesktopMap();
     return;
   }
@@ -4473,13 +4478,6 @@ function renderDesktopMap(){
           <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${allVisible?'rgba(255,255,255,0.85)':'none'}" stroke="rgba(255,255,255,0.85)" stroke-width="1.5"/></svg>
           <span style="font-size:12px;color:${allHidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;font-weight:600;">All</span>
         </div>`
-        +(r.surfaceSegs&&r.surfaceSegs.length?(()=>{
-          const hidden=UI.hiddenMapTypes.has('surface');
-          return`<div class="map-legend-item" data-ltype="surface" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);margin-bottom:2px;opacity:${hidden?0.45:1};">
-            <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><rect x="1" y="4" width="10" height="4" rx="2" fill="${hidden?'none':'#b8925a'}" stroke="#b8925a" stroke-width="1.2"/></svg>
-            <span style="font-size:12px;color:${hidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;">Surface</span>
-          </div>`;
-        })():'')
         +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
         return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
@@ -5407,14 +5405,7 @@ function tStopsShell(r){
                 <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">${t.label}</span>
               </div>`;
             };
-            const surfacePill=(r.surfaceSegs&&r.surfaceSegs.length)?(()=>{
-              const hidden=UI.hiddenMapTypes.has('surface');
-              return`<div class="mob-layer-btn" data-ltype="surface" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;background:rgba(0,0,0,0.52);border-radius:20px;opacity:${hidden?0.45:1};margin-bottom:2px;">
-                <svg width="14" height="8" viewBox="0 0 14 8" style="flex-shrink:0;"><rect x="1" y="2" width="12" height="4" rx="2" fill="${hidden?'none':'#b8925a'}" stroke="${hidden?'#b8925a':'#fff'}" stroke-width="1.2"/></svg>
-                <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">Surface</span>
-              </div>`;
-            })():'';
-            return allDot+surfacePill+filtered.map(dotHTML).join('');
+            return allDot+filtered.map(dotHTML).join('');
           })()}
         </div>
         <div id="mobile-map-legend-r" style="display:none;"></div>`:''}
