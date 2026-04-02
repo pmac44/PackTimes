@@ -63,7 +63,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:1;min-width:0;padding:8px 2px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
-.tab-icon{display:block;font-size:18px;margin-bottom:1px;}
+.tab-icon{display:flex;align-items:center;justify-content:center;font-size:18px;height:20px;margin-bottom:1px;}
 /* Normal scrolling content (most tabs) */
 .content{flex:1;overflow-y:auto;padding:13px 13px 80px;padding-bottom:calc(80px + env(safe-area-inset-bottom, 0px));display:block;-webkit-overflow-scrolling:touch;min-height:0;}
 .content > *{margin-bottom:13px;}
