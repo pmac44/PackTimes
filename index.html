@@ -228,6 +228,7 @@ select option{background:var(--bg3);}
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
         <button class="zbtn tile-tog" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
+        <button class="zbtn" id="btn-surface-desktop-map" title="Toggle surface type" onclick="fetchSurfaceData()" style="font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">SURF</button>
       </div>
     </div>
   </div>
@@ -6200,6 +6201,7 @@ function tRoutes(r){
         +'<button class="btn btn-sm rename-route" data-ridx="'+i+'" title="Rename">'+ICON_EDIT+'</button>'
         +'<button class="btn btn-sm route-turns-btn" data-ridx="'+i+'" title="Turn navigation" style="display:inline-flex;align-items:center;">'+turnLabel+'</button>'
         +'<button class="btn btn-sm dl-tiles-btn" data-ridx="'+i+'" title="Download offline map tiles" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-family:var(--font);"'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?' disabled':'')+'>'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?'<div class="spin" style="width:14px;height:14px;"></div> Downloading…':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Offline map')+'</button>'
+        +'<button class="btn btn-sm reload-route" data-ridx="'+i+'" title="Update route (reimport GPX)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>'
         +'<button class="btn btn-sm btn-r del-route" data-ridx="'+i+'" style="margin-left:auto;">✕</button>'
         +'</div>'
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='loading'?'<div id="tile-dl-progress"><div style="background:var(--bg3);border-radius:4px;height:6px;overflow:hidden;"><div id="tile-dl-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;border-radius:4px;"></div></div><span id="tile-dl-msg" style="font-size:11px;color:var(--text3);font-family:var(--font);"></span></div>':'')
@@ -6212,7 +6214,8 @@ function tRoutes(r){
     <button class="btn btn-sm btn-full" style="margin-top:8px;" id="btn-demo">▶ Load demo route</button>
     `:''}
   </div>
-  <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-input" style="display:none;">`;
+  <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-input" style="display:none;">
+  <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-reload-input" style="display:none;">`;
   if(!r)return routeList;
   const sdt=startDT(r);
   const adjDur=r.estDuration?r.estDuration*r.timeFactor:null;
@@ -8311,7 +8314,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;}
   // Route list select
   const rli=e.target.closest('.rli');
-  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
+  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('.reload-route')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
     const newIdx=+rli.dataset.ridx;
     if(newIdx!==CUR&&IS_DESKTOP()){
       // Reset desktop map so it zooms to fit the newly selected route
@@ -8412,6 +8415,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Download tiles for route
   const dlBtn=e.target.closest('.dl-tiles-btn');
   if(dlBtn){const i=+dlBtn.dataset.ridx;startTileDownload(i);return;}
+  // Reload/update route
+  const rlBtn=e.target.closest('.reload-route');
+  if(rlBtn){const i=+rlBtn.dataset.ridx;_reloadRouteIdx=i;document.getElementById('gpx-reload-input').click();return;}
   // Delete route
   const dr=e.target.closest('.del-route');
   if(dr){const i=+dr.dataset.ridx;const rt=ROUTES[i];
@@ -9392,6 +9398,11 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     const f=e.target.files[0];if(!f)return;
     loadRouteFile(f);
     e.target.value='';}
+  if(e.target.id==='gpx-reload-input'){
+    const f=e.target.files[0];if(!f)return;
+    reloadRouteFile(f,_reloadRouteIdx);
+    _reloadRouteIdx=-1;
+    e.target.value='';}
   if(e.target.id==='plan-file-input'){
     const f=e.target.files[0];if(!f)return;
     const r=cur();if(!r){alert('Load a route file first.');return;}
@@ -9434,6 +9445,87 @@ function formatSourceId(iso){
   if(isNaN(d))return iso;
   return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})+
     ' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
+
+let _reloadRouteIdx=-1;
+
+function reloadRouteFile(f,routeIdx){
+  const rt=ROUTES[routeIdx];
+  if(!rt){alert('Route not found.');return;}
+  const isFIT=f.name.toLowerCase().endsWith('.fit');
+  const isKMZ=f.name.toLowerCase().endsWith('.kmz');
+  if(isKMZ){alert('KMZ files need to be unzipped first. Please export as KML instead.');return;}
+  const fr=new FileReader();
+  fr.onload=ev=>{
+    let result;
+    if(isFIT){
+      result=parseFIT(ev.target.result);
+      if(!result){alert('Could not parse FIT file.');return;}
+    } else {
+      const txt=ev.target.result;
+      const isTCX=txt.includes('<TrainingCenterDatabase')||txt.includes('<Trackpoint>');
+      const isKML=txt.includes('<kml')||txt.includes('<KML');
+      result=isTCX?parseTCX(txt):isKML?parseKML(txt):parseGPX(txt);
+      if(!result){alert('Could not parse file.');return;}
+    }
+    const oldStops=rt.stops.slice();
+    const newPts=result.pts;
+    const newTotalDist=newPts[newPts.length-1].dist;
+    // Snap existing stops to new route geometry
+    const {kept,dropped}=_snapStopsToNewRoute(oldStops,newPts,newTotalDist);
+    // Apply new route geometry
+    const sourceId=result.sourceId||null;
+    rt.points=newPts;rt.hasTS=result.hasTS;rt.totalDist=newTotalDist;
+    rt.sourceId=sourceId;
+    rt.adaptiveSpeed=true;
+    rt.cumRiding=buildCumRiding(newPts,rt.paceSegs||[],rt);
+    const _cr=rt.cumRiding;rt.estDuration=_cr?_cr[_cr.length-1]:naismith(newPts,newTotalDist,rt);
+    rt.stops=kept;
+    rt.turns=result.turns||[];
+    if(rt.turns.length===0){
+      const det=autoDetectTurns(rt.points);
+      rt.turns=det.turns;rt.nearMissTurns=det.nearMiss;
+    }
+    delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
+    CUR=routeIdx;UI.tab='routes';saveAll();render();
+    // Report results
+    const msg=['Route updated with new geometry.','','Stops: '+kept.length+' kept'+(dropped.length?' · '+dropped.length+' removed':'')];
+    if(dropped.length){
+      msg.push('');msg.push('Removed (too far from new route):');
+      dropped.forEach(s=>msg.push('  • '+s.name+' ('+s.type+')'));
+    }
+    alert(msg.join('\n'));
+  };
+  if(isFIT)fr.readAsArrayBuffer(f); else fr.readAsText(f);
+}
+
+function _snapStopsToNewRoute(stops,newPts,newTotalDist){
+  const kept=[],dropped=[];
+  const MAX_DRIFT_KM=3; // stops further than 3km from new route are dropped
+  stops.forEach(s=>{
+    if(s.lat&&s.lon){
+      // Geographic snap — find closest point on new route using haversine
+      let bestDist=Infinity,bestRouteDist=0;
+      for(let i=0;i<newPts.length;i++){
+        const d=hav(s,newPts[i]);
+        if(d<bestDist){bestDist=d;bestRouteDist=newPts[i].dist;}
+      }
+      if(bestDist<=MAX_DRIFT_KM){
+        kept.push({...s,dist:bestRouteDist});
+      } else {
+        dropped.push(s);
+      }
+    } else {
+      // No lat/lon — position-based stop, keep if within new route length
+      if(s.dist<=newTotalDist+1){
+        kept.push({...s,dist:Math.min(s.dist,newTotalDist)});
+      } else {
+        dropped.push(s);
+      }
+    }
+  });
+  kept.sort((a,b)=>a.dist-b.dist);
+  return {kept,dropped};
 }
 
 function loadRouteFile(f){
@@ -9500,11 +9592,20 @@ function applyGPX(content,suggestedName,isBinary){
 }
 
 function _snapStopsToRoute(stops,newPts,newTotalDist){
-  return stops.filter(s=>s.dist<=newTotalDist+1).map(s=>{
+  const MAX_DRIFT=3; // km
+  return stops.filter(s=>{
+    if(s.lat&&s.lon){
+      // Check geographic proximity to new route
+      let best=Infinity;
+      for(let i=0;i<newPts.length;i++){best=Math.min(best,hav(s,newPts[i]));}
+      return best<=MAX_DRIFT;
+    }
+    return s.dist<=newTotalDist+1;
+  }).map(s=>{
     const snap=s.lat&&s.lon?
-      // Has real coords — snap geographically
+      // Has real coords — snap geographically using haversine
       newPts.reduce((best,p,i)=>{
-        const d=Math.sqrt((p.lat-s.lat)**2+(p.lon-s.lon)**2);
+        const d=hav(s,p);
         return d<best.d?{d,dist:p.dist,idx:i}:best;
       },{d:Infinity,dist:0,idx:0}):
       // No real coords — keep same km position (clamped to new length)
