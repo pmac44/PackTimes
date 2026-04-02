@@ -7508,15 +7508,15 @@ function tPlan(r){
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
-        +'<button class="btn btn-sm" id="btn-plan-food-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planFoodOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show food stops only">'
-        +(UI.planFoodOnly
-          ?'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>'
-          :'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>')
-        +'</button>'
         +'<button class="btn btn-sm" id="btn-plan-sleep-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planSleepOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show bivi stops only">'
         +(UI.planSleepOnly
           ?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
           :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')
+        +'</button>'
+        +'<button class="btn btn-sm" id="btn-plan-food-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planFoodOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show food stops only">'
+        +(UI.planFoodOnly
+          ?'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>'
+          :'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>')
         +'</button>'
         +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;padding:4px 7px;">🖨️</button>'
       +'</div>'
