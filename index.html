@@ -1682,7 +1682,8 @@ async function fetchSurfaceData(){
 
 const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 async function fetchOverpass(){
-  const r=cur();if(!r||!r.points.length)return;
+  const r=cur();if(!r)return;
+  if(!r.points.length){UI.opStatus='error';UI.opMsg='Corridor search needs a route. Use Town Search instead.';renderKeepScroll();return;}
   UI.opStatus='loading';UI.opMsg='Searching OSM…';renderKeepScroll();
   const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
   const bb=`${(lats.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lons.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lats.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)},${(lons.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)}`;
@@ -1791,7 +1792,7 @@ async function fetchOverpass(){
 
 // ─── Town search: geocode name → Overpass within town bbox ───────────────────
 async function fetchTownSearch(query){
-  const r=cur();if(!r||!r.points.length)return;
+  const r=cur();if(!r)return;
   UI.tsStatus='loading';UI.tsMsg='Looking up '+query+'…';renderKeepScroll();
   // 1. Nominatim geocode
   let place;
@@ -1799,17 +1800,26 @@ async function fetchTownSearch(query){
     const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
     const res=await fetch(url,{headers:{'Accept-Language':'en'}});
     const hits=await res.json();
-    // Prefer a result near the route bounding box
-    const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
-    const rMinLat=lats.reduce((a,b)=>a<b?a:b,Infinity),rMaxLat=lats.reduce((a,b)=>a>b?a:b,-Infinity),rMinLon=lons.reduce((a,b)=>a<b?a:b,Infinity),rMaxLon=lons.reduce((a,b)=>a>b?a:b,-Infinity);
-    const rCLat=(rMinLat+rMaxLat)/2,rCLon=(rMinLon+rMaxLon)/2;
     if(!hits.length)throw new Error('Place not found');
-    // Score by distance from route centre
-    place=hits.sort((a,b)=>{
-      const da=Math.sqrt((a.lat-rCLat)**2+(a.lon-rCLon)**2);
-      const db=Math.sqrt((b.lat-rCLat)**2+(b.lon-rCLon)**2);
-      return da-db;
-    })[0];
+    // Prefer a result near the route bounding box (or plan center)
+    if(r.points.length){
+      const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
+      const rCLat=(lats.reduce((a,b)=>a<b?a:b,Infinity)+lats.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+      const rCLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+      place=hits.sort((a,b)=>{
+        const da=Math.sqrt((a.lat-rCLat)**2+(a.lon-rCLon)**2);
+        const db=Math.sqrt((b.lat-rCLat)**2+(b.lon-rCLon)**2);
+        return da-db;
+      })[0];
+    } else if(r.center){
+      place=hits.sort((a,b)=>{
+        const da=Math.sqrt((a.lat-r.center.lat)**2+(a.lon-r.center.lon)**2);
+        const db=Math.sqrt((b.lat-r.center.lat)**2+(b.lon-r.center.lon)**2);
+        return da-db;
+      })[0];
+    } else {
+      place=hits[0];
+    }
     place.lat=parseFloat(place.lat);place.lon=parseFloat(place.lon);
     // bbox from Nominatim: [minlat,maxlat,minlon,maxlon] or [s,n,w,e] in their format
     // Nominatim returns boundingbox as [south,north,west,east]
@@ -1858,17 +1868,24 @@ async function fetchTownSearch(query){
         const lon=el.lon!==undefined?el.lon:el.center?.lon;
         const tags=el.tags||{};
         if(!lat||!lon)return;
-        // Use generous 5km snap for town search — user chose this town deliberately
-        const snap=snapTo(r,lat,lon);if(!snap||snap.off>5.0)return;
-        const dist=snap.dist,name=(tags.name||tags['name:en']||'').trim();
+        const name=(tags.name||tags['name:en']||'').trim();
         const ohRaw=tags.opening_hours||null,ohRules=ohRaw?parseOH(ohRaw):null;
-        const offM=Math.round(snap.off*1000);
-        // Always store real coords for town search — stops may be well off route
-        const offOpts={lat,lon,offRouteM:Math.max(offM,1),snapIdx:snap.idx};
-        // Dedup by name+dist, OR by type+dist for unnamed stops
-        const isDupe=r.stops.some(s=>s.auto&&Math.abs(s.dist-dist)<0.5&&(
-          (name&&s.name.trim().toLowerCase()===name.toLowerCase())||
-          (!name&&s.type===(tags.place?'town':tags.amenity==='drinking_water'||tags.drinking_water==='yes'?'water':'wc'))
+        let dist=0,offM=0,offOpts;
+        if(r.points.length){
+          // Route exists — snap to route
+          const snap=snapTo(r,lat,lon);if(!snap||snap.off>5.0)return;
+          dist=snap.dist;offM=Math.round(snap.off*1000);
+          offOpts={lat,lon,offRouteM:Math.max(offM,1),snapIdx:snap.idx};
+        } else {
+          // Blank plan — no route to snap to, just store coords
+          dist=r.stops.length*0.01; // micro-increment for ordering
+          offOpts={lat,lon,offRouteM:0};
+        }
+        // Dedup by name+coords for blank plans, or by name+dist for route plans
+        const isDupe=r.stops.some(s=>s.auto&&(
+          r.points.length?
+            (Math.abs(s.dist-dist)<0.5&&((name&&s.name.trim().toLowerCase()===name.toLowerCase())||(!name&&s.type===(tags.place?'town':tags.amenity==='drinking_water'||tags.drinking_water==='yes'?'water':'wc')))):
+            (name&&s.name.trim().toLowerCase()===name.toLowerCase()&&s.lat&&Math.abs(s.lat-lat)<0.001&&Math.abs(s.lon-lon)<0.001)
         ));
         if(isDupe)return;
         if(tags.amenity==='toilets'&&!tags.drinking_water){
@@ -2978,7 +2995,10 @@ function cidx(r,d){let b=0,bd=Infinity;r.points.forEach((p,i)=>{const v=Math.abs
 // Draw map onto canvas. anchor=0.5 centres normally; 0.75 puts GPS dot 3/4 down.
 function drawMap(cvs,r,opts){
   opts=opts||{};
-  if(!r||!r.points.length)return;
+  if(!r)return;
+  const hasRoute=r.points&&r.points.length>0;
+  const hasStops=r.stops&&r.stops.some(s=>s.lat&&s.lon);
+  if(!hasRoute&&!hasStops&&!r.center)return;
   const dpr=devicePixelRatio||1,W=cvs.offsetWidth,H=cvs._forcedH||cvs.offsetHeight||220;
   cvs.width=W*dpr;cvs.height=H*dpr;
   const ctx=cvs.getContext('2d');ctx.scale(dpr,dpr);
@@ -2990,9 +3010,27 @@ function drawMap(cvs,r,opts){
   // Responsive font size based on canvas width
   const mapFontSm=Math.min(13,Math.max(11,Math.round(W*0.032)));
   const mapFontXs=Math.max(10,Math.round(W*0.026));
-  const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
-  const minLat=lats.reduce((a,b)=>a<b?a:b,Infinity),maxLat=lats.reduce((a,b)=>a>b?a:b,-Infinity);
-  const minLon=lons.reduce((a,b)=>a<b?a:b,Infinity),maxLon=lons.reduce((a,b)=>a>b?a:b,-Infinity);
+  // Compute bounds — from route points if available, otherwise from stops/center
+  let lats,lons,minLat,maxLat,minLon,maxLon;
+  if(hasRoute){
+    lats=pts.map(p=>p.lat);lons=pts.map(p=>p.lon);
+    minLat=lats.reduce((a,b)=>a<b?a:b,Infinity);maxLat=lats.reduce((a,b)=>a>b?a:b,-Infinity);
+    minLon=lons.reduce((a,b)=>a<b?a:b,Infinity);maxLon=lons.reduce((a,b)=>a>b?a:b,-Infinity);
+  } else {
+    // Blank plan — compute bounds from stops and/or center
+    const stopCoords=r.stops.filter(s=>s.lat&&s.lon);
+    if(stopCoords.length>1){
+      minLat=stopCoords.reduce((a,s)=>s.lat<a?s.lat:a,Infinity);maxLat=stopCoords.reduce((a,s)=>s.lat>a?s.lat:a,-Infinity);
+      minLon=stopCoords.reduce((a,s)=>s.lon<a?s.lon:a,Infinity);maxLon=stopCoords.reduce((a,s)=>s.lon>a?s.lon:a,-Infinity);
+      // Add some padding
+      const latPad=(maxLat-minLat)*0.15||0.01;const lonPad=(maxLon-minLon)*0.15||0.01;
+      minLat-=latPad;maxLat+=latPad;minLon-=lonPad;maxLon+=lonPad;
+    } else if(r.centerBB){
+      minLat=r.centerBB.s;maxLat=r.centerBB.n;minLon=r.centerBB.w;maxLon=r.centerBB.e;
+    } else if(r.center){
+      minLat=r.center.lat-0.03;maxLat=r.center.lat+0.03;minLon=r.center.lon-0.04;maxLon=r.center.lon+0.04;
+    } else return;
+  }
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
@@ -3020,7 +3058,7 @@ function drawMap(cvs,r,opts){
     }
   }
   const _wasFit=state.cx===null||state.cy===null;
-  if(opts.followGPS&&UI.gpsDistKm!==null){
+  if(hasRoute&&opts.followGPS&&UI.gpsDistKm!==null){
     cLon=UI.gpsPos&&UI.gpsPos.lon?UI.gpsPos.lon:pts[cidx(r,UI.gpsDistKm)].lon;
     cLat=UI.gpsPos&&UI.gpsPos.lat?UI.gpsPos.lat:pts[cidx(r,UI.gpsDistKm)].lat;
   }
@@ -3047,6 +3085,8 @@ function drawMap(cvs,r,opts){
     ctx.fillStyle='#0d1a0d';ctx.fillRect(0,0,W,H);
   }
 
+  // ── Route line + overlays (only when route geometry exists) ──
+  if(hasRoute){
   // Day/night coloured route line — all maps when sun data and start time available
   if(startDT(r)&&Object.keys(_sunCache).length){
     const sdt=startDT(r);
@@ -3165,6 +3205,7 @@ function drawMap(cvs,r,opts){
       }
     }
   }
+  } // end if(hasRoute) — route line, surface, pace, arrows
 
   // Stop dots (with off-route connectors for auto-stops with real coords)
   const dc={food:'#fbbf24',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',stop:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#2dd4bf',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16'};
@@ -3178,12 +3219,13 @@ function drawMap(cvs,r,opts){
     const isHighlighted=opts.highlightId&&String(opts.highlightId)===String(s.id);
     // Skip hidden stops unless they are highlighted
     if(isHidden&&!isHighlighted)return;
-    const rp=pts[s.snapIdx!==null&&s.snapIdx!==undefined?s.snapIdx:cidx(r,s.dist)];
+    const rp=hasRoute?pts[s.snapIdx!==null&&s.snapIdx!==undefined?s.snapIdx:cidx(r,s.dist)]:null;
     const hasReal=s.lat&&s.lon;
-    const dotLon=hasReal?s.lon:rp.lon;
-    const dotLat=hasReal?s.lat:rp.lat;
+    if(!rp&&!hasReal)return; // skip stops with no position info on blank plans
+    const dotLon=hasReal?s.lon:(rp?rp.lon:0);
+    const dotLat=hasReal?s.lat:(rp?rp.lat:0);
     if(!isHidden){
-      if(hasReal){
+      if(hasReal&&rp){
         ctx.beginPath();ctx.moveTo(px(rp.lon),py(rp.lat));ctx.lineTo(px(dotLon),py(dotLat));
         ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
         ctx.beginPath();ctx.arc(px(rp.lon),py(rp.lat),3,0,Math.PI*2);
@@ -3223,8 +3265,8 @@ function drawMap(cvs,r,opts){
     }
   });
 
-  // Turn markers
-  if(r.turns&&r.turns.length&&!(UI.hiddenMapTypes.has('turns')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))){
+  // Turn markers (route-only)
+  if(hasRoute&&r.turns&&r.turns.length&&!(UI.hiddenMapTypes.has('turns')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))){
     const liveDist=UI.gpsDistKm||0;
     const isReview=cvs.id==='turn-review-map';
     const size=isReview?16:6;
@@ -3254,8 +3296,8 @@ function drawMap(cvs,r,opts){
     });
   }
 
-  // Weather dots — only on stops-map and desktop-map when weather layer is visible
-  if((cvs.id==='stops-map'||cvs.id==='desktop-map')&&!UI.hiddenMapTypes.has('weather')){
+  // Weather dots — only on stops-map and desktop-map when weather layer is visible (route-only)
+  if(hasRoute&&(cvs.id==='stops-map'||cvs.id==='desktop-map')&&!UI.hiddenMapTypes.has('weather')){
     const sdt=startDT(r);
     const spacingKm=UI.weatherSpacingKm||25;
     const isDesktop=cvs.id==='desktop-map';
@@ -3275,6 +3317,7 @@ function drawMap(cvs,r,opts){
     }
   }
 
+  if(hasRoute){
   const flag=(i,col,lbl)=>{const p=pts[i];
     ctx.beginPath();ctx.arc(px(p.lon),py(p.lat),7,0,Math.PI*2);
     ctx.fillStyle=col;ctx.fill();ctx.fillStyle='#fff';
@@ -3355,9 +3398,10 @@ function drawMap(cvs,r,opts){
       });
     }
   }
+  } // end if(hasRoute) for flags, km markers, day splits
 
-  // GPS dot
-  if(opts.showGPS&&UI.gpsDistKm!==null){
+  // GPS dot (route-only)
+  if(hasRoute&&opts.showGPS&&UI.gpsDistKm!==null){
     // Use actual GPS coordinates if available, not snapped route point
     const gpsLon=UI.gpsPos&&UI.gpsPos.lon?UI.gpsPos.lon:pts[cidx(r,UI.gpsDistKm)].lon;
     const gpsLat=UI.gpsPos&&UI.gpsPos.lat?UI.gpsPos.lat:pts[cidx(r,UI.gpsDistKm)].lat;
@@ -3807,6 +3851,17 @@ function hitTest(cvs,cx,cy,cb){
   }
   // Normal route tap — find nearest route point
   if(!cb)return;
+  // Convert pixel to lat/lon by inverting the stored projection
+  const tapLon=cvs._cLon+(mx-px(cvs._cLon))/(cvs._kx*cvs._scale);
+  const tapLat=cvs._cLat-(my-py(cvs._cLat))/(cvs._ky*cvs._scale);
+  const r=cur();
+  if(!r||!r.points||!r.points.length){
+    // Blank plan — any tap places a stop at that location
+    const dist=r?r.stops.length*0.01:0;
+    _pendingOffRoute={lat:tapLat,lon:tapLon,offRouteM:0};
+    cb(dist.toFixed(1));
+    return;
+  }
   let best=0,bd=Infinity;
   pts.forEach((p,i)=>{const dx=px(p.lon)-mx,dy=py(p.lat)-my,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i;}});
   if(Math.sqrt(bd)<=45){
@@ -3816,13 +3871,8 @@ function hitTest(cvs,cx,cy,cb){
     return;
   }
   // Tap is away from route — off-route stop
-  // Convert pixel to lat/lon by inverting the stored projection
-  // px(lon) = cpx + (lon - cLon)*kx*scale  →  lon = cLon + (mx - px(cLon)) / (kx*scale)
-  // py(lat) = cpy - (lat - cLat)*ky*scale  →  lat = cLat - (my - py(cLat)) / (ky*scale)
-  const tapLon=cvs._cLon+(mx-px(cvs._cLon))/(cvs._kx*cvs._scale);
-  const tapLat=cvs._cLat-(my-py(cvs._cLat))/(cvs._ky*cvs._scale);
   // Snap to nearest route point
-  const snap=snapTo(cur(),tapLat,tapLon);
+  const snap=snapTo(r,tapLat,tapLon);
   if(!snap)return;
   // Limit to 5km off route
   if(snap.off>5)return;
@@ -4470,7 +4520,8 @@ window.addEventListener('resize',()=>{initDesktop();renderDesktopMap();});
 
 function renderDesktopMap(){
   if(!IS_DESKTOP())return;
-  const r=cur();if(!r||!r.points.length)return;
+  const r=cur();if(!r)return;
+  if(!r.points.length&&!r.center&&!r.stops.some(s=>s.lat&&s.lon))return;
   const cvs=document.getElementById('desktop-map');if(!cvs)return;
   // Update tile button text
   const tb=document.getElementById('desktop-tile-btn');
@@ -6178,7 +6229,10 @@ function tRoutes(r){
       ${r?`<span style="font-size:13px;color:var(--text3);">${r.totalDist?r.totalDist.toFixed(0)+'km':''}</span>`:''}
     </div>
     ${actuallyExpanded?`
-    <button class="btn btn-sm btn-p btn-full" id="btn-upload-route">↑ Upload GPX / TCX / KML / FIT</button>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-sm btn-p" id="btn-upload-route" style="flex:1;">↑ Upload GPX / TCX / KML / FIT</button>
+      <button class="btn btn-sm" id="btn-new-plan" style="white-space:nowrap;" title="Create a plan without a route">+ New Plan</button>
+    </div>
     <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
     ${ROUTES.length?ROUTES.map((rt,i)=>({rt,i})).reverse().map(({rt,i})=>{
       const autoCount=rt.turns?rt.turns.filter(t=>t.auto).length:0;
@@ -6195,7 +6249,7 @@ function tRoutes(r){
         +'<div class="ri-name" id="ri-name-'+i+'" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(rt.label||rt.name)+'</div>'
         +(rt.sourceId?'<span style="font-size:11px;color:var(--text3);font-family:var(--font);opacity:0.7;flex-shrink:0;">'+formatSourceId(rt.sourceId)+'</span>':'')
         +'</div>'
-        +'<div class="ri-meta">'+(rt.totalDist?rt.totalDist.toFixed(0)+'km':'')+(rt.totalDist&&rt.stops.length?' · ':'')+rt.stops.length+' stops'+(rt.startDate?' · '+(rt.startDate):'')+'</div>'
+        +'<div class="ri-meta">'+(rt.points.length?''+(rt.totalDist?rt.totalDist.toFixed(0)+'km':'')+(rt.totalDist&&rt.stops.length?' · ':''):'Plan · ')+rt.stops.length+' stop'+(rt.stops.length!==1?'s':'')+(rt.startDate?' · '+(rt.startDate):'')+'</div>'
         +'</div>'
         +'<div style="display:flex;gap:4px;align-items:center;">'
         +'<button class="btn btn-sm rename-route" data-ridx="'+i+'" title="Rename">'+ICON_EDIT+'</button>'
@@ -6217,6 +6271,12 @@ function tRoutes(r){
   <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-input" style="display:none;">
   <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-reload-input" style="display:none;">`;
   if(!r)return routeList;
+  if(!r.points.length)return routeList+`
+  <div class="card" style="padding:14px;">
+    <div class="ctitle" style="margin-bottom:10px;">Plan: ${r.label||r.name}</div>
+    <p style="font-size:15px;color:var(--text3);line-height:1.5;">This is a blank plan with no route geometry. Use the Stops tab to search for locations by town name, or use the ↻ reload button above to import a GPX route.</p>
+    <div style="margin-top:8px;font-size:13px;color:var(--text3);font-family:var(--font);">${r.stops.length} stop${r.stops.length!==1?'s':''}</div>
+  </div>`;
   const sdt=startDT(r);
   const adjDur=r.estDuration?r.estDuration*r.timeFactor:null;
   const avgSpd=adjDur&&r.totalDist?(r.totalDist/adjDur).toFixed(1):null;
@@ -6661,7 +6721,7 @@ function stopRow(s,r,sdt,inCluster){
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">
         <div style="flex:1;min-width:0;">
           <div class="si-name">${s.name}${orBadge}${autoBadge}</div>
-          <div class="si-meta">${s.dist.toFixed(1)} km · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
+          <div class="si-meta">${r.points.length?s.dist.toFixed(1)+' km · ':''}<span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
           ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
           <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='accom')&&s.ohRules?stEl:''}</div>
         </div>
@@ -8906,6 +8966,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   if(e.target.closest('#btn-geoapify-clear')){UI.geoapifyKey=null;saveAll();render();return;}
   if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
+  if(e.target.closest('#btn-new-plan')){createBlankPlan();return;}
   if(e.isTrusted&&(e.target.id==='btn-sim-start'||e.target.closest('#btn-sim-start')===e.target.parentElement)){const b=document.getElementById('btn-sim-start');if(b&&!b.disabled)simStart();return;}
   if(e.isTrusted&&(e.target.id==='btn-sim-pause'||e.target.closest('#btn-sim-pause')===e.target.parentElement)){simPause();return;}
   if(e.isTrusted&&(e.target.id==='btn-sim-stop'||e.target.closest('#btn-sim-stop')===e.target.parentElement)){const b=document.getElementById('btn-sim-stop');if(b&&!b.disabled)simStop();return;}
@@ -9445,6 +9506,34 @@ function formatSourceId(iso){
   if(isNaN(d))return iso;
   return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})+
     ' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
+
+// ═══════════════════════════════════════════
+//  BLANK PLAN (no route geometry)
+// ═══════════════════════════════════════════
+async function createBlankPlan(){
+  const placeName=prompt('Enter a town or region name to center your plan on:');
+  if(!placeName||!placeName.trim())return;
+  // Geocode with Nominatim
+  try{
+    const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(placeName.trim())}&format=json&limit=1&addressdetails=1`;
+    const res=await fetch(url,{headers:{'Accept-Language':'en'}});
+    const hits=await res.json();
+    if(!hits.length){alert('Could not find "'+placeName.trim()+'". Try a different name.');return;}
+    const place=hits[0];
+    const lat=parseFloat(place.lat),lon=parseFloat(place.lon);
+    const bb=place.boundingbox; // [south,north,west,east]
+    const name=place.display_name.split(',')[0].trim()||placeName.trim();
+    const r=newRoute(name);
+    r.label=name+' (plan)';
+    r.center={lat,lon};
+    if(bb){r.centerBB={s:+bb[0],n:+bb[1],w:+bb[2],e:+bb[3]};}
+    ROUTES.push(r);CUR=ROUTES.length-1;
+    UI.tab='stops';UI.osmExpanded=true;UI.tsExpanded=true;
+    saveAll();render();
+  }catch(e){
+    alert('Geocoding failed: '+e.message);
+  }
 }
 
 let _reloadRouteIdx=-1;
