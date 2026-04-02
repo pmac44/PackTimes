@@ -5403,7 +5403,7 @@ function tStopsShell(r){
             const dotHTML=t=>{
               const hidden=UI.hiddenMapTypes.has(t.type);
               return`<div class="mob-layer-btn" data-ltype="${t.type}" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px 3px 5px;background:rgba(0,0,0,0.52);border-radius:20px;opacity:${hidden?0.45:1};">
-                <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${hidden?t.col:'#fff'}" stroke-width="1.4"/></svg>
+                <svg width="14" height="14" viewBox="0 0 13 13" style="flex-shrink:0;"><circle cx="6.5" cy="6.5" r="5.5" fill="${hidden?'none':t.col}" stroke="${t.col}" stroke-width="1.4"/></svg>
                 <span class="mob-layer-lbl" style="font-size:12px;color:#fff;white-space:nowrap;font-family:var(--font);">${t.label}</span>
               </div>`;
             };
@@ -6209,7 +6209,7 @@ function tRoutes(r){
   const finEta=sdt&&adjDur?new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000):null;
   return routeList+`
   <div class="card" style="padding:14px;">
-    <div class="ctitle" style="margin-bottom:10px;">Route</div>
+    <div class="ctitle" style="margin-bottom:10px;">Route Details</div>
     ${(()=>{
       const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
       const accent='font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);';
