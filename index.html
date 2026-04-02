@@ -515,7 +515,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food'};
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all'};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -7426,39 +7426,74 @@ function getGearChecklist(r){
   return list;
 }
 
+function _updateGearSummary(r){
+  const gear=getGearChecklist(r);
+  const bringCount=gear.filter(g=>g.bring).length;
+  const packedCount=gear.filter(g=>g.packed).length;
+  const el=document.getElementById('gear-summary-strip');
+  if(el)el.innerHTML='<span style="color:#60a5fa;font-weight:600;">'+bringCount+'</span> bringing \u00b7 <span style="color:#fbbf24;font-weight:600;">'+packedCount+'</span> packed';
+  // Update per-category counts
+  const cats=[...new Set(gear.map(g=>g.cat))];
+  cats.forEach(cat=>{
+    const items=gear.filter(g=>g.cat===cat);
+    const cb=items.filter(g=>g.bring).length;
+    const cp=items.filter(g=>g.packed).length;
+    const el2=document.querySelector('[data-gear-cat-count="'+cat+'"]');
+    if(el2)el2.textContent=cb+'/'+items.length+' \u00b7 '+cp+' packed';
+  });
+}
+
 function tGear(r){
   const gear=getGearChecklist(r);
   const cats=[...new Set(gear.map(g=>g.cat))];
   const bringCount=gear.filter(g=>g.bring).length;
   const packedCount=gear.filter(g=>g.packed).length;
+  const toPackCount=gear.filter(g=>g.bring&&!g.packed).length;
+  const gf=UI.gearFilter||'all';
 
   let html='<div style="margin-bottom:12px;">';
+
+  // Summary strip
   html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-    <div style="font-size:14px;color:var(--text3);font-family:var(--font);">
-      <span style="color:var(--accent);font-weight:600;">${bringCount}</span> bringing · <span style="color:#fbbf24;font-weight:600;">${packedCount}</span> packed
+    <div id="gear-summary-strip" style="font-size:14px;color:var(--text3);font-family:var(--font);">
+      <span style="color:#60a5fa;font-weight:600;">${bringCount}</span> bringing \u00b7 <span style="color:#fbbf24;font-weight:600;">${packedCount}</span> packed
     </div>
     <div style="display:flex;gap:6px;">
       <button class="btn btn-sm" id="gear-reset" style="font-size:12px;">Reset list</button>
     </div>
   </div>`;
 
+  // Filter tabs
   html+=`<div style="display:flex;gap:6px;margin-bottom:12px;">
-    <select id="gear-add-cat" class="inp" style="flex:0 0 auto;width:140px;font-size:14px;padding:6px 8px;">
-      ${cats.map(c=>`<option value="${c}">${c}</option>`).join('')}
-      <option value="__new">+ New category</option>
-    </select>
-    <input id="gear-add-name" type="text" class="inp" placeholder="Add item..." style="flex:1;font-size:14px;padding:6px 8px;">
-    <button class="btn btn-p btn-sm" id="gear-add-btn" style="flex-shrink:0;">+</button>
+    <button class="gear-filter btn btn-sm" data-gf="all" style="font-size:12px;${gf==='all'?'border-color:#60a5fa;color:#60a5fa;':''}">All</button>
+    <button class="gear-filter btn btn-sm" data-gf="bringing" style="font-size:12px;${gf==='bringing'?'border-color:#60a5fa;color:#60a5fa;':''}">Bringing (${bringCount})</button>
+    <button class="gear-filter btn btn-sm" data-gf="topack" style="font-size:12px;${gf==='topack'?'border-color:#fbbf24;color:#fbbf24;':''}">To pack (${toPackCount})</button>
+  </div>`;
+
+  // Add custom item
+  html+=`<div style="margin-bottom:12px;">
+    <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Custom Item</div>
+    <div style="display:flex;gap:6px;">
+      <select id="gear-add-cat" class="inp" style="flex:0 0 auto;width:140px;font-size:14px;padding:6px 8px;">
+        ${cats.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        <option value="__new">+ New category</option>
+      </select>
+      <input id="gear-add-name" type="text" class="inp" placeholder="Add item..." style="flex:1;font-size:14px;padding:6px 8px;">
+      <button class="btn btn-p btn-sm" id="gear-add-btn" style="flex-shrink:0;">+</button>
+    </div>
   </div>`;
 
   cats.forEach(cat=>{
-    const items=gear.filter(g=>g.cat===cat);
+    let items=gear.filter(g=>g.cat===cat);
+    if(gf==='bringing')items=items.filter(g=>g.bring);
+    if(gf==='topack')items=items.filter(g=>g.bring&&!g.packed);
+    if(!items.length)return;
     const catBring=items.filter(g=>g.bring).length;
     const catPacked=items.filter(g=>g.packed).length;
     html+=`<div class="card" style="margin-bottom:8px;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;flex:1;">${cat}</span>
-        <span style="font-size:12px;color:var(--text3);font-family:var(--font);">${catBring}/${items.length} · ${catPacked} packed</span>
+        <span data-gear-cat-count="${cat}" style="font-size:12px;color:var(--text3);font-family:var(--font);">${catBring}/${items.length} \u00b7 ${catPacked} packed</span>
       </div>`;
     items.forEach((g,i)=>{
       const bringChecked=g.bring?'checked':'';
@@ -7467,19 +7502,21 @@ function tGear(r){
       const borderStyle=i<items.length-1?'border-bottom:1px solid var(--bg3);':'';
       html+=`<div class="gear-row" data-gid="${g.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;${borderStyle}${dimStyle}">
         <label style="display:flex;align-items:center;cursor:pointer;flex-shrink:0;" title="Bring">
-          <input type="checkbox" class="gear-bring" data-gid="${g.id}" ${bringChecked} style="accent-color:var(--accent);width:18px;height:18px;">
+          <input type="checkbox" class="gear-bring" data-gid="${g.id}" ${bringChecked} style="accent-color:#60a5fa;width:18px;height:18px;">
         </label>
         <label style="display:flex;align-items:center;cursor:pointer;flex-shrink:0;" title="Packed">
           <input type="checkbox" class="gear-packed" data-gid="${g.id}" ${packedChecked} ${!g.bring?'disabled':''} style="accent-color:#fbbf24;width:18px;height:18px;">
         </label>
         <span style="flex:1;font-size:15px;color:${g.bring?'var(--text)':'var(--text3)'};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${g.name}</span>
-        ${g.custom?`<button class="gear-del" data-gid="${g.id}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;" title="Remove">✕</button>`:''}
+        ${g.custom?`<button class="gear-del" data-gid="${g.id}" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;" title="Remove">\u2715</button>`:''}
       </div>`;
     });
     html+=`</div>`;
   });
+
+  // Legend
   html+=`<div style="display:flex;gap:16px;padding:6px 4px;font-size:13px;color:var(--text3);">
-    <span><span style="color:var(--accent);">&#9745;</span> = bringing</span>
+    <span><span style="color:#60a5fa;">&#9745;</span> = bringing</span>
     <span><span style="color:#fbbf24;">&#9745;</span> = packed</span>
   </div>`;
   return html;
@@ -7489,8 +7526,8 @@ function tFood(r){
   // Sub-tab bar
   const subTab=UI.foodSubTab||'food';
   let html='<div style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--border);">';
-  html+=`<button class="food-sub-tab" data-foodtab="food" style="flex:1;padding:8px 4px;background:none;border:none;border-bottom:2px solid ${subTab==='food'?'var(--accent)':'transparent'};color:${subTab==='food'?'var(--accent)':'var(--text3)'};font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:-2px;display:flex;align-items:center;justify-content:center;gap:6px;"><svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="flex-shrink:0;"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>Food</button>`;
-  html+=`<button class="food-sub-tab" data-foodtab="gear" style="flex:1;padding:8px 4px;background:none;border:none;border-bottom:2px solid ${subTab==='gear'?'var(--accent)':'transparent'};color:${subTab==='gear'?'var(--accent)':'var(--text3)'};font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:-2px;display:flex;align-items:center;justify-content:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>Gear</button>`;
+  html+=`<button class="food-sub-tab" data-foodtab="food" style="flex:1;padding:8px 4px;background:none;border:none;border-bottom:2px solid ${subTab==='food'?'#fbbf24':'transparent'};color:${subTab==='food'?'#fbbf24':'var(--text3)'};font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:-2px;display:flex;align-items:center;justify-content:center;gap:6px;"><svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="flex-shrink:0;"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>Food</button>`;
+  html+=`<button class="food-sub-tab" data-foodtab="gear" style="flex:1;padding:8px 4px;background:none;border:none;border-bottom:2px solid ${subTab==='gear'?'#60a5fa':'transparent'};color:${subTab==='gear'?'#60a5fa':'var(--text3)'};font-family:var(--sans);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:-2px;display:flex;align-items:center;justify-content:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>Gear</button>`;
   html+='</div>';
 
   if(subTab==='gear'){
@@ -8807,6 +8844,11 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     UI.foodSubTab=btn.dataset.foodtab||'food';
     saveAll();render();return;
   }
+  if(e.target.closest('.gear-filter')){
+    const btn=e.target.closest('.gear-filter');
+    UI.gearFilter=btn.dataset.gf||'all';
+    saveAll();render();return;
+  }
   if(e.target.closest('#gear-add-btn')){
     const r=cur();if(!r)return;
     const nameInp=document.getElementById('gear-add-name');
@@ -8932,7 +8974,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
 document.getElementById('content-wrap').addEventListener('change',e=>{
   const r=cur();if(!r)return;
 
-  // ─── Gear checklist change handlers ───
+  // ─── Gear checklist change handlers (in-place, no scroll reset) ───
   if(e.target.classList.contains('gear-bring')){
     const gid=e.target.dataset.gid;
     const gear=getGearChecklist(r);
@@ -8940,7 +8982,16 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     if(item){
       item.bring=e.target.checked;
       if(!item.bring)item.packed=false;
-      saveAll();render();
+      const row=e.target.closest('.gear-row');
+      if(row){
+        row.style.opacity=item.bring?'1':'0.45';
+        const packedCb=row.querySelector('.gear-packed');
+        if(packedCb){packedCb.checked=item.packed;packedCb.disabled=!item.bring;}
+        const nameSpan=row.querySelector('span[style*="flex:1"]');
+        if(nameSpan)nameSpan.style.color=item.bring?'var(--text)':'var(--text3)';
+      }
+      _updateGearSummary(r);
+      saveAll();
     }
     return;
   }
@@ -8950,7 +9001,8 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     const item=gear.find(g=>g.id===gid);
     if(item){
       item.packed=e.target.checked;
-      saveAll();render();
+      _updateGearSummary(r);
+      saveAll();
     }
     return;
   }
