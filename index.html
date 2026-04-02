@@ -6274,11 +6274,12 @@ function tRoutes(r){
             const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
             const hpdStr=dsc>=1?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')):'';
             return'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
-              +'<div style="'+lbl+'margin-bottom:6px;">Day Split Guides</div>'
+              +'<div style="'+lbl+'margin-bottom:2px;">Day Split Guides</div>'
+              +'<div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.4;">Visual markers only — helps plan where to sleep, does not change your route or times</div>'
               +'<div style="display:flex;align-items:center;gap:10px;">'
                 +'<input type="number" id="day-split-input" min="0" max="99" step="1" value="'+(dsc||'')+'" placeholder="days" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-size:16px;font-family:var(--font);text-align:center;">'
                 +'<span style="font-size:14px;color:var(--text3);">days</span>'
-                +'<span style="font-size:14px;font-weight:600;color:var(--accent);font-family:var(--font);margin-left:auto;" id="day-split-hpd">'+hpdStr+'</span>'
+                +'<span style="font-size:14px;font-weight:600;color:var(--accent);font-family:var(--font);margin-left:auto;" id="day-split-hpd">'+(hpdStr?hpdStr+'/day':'')+'</span>'
               +'</div>'
             +'</div>';
           })():'')
@@ -9214,7 +9215,7 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
       const adjDur=r.estDuration*r.timeFactor;
       const hpd=adjDur/r.daySplitCount;
       const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
-      hpdEl.textContent=hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'');
+      hpdEl.textContent=hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')+'/day';
     } else if(hpdEl){
       hpdEl.textContent='';
     }
