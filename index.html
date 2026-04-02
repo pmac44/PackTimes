@@ -502,7 +502,7 @@ const newRoute=name=>({
   id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
   name:name||'New Route',points:[],hasTS:false,totalDist:0,estDuration:null,
   startDate:todayStr(),startTime:'06:00',timeFactor:1.0,stops:[],paceSegs:[],turns:[],
-  adaptiveSpeed:true,baseTimeFactor:1.0,riderPreset:'regular',loadPreset:'moderate',
+  adaptiveSpeed:true,baseTimeFactor:1.0,riderPreset:'regular',loadPreset:'moderate',daySplitCount:0,
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
@@ -1142,6 +1142,34 @@ function cumRidingAt(distKm,r){
   const span=pts[hi].dist-pts[lo].dist;
   const t=span>0?(distKm-pts[lo].dist)/span:0;
   return cr[lo]+(cr[hi]-cr[lo])*t;
+}
+
+// Day split markers — returns array of {dist, lat, lon} for each split point
+function getDaySplits(r){
+  const n=r.daySplitCount||0;
+  if(n<2||!r.cumRiding||!r.cumRiding.length)return[];
+  const totalRide=r.cumRiding[r.cumRiding.length-1];
+  if(!totalRide||totalRide<=0)return[];
+  const adj=totalRide*r.timeFactor;
+  const hPerDay=adj/n;
+  const splits=[];
+  for(let d=1;d<n;d++){
+    const targetH=hPerDay*d/r.timeFactor; // un-adjusted cumRiding hours
+    // Binary search for the distance where cumRiding==targetH
+    const pts=r.points,cr=r.cumRiding;
+    let lo=0,hi=pts.length-1;
+    while(hi-lo>1){
+      const mid=(lo+hi)>>1;
+      if(cr[mid]<=targetH)lo=mid;else hi=mid;
+    }
+    const span=cr[hi]-cr[lo];
+    const t=span>0?(targetH-cr[lo])/span:0;
+    const dist=pts[lo].dist+(pts[hi].dist-pts[lo].dist)*t;
+    const lat=pts[lo].lat+(pts[hi].lat-pts[lo].lat)*t;
+    const lon=pts[lo].lon+(pts[hi].lon-pts[lo].lon)*t;
+    splits.push({dist,lat,lon,day:d});
+  }
+  return splits;
 }
 
 // ═══════════════════════════════════════════
@@ -3199,6 +3227,38 @@ function drawMap(cvs,r,opts){
     ctx.restore();
   } // end km markers toggle
 
+  // Day split markers (diamond shape)
+  if(!UI.hiddenMapTypes.has('daysplit')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'||cvs.id==='live-map')){
+    const splits=getDaySplits(r);
+    if(splits.length){
+      const isDesktopMap=cvs.id==='desktop-map';
+      const sz=isDesktopMap?10:8;
+      splits.forEach(sp=>{
+        const sx=px(sp.lon),sy=py(sp.lat);
+        if(sx<-30||sx>W+30||sy<-30||sy>H+30)return;
+        // Diamond shape
+        ctx.beginPath();
+        ctx.moveTo(sx,sy-sz);ctx.lineTo(sx+sz,sy);ctx.lineTo(sx,sy+sz);ctx.lineTo(sx-sz,sy);
+        ctx.closePath();
+        ctx.fillStyle='#f472b6';ctx.fill();
+        ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+        // Day number label
+        const lbl='D'+sp.day;
+        const fSize=isDesktopMap?10:11;
+        ctx.font='bold '+fSize+'px DM Mono, monospace';ctx.textAlign='center';ctx.textBaseline='bottom';
+        const tw=ctx.measureText(lbl).width;
+        const pillH=fSize+4,pillY=sy-sz-pillH-2;
+        ctx.fillStyle='rgba(244,114,182,0.85)';
+        ctx.beginPath();
+        if(ctx.roundRect){ctx.roundRect(sx-tw/2-4,pillY,tw+8,pillH,3);}
+        else{ctx.rect(sx-tw/2-4,pillY,tw+8,pillH);}
+        ctx.fill();
+        ctx.fillStyle='#fff';
+        ctx.fillText(lbl,sx,pillY+pillH-1);
+      });
+    }
+  }
+
   // GPS dot
   if(opts.showGPS&&UI.gpsDistKm!==null){
     // Use actual GPS coordinates if available, not snapped route point
@@ -5137,9 +5197,10 @@ const LAYER_TYPES=[
   {type:'police',col:'#3b82f6',label:'Police'},
   {type:'fire',col:'#ef4444',label:'Fire stn'},
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
+  {type:'daysplit',col:'#f472b6',label:'Day splits'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['kmmarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
+  const PRIORITY=['daysplit','kmmarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
@@ -5150,6 +5211,7 @@ function sortedLayers(r){
   if(r&&r.stops.some(s=>s.type==='stop'))present.add('stop');
   if(r&&r.stops.some(s=>s.starred!==false))present.add('mission');
   if(r&&r.paceSegs&&r.paceSegs.length)present.add('hike');
+  if(r&&r.daySplitCount>=2)present.add('daysplit');
   return LAYER_TYPES.filter(t=>present.has(t.type)).sort((a,b)=>{
     const ai=PRIORITY.indexOf(a.type),bi=PRIORITY.indexOf(b.type);
     if(ai>=0&&bi>=0)return ai-bi;
@@ -6112,6 +6174,20 @@ function tRoutes(r){
             const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
             return'<span style="'+accent+'color:var(--text2);display:block;margin-top:10px;" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>';
+          })():'')
+          +(adjDur?(()=>{
+            const dsc=r.daySplitCount||0;
+            const hpd=dsc>0?(adjDur/dsc):0;
+            const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
+            const hpdStr=dsc>0?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':''))+' riding/day':'';
+            return'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
+              +'<div style="'+lbl+'margin-bottom:6px;">Day Splits</div>'
+              +'<div style="display:flex;align-items:center;gap:10px;">'
+                +'<input type="number" id="day-split-input" min="0" max="99" step="1" value="'+(dsc||'')+'" placeholder="days" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-size:16px;font-family:var(--font);text-align:center;">'
+                +'<span style="font-size:14px;color:var(--text3);">days</span>'
+                +(hpdStr?'<span style="font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);margin-left:auto;" id="day-split-hpd">'+hpdStr+'</span>':'')
+              +'</div>'
+            +'</div>';
           })():'')
         +'</div>'
       +'</div>';
@@ -9030,6 +9106,26 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     if(UI.keepScreenOn&&UI.gpsActive)requestWakeLock();
     else releaseWakeLock();
     saveAll();return;
+  }
+  if(e.target.id==='day-split-input'){
+    const r=cur();if(!r)return;
+    const v=parseInt(e.target.value)||0;
+    r.daySplitCount=Math.max(0,Math.min(99,v));
+    saveAll();
+    // Update hours/day display in-place
+    const hpdEl=document.getElementById('day-split-hpd');
+    if(hpdEl&&r.estDuration&&r.daySplitCount>=2){
+      const adjDur=r.estDuration*r.timeFactor;
+      const hpd=adjDur/r.daySplitCount;
+      const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
+      hpdEl.textContent=hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')+' riding/day';
+      hpdEl.style.display='';
+    } else if(hpdEl){
+      hpdEl.textContent='';
+    }
+    // Redraw maps to show/hide split markers
+    ['stops-map','desktop-map','live-map'].forEach(id=>{const c=document.getElementById(id);if(c)redrawMap(id);});
+    return;
   }
   if(e.target.id==='adaptive-speed-chk'){
     const r=cur();if(!r)return;
