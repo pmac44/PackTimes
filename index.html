@@ -5197,7 +5197,7 @@ const LAYER_TYPES=[
   {type:'police',col:'#3b82f6',label:'Police'},
   {type:'fire',col:'#ef4444',label:'Fire stn'},
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
-  {type:'daysplit',col:'#f472b6',label:'Day splits'},
+  {type:'daysplit',col:'#f472b6',label:'Day split guides'},
 ];
 function sortedLayers(r){
   const PRIORITY=['daysplit','kmmarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
@@ -6181,7 +6181,7 @@ function tRoutes(r){
             const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
             const hpdStr=dsc>=1?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')):'';
             return'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
-              +'<div style="'+lbl+'margin-bottom:6px;">Day Splits</div>'
+              +'<div style="'+lbl+'margin-bottom:6px;">Day Split Guides</div>'
               +'<div style="display:flex;align-items:center;gap:10px;">'
                 +'<input type="number" id="day-split-input" min="0" max="99" step="1" value="'+(dsc||'')+'" placeholder="days" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-size:16px;font-family:var(--font);text-align:center;">'
                 +'<span style="font-size:14px;color:var(--text3);">days</span>'
