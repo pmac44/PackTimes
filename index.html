@@ -1689,7 +1689,8 @@ async function fetchOverpass(){
   const opts=UI.osmOpts||{towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,pubs:false,camp:false,huts:false,hotels:false,toilets:false,peaks:false,churches:false,schools:false,halls:false,fire:false,caravan:false,police:false};
   const parts=[];
   if(opts.towns) parts.push(`node["place"~"^(town|village|city)$"](${bb})`);
-  if(opts.water){parts.push(`node["amenity"="drinking_water"](${bb})`);parts.push(`node["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`node["man_made"="water_tap"](${bb})`);}
+  if(opts.water){parts.push(`nwr["amenity"="drinking_water"](${bb})`);parts.push(`nwr["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`nwr["man_made"="water_tap"](${bb})`);}
+  if(opts.toilets)parts.push(`nwr["amenity"="toilets"](${bb})`);
   if(opts.stockwater){parts.push(`node["amenity"="watering_place"](${bb})`);parts.push(`node["man_made"="water_well"](${bb})`);}
   if(opts.food){parts.push(`nwr["amenity"~"^(cafe|restaurant|fast_food)$"](${bb})`);parts.push(`nwr["shop"~"^(supermarket|convenience|bakery|deli|general)$"](${bb})`);}
   if(opts.fuel)  parts.push(`nwr["amenity"="fuel"](${bb})`);
@@ -1722,8 +1723,7 @@ async function fetchOverpass(){
         const snap=snapTo(r,lat,lon);if(!snap)return;
         // Type-based radius
         const baseR=UI.searchRadiusKm||0.4;
-        const typeR=tags.place||(tags.tourism&&tags.tourism.includes('hut'))||tags.shelter_type||tags.amenity==='hut'?baseR*2:
-                    tags.amenity==='toilets'?baseR*0.75:baseR;
+        const typeR=tags.place||(tags.tourism&&tags.tourism.includes('hut'))||tags.shelter_type||tags.amenity==='hut'?baseR*2:baseR;
         if(snap.off>typeR)return;
         const dist=snap.dist,name=(tags.name||tags['name:en']||'').trim();
         const ohRaw=tags.opening_hours||null,ohRules=ohRaw?parseOH(ohRaw):null;
@@ -1824,8 +1824,9 @@ async function fetchTownSearch(query){
   const bb=place.bb;
   const parts=[];
   // Use nwr (node/way/relation) so shops & restaurants tagged as ways are included
-  if(opts.water){parts.push(`nwr["amenity"="drinking_water"](${bb})`);parts.push(`nwr["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`node["man_made"="water_tap"](${bb})`);}  
-  if(opts.stockwater){parts.push(`node["amenity"="watering_place"](${bb})`);parts.push(`node["man_made"="water_well"](${bb})`);}  
+  if(opts.water){parts.push(`nwr["amenity"="drinking_water"](${bb})`);parts.push(`nwr["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`nwr["man_made"="water_tap"](${bb})`);}
+  if(opts.toilets)parts.push(`nwr["amenity"="toilets"](${bb})`);
+  if(opts.stockwater){parts.push(`node["amenity"="watering_place"](${bb})`);parts.push(`node["man_made"="water_well"](${bb})`);}
   if(opts.food){parts.push(`nwr["amenity"~"^(cafe|restaurant|fast_food)$"](${bb})`);parts.push(`nwr["shop"~"^(supermarket|convenience|bakery|deli|general)$"](${bb})`);}
   if(opts.fuel)  parts.push(`nwr["amenity"="fuel"](${bb})`);
   if(opts.pubs)  parts.push(`nwr["amenity"~"^(pub|bar|biergarten)$"](${bb})`);
@@ -3807,9 +3808,28 @@ function hitTest(cvs,cx,cy,cb){
   if(!cb)return;
   let best=0,bd=Infinity;
   pts.forEach((p,i)=>{const dx=px(p.lon)-mx,dy=py(p.lat)-my,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i;}});
-  if(Math.sqrt(bd)>45)return;
-  cb(pts[best].dist.toFixed(1));
+  if(Math.sqrt(bd)<=45){
+    // Tap is near the route line — on-route stop (existing behaviour)
+    _pendingOffRoute=null;
+    cb(pts[best].dist.toFixed(1));
+    return;
+  }
+  // Tap is away from route — off-route stop
+  // Convert pixel to lat/lon by inverting the stored projection
+  // px(lon) = cpx + (lon - cLon)*kx*scale  →  lon = cLon + (mx - px(cLon)) / (kx*scale)
+  // py(lat) = cpy - (lat - cLat)*ky*scale  →  lat = cLat - (my - py(cLat)) / (ky*scale)
+  const tapLon=cvs._cLon+(mx-px(cvs._cLon))/(cvs._kx*cvs._scale);
+  const tapLat=cvs._cLat-(my-py(cvs._cLat))/(cvs._ky*cvs._scale);
+  // Snap to nearest route point
+  const snap=snapTo(cur(),tapLat,tapLon);
+  if(!snap)return;
+  // Limit to 5km off route
+  if(snap.off>5)return;
+  const offM=Math.round(snap.off*1000);
+  _pendingOffRoute=offM>50?{lat:tapLat,lon:tapLon,offRouteM:offM}:null;
+  cb(snap.dist.toFixed(1));
 }
+let _pendingOffRoute=null;
 
 // Render map controls HTML (zoom +/-, recenter, tile toggle)
 function mapCtrlHTML(mapId,showGPS){
@@ -3933,8 +3953,9 @@ function drawElev(cvs,r){
 function openModal(km){
   const r=cur();if(!r)return;
   const v=parseFloat(km).toFixed(2);
-  document.getElementById('m-dist-lbl').textContent=v+' km';
-  document.getElementById('m-dist-display').textContent=v+' km';
+  const offInfo=_pendingOffRoute?` (${_pendingOffRoute.offRouteM}m off route)`:'';
+  document.getElementById('m-dist-lbl').textContent=v+' km'+offInfo;
+  document.getElementById('m-dist-display').textContent=v+' km'+offInfo;
   const inp=document.getElementById('m-dist');
   inp.min=0;inp.max=r.totalDist;inp.value=v;
   document.getElementById('m-name').value='';
@@ -4006,7 +4027,7 @@ document.getElementById('dt-picker-ok')?.addEventListener('click',()=>{
   closeDTPicker();saveAll();render();
 });
 
-function closeModal(){document.getElementById('stop-modal').style.display='none';}
+function closeModal(){_pendingOffRoute=null;document.getElementById('stop-modal').style.display='none';}
 
 // ═══════════════════════════════════════════
 //  PACE SEGMENT MODAL
@@ -4400,7 +4421,9 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
   }
   const fallbackName='Stop at '+dist.toFixed(1)+'km';
   const stopName=name||fallbackName;
-  addStop(r,dist,t,stopName,{sleepH:isWakeMode?null:sleepH,departTime:isWakeMode?departTime:null,ohRaw,ohRules});
+  const offRoute=_pendingOffRoute?{..._pendingOffRoute}:{};
+  _pendingOffRoute=null;
+  addStop(r,dist,t,stopName,{sleepH:isWakeMode?null:sleepH,departTime:isWakeMode?departTime:null,ohRaw,ohRules,...offRoute});
   saveAll();closeModal();render();
   if(t==='stop'&&!name){
     const newStop=r.stops.slice().reverse().find(s=>s.type==='stop'&&Math.abs(s.dist-dist)<0.1);
@@ -5386,7 +5409,7 @@ function tStopsShell(r){
     <div class="stops-map-panel" id="stops-map-panel">
       <div class="map-wrap" id="stops-map-wrap" style="position:relative;">
         <canvas id="stops-map"></canvas>
-        <div class="mhint">tap route to add · drag to pan</div>
+        <div class="mhint">tap to add stop · drag to pan</div>
         ${mapCtrlHTML('stops-map',false)}
         ${!IS_DESKTOP()?`
         <div id="mobile-map-legend" style="position:absolute;top:8px;left:6px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;z-index:20;">
@@ -5435,10 +5458,10 @@ function tStopsShell(r){
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <span style="font-size:13px;color:var(--text3);font-family:var(--font);">Select stops to search</span>
-          <button id="osm-all-toggle" style="font-family:var(--font);font-size:12px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;letter-spacing:.5px;">${(()=>{const keys=['towns','water','crossings','toilets','stockwater','food','fuel','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks'];const allOn=keys.every(k=>UI.osmOpts&&UI.osmOpts[k]);return allOn?'NONE':'ALL';})()}</button>
+          <button id="osm-all-toggle" style="font-family:var(--font);font-size:12px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;letter-spacing:.5px;">${(()=>{const keys=['towns','water','crossings','toilets','food','fuel','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks','stockwater'];const allOn=keys.every(k=>UI.osmOpts&&UI.osmOpts[k]);return allOn?'NONE':'ALL';})()}</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
-          ${[['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['stockwater','stockwater','stock h2o',false],['food','food','food',false],['fuel','fuel','fuel',false],['pubs','pub','pub',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false]].map(([k,t,lbl,def])=>{
+          ${[['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['food','food','food',false],['fuel','fuel','fuel',false],['pubs','pub','pub',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false],['stockwater','stockwater','stock h2o',false]].map(([k,t,lbl,def])=>{
             const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
             return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span class="tag t-'+t+'" style="font-size:13px;">'+lbl+'</span></label>';
           }).join('')}
@@ -8276,7 +8299,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.id==='maxhr-clear'){UI.maxHr=null;saveAll();if(UI.tab==='settings')render();return;}
   // OSM all/none toggle
   if(e.target.closest('#osm-all-toggle')){
-    const keys=['towns','water','crossings','toilets','stockwater','food','fuel','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks'];
+    const keys=['towns','water','crossings','toilets','food','fuel','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks','stockwater'];
     if(!UI.osmOpts)UI.osmOpts={};
     const allOn=keys.every(k=>UI.osmOpts[k]);
     keys.forEach(k=>UI.osmOpts[k]=!allOn);
@@ -9362,7 +9385,7 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     saveAll();
     // Update ALL/NONE toggle label without re-rendering
     const allToggle=document.getElementById('osm-all-toggle');
-    if(allToggle){const keys=['towns','water','crossings','toilets','stockwater','food','fuel','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks'];allToggle.textContent=keys.every(k=>UI.osmOpts&&UI.osmOpts[k])?'NONE':'ALL';}
+    if(allToggle){const keys=['towns','water','crossings','toilets','food','fuel','pubs','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks','stockwater'];allToggle.textContent=keys.every(k=>UI.osmOpts&&UI.osmOpts[k])?'NONE':'ALL';}
     return;}
 
   if(e.target.id==='gpx-input'){
