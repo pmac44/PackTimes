@@ -2898,6 +2898,10 @@ async function startTileDownload(ridx){
   if(result.ok){
     UI.tileDownloadStatus='done';
     UI.tileDownloadMsg=result.cached+' of '+result.total+' tiles cached'+(result.failed?' ('+result.failed+' failed)':'');
+    // Persist download info on the route object
+    const modeNames=['Off','OSM','SAT','Cycle','Topo'];
+    r.offlineTiles={mode:modeNames[_tileMode]||'?',count:result.total,cached:result.cached,failed:result.failed||0,at:new Date().toISOString()};
+    saveAll();
   } else {
     UI.tileDownloadStatus=result.msg==='Cancelled'?'idle':'error';
     UI.tileDownloadMsg=result.msg||'Download failed';
@@ -6187,6 +6191,7 @@ function tRoutes(r){
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='loading'?'<div id="tile-dl-progress"><div style="background:var(--bg3);border-radius:4px;height:6px;overflow:hidden;"><div id="tile-dl-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;border-radius:4px;"></div></div><span id="tile-dl-msg" style="font-size:11px;color:var(--text3);font-family:var(--font);"></span></div>':'')
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='done'?'<div style="font-size:12px;color:var(--accent);">✓ '+(UI.tileDownloadMsg||'Cached')+'</div>':'')
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='error'?'<div style="font-size:12px;color:#ef4444;">✗ '+(UI.tileDownloadMsg||'Failed')+'</div>':'')
+        +(rt.offlineTiles&&!(UI.tileDownloadIdx===i&&(UI.tileDownloadStatus==='loading'||UI.tileDownloadStatus==='done'))?(()=>{const ot=rt.offlineTiles;const d=new Date(ot.at);const ago=Math.floor((Date.now()-d.getTime())/86400000);const when=ago<1?'today':ago===1?'yesterday':ago+'d ago';return'<div style="font-size:11px;color:var(--text3);font-family:var(--font);display:flex;align-items:center;gap:5px;">'+'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="'+(ago>14?'#f97316':'var(--accent)')+'" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'+'<span style="color:'+(ago>14?'#f97316':'var(--text3)')+';">'+ot.mode+' · '+ot.count+' tiles · '+when+(ago>14?' — may be stale':'')+'</span>'+'</div>';})():'')
         +'</div>';
     }).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX / KML / FIT above to get started.</p>`}
     </div>
@@ -8282,7 +8287,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     const newRoute=ROUTES[newIdx];
     const hasRecords=newRoute&&newRoute.stops&&newRoute.stops.some(s=>s.actualArrival);
-    const switchRoute=()=>{CUR=newIdx;UI.tab='routes';UI.routeTurnsOpen=null;saveAll();render();};
+    const switchRoute=()=>{CUR=newIdx;UI.tab='routes';UI.routeTurnsOpen=null;saveAll();renderKeepScroll();};
     if(hasRecords&&newIdx!==CUR){
       // Route has recorded GPS times — prompt user
       if(document.getElementById('gps-records-prompt'))document.getElementById('gps-records-prompt').remove();
