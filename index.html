@@ -512,7 +512,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   _rideAvgSessionKm:null,                  // dist at start of current GPS session
   _rideAvgSessionTs:null,                  // timestamp at start of current GPS session
   _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all'};
@@ -7023,19 +7023,21 @@ function tPlan(r){
           name:head.sleepAt?'Bivi at '+head.name:head.name,
           dist:head.dist,distEnd:head.dist,
           cluster:i===0?chipCluster:null, // chips only on first sleep node
-          isStart:false,isSleep:true,sleepStop:head
+          isStart:false,isSleep:true,sleepStop:head,
+          hasFood:head.meals&&head.meals.length>0
         });
       });
     } else if(nonSleepStops.length){
       const cl2={...cl,stops:nonSleepStops};
-      nodeList.push({name:makeCluster(nonSleepStops).name,dist:cl.dist,distEnd:cl.distEnd,cluster:cl2,isStart:false});
+      const clHasFood=nonSleepStops.some(s=>s.meals&&s.meals.length>0);
+      nodeList.push({name:makeCluster(nonSleepStops).name,dist:cl.dist,distEnd:cl.distEnd,cluster:cl2,isStart:false,hasFood:clHasFood});
     }
   });
   // Re-sort by dist
   nodeList.sort((a,b)=>a.dist-b.dist);
-  // Sleep-only filter — keep start, finish and sleep nodes only
+  // Mission filters — sleep only, food only
   const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:null;
-  const filteredList=UI.planSleepOnly?nodeList.filter(n=>n.isSleep):nodeList;
+  const filteredList=UI.planSleepOnly?nodeList.filter(n=>n.isSleep):UI.planFoodOnly?nodeList.filter(n=>n.hasFood):nodeList;
   // Hike-a-bike nodes are always in the mission list regardless of filters
   const hikeNodes=(r.paceSegs||[]).map(seg=>({
     name:'🥾 '+(seg.name||'Hike-a-bike'),
@@ -7044,7 +7046,7 @@ function tPlan(r){
   }));
   const nodes=[
     {name:'Start 🚩',dist:0,distEnd:0,isStart:true,cluster:null},
-    ...[...filteredList,...(UI.planSleepOnly?[]:hikeNodes)].sort((a,b)=>a.dist-b.dist),
+    ...[...filteredList,...((UI.planSleepOnly||UI.planFoodOnly)?[]:hikeNodes)].sort((a,b)=>a.dist-b.dist),
     {name:'Finish 🏁',dist:r.totalDist,distEnd:r.totalDist,isFinish:true,cluster:null},
   ];
 
@@ -7346,6 +7348,11 @@ function tPlan(r){
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
+        +'<button class="btn btn-sm" id="btn-plan-food-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planFoodOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show food stops only">'
+        +(UI.planFoodOnly
+          ?'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>'
+          :'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>')
+        +'</button>'
         +'<button class="btn btn-sm" id="btn-plan-sleep-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planSleepOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show bivi stops only">'
         +(UI.planSleepOnly
           ?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
@@ -8771,7 +8778,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   if(e.target.closest('#btn-plan-sleep-filter')){
-    UI.planSleepOnly=!UI.planSleepOnly;renderKeepScroll();return;}
+    UI.planSleepOnly=!UI.planSleepOnly;if(UI.planSleepOnly)UI.planFoodOnly=false;renderKeepScroll();return;}
+  if(e.target.closest('#btn-plan-food-filter')){
+    UI.planFoodOnly=!UI.planFoodOnly;if(UI.planFoodOnly)UI.planSleepOnly=false;renderKeepScroll();return;}
   const mu=e.target.closest('.cluster-edit-btn');
   if(mu&&r){
     const sid=mu.dataset.sid;
