@@ -3241,7 +3241,7 @@ function drawMap(cvs,r,opts){
         ctx.moveTo(sx,sy-sz);ctx.lineTo(sx+sz,sy);ctx.lineTo(sx,sy+sz);ctx.lineTo(sx-sz,sy);
         ctx.closePath();
         ctx.fillStyle='#f472b6';ctx.fill();
-        ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+        ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.stroke();
         // Day number label
         const lbl='D'+sp.day;
         const fSize=isDesktopMap?10:11;
@@ -6177,15 +6177,15 @@ function tRoutes(r){
           })():'')
           +(adjDur?(()=>{
             const dsc=r.daySplitCount||0;
-            const hpd=dsc>0?(adjDur/dsc):0;
+            const hpd=dsc>=1?(adjDur/dsc):0;
             const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
-            const hpdStr=dsc>0?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':''))+' riding/day':'';
+            const hpdStr=dsc>=1?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')):'';
             return'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
               +'<div style="'+lbl+'margin-bottom:6px;">Day Splits</div>'
               +'<div style="display:flex;align-items:center;gap:10px;">'
                 +'<input type="number" id="day-split-input" min="0" max="99" step="1" value="'+(dsc||'')+'" placeholder="days" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-size:16px;font-family:var(--font);text-align:center;">'
                 +'<span style="font-size:14px;color:var(--text3);">days</span>'
-                +(hpdStr?'<span style="font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);margin-left:auto;" id="day-split-hpd">'+hpdStr+'</span>':'')
+                +'<span style="font-size:14px;font-weight:600;color:var(--accent);font-family:var(--font);margin-left:auto;" id="day-split-hpd">'+hpdStr+'</span>'
               +'</div>'
             +'</div>';
           })():'')
@@ -9114,12 +9114,11 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     saveAll();
     // Update hours/day display in-place
     const hpdEl=document.getElementById('day-split-hpd');
-    if(hpdEl&&r.estDuration&&r.daySplitCount>=2){
+    if(hpdEl&&r.estDuration&&r.daySplitCount>=1){
       const adjDur=r.estDuration*r.timeFactor;
       const hpd=adjDur/r.daySplitCount;
       const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
-      hpdEl.textContent=hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')+' riding/day';
-      hpdEl.style.display='';
+      hpdEl.textContent=hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'');
     } else if(hpdEl){
       hpdEl.textContent='';
     }
