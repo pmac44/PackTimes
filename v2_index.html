@@ -7518,7 +7518,7 @@ function tFood(r){
   const lbl='font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;margin-top:12px;';
 
   if(!allMeals.length){
-    return html+'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 10px;">Food Plan</div>'
+    return'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 10px;">Food Plan</div>'
     +'<div style="padding:0 4px 12px;color:var(--text2);font-size:15px;line-height:1.7;">'
       +'<p style="margin-bottom:8px;">Use the '+ICON_FOOD_BTN+' button on a stop in the Mission or Stops tab to add food and nominate where you\'ll buy it — at that stop, carried from an earlier one, or packed from the start.</p>'
       +'<p style="margin-bottom:8px;">PackTimes then builds a pickup list showing what to collect at each resupply point and what to carry forward. While riding, the next food action appears in the Ride tab strip, and a proximity alert fires as you approach stops with food assigned.</p>'
@@ -7608,7 +7608,7 @@ function tFood(r){
     mealsByDay[day].items.push({m,eta});
   });
 
-  return html+'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 6px;">Food Plan</div>'
+  return'<div style="font-size:15px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;padding:6px 4px 6px;">Food Plan</div>'
     +'<div style="padding:0 4px 12px;font-size:14px;color:var(--text3);line-height:1.5;">Use the '+ICON_FOOD_BTN+' button on Mission or Stops tabs to add or edit food.</div>'
     +nextCard
     +'<div class="card">'
