@@ -512,7 +512,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   _rideAvgSessionKm:null,                  // dist at start of current GPS session
   _rideAvgSessionTs:null,                  // timestamp at start of current GPS session
   _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all'};
@@ -2817,6 +2817,91 @@ function getTile(z,x,y,redrawId){
   const tileUrl=TILE_URLS[_tileMode]||OSM_URL;
   img.src=tileUrl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
   return 'loading';
+}
+
+// Pre-download map tiles along a route for offline use
+let _tileDownloadAbort=null;
+async function downloadRouteTiles(r,mode,onProgress){
+  if(!r||!r.points.length)return{ok:false,msg:'No route loaded'};
+  if(_tileDownloadAbort){_tileDownloadAbort.abort=true;_tileDownloadAbort=null;return{ok:false,msg:'Cancelled'};}
+  const ctrl={abort:false};
+  _tileDownloadAbort=ctrl;
+  const pts=r.points;
+  const tileUrl=TILE_URLS[mode]||OSM_URL;
+  if(!tileUrl)return{ok:false,msg:'Select a tile mode first (OSM, SAT, etc.)'};
+  // Collect unique tiles at zoom levels 10-14 along the route
+  const ZOOMS=[10,11,12,13,14];
+  const tileSet=new Set();
+  // Sample every ~200m along the route
+  const step=Math.max(1,Math.floor(pts.length/Math.max(1,r.totalDist*5)));
+  for(let i=0;i<pts.length;i+=step){
+    const p=pts[i];
+    for(const z of ZOOMS){
+      const t=lonLatToTile(p.lon,p.lat,z);
+      tileSet.add(z+'/'+t.x+'/'+t.y);
+      // Also grab adjacent tiles for a buffer
+      for(let dx=-1;dx<=1;dx++){
+        for(let dy=-1;dy<=1;dy++){
+          if(dx===0&&dy===0)continue;
+          tileSet.add(z+'/'+(t.x+dx)+'/'+(t.y+dy));
+        }
+      }
+    }
+  }
+  // Also sample last point
+  const last=pts[pts.length-1];
+  for(const z of ZOOMS){const t=lonLatToTile(last.lon,last.lat,z);tileSet.add(z+'/'+t.x+'/'+t.y);}
+
+  const tiles=[...tileSet];
+  let done=0,cached=0,failed=0;
+  const total=tiles.length;
+  const BATCH=6; // concurrent fetches
+  if(onProgress)onProgress(0,total,0);
+
+  for(let i=0;i<tiles.length;i+=BATCH){
+    if(ctrl.abort)return{ok:false,msg:'Cancelled'};
+    const batch=tiles.slice(i,i+BATCH);
+    const promises=batch.map(key=>{
+      const [z,x,y]=key.split('/');
+      const url=tileUrl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
+      return fetch(url,{mode:'cors'}).then(res=>{
+        if(res&&res.ok){cached++;return true;}
+        failed++;return false;
+      }).catch(()=>{failed++;return false;});
+    });
+    await Promise.all(promises);
+    done+=batch.length;
+    if(onProgress)onProgress(done,total,cached);
+  }
+  _tileDownloadAbort=null;
+  return{ok:true,total,cached,failed};
+}
+
+async function startTileDownload(){
+  const r=cur();if(!r||!r.points.length)return;
+  if(_tileDownloadAbort){_tileDownloadAbort.abort=true;_tileDownloadAbort=null;UI.tileDownloadStatus='idle';render();return;}
+  if(_tileMode===0){UI.tileDownloadStatus='error';UI.tileDownloadMsg='Select a tile mode first (OSM, SAT, etc.)';render();return;}
+  UI.tileDownloadStatus='loading';UI.tileDownloadMsg='';render();
+  // Show progress bar after render
+  setTimeout(()=>{
+    const prog=document.getElementById('tile-dl-progress');
+    if(prog)prog.style.display='';
+  },50);
+  const result=await downloadRouteTiles(r,_tileMode,(done,total,cached)=>{
+    const bar=document.getElementById('tile-dl-bar');
+    const msg=document.getElementById('tile-dl-msg');
+    const pct=Math.round(done/total*100);
+    if(bar)bar.style.width=pct+'%';
+    if(msg)msg.textContent=done+' / '+total+' tiles ('+cached+' cached)';
+  });
+  if(result.ok){
+    UI.tileDownloadStatus='done';
+    UI.tileDownloadMsg=result.cached+' of '+result.total+' tiles cached for offline use'+(result.failed?' ('+result.failed+' failed)':'');
+  } else {
+    UI.tileDownloadStatus=result.msg==='Cancelled'?'idle':'error';
+    UI.tileDownloadMsg=result.msg||'Download failed';
+  }
+  render();
 }
 
 // Draw OSM tiles onto canvas ctx, given current projection functions
@@ -6205,6 +6290,23 @@ function tRoutes(r){
     ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle via the Surface layer in the map legend.</p>`:''}
     ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}</div>`:''}
+  </div>
+  <div class="card">
+    <div class="secrow">
+      <div class="ctitle">Offline Map Tiles</div>
+      <button class="btn btn-sm btn-p" id="btn-download-tiles" onclick="startTileDownload()" ${UI.tileDownloadStatus==='loading'?'disabled':''}>
+        ${UI.tileDownloadStatus==='loading'?'<div class="spin"></div> Downloading…':'📥 Download'}
+      </button>
+    </div>
+    <p style="font-size:15px;color:var(--text3);margin-bottom:6px;">Pre-downloads map tiles along your route for offline use. Uses the currently selected tile mode (${['Off','OSM','SAT','Cycle','Topo'][_tileMode]}).</p>
+    <div id="tile-dl-progress" style="display:none;">
+      <div style="background:var(--bg3);border-radius:4px;height:8px;overflow:hidden;margin-bottom:6px;">
+        <div id="tile-dl-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;border-radius:4px;"></div>
+      </div>
+      <span id="tile-dl-msg" style="font-size:13px;color:var(--text3);font-family:var(--font);"></span>
+    </div>
+    ${UI.tileDownloadStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.tileDownloadMsg||'Tiles cached for offline use'}</span></div>`:''}
+    ${UI.tileDownloadStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.tileDownloadMsg||'Download failed'}</span></div>`:''}
   </div>
   <div class="card">
     <div class="ctitle">Speed Estimation</div>
@@ -9669,7 +9771,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v3';
+  const CACHE_NAME='packtimes-v4';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
@@ -9714,8 +9816,24 @@ if('serviceWorker' in navigator && window.self===window.top){
             )
         );
       }
-      // All other requests (tiles, weather, fonts) — let them go to network normally.
-      // They will fail gracefully offline — the app handles that already.
+      // Tile requests — cache-first for offline map use
+      const TILE_HOSTS=['tile.openstreetmap.org','server.arcgisonline.com','tile-cyclosm.openstreetmap.fr','a.tile-cyclosm.openstreetmap.fr','tile.opentopomap.org'];
+      if(TILE_HOSTS.some(h=>url.hostname.includes(h))){
+        const TILE_CACHE='packtimes-tiles-v1';
+        e.respondWith(
+          caches.open(TILE_CACHE).then(c=>
+            c.match(e.request).then(cached=>{
+              if(cached)return cached;
+              return fetch(e.request).then(res=>{
+                if(res&&res.ok)c.put(e.request,res.clone());
+                return res;
+              }).catch(()=>new Response('',{status:404}));
+            })
+          )
+        );
+        return;
+      }
+      // All other requests (weather, fonts) — let them go to network normally.
     });
   `;
   const blob=new Blob([swCode],{type:'application/javascript'});
