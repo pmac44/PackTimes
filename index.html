@@ -3543,6 +3543,7 @@ const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math
   setTimeout(()=>{
     state.zoom=zoomForKmWidth('live-map',kmWidth,mapH);
     state.cx=centreLon;state.cy=centreLat;
+    state._fitted=false; // must clear so drawMap doesn't overwrite cx/cy with route centroid
     state._peekAnchor=anchor;
     if(cvs){
       cvs.style.height=mapH+'px';
@@ -10033,7 +10034,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v14';
+  const CACHE_NAME='packtimes-v15';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
