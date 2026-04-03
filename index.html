@@ -3039,7 +3039,7 @@ function drawMap(cvs,r,opts){
   const padTop=id==='desktop-map'?60:(id==='live-map'?44:18); // live-map: clear overlays; stops-map: reasonable top gap
   const weatherBarWrap=id==='live-map'?document.getElementById('live-weather-bar-wrap'):null;
   const weatherBarH=weatherBarWrap&&weatherBarWrap.offsetHeight>0?weatherBarWrap.offsetHeight:0;
-  const padBottom=id==='desktop-map'?160:(id==='live-map'?Math.max(weatherBarH+10,30):18); // live-map: clear weather bar with minimum
+  const padBottom=id==='desktop-map'?160:(id==='live-map'?Math.max(weatherBarH+10,44):18); // live-map: clear weather bar, match padTop minimum
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
   const baseScale=Math.min((W-pad*2)/lonKm,(H-padTop-padBottom)/latKm);
   const scale=baseScale*state.zoom;
