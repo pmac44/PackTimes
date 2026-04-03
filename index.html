@@ -3049,12 +3049,8 @@ function drawMap(cvs,r,opts){
   } else {
     // When fitting, offset cLat so route centre lands in the visible area centre
     const routeMidLat=(maxLat+minLat)/2;
-    if(Math.abs(visibleMidY-0.5)>0.02){
-      const offsetPx=(visibleMidY-0.5)*H;
-      cLat=routeMidLat+offsetPx/(ky*scale);
-    } else {
-      cLat=routeMidLat;
-    }
+    const offsetPx=(visibleMidY-0.5)*H;
+    cLat=Math.abs(offsetPx)>3?routeMidLat+offsetPx/(ky*scale):routeMidLat;
   }
   const _wasFit=state.cx===null||state.cy===null;
   if(hasRoute&&opts.followGPS&&UI.gpsDistKm!==null){
