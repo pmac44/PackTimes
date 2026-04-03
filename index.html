@@ -3036,10 +3036,10 @@ function drawMap(cvs,r,opts){
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
-  const padTop=id==='desktop-map'?60:(id==='live-map'?44:6); // live-map: clear overlays at top
+  const padTop=id==='desktop-map'?60:(id==='live-map'?44:18); // live-map: clear overlays; stops-map: reasonable top gap
   const weatherBarWrap=id==='live-map'?document.getElementById('live-weather-bar-wrap'):null;
   const weatherBarH=weatherBarWrap&&weatherBarWrap.offsetHeight>0?weatherBarWrap.offsetHeight:0;
-  const padBottom=id==='desktop-map'?160:(id==='live-map'?weatherBarH+10:18); // live-map: clear weather bar; stops-map: small pad
+  const padBottom=id==='desktop-map'?160:(id==='live-map'?Math.max(weatherBarH+10,30):18); // live-map: clear weather bar with minimum
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
   const baseScale=Math.min((W-pad*2)/lonKm,(H-padTop-padBottom)/latKm);
   const scale=baseScale*state.zoom;
