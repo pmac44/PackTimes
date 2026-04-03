@@ -6229,6 +6229,7 @@ function tRoutes(r){
       ${r?`<span style="font-size:13px;color:var(--text3);">${r.totalDist?r.totalDist.toFixed(0)+'km':''}</span>`:''}
     </div>
     ${actuallyExpanded?`
+    <div style="font-size:13px;color:var(--text3);line-height:1.4;margin-bottom:8px;">Upload a route file to plan stops along it, or create a blank plan to search an area.</div>
     <div style="display:flex;gap:6px;">
       <button class="btn btn-sm btn-p" id="btn-upload-route" style="flex:1;">↑ Upload GPX / TCX / KML / FIT</button>
       <button class="btn btn-sm" id="btn-new-plan" style="white-space:nowrap;" title="Create a plan without a route">+ New Plan</button>
@@ -9655,27 +9656,16 @@ function applyGPX(content,suggestedName,isBinary){
   const rawName=result.name||suggestedName||'New Route';
   const routeName=(cleanRouteName(rawName)||rawName).trim();
   const sourceId=result.sourceId||null;
-  // Check if a route with the same name already exists and has stops
+  // Check if a route with the same name already exists
   const existingIdx=ROUTES.findIndex(r=>{
     const rn=(r.label||r.name).trim().toLowerCase();
     return rn===routeName.toLowerCase();
   });
-  const existing=existingIdx>=0?ROUTES[existingIdx]:null;
-  if(existing&&existing.stops.length>0){
-    const choice=confirm(`"${routeName}" already exists with ${existing.stops.length} stop${existing.stops.length!==1?'s':''}.\n\nOK = Copy existing stops across to updated route\nCancel = Show more options`);
-    if(choice){
-      _applyGPXWithStops(result,routeName,sourceId,existingIdx,existing.stops);
-      return;
-    } else {
-      const fresh=confirm(`Fresh start — clear all stops?\n\nOK = Fresh start (no stops)\nCancel = Keep as a new separate route`);
-      if(fresh){
-        _applyGPXRoute(result,routeName,sourceId,existingIdx,[]);
-        return;
-      }
-    }
-  } else if(existing){
-    _applyGPXRoute(result,routeName,sourceId,existingIdx,[]);
-    return;
+  if(existingIdx>=0){
+    const existing=ROUTES[existingIdx];
+    const stopInfo=existing.stops.length?` with ${existing.stops.length} stop${existing.stops.length!==1?'s':''}`:' (no stops)';
+    const ok=confirm(`A route called "${routeName}" already exists${stopInfo}.\n\nTo update it, use the ↻ button on the route tile instead.\n\nOK = Import as a new separate route\nCancel = Don't import`);
+    if(!ok)return;
   }
   _applyGPXRoute(result,routeName,sourceId,-1,[]);
 }
