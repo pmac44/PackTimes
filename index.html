@@ -2996,6 +2996,7 @@ function cidx(r,d){let b=0,bd=Infinity;r.points.forEach((p,i)=>{const v=Math.abs
 function drawMap(cvs,r,opts){
   opts=opts||{};
   if(!r)return;
+  if(cvs.id==='live-map'){const _s=ms('live-map');const _caller=(new Error().stack.split('\n')[2]||'').trim().slice(3,50);window._liveMapDebug='fit='+(_s._fitted?'Y':'N')+' cx='+(_s.cx?_s.cx.toFixed(2):'null')+' a='+opts.anchor+' fGPS='+(opts.followGPS?'Y':'N')+' '+_caller;const _dbg=document.getElementById('live-map-debug');if(_dbg)_dbg.textContent=window._liveMapDebug;}
   const hasRoute=r.points&&r.points.length>0;
   const hasStops=r.stops&&r.stops.some(s=>s.lat&&s.lon);
   if(!hasRoute&&!hasStops&&!r.center)return;
@@ -6039,6 +6040,7 @@ function tLiveShell(r){
       ${progressOverlay}
       <div class="live-map-section" id="live-map-section">
         <canvas id="live-map"></canvas>
+        <div id="live-map-debug" style="position:absolute;top:4px;left:4px;right:4px;z-index:99;font-size:10px;color:#0f0;background:rgba(0,0,0,0.7);padding:2px 4px;border-radius:3px;font-family:monospace;pointer-events:none;">${window._liveMapDebug||'waiting...'}</div>
         ${mapCtrlHTML('live-map',true)}
         <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:10;">${weatherBarHTML()}</div>
         <div id="adaptive-msg-bar-wrap" style="position:absolute;top:56px;left:8px;right:8px;z-index:11;">
@@ -9991,7 +9993,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v8';
+  const CACHE_NAME='packtimes-v10';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
