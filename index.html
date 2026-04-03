@@ -3034,7 +3034,7 @@ function drawMap(cvs,r,opts){
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
-  const padTop=id==='desktop-map'?60:6; // mobile: pills now above map so no top clearance needed
+  const padTop=id==='desktop-map'?60:(id==='live-map'?18:6); // live-map: clear map controls at top
   const weatherBarWrap=id==='live-map'?document.getElementById('live-weather-bar-wrap'):null;
   const weatherBarH=weatherBarWrap&&weatherBarWrap.offsetHeight>0?weatherBarWrap.offsetHeight:0;
   const padBottom=id==='desktop-map'?160:(id==='live-map'?weatherBarH+10:18); // live-map: clear weather bar; stops-map: small pad
@@ -3059,7 +3059,12 @@ function drawMap(cvs,r,opts){
   }
   // Only save centre to state when fitting (was null) or following GPS — not during static redraws
   if(_wasFit||opts.followGPS){state.cx=cLon;state.cy=cLat;}
-  const cpx=W/2,cpy=H*(_wasFit?visibleMidY:anchor);
+  if(_wasFit)state._fitted=true;
+  if(opts.followGPS)state._fitted=false;
+  // Use visibleMidY when fitted or when padding is asymmetric (live-map weather bar);
+  // only use opts.anchor when user is actively panning or GPS-following
+  const useFitAnchor=_wasFit||(state._fitted&&!opts.followGPS);
+  const cpx=W/2,cpy=H*(useFitAnchor?visibleMidY:anchor);
   const px=lon=>cpx+(lon-cLon)*kx*scale;
   const py=lat=>cpy-(lat-cLat)*ky*scale;
 
@@ -3643,6 +3648,7 @@ function attachMap(cvs,tapCb){
     const kx=cvs._kx,ky=cvs._ky,scale=cvs._scale;
     state.cx=_drag.startCx-dx/(kx*scale);
     state.cy=_drag.startCy+dy/(ky*scale);
+    state._fitted=false;
     redrawMap(id);
   };
   let _didDrag=false;
