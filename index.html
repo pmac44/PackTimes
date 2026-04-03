@@ -5575,10 +5575,10 @@ function _stopsMapH(fraction){
   const headerH=document.querySelector('.header')?.offsetHeight||48;
   const viewH=window.visualViewport?window.visualViewport.height:window.innerHeight;
   if(fraction>=1.0){
-    // Full screen: subtract header and a safe bottom margin for gesture bar + tab bar overlap
-    const tabsEl=document.getElementById('tabs');
-    const safeBottom=tabsEl?tabsEl.offsetHeight:56;
-    return Math.round(viewH-headerH-safeBottom);
+    // Full screen: fill from map panel top to viewport bottom
+    const panel=document.getElementById('stops-map-panel');
+    if(panel){const top=panel.getBoundingClientRect().top;return Math.round(viewH-top);}
+    return Math.round(viewH-headerH);
   }
   return Math.round((viewH-tabsH-headerH)*fraction);
 }
