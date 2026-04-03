@@ -3005,8 +3005,8 @@ function drawMap(cvs,r,opts){
   ctx.clearRect(0,0,W,H);
   const pts=r.points;
   const id=cvs.id,state=ms(id);
-  // If map is in fitted state, force re-fit by clearing stored centre (only manual pan clears _fitted)
-  if(state._fitted){state.cx=null;state.cy=null;}
+  // If live-map is in fitted state, force re-fit by clearing stored centre (only manual pan clears _fitted)
+  if(state._fitted&&id==='live-map'){state.cx=null;state.cy=null;}
   const anchor=opts.anchor||0.5;
 
   // Responsive font size based on canvas width
