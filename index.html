@@ -5712,22 +5712,22 @@ function handleStopsScroll(e){
 function powerZone(watts,ftp){
   if(!ftp||!watts)return null;
   const pct=watts/ftp;
-  if(pct<0.55)return{z:1,label:'Z1 Recovery',   color:'#fff',bg:'#4b5563',border:'#6b7280',textDark:false};
-  if(pct<0.75)return{z:2,label:'Z2 Endurance',  color:'#fff',bg:'#1d4ed8',border:'#3b82f6',textDark:false};
-  if(pct<0.85)return{z:3,label:'Z3 Tempo',      color:'#000',bg:'#34d399',border:'#10b981',textDark:true};
-  if(pct<0.95)return{z:4,label:'Z4 Sweet Spot', color:'#000',bg:'#a3e635',border:'#84cc16',textDark:true};
-  if(pct<1.05)return{z:5,label:'Z5 Threshold',  color:'#000',bg:'#fbbf24',border:'#f59e0b',textDark:true};
-  if(pct<1.20)return{z:6,label:'Z6 VO2 Max',    color:'#fff',bg:'#c2410c',border:'#f97316',textDark:false};
-  return          {z:7,label:'Z7 Anaerobic',   color:'#fff',bg:'#991b1b',border:'#f87171',textDark:false};
+  if(pct<0.55)return{z:1,label:'Z1 Recovery',   color:'#000',bg:'#BDBDBD',border:'#9E9E9E',textDark:true};
+  if(pct<0.75)return{z:2,label:'Z2 Endurance',  color:'#fff',bg:'#283593',border:'#3949AB',textDark:false};
+  if(pct<0.85)return{z:3,label:'Z3 Tempo',      color:'#fff',bg:'#1E88E5',border:'#42A5F5',textDark:false};
+  if(pct<0.95)return{z:4,label:'Z4 Sweet Spot', color:'#000',bg:'#43A047',border:'#66BB6A',textDark:true};
+  if(pct<1.05)return{z:5,label:'Z5 Threshold',  color:'#000',bg:'#FDD835',border:'#FFEE58',textDark:true};
+  if(pct<1.20)return{z:6,label:'Z6 VO2 Max',    color:'#fff',bg:'#F4511E',border:'#FF7043',textDark:false};
+  return          {z:7,label:'Z7 Anaerobic',   color:'#fff',bg:'#BF360C',border:'#E64A19',textDark:false};
 }
 function hrZone(bpm,maxHr){
   if(!maxHr||!bpm)return null;
   const pct=bpm/maxHr;
-  if(pct<0.60)return{z:1,label:'Z1 Recovery',  color:'#fff',bg:'#4b5563',border:'#6b7280',textDark:false};
-  if(pct<0.70)return{z:2,label:'Z2 Aerobic',   color:'#fff',bg:'#1d4ed8',border:'#3b82f6',textDark:false};
-  if(pct<0.80)return{z:3,label:'Z3 Tempo',     color:'#000',bg:'#34d399',border:'#10b981',textDark:true};
-  if(pct<0.90)return{z:4,label:'Z4 Threshold', color:'#000',bg:'#fbbf24',border:'#f59e0b',textDark:true};
-  return        {z:5,label:'Z5 Max',           color:'#fff',bg:'#991b1b',border:'#f87171',textDark:false};
+  if(pct<0.60)return{z:1,label:'Z1 Recovery',  color:'#000',bg:'#BDBDBD',border:'#9E9E9E',textDark:true};
+  if(pct<0.70)return{z:2,label:'Z2 Aerobic',   color:'#fff',bg:'#283593',border:'#3949AB',textDark:false};
+  if(pct<0.80)return{z:3,label:'Z3 Tempo',     color:'#fff',bg:'#1E88E5',border:'#42A5F5',textDark:false};
+  if(pct<0.90)return{z:4,label:'Z4 Threshold', color:'#000',bg:'#FDD835',border:'#FFEE58',textDark:true};
+  return        {z:5,label:'Z5 Max',           color:'#fff',bg:'#BF360C',border:'#E64A19',textDark:false};
 }
 
 // ─── Turn Review Mode ───────────────────────────────────────────────────────
@@ -6041,7 +6041,7 @@ function tLiveShell(r){
   const sType=UI.sensorType||'power';
   const sConnected=sType==='power'?UI.powerConnected:UI.hrConnected;
   const sVal=sType==='power'?(UI.powerWatts!==null?UI.powerWatts+'w':'—'):(UI.hrBpm!==null?UI.hrBpm+' bpm':'—');
-  const sSub=sType==='power'&&UI.powerCadence!==null?UI.powerCadence+'rpm':'';
+  const sSub=''; // cadence removed from pill to keep it compact
   const _pz=sType==='power'&&UI.powerConnected&&UI.powerWatts!==null?powerZone(UI.powerWatts,UI.ftp)
            :sType==='hr'&&UI.hrConnected&&UI.hrBpm!==null?hrZone(UI.hrBpm,UI.maxHr)
            :null;
@@ -6632,13 +6632,13 @@ function tSettings(r){
     if(!UI.ftp)return'';
     const ftp=UI.ftp;
     const zones=[
-      [1,'Z1 Recovery',  'under 55%',  'under '+Math.round(ftp*0.55),'#9ca3af','rgba(156,163,175,0.15)','rgba(156,163,175,0.35)'],
-      [2,'Z2 Endurance', '55 - 74%',   Math.round(ftp*0.55)+' - '+Math.round(ftp*0.74),'#60a5fa','rgba(96,165,250,0.15)','rgba(96,165,250,0.35)'],
-      [3,'Z3 Tempo',     '75 - 84%',   Math.round(ftp*0.75)+' - '+Math.round(ftp*0.84),'#34d399','rgba(52,211,153,0.15)','rgba(52,211,153,0.35)'],
-      [4,'Z4 Sweet Spot','85 - 94%',   Math.round(ftp*0.85)+' - '+Math.round(ftp*0.94),'#a3e635','rgba(163,230,53,0.15)','rgba(163,230,53,0.35)'],
-      [5,'Z5 Threshold', '95 - 105%',  Math.round(ftp*0.95)+' - '+Math.round(ftp*1.05),'#fbbf24','rgba(251,191,36,0.15)','rgba(251,191,36,0.35)'],
-      [6,'Z6 VO2 Max',   '106 - 120%', Math.round(ftp*1.06)+' - '+Math.round(ftp*1.20),'#f97316','rgba(249,115,22,0.15)','rgba(249,115,22,0.35)'],
-      [7,'Z7 Anaerobic', 'over 120%',  'over '+Math.round(ftp*1.20),'#f87171','rgba(248,113,113,0.15)','rgba(248,113,113,0.35)'],
+      [1,'Z1 Recovery',  'under 55%',  'under '+Math.round(ftp*0.55),'#BDBDBD','rgba(189,189,189,0.15)','rgba(189,189,189,0.35)'],
+      [2,'Z2 Endurance', '55 - 74%',   Math.round(ftp*0.55)+' - '+Math.round(ftp*0.74),'#3949AB','rgba(57,73,171,0.15)','rgba(57,73,171,0.35)'],
+      [3,'Z3 Tempo',     '75 - 84%',   Math.round(ftp*0.75)+' - '+Math.round(ftp*0.84),'#42A5F5','rgba(66,165,245,0.15)','rgba(66,165,245,0.35)'],
+      [4,'Z4 Sweet Spot','85 - 94%',   Math.round(ftp*0.85)+' - '+Math.round(ftp*0.94),'#66BB6A','rgba(102,187,106,0.15)','rgba(102,187,106,0.35)'],
+      [5,'Z5 Threshold', '95 - 105%',  Math.round(ftp*0.95)+' - '+Math.round(ftp*1.05),'#FDD835','rgba(253,216,53,0.15)','rgba(253,216,53,0.35)'],
+      [6,'Z6 VO2 Max',   '106 - 120%', Math.round(ftp*1.06)+' - '+Math.round(ftp*1.20),'#FF7043','rgba(255,112,67,0.15)','rgba(255,112,67,0.35)'],
+      [7,'Z7 Anaerobic', 'over 120%',  'over '+Math.round(ftp*1.20),'#E64A19','rgba(230,74,25,0.15)','rgba(230,74,25,0.35)'],
     ];
     return '<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">'
       +zones.map(function(row){
@@ -6656,11 +6656,11 @@ function tSettings(r){
     if(!UI.maxHr)return'';
     const mhr=UI.maxHr;
     const zones=[
-      [1,'Z1 Recovery', 'under 60%', 'under '+Math.round(mhr*0.60), '#9ca3af','rgba(156,163,175,0.15)','rgba(156,163,175,0.35)'],
-      [2,'Z2 Aerobic',  '60 – 69%',  Math.round(mhr*0.60)+' – '+Math.round(mhr*0.69), '#60a5fa','rgba(96,165,250,0.15)','rgba(96,165,250,0.35)'],
-      [3,'Z3 Tempo',    '70 – 79%',  Math.round(mhr*0.70)+' – '+Math.round(mhr*0.79), '#34d399','rgba(52,211,153,0.15)','rgba(52,211,153,0.35)'],
-      [4,'Z4 Threshold','80 – 89%',  Math.round(mhr*0.80)+' – '+Math.round(mhr*0.89), '#fbbf24','rgba(251,191,36,0.15)','rgba(251,191,36,0.35)'],
-      [5,'Z5 Max',      '90 – 100%', Math.round(mhr*0.90)+' – '+mhr,                  '#f87171','rgba(248,113,113,0.15)','rgba(248,113,113,0.35)'],
+      [1,'Z1 Recovery', 'under 60%', 'under '+Math.round(mhr*0.60), '#BDBDBD','rgba(189,189,189,0.15)','rgba(189,189,189,0.35)'],
+      [2,'Z2 Aerobic',  '60 – 69%',  Math.round(mhr*0.60)+' – '+Math.round(mhr*0.69), '#3949AB','rgba(57,73,171,0.15)','rgba(57,73,171,0.35)'],
+      [3,'Z3 Tempo',    '70 – 79%',  Math.round(mhr*0.70)+' – '+Math.round(mhr*0.79), '#42A5F5','rgba(66,165,245,0.15)','rgba(66,165,245,0.35)'],
+      [4,'Z4 Threshold','80 – 89%',  Math.round(mhr*0.80)+' – '+Math.round(mhr*0.89), '#FDD835','rgba(253,216,53,0.15)','rgba(253,216,53,0.35)'],
+      [5,'Z5 Max',      '90 – 100%', Math.round(mhr*0.90)+' – '+mhr,                  '#E64A19','rgba(230,74,25,0.15)','rgba(230,74,25,0.35)'],
     ];
     return '<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;">'
       +zones.map(function(row){
@@ -9897,7 +9897,7 @@ async function connectPowerMeter(){
       const pc=document.getElementById('live-sensor-sub');
       const plbl=document.getElementById('live-sensor-lbl');
       if(pw)pw.textContent=avg+'w';
-      if(pc&&UI.powerCadence!==null)pc.textContent=UI.powerCadence+'rpm';
+      // cadence removed from pill to keep it compact
       // Update zone colour if FTP is set
       const pz=powerZone(avg,UI.ftp);
       if(pill&&pz){
@@ -10034,7 +10034,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v16';
+  const CACHE_NAME='packtimes-v17';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
