@@ -5305,27 +5305,63 @@ function buildLiveStrip(r,liveDist,sdt){
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
   const ahead=r.stops.filter(s=>s.dist>liveDist&&starred(s));
   if(!ahead.length)return'<div class="live-next-strip"><div class="live-next-row" style="justify-content:center;color:var(--accent);font-size:14px;">🏁 All stops passed</div></div>';
-  // Collect distinct upcoming stops — deduplicated by id
+
   const seen=new Set();
   const rows=[];
-  // Track reason: 'type' = shown for what it is, 'food' = shown because meals assigned
   const rowReason={};
-  const add=(s,reason)=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);rowReason[s.id]=reason||'type';}};
-  add(ahead[0],'type'); // next stop always first
-  add(ahead.find(s=>s.type==='sleep'||s.sleepAt),'type'); // next sleep
-  // Slot 4: next resupply — simply the closest unseen resupply-type stop (town/food/shop/pub/accom/fuel)
-  const isResupplyType=s=>s.type==='town'||s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom'||s.type==='fuel';
-  const nextResupply=ahead.find(s=>!seen.has(s.id)&&isResupplyType(s));
-  add(nextResupply,'type');
-  // Slot 3: next water — only show if it's before or not covered by the resupply stop
-  // A confirmed open resupply stop (town/hotel/pub) covers water — skip the water slot
-  const resupplyCoversWater=nextResupply&&(nextResupply.type==='town'||(nextResupply.ohRaw&&(nextResupply.type==='pub'||nextResupply.type==='accom'||nextResupply.type==='food'||nextResupply.type==='shop')));
-  const nextWater=resupplyCoversWater?null:
-    ahead.find(s=>!seen.has(s.id)&&s.type==='water')||           // explicit drinking water
-    ahead.find(s=>!seen.has(s.id)&&s.type==='town');              // town as water fallback
-  add(nextWater,'type'); // next water
-  rows.sort((a,b)=>a.dist-b.dist); // always show in distance order
-  const now=etaAt(liveDist,r)||sdt||new Date(); // always use route time, never wall clock
+  const rowDisplayName={}; // override name for display (e.g. town name instead of cafe name)
+  const add=(s,reason,displayName)=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);rowReason[s.id]=reason||'type';if(displayName)rowDisplayName[s.id]=displayName;}};
+
+  // Helper: find the nearest town within CLUSTER_KM of a stop (for display name)
+  const nearbyTown=(s)=>{
+    if(s.type==='town')return null;
+    return r.stops.find(t=>t.type==='town'&&Math.abs(t.dist-s.dist)<=CLUSTER_KM);
+  };
+
+  // Helper: does a stop have food?
+  const hasFood=s=>s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='town'||(s.meals&&s.meals.length>0);
+
+  // Slot 1: always the next stop
+  add(ahead[0],'type');
+
+  // Collect candidates: next sleep, next food, next water — then pick up to 3 closest unseen
+  const candidates=[];
+
+  // Next sleep (only if any sleep exists ahead)
+  const nextSleep=ahead.find(s=>!seen.has(s.id)&&(s.type==='sleep'||s.sleepAt));
+  if(nextSleep)candidates.push({s:nextSleep,reason:'type',displayName:null});
+
+  // Next food — stop with planned meals or food-type; skip if first stop already has food
+  if(!(ahead[0]&&hasFood(ahead[0]))){
+    const nextPlannedMeal=ahead.find(s=>!seen.has(s.id)&&s.meals&&s.meals.length>0);
+    const nextFoodType=ahead.find(s=>!seen.has(s.id)&&(s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='town'));
+    const foodStop=nextPlannedMeal&&nextFoodType
+      ?(nextPlannedMeal.dist<=nextFoodType.dist?nextPlannedMeal:nextFoodType)
+      :(nextPlannedMeal||nextFoodType);
+    if(foodStop){
+      const town=nearbyTown(foodStop);
+      candidates.push({s:foodStop,reason:'food',displayName:town?town.name:null});
+    }
+  }
+
+  // Next water — only if closer than the nearest food source
+  const firstFoodDist=ahead.find(s=>hasFood(s))?.dist||Infinity;
+  const nextWater=ahead.find(s=>!seen.has(s.id)&&s.type==='water'&&s.dist<firstFoodDist);
+  if(nextWater)candidates.push({s:nextWater,reason:'type',displayName:null});
+
+  // Sort candidates by distance and add up to 3 (giving max 4 rows total with slot 1)
+  candidates.sort((a,b)=>a.s.dist-b.s.dist);
+  // Deduplicate: a candidate might be the same stop as another (e.g. sleep stop that also has meals)
+  const addedIds=new Set(seen);
+  for(const c of candidates){
+    if(rows.length>=4)break;
+    if(addedIds.has(c.s.id))continue;
+    add(c.s,c.reason,c.displayName);
+    addedIds.add(c.s.id);
+  }
+
+  rows.sort((a,b)=>a.dist-b.dist);
+  const now=etaAt(liveDist,r)||sdt||new Date();
   const html=rows.map(s=>{
     const eta=etaAt(s.dist,r);
     const dt=(s.dist-liveDist).toFixed(1);
@@ -5340,13 +5376,13 @@ function buildLiveStrip(r,liveDist,sdt){
     const reason=rowReason[s.id]||'type';
     const icons=liveStripIcons(s,reason);
     const st=shopSt(s,r);
-    // Only show hours badge for stops shown for their type (not for meal stops at huts etc)
     const hoursTypes=new Set(['food','shop','accom','pub','fuel']);
     const needsHours=reason==='type'&&hoursTypes.has(s.type);
     const openBadge=needsHours?(st==='open'?'<span style="font-size:11px;color:var(--accent);margin-left:4px;">✓</span>':st==='closed'?'<span style="font-size:11px;color:var(--red);margin-left:4px;">✗</span>':'<span style="font-size:11px;color:var(--amber);margin-left:4px;">? hrs</span>'):'';
+    const displayName=rowDisplayName[s.id]||s.name;
     return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
       <div class="live-next-icons">${icons}</div>
-      <div class="live-next-name">${s.name}${openBadge}</div>
+      <div class="live-next-name">${displayName}${openBadge}</div>
       <div class="live-next-in" style="flex-shrink:0;">${dt}km/${inStr||timeStr}</div>
     </div>`;
   }).join('');
@@ -10027,7 +10063,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v24';
+  const CACHE_NAME='packtimes-v27';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
