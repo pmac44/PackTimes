@@ -3508,21 +3508,25 @@ const stripH=IS_DESKTOP()?0:(document.getElementById('live-next-strip')?.offsetH
 const mapH=IS_DESKTOP()?Math.round((_sb?_sb.offsetWidth:400)*20/9):Math.min(Math.round(viewW*20/9),Math.max(200,viewH-tabsH-stripH));
 
   // Calculate centre and zoom to show BOTH GPS position and target stop.
-  // GPS sits at anchor (80% down), stop near top (~15% down).
-  // Derive kmWidth from the map's vertical span so both points fit snugly.
-  const anchor=UI.gpsPos?0.8:0.5;
+  // GPS near bottom (anchor 0.85), stop near top (~15% down from ride pills).
+  // The anchor point is where cx/cy maps to on the canvas.
+  const anchor=UI.gpsPos?0.85:0.5;
   let centreLon=lon,centreLat=lat,kmWidth=1.5;
   if(UI.gpsPos){
     const gLat=UI.gpsPos.lat,gLon=UI.gpsPos.lon;
     const distKm=hav({lat:gLat,lon:gLon},{lat,lon});
     if(distKm>0.1){
-      // Centre 30% of the way from GPS toward stop
-      centreLat=gLat+(lat-gLat)*0.3;
-      centreLon=gLon+(lon-gLon)*0.3;
-      // Fit the vertical distance in (anchor-0.15)*mapH pixels with 10% margin
+      // We want GPS at ~85% down and stop at ~15% down.
+      // anchor=0.85 means cx/cy maps to 85% down the canvas.
+      // So we set centre = GPS position; GPS draws at anchor (85% down),
+      // and the stop needs to appear 70% of canvas height above that.
+      // Centre 85% of the way from stop toward GPS (i.e. near GPS)
+      centreLat=lat+(gLat-lat)*0.85;
+      centreLon=lon+(gLon-lon)*0.85;
+      // Zoom so the vertical GPS-to-stop distance fits in 70% of canvas height
       const W=window.innerWidth;
       const H=mapH;
-      const vertFrac=anchor-0.15;
+      const vertFrac=0.70; // stop at 15%, GPS at 85% = 70% span
       kmWidth=Math.max(0.3,distKm*(W/(H*vertFrac))*1.1);
     }
   }
@@ -10063,7 +10067,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v27';
+  const CACHE_NAME='packtimes-v28';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
