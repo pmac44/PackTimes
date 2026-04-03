@@ -4551,13 +4551,13 @@ function renderDesktopMap(){
       const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
       // "All" toggle row — same style as layer rows, white dot when all visible, empty when any hidden
       legend.innerHTML=`<div id="desktop-legend-all" class="map-legend-item" data-ltype="__all__" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);margin-bottom:2px;opacity:${allHidden?0.45:1};">
-          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${allVisible?'rgba(255,255,255,0.85)':'none'}" stroke="rgba(255,255,255,0.85)" stroke-width="1.5"/></svg>
+          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="rgba(255,255,255,0.85)" stroke="rgba(255,255,255,0.85)" stroke-width="1.5"/></svg>
           <span style="font-size:12px;color:${allHidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;font-weight:600;">All</span>
         </div>`
         +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
         return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
-          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${hidden?'none':t.col}" stroke="${t.col}" stroke-width="1.5"/></svg>
+          <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${t.col}" stroke="${t.col}" stroke-width="1.5"/></svg>
           <span style="font-size:12px;color:${hidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;">${t.label}</span>
         </div>`;
       }).join('')
