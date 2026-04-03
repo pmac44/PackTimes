@@ -5313,16 +5313,9 @@ function buildLiveStrip(r,liveDist,sdt){
   const add=(s,reason)=>{if(s&&!seen.has(s.id)){seen.add(s.id);rows.push(s);rowReason[s.id]=reason||'type';}};
   add(ahead[0],'type'); // next stop always first
   add(ahead.find(s=>s.type==='sleep'||s.sleepAt),'type'); // next sleep
-  // Slot 4: next resupply — town outranks individual food/fuel; confirmed outranks unconfirmed
-  // Skip already-seen stops so we don't silently discard a closer town and jump to a distant food stop
+  // Slot 4: next resupply — simply the closest unseen resupply-type stop (town/food/shop/pub/accom/fuel)
   const isResupplyType=s=>s.type==='town'||s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom'||s.type==='fuel';
-  const nextResupply=
-    ahead.find(s=>!seen.has(s.id)&&s.type==='town'&&s.ohRaw)||          // confirmed town — best resupply
-    ahead.find(s=>!seen.has(s.id)&&(s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom')&&s.ohRaw)|| // confirmed food/drink
-    ahead.find(s=>!seen.has(s.id)&&s.type==='fuel'&&s.ohRaw)||          // confirmed fuel
-    ahead.find(s=>!seen.has(s.id)&&s.type==='town')||                   // unconfirmed town
-    ahead.find(s=>!seen.has(s.id)&&(s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='accom'))|| // unconfirmed food/drink
-    ahead.find(s=>!seen.has(s.id)&&s.type==='fuel');                    // unconfirmed fuel — last resort
+  const nextResupply=ahead.find(s=>!seen.has(s.id)&&isResupplyType(s));
   add(nextResupply,'type');
   // Slot 3: next water — only show if it's before or not covered by the resupply stop
   // A confirmed open resupply stop (town/hotel/pub) covers water — skip the water slot
@@ -10034,7 +10027,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v23';
+  const CACHE_NAME='packtimes-v24';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
