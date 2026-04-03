@@ -3035,23 +3035,22 @@ function drawMap(cvs,r,opts){
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
   const padTop=id==='desktop-map'?60:6; // mobile: pills now above map so no top clearance needed
-  const weatherBar=id==='live-map'?document.getElementById('live-weather-bar'):null;
-  const weatherBarH=weatherBar&&weatherBar.offsetHeight>0?weatherBar.offsetHeight:36;
-  const padBottom=id==='desktop-map'?160:weatherBarH+6; // mobile: clear the weather bar overlay
+  const weatherBarWrap=id==='live-map'?document.getElementById('live-weather-bar-wrap'):null;
+  const weatherBarH=weatherBarWrap&&weatherBarWrap.offsetHeight>0?weatherBarWrap.offsetHeight:0;
+  const padBottom=id==='desktop-map'?160:(id==='live-map'?weatherBarH+10:18); // live-map: clear weather bar; stops-map: small pad
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
   const baseScale=Math.min((W-pad*2)/lonKm,(H-padTop-padBottom)/latKm);
   const scale=baseScale*state.zoom;
   let cLon=state.cx!==null?state.cx:(maxLon+minLon)/2;
-  const visibleMidY=id==='desktop-map'?(pad+(H-padBottom-pad)/2)/H:0.5;
+  const visibleMidY=(padTop+(H-padBottom-padTop)/2)/H;
   let cLat;
   if(state.cy!==null){
     cLat=state.cy;
   } else {
     // When fitting, offset cLat so route centre lands in the visible area centre
     const routeMidLat=(maxLat+minLat)/2;
-    if(id==='desktop-map'){
-      // visibleMidY is where we want the centre — offset cLat to compensate
-      const offsetPx=(visibleMidY-0.5)*H; // pixels above true centre
+    if(Math.abs(visibleMidY-0.5)>0.02){
+      const offsetPx=(visibleMidY-0.5)*H;
       cLat=routeMidLat+offsetPx/(ky*scale);
     } else {
       cLat=routeMidLat;
@@ -3064,7 +3063,7 @@ function drawMap(cvs,r,opts){
   }
   // Only save centre to state when fitting (was null) or following GPS — not during static redraws
   if(_wasFit||opts.followGPS){state.cx=cLon;state.cy=cLat;}
-  const cpx=W/2,cpy=H*(!_wasFit&&id==='desktop-map'?anchor:id==='desktop-map'?visibleMidY:anchor);
+  const cpx=W/2,cpy=H*(_wasFit?visibleMidY:anchor);
   const px=lon=>cpx+(lon-cLon)*kx*scale;
   const py=lat=>cpy-(lat-cLat)*ky*scale;
 
