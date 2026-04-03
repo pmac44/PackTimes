@@ -3380,15 +3380,15 @@ function drawMap(cvs,r,opts){
         ctx.beginPath();
         ctx.moveTo(sx,sy-sz);ctx.lineTo(sx+sz,sy);ctx.lineTo(sx,sy+sz);ctx.lineTo(sx-sz,sy);
         ctx.closePath();
-        ctx.fillStyle='#3b5998';ctx.fill();
-        ctx.strokeStyle='#1a2a4a';ctx.lineWidth=1.5;ctx.stroke();
+        ctx.fillStyle='#0066FF';ctx.fill();
+        ctx.strokeStyle='#003d99';ctx.lineWidth=1.5;ctx.stroke();
         // Day number label
         const lbl='D'+sp.day;
         const fSize=isDesktopMap?10:11;
         ctx.font='bold '+fSize+'px DM Mono, monospace';ctx.textAlign='center';ctx.textBaseline='bottom';
         const tw=ctx.measureText(lbl).width;
         const pillH=fSize+4,pillY=sy-sz-pillH-2;
-        ctx.fillStyle='rgba(59,89,152,0.9)';
+        ctx.fillStyle='rgba(0,102,255,0.9)';
         ctx.beginPath();
         if(ctx.roundRect){ctx.roundRect(sx-tw/2-4,pillY,tw+8,pillH,3);}
         else{ctx.rect(sx-tw/2-4,pillY,tw+8,pillH);}
@@ -5373,7 +5373,7 @@ const LAYER_TYPES=[
   {type:'police',col:'#3b82f6',label:'Police'},
   {type:'fire',col:'#ef4444',label:'Fire stn'},
   {type:'stockwater',col:'#94a3b8',label:'Stock H2O'},
-  {type:'daysplit',col:'#3b5998',label:'Day split guides'},
+  {type:'daysplit',col:'#0066FF',label:'Day split guides'},
 ];
 function sortedLayers(r){
   const PRIORITY=['daysplit','kmmarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
@@ -6373,7 +6373,7 @@ function tRoutes(r){
             const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
             const hpdStr=dsc>=1?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')):'';
             return'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
-              +'<div style="'+lbl+'margin-bottom:2px;display:flex;align-items:center;gap:6px;">Day Split Guides<svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><polygon points="6,0 12,6 6,12 0,6" fill="#3b5998" stroke="#1a2a4a" stroke-width="1"/></svg></div>'
+              +'<div style="'+lbl+'margin-bottom:2px;display:flex;align-items:center;gap:6px;">Day Split Guides<svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><polygon points="6,0 12,6 6,12 0,6" fill="#0066FF" stroke="#003d99" stroke-width="1"/></svg></div>'
               +'<div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.4;">Visual markers only — helps plan where to sleep, does not change your route or times</div>'
               +'<div style="display:flex;align-items:center;gap:10px;">'
                 +'<input type="number" id="day-split-input" min="0" max="99" step="1" value="'+(dsc||'')+'" placeholder="days" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-size:16px;font-family:var(--font);text-align:center;">'
@@ -8076,7 +8076,7 @@ function patchSpeedFactor(r){
       const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
       const hpdStr=dsc>=1?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')):'';
       return'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
-        +'<div style="'+lbl+'margin-bottom:2px;display:flex;align-items:center;gap:6px;">Day Split Guides<svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><polygon points="6,0 12,6 6,12 0,6" fill="#3b5998" stroke="#1a2a4a" stroke-width="1"/></svg></div>'
+        +'<div style="'+lbl+'margin-bottom:2px;display:flex;align-items:center;gap:6px;">Day Split Guides<svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><polygon points="6,0 12,6 6,12 0,6" fill="#0066FF" stroke="#003d99" stroke-width="1"/></svg></div>'
         +'<div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.4;">Visual markers only — helps plan where to sleep, does not change your route or times</div>'
         +'<div style="display:flex;align-items:center;gap:10px;">'
           +'<input type="number" id="day-split-input" min="0" max="99" step="1" value="'+(dsc||'')+'" placeholder="days" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-size:16px;font-family:var(--font);text-align:center;">'
