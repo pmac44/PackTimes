@@ -5353,7 +5353,7 @@ function buildLiveStrip(r,liveDist,sdt){
     return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
       <div class="live-next-icons">${icons}</div>
       <div class="live-next-name">${s.name}${openBadge}</div>
-      <div class="live-next-in" style="flex-shrink:0;">${dt}km · ${inStr?'in '+inStr:timeStr}</div>
+      <div class="live-next-in" style="flex-shrink:0;">${dt}km/${inStr||timeStr}</div>
     </div>`;
   }).join('');
   return`<div class="live-next-strip" id="live-next-strip">${html}</div>`;
@@ -10034,7 +10034,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v17';
+  const CACHE_NAME='packtimes-v18';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
