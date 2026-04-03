@@ -7481,7 +7481,6 @@ function tPlan(r){
             :
               (isSleep?'':
                 (eta?'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:'+(isLightBg?'#fff':'var(--accent)')+';margin-top:3px;">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>':'')
-                +daydiv
                 +departDiv
               )
             )
@@ -10035,7 +10034,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v21';
+  const CACHE_NAME='packtimes-v22';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
