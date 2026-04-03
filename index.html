@@ -8319,7 +8319,14 @@ function updateLive(){
         _liveDrawRaf=requestAnimationFrame(()=>{
           _liveDrawRaf=null;
           const mc2=document.getElementById('live-map');
-          if(mc2)drawMap(mc2,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
+          if(mc2){
+            const st=ms('live-map');
+            if(st._fitted){
+              drawMap(mc2,r,{showGPS:true,followGPS:false,anchor:0.5,rotate:false});
+            } else {
+              drawMap(mc2,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
+            }
+          }
         });
       }
     }
