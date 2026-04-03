@@ -3034,7 +3034,7 @@ function drawMap(cvs,r,opts){
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
-  const padTop=id==='desktop-map'?60:(id==='live-map'?18:6); // live-map: clear map controls at top
+  const padTop=id==='desktop-map'?60:(id==='live-map'?44:6); // live-map: clear overlays at top
   const weatherBarWrap=id==='live-map'?document.getElementById('live-weather-bar-wrap'):null;
   const weatherBarH=weatherBarWrap&&weatherBarWrap.offsetHeight>0?weatherBarWrap.offsetHeight:0;
   const padBottom=id==='desktop-map'?160:(id==='live-map'?weatherBarH+10:18); // live-map: clear weather bar; stops-map: small pad
@@ -3897,7 +3897,7 @@ function mapCtrlHTML(mapId,showGPS){
   const recenterBtn=(!isLiveMobile&&showGPS)?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="${btnSize}padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:'';
   return`<div class="map-ctrl" style="${pos}">
     ${expandBtn}
-    <button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
+    <button class="zbtn" data-fitroute="${mapId}" title="Fit whole route v6" style="${btnSize}font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${recenterBtn}
     ${mapId==='live-map'?gpsBtn:''}
@@ -9981,7 +9981,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v5';
+  const CACHE_NAME='packtimes-v6';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
