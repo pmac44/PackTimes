@@ -2042,6 +2042,7 @@ function _doStartGPS(){
   UI._lastMovedTs=Date.now();
   const liveState=ms('live-map');
   liveState._userZoomed=false;liveState._autoZoomed=false;
+  liveState._fitted=false; // exit fitted/overview mode so GPS handler follows the dot
 
   // Ride average: check if GPS restarting after a significant gap
   const now=Date.now();
@@ -3488,6 +3489,8 @@ function panTo(id,lon,lat){
 
 // Peek: pan live map to a stop for 5s then return to GPS follow
 let _livePeekTimer=null;
+// Fit-return: after FIT with GPS on, return to GPS following after 5s
+let _liveFitReturnTimer=null;
 let _peekResetFn=null;
 function peekLiveStop(s,r){
   const p=r.points[cidx(r,s.dist)];
@@ -3660,6 +3663,8 @@ function attachMap(cvs,tapCb){
     state.cx=_drag.startCx-dx/(kx*scale);
     state.cy=_drag.startCy+dy/(ky*scale);
     state._fitted=false;
+    // Cancel fit-return timer on manual pan — user is taking control
+    if(id==='live-map'&&_liveFitReturnTimer){clearTimeout(_liveFitReturnTimer);_liveFitReturnTimer=null;}
     redrawMap(id);
   };
   let _didDrag=false;
@@ -3947,9 +3952,27 @@ document.addEventListener('click',e=>{
     const id=fr.dataset.fitroute;
     const state=ms(id);
     state.cx=null;state.cy=null;state.zoom=1; // reset → drawMap will fit bounds
+    state._fitted=true;
     // sizeLiveMap sets cvs._forcedH so drawMap uses correct height immediately
     if(id==='live-map'&&typeof _liveResizeHandler==='function')_liveResizeHandler();
-    redrawMap(id);return;
+    redrawMap(id);
+    // If GPS is active on live-map, return to GPS following after 5 seconds
+    if(id==='live-map'){
+      const gpsOn=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
+      if(gpsOn){
+        if(_liveFitReturnTimer)clearTimeout(_liveFitReturnTimer);
+        _liveFitReturnTimer=setTimeout(()=>{
+          _liveFitReturnTimer=null;
+          const st=ms('live-map');
+          st._fitted=false; // exit fit mode → GPS handler resumes following
+          st.cx=null;st.cy=null;
+          // Restore ride-level zoom
+          st.zoom=zoomForKmWidth('live-map',UI.gpsZoom||0.15);
+          redrawMap('live-map');
+        },5000);
+      }
+    }
+    return;
   }
   const tm=e.target.closest('[data-tilemap]');
   if(tm){
@@ -3961,8 +3984,10 @@ document.addEventListener('click',e=>{
       btn.style.color=_tileMode>0?'var(--accent)':'';
       btn.style.borderColor=_tileMode>0?'var(--accent3)':'';
     });
-    // Redraw all visible maps
-    ['map-cvs','stops-map','live-map','pace-map'].forEach(id=>redrawMap(id));
+    // Redraw all visible maps immediately, then again after tiles load
+    ['map-cvs','stops-map','live-map','pace-map','desktop-map'].forEach(id=>redrawMap(id));
+    // Second redraw after a beat lets newly-loaded tiles render
+    requestAnimationFrame(()=>['map-cvs','stops-map','live-map','pace-map','desktop-map'].forEach(id=>redrawMap(id)));
     return;
   }
 });
@@ -8310,7 +8335,8 @@ function updateLive(){
     if(mc){
       // Auto-zoom to riding level on first motion only — don't override user zoom
       const state=ms('live-map');
-      if(UI.gpsPos&&UI.gpsPos.speed!=null&&UI.gpsPos.speed>0.3&&!state._autoZoomed&&!state._userZoomed){
+      // Auto-zoom to riding level on first GPS fix — no speed threshold needed
+      if(UI.gpsPos&&!state._autoZoomed&&!state._userZoomed){
         state.zoom=zoomForKmWidth('live-map',UI.gpsZoom||0.15);
         state._autoZoomed=true;
       }
@@ -10007,7 +10033,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v13';
+  const CACHE_NAME='packtimes-v14';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
