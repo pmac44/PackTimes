@@ -7507,21 +7507,23 @@ function tPlan(r){
     if(!isLast){
       const next=nodes[i+1];
       const segDist=next.dist-node.dist;
-      // Departure from current node = arrival + sleep at this node
-      const nodeSleepH=isSleep&&node.sleepStop?sleepHoursFor(node.sleepStop,eta):
-        node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
-      // For fixed departure time, compute departEta the same way etaAt does —
-      // find the next occurrence of departTime after arrival rather than just adding hours
+      // Departure from current node = arrival + before meals + sleep + after meals
+      // Must match the display logic (lines above) to avoid mismatched ride times
       let departEta;
-      if(isSleep&&node.sleepStop&&node.sleepStop.departTime&&eta){
-        const [dh,dm]=node.sleepStop.departTime.split(':').map(Number);
-        const d=new Date(eta);d.setHours(dh,dm,0,0);
-        if(d<=eta)d.setDate(d.getDate()+1);
-        // If result is >14h away, it's a same-day early-morning arrival misfire — add sleepH instead
-        departEta=(d-eta)/3600000>14?new Date(eta.getTime()+(node.sleepStop.sleepH||10)*3600000):d;
-      } else {
-        departEta=eta&&nodeSleepH>0?new Date(eta.getTime()+nodeSleepH*3600000):
+      if(isSleep&&node.sleepStop&&eta){
+        const s=node.sleepStop;
+        const beforeMealH=(s.meals||[]).filter(m=>m.when==='before'||!m.when).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+        const afterMealH=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+        const arrivalWithMeals=beforeMealH>0?new Date(eta.getTime()+beforeMealH*3600000):eta;
+        const hrs=sleepHoursFor(s,arrivalWithMeals);
+        const wake=new Date(arrivalWithMeals.getTime()+hrs*3600000);
+        departEta=afterMealH>0?new Date(wake.getTime()+afterMealH*3600000):wake;
+      } else if(node.cluster){
+        const clusterSleepH=node.cluster.stops.filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0);
+        departEta=eta&&clusterSleepH>0?new Date(eta.getTime()+clusterSleepH*3600000):
           node.isStart?sdt:eta;
+      } else {
+        departEta=node.isStart?sdt:eta;
       }
       const arriveNextEta=next.isFinish?finEta:etaAt(next.dist,r);
       // Riding time = time from departure to arrival at next node (no sleep to subtract)
