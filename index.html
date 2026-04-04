@@ -3507,7 +3507,7 @@ function peekLiveStop(s,r){
   const weatherBar=document.getElementById('live-weather-bar-wrap');
   const weatherH=weatherBar&&weatherBar.offsetHeight>0?weatherBar.offsetHeight:0;
   // Usable fraction of map: from ride pills (~12% down) to above weather bar
-  const topFrac=0.12; // stop target position (just below ride pills)
+  const topFrac=0.05; // stop target position (very close to top of map)
   const botFrac=weatherH>0?Math.min(0.85,1-weatherH/mapH-0.03):0.85; // GPS position (above weather bar)
   const usableFrac=botFrac-topFrac;
 
@@ -3544,27 +3544,26 @@ function peekLiveStop(s,r){
       drawMap(cvs,r,{showGPS:true,followGPS:false,anchor,rotate:false,forceHeading:peekHeading,highlightId:s.id});
     }
     if(_livePeekTimer)clearTimeout(_livePeekTimer);
-    _livePeekTimer=setTimeout(()=>{
+    const peekReturn=()=>{
       _livePeekTimer=null;
       _peekResetFn=null;
       _highlightStopId=null;
       state.zoom=savedZoom;
       state.cx=null;state.cy=null;state._peekAnchor=null;
+      // Ensure drawMap knows how to render: either GPS-follow or fitted overview
+      const gpsOn2=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
+      if(!gpsOn2)state._fitted=true; // force fit so drawMap recalculates from route bounds
       // Re-run full size+draw to restore strip-aware map height
       const r2=cur();if(r2)initLiveMap(r2);
-    },5000);
+      // Belt-and-braces: force an explicit redraw after initLiveMap
+      requestAnimationFrame(()=>redrawMap('live-map'));
+    };
+    _livePeekTimer=setTimeout(peekReturn,5000);
     // Any touch/interaction on the map resets the 5s countdown
     _peekResetFn=()=>{
       if(!_livePeekTimer)return;
       clearTimeout(_livePeekTimer);
-      _livePeekTimer=setTimeout(()=>{
-        _livePeekTimer=null;
-        _peekResetFn=null;
-        _highlightStopId=null;
-        state.zoom=savedZoom;
-        state.cx=null;state.cy=null;state._peekAnchor=null;
-        const r2=cur();if(r2)initLiveMap(r2);
-      },5000);
+      _livePeekTimer=setTimeout(peekReturn,5000);
     };
   },50);
 }
@@ -8288,7 +8287,7 @@ function updateLive(){
           const ohHint=s.ohRaw?'<span style="color:var(--text3);font-size:14px;"> · '+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
           const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
           const sleepEl=hasSleep?`<span style="font-size:14px;color:#b39ddb;">😴 ${s.sleepH||10}h bivi</span>`:'';
-          return`<div class="si live-stop" style="${tileBg}">
+          return`<div class="si live-stop" data-sid="${s.id}" style="${tileBg}">
             <div class="sdot d-${s.type}"></div>
             <div class="si-inf">
               <div class="si-name">${s.name}${orBadge}</div>
@@ -10054,7 +10053,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v29';
+  const CACHE_NAME='packtimes-v30';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
