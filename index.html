@@ -3063,7 +3063,7 @@ function drawMap(cvs,r,opts){
   // Only save centre to state when fitting (was null) or following GPS — not during static redraws
   if(_wasFit||opts.followGPS){state.cx=cLon;state.cy=cLat;}
   if(_wasFit)state._fitted=true;
-  if(opts.followGPS&&!state._fitted)state._fitted=false; // GPS follow clears fit
+  if(opts.followGPS)state._fitted=false; // GPS follow always clears fit
   const useFitAnchor=_wasFit||state._fitted;
   const cpx=W/2,cpy=H*(useFitAnchor?visibleMidY:anchor);
   const px=lon=>cpx+(lon-cLon)*kx*scale;
@@ -3549,14 +3549,20 @@ function peekLiveStop(s,r){
       _peekResetFn=null;
       _highlightStopId=null;
       state.zoom=savedZoom;
-      state.cx=null;state.cy=null;state._peekAnchor=null;
-      // Ensure drawMap knows how to render: either GPS-follow or fitted overview
+      state._peekAnchor=null;
       const gpsOn2=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
-      if(!gpsOn2)state._fitted=true; // force fit so drawMap recalculates from route bounds
-      // Re-run full size+draw to restore strip-aware map height
-      const r2=cur();if(r2)initLiveMap(r2);
-      // Belt-and-braces: force an explicit redraw after initLiveMap
-      requestAnimationFrame(()=>redrawMap('live-map'));
+      if(gpsOn2&&UI.gpsPos){
+        // Return to GPS following — set cx/cy to GPS position directly
+        // (setting to null would trigger _wasFit→_fitted=true loop in drawMap)
+        state.cx=UI.gpsPos.lon;
+        state.cy=UI.gpsPos.lat;
+        state._fitted=false;
+      } else {
+        // No GPS — return to fitted overview
+        state.cx=null;state.cy=null;
+        state._fitted=true;
+      }
+      redrawMap('live-map');
     };
     _livePeekTimer=setTimeout(peekReturn,5000);
     // Any touch/interaction on the map resets the 5s countdown
@@ -10053,7 +10059,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v30';
+  const CACHE_NAME='packtimes-v31';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
