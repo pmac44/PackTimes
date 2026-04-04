@@ -3506,23 +3506,23 @@ function peekLiveStop(s,r){
   // Account for weather bar overlay at bottom of map — GPS should stay above it
   const weatherBar=document.getElementById('live-weather-bar-wrap');
   const weatherH=weatherBar&&weatherBar.offsetHeight>0?weatherBar.offsetHeight:0;
-  // Usable fraction of map: from ride pills (~12% down) to above weather bar
+  // Usable vertical band: stop near top, GPS above weather bar
   const topFrac=0.05; // stop target position (very close to top of map)
-  const botFrac=weatherH>0?Math.min(0.85,1-weatherH/mapH-0.03):0.85; // GPS position (above weather bar)
+  const botFrac=weatherH>0?Math.min(0.82,1-weatherH/mapH-0.05):0.82; // GPS position (well above weather bar)
   const usableFrac=botFrac-topFrac;
 
   // Calculate centre and zoom to show BOTH GPS position and target stop.
-  const anchor=UI.gpsPos?botFrac:0.5;
+  // anchor = midpoint of topFrac and botFrac; centre = midpoint of stop and GPS.
+  // This ensures stop draws at topFrac and GPS draws at botFrac.
+  const anchor=UI.gpsPos?(topFrac+botFrac)/2:0.5;
   let centreLon=lon,centreLat=lat,kmWidth=1.5;
   if(UI.gpsPos){
     const gLat=UI.gpsPos.lat,gLon=UI.gpsPos.lon;
     const distKm=hav({lat:gLat,lon:gLon},{lat,lon});
     if(distKm>0.1){
-      // anchor maps cx/cy to botFrac down the canvas.
-      // We want stop at topFrac and GPS at botFrac.
-      // Centre = weighted blend: botFrac fraction from stop toward GPS
-      centreLat=lat+(gLat-lat)*botFrac;
-      centreLon=lon+(gLon-lon)*botFrac;
+      // Centre = midpoint of stop and GPS
+      centreLat=(lat+gLat)/2;
+      centreLon=(lon+gLon)/2;
       // Zoom so GPS-to-stop distance fits in usableFrac of canvas height
       const W=window.innerWidth;
       kmWidth=Math.max(0.3,distKm*(W/(mapH*usableFrac))*1.1);
@@ -10059,7 +10059,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v31';
+  const CACHE_NAME='packtimes-v32';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
