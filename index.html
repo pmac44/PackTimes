@@ -3528,7 +3528,7 @@ function drawMap(cvs,r,opts){
 function zoomMap(id,factor,mouseX,mouseY){
   const state=ms(id);
   // Clamp zoom first so we know if it actually changes
-  const newZoom=Math.max(0.4,Math.min(800,state.zoom*factor));
+  const newZoom=Math.max(0.1,Math.min(800,state.zoom*factor));
   // Only shift cx/cy if zoom is actually changing — otherwise it becomes a pan
   if(mouseX!==undefined&&mouseY!==undefined&&newZoom!==state.zoom){
     const cvs=document.getElementById(id);
@@ -3745,7 +3745,7 @@ function attachMap(cvs,tapCb){
   cvs.addEventListener('touchmove',e=>{
     if(e.touches.length===2&&_pinch){
       const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
-      ms(id).zoom=Math.max(0.4,Math.min(800,_pinch.z0*Math.sqrt(dx*dx+dy*dy)/_pinch.d0));
+      ms(id).zoom=Math.max(0.1,Math.min(800,_pinch.z0*Math.sqrt(dx*dx+dy*dy)/_pinch.d0));
       redrawMap(id);e.preventDefault();
     }
   },{passive:false});
@@ -10146,7 +10146,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v47';
+  const CACHE_NAME='packtimes-v48';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
