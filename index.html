@@ -130,6 +130,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 canvas{display:block;width:100%;}
 .field{margin-bottom:10px;}.field:last-child{margin-bottom:0;}
 label.lbl{display:block;font-size:18px;color:var(--text3);font-family:var(--font);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;}
+label.lbl .unit{text-transform:none;letter-spacing:0;}
 input[type=time],input[type=date],input[type=number],input[type=text],select{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;outline:none;transition:border-color .15s;-webkit-appearance:none;appearance:none;}
 input[type=time],input[type=date]{font-size:15px;padding:8px 6px;-webkit-appearance:none;appearance:none;min-width:0;box-sizing:border-box;}
 input[type=time].time-compact{font-size:13px!important;padding:6px 4px!important;min-width:0;box-sizing:border-box;}
@@ -319,7 +320,7 @@ select option{background:var(--bg3);}
       <input type="text" id="em-name" placeholder="Stop name">
     </div>
     <div class="field" id="em-dist-row">
-      <label class="lbl">Position — <span id="em-dist-lbl">0 km</span></label>
+      <label class="lbl">Position — <span id="em-dist-lbl" class="unit">0 km</span></label>
       <div style="display:flex;align-items:center;gap:8px;">
         <button class="btn btn-sm" id="em-dist-minus" style="flex-shrink:0;font-size:20px;padding:0 14px;">−</button>
         <div style="flex:1;text-align:center;font-family:var(--font);font-size:22px;font-weight:600;color:var(--accent);" id="em-dist-display">0.00 km</div>
@@ -370,7 +371,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="field"><label class="lbl">Name (optional)</label><input type="text" id="m-name" placeholder="e.g. Village supermarket"></div>
     <div class="field">
-      <label class="lbl">Position — <span id="m-dist-lbl">0 km</span></label>
+      <label class="lbl">Position — <span id="m-dist-lbl" class="unit">0 km</span></label>
       <div style="display:flex;align-items:center;gap:8px;">
         <button class="btn btn-sm" id="m-dist-minus" style="flex-shrink:0;font-size:20px;padding:0 14px;">−</button>
         <div style="flex:1;text-align:center;font-family:var(--font);font-size:22px;font-weight:600;color:var(--accent);" id="m-dist-display">—</div>
@@ -398,7 +399,7 @@ select option{background:var(--bg3);}
     <div id="m-hike-row" style="display:none;" class="field">
       <label class="lbl">Hike-a-bike</label>
       <p style="font-size:13px;color:var(--text3);margin-bottom:6px;">This will be added as a pace segment. Set start and end positions using the position slider.</p>
-      <label class="lbl" style="font-size:13px;">End position — <span id="m-hike-end-lbl">0 km</span></label>
+      <label class="lbl" style="font-size:13px;">End position — <span id="m-hike-end-lbl" class="unit">0 km</span></label>
       <input type="range" id="m-hike-end" min="0" max="100" step="0.05" value="0" style="width:100%;accent-color:var(--accent);">
       <label class="lbl" style="font-size:13px;margin-top:6px;">Speed factor (walking)</label>
       <input type="number" id="m-hike-factor" value="0.25" min="0.05" max="1" step="0.05" style="width:80px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:15px;">
@@ -435,7 +436,7 @@ select option{background:var(--bg3);}
     </div>
     <div style="font-size:14px;color:var(--text3);margin-bottom:10px;text-align:center;" id="pace-map-hint">Tap map to set start point</div>
     <div class="field" id="pace-from-row">
-      <label class="lbl">Start — <span id="pace-from-lbl">—</span></label>
+      <label class="lbl">Start — <span id="pace-from-lbl" class="unit">—</span></label>
       <div style="display:flex;align-items:center;gap:8px;">
         <button class="btn btn-sm" id="pace-from-minus" style="font-size:20px;padding:0 14px;">−</button>
         <div style="flex:1;text-align:center;font-family:var(--font);font-size:20px;font-weight:600;color:var(--accent);" id="pace-from-display">—</div>
@@ -443,7 +444,7 @@ select option{background:var(--bg3);}
       </div>
     </div>
     <div class="field" id="pace-to-row">
-      <label class="lbl">End — <span id="pace-to-lbl">—</span></label>
+      <label class="lbl">End — <span id="pace-to-lbl" class="unit">—</span></label>
       <div style="display:flex;align-items:center;gap:8px;">
         <button class="btn btn-sm" id="pace-to-minus" style="font-size:20px;padding:0 14px;">−</button>
         <div style="flex:1;text-align:center;font-family:var(--font);font-size:20px;font-weight:600;color:var(--accent);" id="pace-to-display">—</div>
@@ -451,7 +452,7 @@ select option{background:var(--bg3);}
       </div>
     </div>
     <div class="field">
-      <label class="lbl">Time for this section — <span id="pace-hours-lbl">1h 0m</span></label>
+      <label class="lbl">Time for this section — <span id="pace-hours-lbl" class="unit">1h 0m</span></label>
       <div style="display:flex;align-items:center;gap:8px;">
         <button class="btn btn-sm" id="pace-time-minus" style="font-size:20px;padding:0 14px;">−</button>
         <div style="flex:1;text-align:center;font-family:var(--font);font-size:20px;font-weight:600;color:var(--accent);" id="pace-time-display">1h 0m</div>
@@ -6682,22 +6683,22 @@ function tSettings(r){
       </label>
     </div>
     <div class="field">
-      <label class="lbl">Stop alert distance — <span id="alert-km-val">${(UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):(UI.alertKm*1000).toFixed(0)+'m')}</span></label>
+      <label class="lbl">Stop alert distance — <span id="alert-km-val" class="unit">${(UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):(UI.alertKm*1000).toFixed(0)+'m')}</span></label>
       <input type="range" id="alert-sl" min="0.05" max="3" step="0.05" value="${UI.alertKm}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>500m</span><span>1km</span><span>2km</span><span>3km</span></div>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label class="lbl">Turn alert distance — <span id="turn-alert-m-val">${UI.turnAlertM||150}m</span></label>
+      <label class="lbl">Turn alert distance — <span id="turn-alert-m-val" class="unit">${UI.turnAlertM||150}m</span></label>
       <input type="range" id="turn-alert-sl" min="50" max="500" step="25" value="${UI.turnAlertM||150}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>150m</span><span>250m</span><span>350m</span><span>500m</span></div>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label class="lbl">Off-route alert distance — <span id="offroute-m-val">${UI.offRouteM||150}m</span></label>
+      <label class="lbl">Off-route alert distance — <span id="offroute-m-val" class="unit">${UI.offRouteM||150}m</span></label>
       <input type="range" id="offroute-sl" min="50" max="500" step="25" value="${UI.offRouteM||150}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>50m</span><span>150m</span><span>300m</span><span>400m</span><span>500m</span></div>
     </div>
     <div class="field" style="margin-top:10px;">
-      <label class="lbl">Off-route alert delay — <span id="offroute-s-val">${UI.offRouteSecs||8}s</span></label>
+      <label class="lbl">Off-route alert delay — <span id="offroute-s-val" class="unit">${UI.offRouteSecs||8}s</span></label>
       <input type="range" id="offroute-delay-sl" min="2" max="30" step="1" value="${UI.offRouteSecs||8}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>2s</span><span>8s</span><span>15s</span><span>20s</span><span>30s</span></div>
     </div>
@@ -6716,7 +6717,7 @@ function tSettings(r){
   const weatherBody=r?`
     <p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:10px;">How far apart weather markers appear on the route map. Closer spacing gives more detail in mountain terrain. Enable the Weather layer on the Stops tab to see it.</p>
     <div class="field">
-      <label class="lbl">Spacing — <span id="weather-spacing-val">${UI.weatherSpacingKm||25}km</span></label>
+      <label class="lbl">Spacing — <span id="weather-spacing-val" class="unit">${UI.weatherSpacingKm||25}km</span></label>
       <input type="range" id="weather-spacing-sl" min="10" max="200" step="5" value="${UI.weatherSpacingKm||25}" style="width:100%;accent-color:var(--accent);">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>10km</span><span>50km</span><span>100km</span><span>150km</span><span>200km</span></div>
     </div>
@@ -6794,7 +6795,7 @@ function tSettings(r){
   const ftpBody=''
     +'<p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">Set your FTP and max heart rate to see colour-coded zones on the ride screen. The sensor display changes colour based on your current zone.</p>'
     // FTP
-    +'<div class="field"><label class="lbl">⚡ FTP &mdash; <span id="ftp-val">'+(UI.ftp?UI.ftp+'w':'Not set')+'</span></label>'
+    +'<div class="field"><label class="lbl">⚡ FTP &mdash; <span id="ftp-val" class="unit">'+(UI.ftp?UI.ftp+'w':'Not set')+'</span></label>'
     +'<div style="display:flex;gap:8px;align-items:center;">'
     +'<input type="number" id="ftp-input" min="50" max="600" step="1" value="'+(UI.ftp||'')+'" placeholder="e.g. 250" style="width:100px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;">'
     +'<span style="font-size:16px;color:var(--text3);">watts</span>'
@@ -6802,7 +6803,7 @@ function tSettings(r){
     +'</div></div>'
     +ftpZoneRows
     // Max HR
-    +'<div class="field" style="margin-top:16px;"><label class="lbl">❤️ Max Heart Rate &mdash; <span id="maxhr-val">'+(UI.maxHr?UI.maxHr+' bpm':'Not set')+'</span></label>'
+    +'<div class="field" style="margin-top:16px;"><label class="lbl">❤️ Max Heart Rate &mdash; <span id="maxhr-val" class="unit">'+(UI.maxHr?UI.maxHr+' bpm':'Not set')+'</span></label>'
     +'<p style="font-size:14px;color:var(--text3);margin-bottom:8px;line-height:1.5;">A rough guide: 220 minus your age. You can refine this from your highest recorded HR during hard efforts.</p>'
     +'<div style="display:flex;gap:8px;align-items:center;">'
     +'<input type="number" id="maxhr-input" min="100" max="220" step="1" value="'+(UI.maxHr||'')+'" placeholder="e.g. 178" style="width:100px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;">'
@@ -9550,6 +9551,7 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     return;
   }
   if(e.target.id==='alert-sl'){
+    UI.alertKm=+e.target.value;
     const v=document.getElementById('alert-km-val');
     if(v)v.textContent=UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):((UI.alertKm*1000).toFixed(0)+'m');
     return;}
@@ -10131,7 +10133,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v39';
+  const CACHE_NAME='packtimes-v41';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
