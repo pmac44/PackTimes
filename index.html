@@ -2312,7 +2312,7 @@ function simStart(){
   if(Date.now()-_simStoppedAt<800){return;} // ignore accidental re-trigger after stop
   const r=cur();
   if(!r||!r.points.length){alert('No route loaded.');return;}
-  if(!r.hasTS){alert('The ride simulator requires a route with timestamps. Export as TCX from your route planning app to enable it.');return;}
+  // hasTS check removed — sim uses 100ms fixed delay when timestamps are absent
   const resuming=UI.simPaused&&_simPts&&_simIdx>0;
   if(!resuming){
     _simPts=r.points.map(p=>({lat:p.lat,lon:p.lon,time:p.time?p.time.toISOString():null}));
@@ -4700,7 +4700,7 @@ function renderDesktopMap(){
   // Show/update sim controls on desktop map
   const simCtrl=document.getElementById('desktop-sim-ctrl');
   if(simCtrl){
-    const show=r&&r.hasTS&&UI.tab==='live'; // only on ride tab
+    const show=r&&r.points.length>0&&UI.tab==='live'; // only on ride tab with a route
     simCtrl.style.display=show?'flex':'none';
     const startBtn=document.getElementById('btn-sim-start');
     const pauseBtn=document.getElementById('btn-sim-pause');
@@ -6702,27 +6702,7 @@ function tSettings(r){
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">For full offline maps of a region, we recommend <strong>Organic Maps</strong> (free) as a companion app.</p>
     <a href="https://organicmaps.app" target="_blank" class="btn btn-sm btn-full" style="text-align:center;text-decoration:none;margin-top:4px;">🌍 Get Organic Maps</a>`;
 
-  const simulatorBody=`
-    <p style="font-size:15px;color:var(--text3);margin-bottom:10px;">Simulate riding the current route to test stop alerts, turn warnings and ETAs. Route must have timestamps.</p>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-      <label class="lbl" style="margin-bottom:0;">Speed</label>
-      <select id="sim-speed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-family:var(--font);font-size:15px;">
-        <option value="10">10×</option>
-        <option value="20" selected>20×</option>
-        <option value="50">50×</option>
-        <option value="100">100×</option>
-        <option value="200">200×</option>
-        <option value="500">500×</option>
-        <option value="1000">1000×</option>
-      </select>
-    </div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-sm btn-p" id="btn-sim-start" style="min-width:80px;" ${!r||!r.hasTS||(UI.simRunning&&!UI.simPaused)?'disabled':''}>▶ Play</button>
-      <button class="btn btn-sm" id="btn-sim-pause" style="min-width:80px;display:${UI.simRunning?'inline-block':'none'};border-color:rgba(251,191,36,.5);color:var(--amber);">⏸ Pause</button>
-      <button class="btn btn-sm btn-r" id="btn-sim-stop" style="min-width:80px;" ${UI.simRunning||UI.simPaused?'':'disabled'}>■ Stop</button>
-    </div>
-    ${!r||!r.hasTS?`<p style="font-size:13px;color:var(--red);margin-top:6px;">The ride simulator requires a route with timestamps — export as TCX from your route planning app to enable it.</p>`:''}
-    <div id="sim-status" style="font-size:14px;color:var(--text3);margin-top:6px;font-family:var(--font);"></div>`;
+  // simulatorBody removed — sim controls live on desktop map overlay only
 
   const dangerBody=`
     <p style="font-size:16px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Deletes all routes, stops and settings from this device. Cannot be undone.</p>
@@ -10106,7 +10086,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v34';
+  const CACHE_NAME='packtimes-v35';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
