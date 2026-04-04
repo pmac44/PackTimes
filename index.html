@@ -3575,12 +3575,14 @@ let _livePeekTimer=null;
 // Fit-return: after FIT with GPS on, return to GPS following after 5s
 let _liveFitReturnTimer=null;
 let _peekResetFn=null;
+let _peekStopId=null; // stop being peeked — used to update peek view on GPS ticks
 function peekLiveStop(s,r){
   const p=r.points[cidx(r,s.dist)];
   const lon=s.lon||p.lon,lat=s.lat||p.lat;
   const state=ms('live-map');
   const savedZoom=state.zoom;
   _highlightStopId=s.id;
+  _peekStopId=s.id;
 
   // Use the current map height — don't resize, keeps weather strip and next strip visible
   const cvs=document.getElementById('live-map');
@@ -3631,6 +3633,7 @@ function peekLiveStop(s,r){
       _livePeekTimer=null;
       _peekResetFn=null;
       _highlightStopId=null;
+      _peekStopId=null;
       state.zoom=savedZoom;
       state._peekAnchor=null;
       const gpsOn2=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
@@ -3662,9 +3665,33 @@ function redrawMap(id){
   const r=cur();if(!r)return;
   const isLive=id==='live-map';
   const isReview=id==='turn-review-map';
-  if(isLive&&_livePeekTimer){
+  if(isLive&&_livePeekTimer&&_peekStopId){
+    // Recalculate peek positioning from current GPS + stop each frame
     const state=ms('live-map');
-    drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:state._peekAnchor||0.65,rotate:true,highlightId:_highlightStopId});
+    const ps=r.stops.find(s=>s.id===_peekStopId);
+    if(ps&&UI.gpsPos){
+      const pp=r.points[cidx(r,ps.dist)];
+      const sLon=ps.lon||pp.lon,sLat=ps.lat||pp.lat;
+      const mapH=cvs._forcedH||cvs.offsetHeight||300;
+      const weatherBar=document.getElementById('live-weather-bar-wrap');
+      const weatherH=weatherBar&&weatherBar.offsetHeight>0?weatherBar.offsetHeight:0;
+      const topFrac=0.05;
+      const botFrac=weatherH>0?Math.min(0.82,1-weatherH/mapH-0.05):0.82;
+      const usableFrac=botFrac-topFrac;
+      const anchor=(topFrac+botFrac)/2;
+      const gLat=UI.gpsPos.lat,gLon=UI.gpsPos.lon;
+      const distKm=hav({lat:gLat,lon:gLon},{lat:sLat,lon:sLon});
+      let centreLat=(sLat+gLat)/2,centreLon=(sLon+gLon)/2;
+      const W=window.innerWidth;
+      const kmWidth=distKm>0.1?Math.max(0.3,distKm*(W/(mapH*usableFrac))*1.1):1.5;
+      state.zoom=zoomForKmWidth('live-map',kmWidth,mapH);
+      state.cx=centreLon;state.cy=centreLat;
+      state._peekAnchor=anchor;
+      const peekHeading=bearing({lat:gLat,lon:gLon},{lat:sLat,lon:sLon});
+      drawMap(cvs,r,{showGPS:true,followGPS:false,anchor,rotate:false,forceHeading:peekHeading,highlightId:_peekStopId});
+    } else {
+      drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:state._peekAnchor||0.65,rotate:true,highlightId:_highlightStopId});
+    }
     return;
   }
   if(isReview){
@@ -6271,7 +6298,9 @@ function initLiveMap(r){
       const lo=document.getElementById('live-scroller');
       if(lo)lo.style.height=Math.max(mapH+200,viewH-tabsH)+'px';
     }
-    if(!_livePeekTimer){
+    if(_livePeekTimer){
+      redrawMap('live-map'); // recalculates peek framing at new size
+    } else {
       const st=ms('live-map');
       const gpsOn=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
       if(gpsOn&&!st._fitted){
@@ -8398,9 +8427,17 @@ function updateLive(){
   if(_stopAlertId){
     pulseStripCard(_stopAlertId);
   }
-  if(!_livePeekTimer){
-    const mc=document.getElementById('live-map');
-    if(mc){
+  const mc=document.getElementById('live-map');
+  if(mc){
+    if(_livePeekTimer){
+      // During peek: redraw to update GPS position + stop framing
+      if(!_liveDrawRaf){
+        _liveDrawRaf=requestAnimationFrame(()=>{
+          _liveDrawRaf=null;
+          redrawMap('live-map');
+        });
+      }
+    } else {
       // Auto-zoom to riding level on first motion only — don't override user zoom
       const state=ms('live-map');
       // Auto-zoom to riding level on first GPS fix — no speed threshold needed
@@ -10089,7 +10126,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v37';
+  const CACHE_NAME='packtimes-v38';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
