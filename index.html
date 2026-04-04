@@ -512,7 +512,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   _rideAvgSessionKm:null,                  // dist at start of current GPS session
   _rideAvgSessionTs:null,                  // timestamp at start of current GPS session
   _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all'};
@@ -7424,32 +7424,38 @@ function tPlan(r){
   const clusters=clusterStops(planStops);
   // Build nodes: sleep/sleepAt stops get their own timeline entry
   const nodeList=[];
+  // Water source: potable water stop, town (assumed to have water), or food-bearing stop (food implies water)
+  const isWaterSrc=s=>s.type==='water'||s.type==='town'||s.type==='food'||s.type==='shop'||s.type==='pub'||(s.meals&&s.meals.length>0);
   clusters.forEach(cl=>{
     const sleepStops=cl.stops.filter(s=>s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt);
     const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&!(s.type==='stop'&&(s.sleepAt||s.sleepH))&&!s.sleepAt);
     if(sleepStops.length){
       const chipStops=nonSleepStops;
       const chipCluster=chipStops.length?{...cl,stops:chipStops}:null;
+      const clHasWater=cl.stops.some(isWaterSrc);
       sleepStops.forEach((head,i)=>{
         nodeList.push({
           name:head.sleepAt?'Bivi at '+head.name:head.name,
           dist:head.dist,distEnd:head.dist,
           cluster:i===0?chipCluster:null, // chips only on first sleep node
           isStart:false,isSleep:true,sleepStop:head,
-          hasFood:head.meals&&head.meals.length>0
+          hasFood:head.meals&&head.meals.length>0,
+          hasWater:clHasWater
         });
       });
     } else if(nonSleepStops.length){
       const cl2={...cl,stops:nonSleepStops};
       const clHasFood=nonSleepStops.some(s=>s.meals&&s.meals.length>0);
-      nodeList.push({name:makeCluster(nonSleepStops).name,dist:cl.dist,distEnd:cl.distEnd,cluster:cl2,isStart:false,hasFood:clHasFood});
+      const clHasWater=nonSleepStops.some(isWaterSrc);
+      nodeList.push({name:makeCluster(nonSleepStops).name,dist:cl.dist,distEnd:cl.distEnd,cluster:cl2,isStart:false,hasFood:clHasFood,hasWater:clHasWater});
     }
   });
   // Re-sort by dist
   nodeList.sort((a,b)=>a.dist-b.dist);
-  // Mission filters — sleep only, food only
+  // Mission filters — sleep only, food only, water only
   const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:null;
-  const filteredList=UI.planSleepOnly?nodeList.filter(n=>n.isSleep):UI.planFoodOnly?nodeList.filter(n=>n.hasFood):nodeList;
+  const anyFilter=UI.planSleepOnly||UI.planFoodOnly||UI.planWaterOnly;
+  const filteredList=UI.planSleepOnly?nodeList.filter(n=>n.isSleep):UI.planFoodOnly?nodeList.filter(n=>n.hasFood):UI.planWaterOnly?nodeList.filter(n=>n.hasWater):nodeList;
   // Hike-a-bike nodes are always in the mission list regardless of filters
   const hikeNodes=(r.paceSegs||[]).map(seg=>({
     name:'🥾 '+(seg.name||'Hike-a-bike'),
@@ -7458,7 +7464,7 @@ function tPlan(r){
   }));
   const nodes=[
     {name:'Start 🚩',dist:0,distEnd:0,isStart:true,cluster:null},
-    ...[...filteredList,...((UI.planSleepOnly||UI.planFoodOnly)?[]:hikeNodes)].sort((a,b)=>a.dist-b.dist),
+    ...[...filteredList,...(anyFilter?[]:hikeNodes)].sort((a,b)=>a.dist-b.dist),
     {name:'Finish 🏁',dist:r.totalDist,distEnd:r.totalDist,isFinish:true,cluster:null},
   ];
 
@@ -7770,6 +7776,11 @@ function tPlan(r){
         +(UI.planFoodOnly
           ?'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>'
           :'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>')
+        +'</button>'
+        +'<button class="btn btn-sm" id="btn-plan-water-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planWaterOnly?'border-color:rgba(96,165,250,0.7);':'')+'" title="Show water stops only">'
+        +(UI.planWaterOnly
+          ?'<svg viewBox="0 0 16 16" width="16" height="16" fill="#60a5fa" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5C8 1.5 3 7 3 10.5a5 5 0 0 0 10 0C13 7 8 1.5 8 1.5z"/></svg>'
+          :'<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.2" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5C8 1.5 3 7 3 10.5a5 5 0 0 0 10 0C13 7 8 1.5 8 1.5z"/></svg>')
         +'</button>'
         +'<button class="btn btn-sm" id="btn-print-mission" style="font-size:13px;padding:4px 7px;">🖨️</button>'
       +'</div>'
@@ -9204,9 +9215,11 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   if(e.target.closest('#btn-plan-sleep-filter')){
-    UI.planSleepOnly=!UI.planSleepOnly;if(UI.planSleepOnly)UI.planFoodOnly=false;renderKeepScroll();return;}
+    UI.planSleepOnly=!UI.planSleepOnly;if(UI.planSleepOnly){UI.planFoodOnly=false;UI.planWaterOnly=false;}renderKeepScroll();return;}
   if(e.target.closest('#btn-plan-food-filter')){
-    UI.planFoodOnly=!UI.planFoodOnly;if(UI.planFoodOnly)UI.planSleepOnly=false;renderKeepScroll();return;}
+    UI.planFoodOnly=!UI.planFoodOnly;if(UI.planFoodOnly){UI.planSleepOnly=false;UI.planWaterOnly=false;}renderKeepScroll();return;}
+  if(e.target.closest('#btn-plan-water-filter')){
+    UI.planWaterOnly=!UI.planWaterOnly;if(UI.planWaterOnly){UI.planSleepOnly=false;UI.planFoodOnly=false;}renderKeepScroll();return;}
   const mu=e.target.closest('.cluster-edit-btn');
   if(mu&&r){
     const sid=mu.dataset.sid;
@@ -10133,7 +10146,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v41';
+  const CACHE_NAME='packtimes-v42';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
