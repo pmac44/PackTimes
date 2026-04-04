@@ -4387,7 +4387,12 @@ document.addEventListener('input',e=>{
     const dist=+e.target.value;
     const r=cur();
     UI.gpsDistKm=dist;
-    if(r&&r.points.length){const pt=r.points[cidx(r,dist)];UI.gpsPos={lat:pt.lat,lon:pt.lon,acc:5,ts:Date.now()};}
+    if(r&&r.points.length){
+      const pt=r.points[cidx(r,dist)];
+      UI.gpsPos={lat:pt.lat,lon:pt.lon,acc:5,ts:Date.now()};
+      // Sync simulator index so play resumes from slider position
+      if(_simPts){_simIdx=Math.max(0,r.points.findIndex(p=>p.dist>=dist));}
+    }
     const sv=document.getElementById('sim-sl-val');if(sv)sv.textContent=dist.toFixed(1)+'km';
     updateLive();renderDesktopMap();
   }
@@ -10126,7 +10131,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v38';
+  const CACHE_NAME='packtimes-v39';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
