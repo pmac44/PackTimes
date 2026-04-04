@@ -75,6 +75,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-next-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 10px;}
 .live-next-row{display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--border);}
 .live-next-row:last-child{border-bottom:none;}
+@keyframes stop-alert-pulse{0%{box-shadow:0 0 0 0 rgba(251,191,36,0.6);}50%{box-shadow:0 0 8px 3px rgba(251,191,36,0.45);}100%{box-shadow:0 0 0 0 rgba(251,191,36,0.0);}}
+.live-next-row.alerting{background:rgba(251,191,36,0.15);border-radius:6px;animation:stop-alert-pulse 1.5s ease-in-out 3;}
 .live-next-icons{display:flex;gap:4px;align-items:center;flex-shrink:0;}
 .live-next-name{flex:1;min-width:0;font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .live-next-right{text-align:right;flex-shrink:0;}
@@ -178,11 +180,7 @@ select option{background:var(--bg3);}
 .rli.active .ri-name{color:var(--accent);}
 .ri-inf{min-width:0;}.ri-name{font-weight:500;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ri-meta{font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;}
-#alert-overlay{display:none;position:absolute;top:0;left:0;right:0;z-index:9999;padding:6px 8px 0;pointer-events:none;}
-#alert-box{background:rgba(10,15,10,0.95);border:1px solid var(--accent3);border-radius:7px;padding:6px 10px;width:100%;display:flex;align-items:center;gap:10px;pointer-events:all;}
-#alert-ico{font-size:22px;flex-shrink:0;}
-#alert-title{font-size:15px;font-weight:600;margin-bottom:1px;}
-#alert-msg{font-size:13px;color:var(--text2);line-height:1.3;}
+/* alert overlay CSS removed — stop alerts now use next-strip pulse + audio chime */
 </style>
 </head>
 <body>
@@ -2345,11 +2343,6 @@ function simStart(){
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
     const r=cur();
     if(r){const snap=snapTo(r,p.lat,p.lon);if(snap)UI.gpsDistKm=snap.dist;}
-    // Auto-dismiss stop alert check
-    if(UI._alertStopDist!=null&&UI.gpsDistKm>UI._alertStopDist+0.1){
-      document.getElementById('alert-overlay').style.display='none';
-      UI._alertStopDist=null;
-    }
     checkAlerts();
     if(UI.tab==='live')updateLive();
     else updateGPSPill();
@@ -2566,21 +2559,34 @@ document.addEventListener('visibilitychange',()=>{
 const OFF_ROUTE_M=150; // metres from route before warning
 const OFF_ROUTE_SECS=8; // seconds before alerting
 
+// ─── Stop proximity alert state ───
+let _stopAlertId=null;        // id of the stop currently alerting
+let _stopAlertChimeTimer=null; // timer for repeat chimes
+let _stopAlertChimeCount=0;    // how many chimes have played for this stop
+
 function checkAlerts(){
   const r=cur();if(!r||UI.gpsDistKm===null||!UI.gpsPos)return;
-  // Auto-dismiss stop alert when 100m past the stop
-  if(UI._alertStopDist!==null&&UI._alertStopDist!==undefined){
-    if(UI.gpsDistKm>UI._alertStopDist+0.1){
-      document.getElementById('alert-overlay').style.display='none';
-      UI._alertStopDist=null;
+  // Auto-dismiss stop alert chime/pulse when reaching the stop — stop stays visible on map via _highlightStopId
+  if(_stopAlertId!==null){
+    const alertStop=r.stops.find(s=>s.id===_stopAlertId);
+    if(alertStop&&UI.gpsDistKm>=alertStop.dist){
+      _highlightStopId=_stopAlertId; // keep the stop dot highlighted on the map
+      clearStopAlert();
     }
   }
-  // Stop proximity alerts
+  // Clear highlight once 200m past the stop
+  if(_highlightStopId&&!_livePeekTimer){
+    const hs=r.stops.find(s=>s.id===_highlightStopId);
+    if(hs&&UI.gpsDistKm>hs.dist+0.2)_highlightStopId=null;
+  }
+  // Stop proximity alerts — fires when first entering alertKm range
   for(const s of r.stops){
     if(s.starred===false&&s.type!=='sleep'&&s.type!=='stop'&&!s.sleepAt)continue;
     const rem=s.dist-UI.gpsDistKm;
     if(rem>0&&rem<=UI.alertKm&&!UI.alertedStops.has(s.id)){
-      UI.alertedStops.add(s.id);UI._alertStopDist=s.dist;showAlert(s,rem,r);break;
+      UI.alertedStops.add(s.id);
+      triggerStopAlert(s,r);
+      break;
     }
   }
   // Turn audio beeps
@@ -2701,17 +2707,94 @@ function playOffRouteAudio(){
 function stopOffRouteAudio(){
   if(_offRouteAudioTimer){clearTimeout(_offRouteAudioTimer);_offRouteAudioTimer=null;}
 }
-function showAlert(s,remKm,r){
-  const eta=etaAt(s.dist,r),st=shopSt(s,r);
-  const stTxt=st==='open'?'<span style="color:var(--accent)">✓ Open at ETA</span>':st==='closed'?'<span style="color:var(--red)">⚠ May be closed</span>':'';
-  document.getElementById('alert-ico').textContent=s.icon;
-  document.getElementById('alert-title').textContent=s.name;
-  document.getElementById('alert-msg').innerHTML=`<span id="alert-rem">${remKm.toFixed(1)} km away</span><br>ETA: <strong id="alert-eta">${fmtT(eta)}</strong><br>${stTxt}`;
-  document.getElementById('alert-overlay').style.display='flex';
-  document.getElementById('alert-overlay').dataset.stopId=s.id;
-  if(navigator.vibrate)navigator.vibrate([200,100,200,100,200]);
+function triggerStopAlert(s,r){
+  _stopAlertId=s.id;
+  _stopAlertChimeCount=0;
+  // 1. Pulse the matching next-strip card
+  pulseStripCard(s.id);
+  // 2. Auto-peek the map to show both GPS and the stop
+  if(UI.tab==='live')peekLiveStop(s,r);
+  // 3. Play initial chime + vibrate
+  playStopChime();
+  if(navigator.vibrate)navigator.vibrate([200,100,200]);
+  // 4. Schedule repeat chimes at 50% and 75% of approach (max 2 repeats)
+  scheduleStopChimes(s);
 }
-// alert-ok handled via event delegation above
+
+function clearStopAlert(){
+  _stopAlertId=null;
+  if(_stopAlertChimeTimer){clearTimeout(_stopAlertChimeTimer);_stopAlertChimeTimer=null;}
+  _stopAlertChimeCount=0;
+  // Remove pulse class from any strip cards
+  document.querySelectorAll('.live-next-row.alerting').forEach(el=>el.classList.remove('alerting'));
+}
+
+function pulseStripCard(sid){
+  // Find the matching card in the next strip and add alerting class
+  const strip=document.getElementById('live-next-strip');
+  if(!strip)return;
+  const cards=strip.querySelectorAll('.live-summary-card');
+  cards.forEach(c=>{
+    if(String(c.dataset.sid)===String(sid)){
+      c.classList.remove('alerting'); // reset animation if already playing
+      void c.offsetWidth; // force reflow
+      c.classList.add('alerting');
+    }
+  });
+}
+
+function playStopChime(){
+  // A distinctive two-tone chime — different from turn beeps
+  // Rising major third: warm and attention-getting without being alarming
+  try{
+    const ctx=getAudioCtx();
+    const t=ctx.currentTime;
+    // First note
+    const osc1=ctx.createOscillator();const g1=ctx.createGain();
+    osc1.connect(g1);g1.connect(ctx.destination);
+    osc1.type='sine'; // sine is gentler than square — stop alerts don't need to cut through wind like turns
+    osc1.frequency.setValueAtTime(523,t); // C5
+    g1.gain.setValueAtTime(0,t);
+    g1.gain.linearRampToValueAtTime(0.35,t+0.02);
+    g1.gain.setValueAtTime(0.35,t+0.15);
+    g1.gain.linearRampToValueAtTime(0,t+0.25);
+    osc1.start(t);osc1.stop(t+0.25);
+    // Second note (higher)
+    const osc2=ctx.createOscillator();const g2=ctx.createGain();
+    osc2.connect(g2);g2.connect(ctx.destination);
+    osc2.type='sine';
+    osc2.frequency.setValueAtTime(659,t+0.18); // E5 — major third
+    g2.gain.setValueAtTime(0,t+0.18);
+    g2.gain.linearRampToValueAtTime(0.35,t+0.20);
+    g2.gain.setValueAtTime(0.35,t+0.35);
+    g2.gain.linearRampToValueAtTime(0,t+0.50);
+    osc2.start(t+0.18);osc2.stop(t+0.50);
+  }catch(e){}
+}
+
+function scheduleStopChimes(s){
+  if(_stopAlertChimeTimer){clearTimeout(_stopAlertChimeTimer);_stopAlertChimeTimer=null;}
+  // Repeat chime at ~50% and ~75% of approach distance, then stop.
+  // Use time-based intervals: first repeat after 8s, second after another 8s.
+  // Max 2 repeats (3 chimes total) to avoid annoyance.
+  if(_stopAlertChimeCount>=2)return;
+  _stopAlertChimeTimer=setTimeout(()=>{
+    _stopAlertChimeTimer=null;
+    // Only chime if still approaching this stop
+    if(_stopAlertId!==s.id)return;
+    const r=cur();if(!r||UI.gpsDistKm===null)return;
+    const rem=s.dist-UI.gpsDistKm;
+    if(rem<=0||rem>UI.alertKm)return; // passed it or moved away
+    _stopAlertChimeCount++;
+    playStopChime();
+    if(navigator.vibrate)navigator.vibrate([150,80,150]);
+    // Re-pulse the strip card
+    pulseStripCard(s.id);
+    // Schedule next repeat
+    scheduleStopChimes(s);
+  },8000);
+}
+// stop alert overlay removed — alerts now use next-strip pulse + chime
 // ── Turn review overlay buttons — on document since overlay is outside content-wrap ──
 // Listen for both click (desktop) and touchend (mobile — canvas touchstart preventDefault blocks click)
 function _handleTrvEvent(e){
@@ -3237,7 +3320,7 @@ function drawMap(cvs,r,opts){
       ctx.fillStyle=_dotCol;ctx.fill();
       ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1.2;ctx.stroke();
       const isMapWithRings=cvs.id==='desktop-map'||cvs.id==='stops-map'||cvs.id==='live-map';
-      const missionVisible=!UI.hiddenMapTypes.has('mission');
+      const missionVisible=cvs.id==='live-map'||!UI.hiddenMapTypes.has('mission'); // always show on ride map
       if(isMapWithRings&&missionVisible&&(s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt)){
         const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
         const ringR=cvs.id==='desktop-map'?22:14;
@@ -6102,24 +6185,15 @@ function tLiveShell(r){
         ${(()=>{
           if(!UI._adaptiveMsg)return'';
           const age=Date.now()-UI._adaptiveMsg.ts;
-          if(age>10*60*1000)return'';
+          if(age>30000){UI._adaptiveMsg=null;return'';} // auto-dismiss after 30s
           const isWarn=UI._adaptiveMsg.msg.startsWith('⚠️');
-          return`<div style="padding:6px 10px;font-size:13px;font-family:var(--font);line-height:1.4;display:flex;align-items:center;justify-content:space-between;gap:8px;background:${isWarn?'rgba(20,15,5,0.92)':'rgba(5,10,20,0.92)'};border:1px solid ${isWarn?'rgba(251,191,36,0.5)':'rgba(96,165,250,0.4)'};border-radius:7px;color:${isWarn?'var(--amber)':'var(--blue)'};">
+          return`<div style="padding:12px 14px;font-size:17px;font-weight:500;font-family:var(--font);line-height:1.45;display:flex;align-items:center;justify-content:space-between;gap:10px;background:${isWarn?'rgba(20,15,5,0.95)':'rgba(5,10,20,0.95)'};border:1px solid ${isWarn?'rgba(251,191,36,0.6)':'rgba(96,165,250,0.5)'};border-radius:10px;color:${isWarn?'var(--amber)':'var(--blue)'};box-shadow:0 4px 20px rgba(0,0,0,0.5);">
             <span>${UI._adaptiveMsg.msg}</span>
-            <button class="btn btn-sm" id="adaptive-msg-dismiss" style="flex-shrink:0;font-size:12px;padding:2px 8px;">✕</button>
+            <button class="btn btn-sm" id="adaptive-msg-dismiss" style="flex-shrink:0;font-size:14px;padding:4px 10px;">✕</button>
           </div>`;
         })()}
         </div>
-        <div id="alert-overlay">
-          <div id="alert-box">
-            <div id="alert-ico">📍</div>
-            <div style="flex:1;min-width:0;">
-              <div id="alert-title"></div>
-              <div id="alert-msg"></div>
-            </div>
-            <button class="btn btn-sm" id="alert-ok" style="flex-shrink:0;">OK</button>
-          </div>
-        </div>
+        <!-- stop alert overlay removed — replaced by next-strip pulse + audio chime -->
         ${(()=>{
           if(!UI.gpsActive)return '';
           const alertDistKm=UI.simRunning?(UI.turnAlertM||150)*20/1000:(UI.turnAlertM||150)/1000;
@@ -8337,24 +8411,9 @@ function updateLive(){
     const needsTurn=r.turns.some(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm2&&!t._dismissed);
     if(needsTurn)render();
   }
-  // Patch stop proximity alert distance/ETA live on every GPS tick
-  const ao=document.getElementById('alert-overlay');
-  if(ao&&ao.style.display!=='none'&&ao.dataset.stopId){
-    const alertStop=r.stops.find(s=>s.id===ao.dataset.stopId);
-    if(alertStop){
-      const remKm=alertStop.dist-liveDist;
-      if(remKm<0){
-        // Passed the stop — auto-dismiss
-        ao.style.display='none';
-        ao.dataset.stopId='';
-        UI._alertStopDist=null;
-      } else {
-        const remEl=document.getElementById('alert-rem');
-        const etaEl=document.getElementById('alert-eta');
-        if(remEl)remEl.textContent=remKm.toFixed(1)+' km away';
-        if(etaEl)etaEl.textContent=fmtT(etaAt(alertStop.dist,r));
-      }
-    }
+  // Re-apply alerting class after strip rebuild (strip innerHTML replacement removes it)
+  if(_stopAlertId){
+    pulseStripCard(_stopAlertId);
   }
   if(!_livePeekTimer){
     const mc=document.getElementById('live-map');
@@ -9021,19 +9080,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
 
-  if(e.target.closest('#alert-ok')){
-    const ao=document.getElementById('alert-overlay');
-    const stopId=ao.dataset.stopId;
-    ao.style.display='none';
-    ao.dataset.stopId='';
-    UI._alertStopDist=null;
-    // Allow re-alert after 60s cooldown — useful if still approaching the stop
-    if(stopId){
-      setTimeout(()=>{ UI.alertedStops.delete(stopId); }, 60000);
-    }
-    if(_wakeLock){_wakeLock.release();_wakeLock=null;}
-    return;
-  }
+  /* alert-ok handler removed — stop alerts now use next-strip pulse + audio chime */
   if(e.target.closest('#btn-dbx-connect')){sessionStorage.setItem('dbx_return_tab',UI.tab);window.location.href=dbxAuthURL();return;}
   if(e.target.closest('#btn-dbx-save')){dbxSave(false);return;}
   if(e.target.closest('#btn-dbx-load')){dbxLoad(true);return;}
@@ -10059,7 +10106,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v32';
+  const CACHE_NAME='packtimes-v34';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
