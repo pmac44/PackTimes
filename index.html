@@ -367,7 +367,7 @@ select option{background:var(--bg3);}
     </div>
     <div class="field"><label class="lbl">Type</label>
       <select id="m-type">
-        <option value="stop">📍 Stop</option>
+        <option value="stop">📍 Manual Stop</option>
         <option value="water">💧 Water</option>
         <option value="food">🍴 Food</option>
         <option value="shop">🛒 Shop</option>
@@ -5450,7 +5450,7 @@ function liveStripIcons(s,reason){
   const typeLabel={
     town:'TOWN',water:'WATER',crossing:'WATERWAYS',sleep:'SLEEP',food:'FOOD',meal:'EAT',
     shop:'SHOP',pub:'PUB',fuel:'FUEL',accom:'ACCOM',
-    stop:'STOP',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
+    stop:'MANUAL STOP',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
     wc:'TOILET',peak:'PEAK',church:'CHURCH',school:'SCHOOL',
     hall:'HALL',police:'POLICE',fire:'FIRE STN',stockwater:'STOCK H2O'
   };
@@ -5787,7 +5787,7 @@ const LAYER_TYPES=[
   {type:'weather',col:'#60a5fa',label:'ETA Weather'},
   {type:'allsleep',col:'#b39ddb',label:'All sleep'},
   {type:'mission',col:'#ffe632',label:'Mission'},
-  {type:'stop',col:'#94856a',label:'Stops'},
+  {type:'stop',col:'#94856a',label:'Manual Stops'},
   {type:'water',col:'#60a5fa',label:'Water'},
   {type:'kmmarkers',col:'rgba(255,255,255,0.7)',label:'km markers'},
   {type:'turns',col:'rgba(74,222,128,0.8)',label:'Turns'},
