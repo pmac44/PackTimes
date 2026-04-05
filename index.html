@@ -5797,7 +5797,7 @@ function drawElevProfile(r,liveDist){
       const dx=t.clientX-startX;
       const W=cvs.getBoundingClientRect().width||300;
       // Drag right = zoom out, drag left = zoom in; scale factor relative to canvas width
-      const factor=Math.pow(2,dx/W*2); // drag right = zoom in (stretch), drag left = zoom out (shrink)
+      const factor=Math.pow(2,-dx/W*2); // drag right = zoom in (less km), drag left = zoom out (more km)
       const r2=cur();
       const maxZoom=r2?r2.totalDist:500;
       UI.elevZoomKm=Math.max(2,Math.min(maxZoom,startZoom*factor));
