@@ -521,7 +521,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off'};
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -585,7 +585,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -620,6 +620,7 @@ async function loadAll(){
       if(prefs.foodSubTab)UI.foodSubTab=prefs.foodSubTab;
       if(prefs.elevExpanded!==undefined)UI.elevExpanded=prefs.elevExpanded;
       if(prefs.routeOverlay)UI.routeOverlay=prefs.routeOverlay;
+      if(prefs.elevZoomKm)UI.elevZoomKm=prefs.elevZoomKm;
     }
     // Restore last known GPS position so ride progress is visible before GPS reconnects
     const lastGps=await DB.getKV('lastGpsState').catch(()=>null);
@@ -5643,34 +5644,22 @@ function drawElevProfile(r,liveDist){
   const segs=getGradeSegs(r);
   if(!segs.length)return;
 
-  // Determine visible distance range: GPS fixed at 10% from left, span from map zoom level
-  let distMin=0,distMax=r.totalDist;
-  const gpsFrac=0.10; // GPS reference line at 10% from left edge
-  if(mapCvs&&mapCvs._kx&&mapCvs._scale&&liveDist>0){
-    // Calculate the km width the map viewport covers (diagonal for safety)
-    const mW=mapCvs._W,kx=mapCvs._kx,scale=mapCvs._scale;
-    const mH=mapCvs._H,ky=mapCvs._ky;
-    const kmW=mW/(kx*scale); // degrees longitude visible
-    const kmH=mH/(ky*scale); // degrees latitude visible
-    // Convert to approximate km (1 deg lat ≈ 111km, lon scaled by cos)
-    const lat=mapCvs._cLat||0;
-    const visKmW=kmW*111*Math.cos(lat*Math.PI/180);
-    const visKmH=kmH*111;
-    // Use the larger dimension as the route distance span
-    const visSpan=Math.max(visKmW,visKmH);
-    if(visSpan>0.1){
-      // If viewport covers most of the route, show full route
-      if(visSpan>=r.totalDist*0.9){
-        distMin=0;distMax=r.totalDist;
-      } else {
-        // Anchor GPS at 10% from left, show visSpan worth of route
-        distMin=Math.max(0,liveDist-gpsFrac*visSpan);
-        distMax=Math.min(r.totalDist,distMin+visSpan);
-        distMin=Math.max(0,distMax-visSpan);
-      }
-    }
+  // Determine visible distance range: GPS at 10% from left, independent zoom via swipe
+  const gpsFrac=0.10;
+  // Default zoom: ~20% of route or 30km, whichever is smaller
+  if(!UI.elevZoomKm||UI.elevZoomKm<=0)UI.elevZoomKm=Math.min(r.totalDist*0.2,30);
+  const visSpan=Math.min(UI.elevZoomKm,r.totalDist);
+  let distMin,distMax;
+  if(visSpan>=r.totalDist*0.95){
+    distMin=0;distMax=r.totalDist;
+  } else if(liveDist>0){
+    distMin=Math.max(0,liveDist-gpsFrac*visSpan);
+    distMax=Math.min(r.totalDist,distMin+visSpan);
+    distMin=Math.max(0,distMax-visSpan);
+  } else {
+    distMin=0;distMax=visSpan;
   }
-  if(distMax-distMin<0.1){distMin=0;distMax=r.totalDist;} // fallback to full
+  if(distMax-distMin<0.1){distMin=0;distMax=r.totalDist;}
 
   const dpr=window.devicePixelRatio||1;
   const rect=cvs.getBoundingClientRect();
@@ -5781,6 +5770,37 @@ function drawElevProfile(r,liveDist){
   ctx.font='10px DM Mono, monospace';ctx.textAlign='left';ctx.textBaseline='top';
   ctx.fillStyle='rgba(255,255,255,0.5)';
   ctx.fillText(Math.round(eleMax)+'m',3,2);
+
+  // Attach swipe-to-zoom handlers (once per canvas instance)
+  if(!cvs._elevSwipe){
+    cvs._elevSwipe=true;
+    let startX=null,startZoom=null;
+    const onStart=e=>{
+      const t=e.touches?e.touches[0]:e;
+      startX=t.clientX;startZoom=UI.elevZoomKm;
+      e.preventDefault(); // prevent scroll while swiping on profile
+    };
+    const onMove=e=>{
+      if(startX===null)return;
+      const t=e.touches?e.touches[0]:e;
+      const dx=t.clientX-startX;
+      const W=cvs.getBoundingClientRect().width||300;
+      // Drag right = zoom out, drag left = zoom in; scale factor relative to canvas width
+      const factor=Math.pow(2,dx/W*2); // drag right = zoom in (stretch), drag left = zoom out (shrink)
+      const r2=cur();
+      const maxZoom=r2?r2.totalDist:500;
+      UI.elevZoomKm=Math.max(2,Math.min(maxZoom,startZoom*factor));
+      if(r2)drawElevProfile(r2,UI.gpsDistKm||0);
+      e.preventDefault();
+    };
+    const onEnd=()=>{if(startX!==null){startX=null;saveAll();}};
+    cvs.addEventListener('touchstart',onStart,{passive:false});
+    cvs.addEventListener('touchmove',onMove,{passive:false});
+    cvs.addEventListener('touchend',onEnd);
+    cvs.addEventListener('mousedown',onStart);
+    window.addEventListener('mousemove',e=>{if(startX!==null)onMove(e);});
+    window.addEventListener('mouseup',onEnd);
+  }
 }
 
 // Fork & knife food icon — use currentColor so context controls colour
@@ -9422,7 +9442,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(wrap)wrap.innerHTML='';
     return;
   }
-  if(e.target.closest('#live-elev-strip')){
+  if(e.target.closest('#live-elev-strip')&&!e.target.closest('#elev-profile-cvs')){
     UI.elevExpanded=!UI.elevExpanded;
     saveAll();
     const r2=cur();if(!r2)return;
@@ -10467,7 +10487,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v59';
+  const CACHE_NAME='packtimes-v60';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
