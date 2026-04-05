@@ -5724,12 +5724,10 @@ function drawElevProfile(r,liveDist){
     ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1;ctx.stroke();
   }
 
-  // Elevation axis labels (left side)
+  // Top elevation label only (bottom label is obscured by fill)
   ctx.font='10px DM Mono, monospace';ctx.textAlign='left';ctx.textBaseline='top';
   ctx.fillStyle='rgba(255,255,255,0.5)';
   ctx.fillText(Math.round(eleMax)+'m',3,2);
-  ctx.textBaseline='bottom';
-  ctx.fillText(Math.round(eleMin+elePad)+'m',3,H-2);
 }
 
 // Fork & knife food icon — use currentColor so context controls colour
