@@ -5635,7 +5635,7 @@ function buildElevStrip(r,liveDist){
     </div>
   </div>`;
   const profile=UI.elevExpanded?'<canvas id="elev-profile-cvs" class="live-elev-profile" height="90"></canvas>':'';
-  return`<div class="live-elev-strip" id="live-elev-strip">${bar}${profile}</div>`;
+  return`<div class="live-elev-strip" id="live-elev-strip">${profile}${bar}</div>`;
 }
 
 // Draw the expanded elevation profile on canvas
