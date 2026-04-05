@@ -3155,7 +3155,7 @@ function drawMap(cvs,r,opts){
   const padTop=id==='desktop-map'?60:(id==='live-map'?44:18); // live-map: clear overlays; stops-map: reasonable top gap
   const weatherBarWrap=id==='live-map'?document.getElementById('live-weather-bar-wrap'):null;
   const weatherBarH=weatherBarWrap&&weatherBarWrap.offsetHeight>0?weatherBarWrap.offsetHeight:0;
-  const padBottom=id==='desktop-map'?160:(id==='live-map'?Math.max(weatherBarH+10,44):18); // live-map: clear weather bar, match padTop minimum
+  const padBottom=id==='desktop-map'?160:(id==='live-map'?44:18); // live-map: weather is now a floating pill, just keep standard padding
   const lonKm=(maxLon-minLon||.001)*kx,latKm=(maxLat-minLat||.001)*ky;
   const baseScale=Math.min((W-pad*2)/lonKm,(H-padTop-padBottom)/latKm);
   const scale=baseScale*state.zoom;
@@ -3645,12 +3645,9 @@ function peekLiveStop(s,r){
   const cvs=document.getElementById('live-map');
   const mapH=cvs?cvs._forcedH||cvs.offsetHeight:300;
 
-  // Account for weather bar overlay at bottom of map — GPS should stay above it
-  const weatherBar=document.getElementById('live-weather-bar-wrap');
-  const weatherH=weatherBar&&weatherBar.offsetHeight>0?weatherBar.offsetHeight:0;
-  // Usable vertical band: stop near top, GPS above weather bar
-  const topFrac=0.05; // stop target position (very close to top of map)
-  const botFrac=weatherH>0?Math.min(0.82,1-weatherH/mapH-0.05):0.82; // GPS position (well above weather bar)
+  // Usable vertical band: stop near top, GPS near bottom (weather is now a small floating pill)
+  const topFrac=0.05;
+  const botFrac=0.85;
   const usableFrac=botFrac-topFrac;
 
   // Calculate centre and zoom to show BOTH GPS position and target stop.
@@ -3730,10 +3727,8 @@ function redrawMap(id){
       const pp=r.points[cidx(r,ps.dist)];
       const sLon=ps.lon||pp.lon,sLat=ps.lat||pp.lat;
       const mapH=cvs._forcedH||cvs.offsetHeight||300;
-      const weatherBar=document.getElementById('live-weather-bar-wrap');
-      const weatherH=weatherBar&&weatherBar.offsetHeight>0?weatherBar.offsetHeight:0;
       const topFrac=0.05;
-      const botFrac=weatherH>0?Math.min(0.82,1-weatherH/mapH-0.05):0.82;
+      const botFrac=0.85;
       const usableFrac=botFrac-topFrac;
       const anchor=(topFrac+botFrac)/2;
       const gLat=UI.gpsPos.lat,gLon=UI.gpsPos.lon;
@@ -5785,26 +5780,47 @@ function drawElevProfile(r,liveDist){
   // Attach swipe-to-zoom handlers (once per canvas instance)
   if(!cvs._elevSwipe){
     cvs._elevSwipe=true;
-    let startX=null,startZoom=null;
+    let startX=null,startZoom=null,didDrag=false;
     const onStart=e=>{
       const t=e.touches?e.touches[0]:e;
-      startX=t.clientX;startZoom=UI.elevZoomKm;
-      e.preventDefault(); // prevent scroll while swiping on profile
+      startX=t.clientX;startZoom=UI.elevZoomKm;didDrag=false;
+      e.preventDefault();
     };
     const onMove=e=>{
       if(startX===null)return;
       const t=e.touches?e.touches[0]:e;
       const dx=t.clientX-startX;
+      if(Math.abs(dx)<6)return; // dead zone before recognising as drag
+      didDrag=true;
       const W=cvs.getBoundingClientRect().width||300;
-      // Drag right = zoom out, drag left = zoom in; scale factor relative to canvas width
-      const factor=Math.pow(2,-dx/W*2); // swipe right = fewer km (zoom in), swipe left = more km (zoom out)
+      const factor=Math.pow(2,-dx/W*2);
       const r2=cur();
       const maxZoom=r2?r2.totalDist:500;
       UI.elevZoomKm=Math.max(2,Math.min(maxZoom,startZoom*factor));
       if(r2)drawElevProfile(r2,UI.gpsDistKm||0);
       e.preventDefault();
     };
-    const onEnd=()=>{if(startX!==null){startX=null;saveAll();}};
+    const onEnd=()=>{
+      if(startX!==null){
+        if(!didDrag){
+          // Tap (no drag) — toggle collapse
+          UI.elevExpanded=!UI.elevExpanded;
+          saveAll();
+          const r2=cur();if(r2){
+            const ld=UI.gpsDistKm||0;
+            const strip=document.getElementById('live-elev-strip');
+            if(strip)strip.outerHTML=buildElevStrip(r2,ld);
+            const mc=document.getElementById('live-map');
+            if(mc)mc._forcedH=0;
+            if(typeof _liveResizeHandler==='function')_liveResizeHandler();
+            if(UI.elevExpanded)setTimeout(()=>drawElevProfile(r2,ld),100);
+          }
+        } else {
+          saveAll();
+        }
+        startX=null;
+      }
+    };
     cvs.addEventListener('touchstart',onStart,{passive:false});
     cvs.addEventListener('touchmove',onMove,{passive:false});
     cvs.addEventListener('touchend',onEnd);
@@ -6526,7 +6542,7 @@ function tLiveShell(r){
       <div class="live-map-section" id="live-map-section">
         <canvas id="live-map"></canvas>
         ${mapCtrlHTML('live-map',true)}
-        <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:10;">${weatherBarHTML()}</div>
+        <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:10;pointer-events:none;">${weatherBarHTML()}</div>
         <div id="adaptive-msg-bar-wrap" style="position:absolute;top:56px;left:8px;right:8px;z-index:11;">
         ${(()=>{
           if(!UI._adaptiveMsg)return'';
@@ -7573,7 +7589,17 @@ function weatherBarHTML(){
     </div>`;
   }
 
-  return`<div id="live-weather-bar" style="background:var(--bg2);border-top:1px solid var(--border);font-family:var(--font);cursor:pointer;-webkit-tap-highlight-color:transparent;">
+  // Floating pill (collapsed) or full popup overlay (expanded)
+  const alertBorder=alert?'border-color:rgba(249,115,22,0.7);animation:warnPulse 1.2s ease-in-out infinite;':'';
+  if(!_weatherExpanded){
+    return`<div id="live-weather-bar" style="position:absolute;bottom:8px;left:8px;z-index:10;cursor:pointer;-webkit-tap-highlight-color:transparent;pointer-events:auto;">
+      <div style="display:inline-flex;align-items:center;gap:5px;background:${condBg};border:2px solid rgba(255,255,255,0.15);border-radius:8px;padding:4px 10px;font-family:var(--font);box-shadow:0 2px 8px rgba(0,0,0,0.4);${alertBorder}">
+        <span style="font-size:16px;font-weight:600;color:${condText};">${Math.round(c.temp)}°</span>
+        ${alert?'<span style="font-size:13px;color:#f97316;">⚠</span>':''}
+      </div>
+    </div>`;
+  }
+  return`<div id="live-weather-bar" style="position:absolute;bottom:0;left:0;right:0;z-index:10;background:var(--bg2);border-top:1px solid var(--border);font-family:var(--font);cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 -4px 20px rgba(0,0,0,0.4);pointer-events:auto;">
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;">
       <div style="background:${condBg};border-radius:5px;padding:3px 8px;flex-shrink:0;">
         <span style="font-size:15px;font-weight:600;color:${condText};">${Math.round(c.temp)}°</span>
@@ -7581,7 +7607,7 @@ function weatherBarHTML(){
       <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
       ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
       <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
-      ${alert?`<div style="margin-left:auto;font-size:16px;line-height:1;color:#f97316;animation:warnPulse 1.2s ease-in-out infinite;" title="${alert}">⚠</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">${_weatherExpanded?'▲':'▼'}</div>`}
+      ${alert?`<div style="margin-left:auto;font-size:16px;line-height:1;color:#f97316;">⚠</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">▼</div>`}
     </div>
     ${expandedHTML}
   </div>`;
@@ -9356,21 +9382,17 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   if(e.target.closest('#live-weather-bar')&&UI.tab==='live'){
     _weatherExpanded=!_weatherExpanded;
-    // Clear any existing auto-collapse timer
     if(_weatherCollapseTimer){clearTimeout(_weatherCollapseTimer);_weatherCollapseTimer=null;}
     const wb=document.getElementById('live-weather-bar-wrap');
     if(wb)wb.innerHTML=weatherBarHTML();
-    // Resize map to account for new bar height
-    const r2=cur();if(r2)initLiveMap(r2);
-    // Auto-collapse after 15s if expanded
+    // Auto-collapse after 30s if expanded
     if(_weatherExpanded){
       _weatherCollapseTimer=setTimeout(()=>{
         _weatherExpanded=false;
         _weatherCollapseTimer=null;
         const wb2=document.getElementById('live-weather-bar-wrap');
         if(wb2)wb2.innerHTML=weatherBarHTML();
-        const r3=cur();if(r3)initLiveMap(r3);
-      },15000);
+      },30000);
     }
     return;
   }
@@ -9454,7 +9476,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(wrap)wrap.innerHTML='';
     return;
   }
-  if(e.target.closest('#live-elev-strip')&&!e.target.closest('#elev-profile-cvs')){
+  if(e.target.closest('#live-elev-strip')){
     UI.elevExpanded=!UI.elevExpanded;
     saveAll();
     const r2=cur();if(!r2)return;
@@ -10499,7 +10521,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v60';
+  const CACHE_NAME='packtimes-v61';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
