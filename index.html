@@ -92,8 +92,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
 .live-elev-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;}
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
-.live-elev-stat{font-family:var(--font);font-size:15px;font-weight:500;color:var(--text);white-space:nowrap;}
-.live-elev-unit{font-size:13px;color:var(--text3);font-weight:400;}
+.live-elev-stat{font-family:var(--font);font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;}
+.live-elev-unit{font-size:14px;color:var(--text3);font-weight:400;}
 .live-elev-profile{width:100%;display:block;}
 /* Stops tab: fixed map + scrollable below */
 .stops-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;}
@@ -5634,9 +5634,9 @@ function buildElevStrip(r,liveDist){
       <span class="live-elev-stat" style="color:${gc};">${arrow} ${Math.abs(curGrade).toFixed(1)}<span class="live-elev-unit">%</span></span>
     </div>
     <div style="display:flex;align-items:baseline;gap:4px;">
-      <span class="live-elev-stat" style="font-size:14px;">↑ ${climbed.toLocaleString()}<span class="live-elev-unit">m</span></span>
+      <span class="live-elev-stat" style="font-size:15px;">↑ ${climbed.toLocaleString()}<span class="live-elev-unit">m</span></span>
       <span style="font-size:13px;color:var(--text3);">/</span>
-      <span class="live-elev-stat" style="font-size:14px;color:var(--text3);">${totalGain.toLocaleString()}<span class="live-elev-unit">m</span></span>
+      <span class="live-elev-stat" style="font-size:15px;color:var(--text3);">${totalGain.toLocaleString()}<span class="live-elev-unit">m</span></span>
     </div>
   </div>`;
   const profile=UI.elevExpanded?'<canvas id="elev-profile-cvs" class="live-elev-profile" height="90"></canvas>':'';
@@ -5777,6 +5777,10 @@ function drawElevProfile(r,liveDist){
   ctx.font='10px DM Mono, monospace';ctx.textAlign='left';ctx.textBaseline='top';
   ctx.fillStyle='rgba(255,255,255,0.5)';
   ctx.fillText(Math.round(eleMax)+'m',3,2);
+  // Zoom distance label (top right)
+  ctx.textAlign='right';
+  const zoomLabel=visSpan>=r.totalDist*0.95?'Full route':visSpan>=1?Math.round(visSpan)+'km':(visSpan*1000).toFixed(0)+'m';
+  ctx.fillText(zoomLabel,W-3,2);
 
   // Attach swipe-to-zoom handlers (once per canvas instance)
   if(!cvs._elevSwipe){
@@ -7556,6 +7560,7 @@ function weatherBarHTML(){
     }
 
     expandedHTML=`
+    ${alert?`<div style="border-top:1px solid var(--border);padding:8px 10px;display:flex;align-items:center;gap:8px;background:rgba(249,115,22,0.08);"><span style="font-size:14px;">⚠</span><span style="font-size:14px;font-weight:600;color:#f97316;">${alert}</span></div>`:''}
     <div style="border-top:1px solid var(--border);padding:10px 10px 8px;">
       <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">${hourChips}</div>
     </div>
@@ -7576,7 +7581,7 @@ function weatherBarHTML(){
       <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
       ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
       <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
-      ${alert?`<div style="margin-left:auto;font-size:16px;line-height:1;animation:warnPulse 1.2s ease-in-out infinite;" title="${alert}">⚠</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">${_weatherExpanded?'▲':'▼'}</div>`}
+      ${alert?`<div style="margin-left:auto;font-size:16px;line-height:1;color:#f97316;animation:warnPulse 1.2s ease-in-out infinite;" title="${alert}">⚠</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">${_weatherExpanded?'▲':'▼'}</div>`}
     </div>
     ${expandedHTML}
   </div>`;
