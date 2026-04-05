@@ -520,7 +520,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false};
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off'};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -584,7 +584,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -618,6 +618,7 @@ async function loadAll(){
       if(prefs.tab)UI.tab=prefs.tab;
       if(prefs.foodSubTab)UI.foodSubTab=prefs.foodSubTab;
       if(prefs.elevExpanded!==undefined)UI.elevExpanded=prefs.elevExpanded;
+      if(prefs.routeOverlay)UI.routeOverlay=prefs.routeOverlay;
     }
     // Restore last known GPS position so ride progress is visible before GPS reconnects
     const lastGps=await DB.getKV('lastGpsState').catch(()=>null);
@@ -1586,19 +1587,32 @@ function snapToWay(lat,lon,ways,maxOffM){
   return best&&best.offM<=maxOffM?best:null;
 }
 
+function updateOverlayButtons(){
+  const labels={off:'SURF',surf:'SURF',grade:'GRADE'};
+  const active=UI.routeOverlay!=='off';
+  ['desktop-map','stops-map'].forEach(id=>{
+    const btn=document.getElementById('btn-surface-'+id);
+    if(btn){
+      btn.textContent=labels[UI.routeOverlay]||'SURF';
+      btn.style.color=active?'var(--accent)':'';
+      btn.style.borderColor=active?'var(--accent3)':'';
+    }
+  });
+}
 async function fetchSurfaceData(){
   const r=cur();
   if(!r||r.points.length<2)return;
   if(r.surfaceSegs&&r.surfaceSegs.length){
-    if(UI.hiddenMapTypes.has('surface'))UI.hiddenMapTypes.delete('surface');
+    // Cycle: off → surf → grade → off
+    const cycle={off:'surf',surf:'grade',grade:'off'};
+    UI.routeOverlay=cycle[UI.routeOverlay]||'surf';
+    // Sync hiddenMapTypes for backward compat
+    if(UI.routeOverlay==='surf')UI.hiddenMapTypes.delete('surface');
     else UI.hiddenMapTypes.add('surface');
-    const surfVisible=!UI.hiddenMapTypes.has('surface');
-    ['desktop-map','stops-map'].forEach(id=>{
-      const btn=document.getElementById('btn-surface-'+id);
-      if(btn){btn.style.color=surfVisible?'var(--accent)':'';btn.style.borderColor=surfVisible?'var(--accent3)':'';}
-      redrawMap(id);
-    });
+    updateOverlayButtons();
+    ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
     renderDesktopMap();
+    saveAll();
     return;
   }
   UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data\u2026';renderKeepScroll();
@@ -1676,6 +1690,8 @@ async function fetchSurfaceData(){
   UI.surfaceStatus='done';
   UI.surfaceMsg=`Surface data loaded (${segs.length} segments)`;
   UI.hiddenMapTypes.delete('surface');
+  UI.routeOverlay='surf';
+  updateOverlayButtons();
   // Rebuild estimates now that surface data is available
   if(r){rebuildPace(r);const cr=r.cumRiding;r.estDuration=cr?cr[cr.length-1]:r.estDuration;}
   await saveAll();
@@ -3228,7 +3244,7 @@ function drawMap(cvs,r,opts){
   }
 
   // Surface type overlay
-  if(!UI.hiddenMapTypes.has('surface')&&r.surfaceSegs&&r.surfaceSegs.length&&(id==='desktop-map'||id==='stops-map')){
+  if(UI.routeOverlay==='surf'&&r.surfaceSegs&&r.surfaceSegs.length&&(id==='desktop-map'||id==='stops-map')){
     ctx.save();
     for(const seg of r.surfaceSegs){
       const segPts=pts.filter(p=>p.dist>=seg.fromDist-0.05&&p.dist<=seg.toDist+0.05);
@@ -3239,6 +3255,31 @@ function drawMap(cvs,r,opts){
       ctx.strokeStyle=col;ctx.lineWidth=3;ctx.stroke();
     }
     ctx.restore();
+  }
+
+  // Grade overlay — colour route line by gradient
+  if(UI.routeOverlay==='grade'&&(id==='desktop-map'||id==='stops-map')){
+    const grSegs=getGradeSegs(r);
+    if(grSegs.length){
+      ctx.save();
+      let rStart=0,rCol=gradeCol(grSegs[0].grade);
+      const flushGrade=(endIdx)=>{
+        const first=grSegs[rStart],last=grSegs[endIdx];
+        const segPts=pts.filter(p=>p.dist>=first.from-0.01&&p.dist<=last.to+0.01);
+        if(segPts.length<2){rStart=endIdx+1;rCol=null;return;}
+        ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
+        for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
+        ctx.strokeStyle=rCol;ctx.lineWidth=3;ctx.stroke();
+      };
+      for(let gi=1;gi<grSegs.length;gi++){
+        const col=gradeCol(grSegs[gi].grade);
+        if(col===rCol)continue;
+        flushGrade(gi-1);
+        rStart=gi;rCol=col;
+      }
+      flushGrade(grSegs.length-1);
+      ctx.restore();
+    }
   }
 
   // Pace segment overlays — orange highlight over route line
@@ -4031,7 +4072,7 @@ function mapCtrlHTML(mapId,showGPS){
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${recenterBtn}
     ${mapId==='live-map'?gpsBtn:''}
-    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Toggle surface type" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${!UI.hiddenMapTypes.has('surface')&&cur()&&cur().surfaceSegs?'color:var(--accent);border-color:var(--accent3);':''}">SURF</button>`:''}
+    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:''}
   </div>`;
 }
 function zoomBtnsHTML(mapId){return mapCtrlHTML(mapId,false);}
@@ -10414,7 +10455,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v56';
+  const CACHE_NAME='packtimes-v57';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
