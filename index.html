@@ -90,6 +90,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .turn-label{font-size:16px;color:var(--text2);margin-top:2px;}
 .turn-auto{font-size:12px;color:var(--text3);margin-top:2px;}
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
+.live-elev-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;}
+.live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
+.live-elev-stat{font-family:var(--font);font-size:15px;font-weight:500;color:var(--text);white-space:nowrap;}
+.live-elev-unit{font-size:13px;color:var(--text3);font-weight:400;}
+.live-elev-profile{width:100%;display:block;}
 /* Stops tab: fixed map + scrollable below */
 .stops-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 .stops-map-panel{flex-shrink:0;background:#0a0f0a;position:relative;}
@@ -515,7 +520,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all'};
+  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -579,7 +584,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -612,6 +617,7 @@ async function loadAll(){
       if(prefs.sensorType)UI.sensorType=prefs.sensorType;
       if(prefs.tab)UI.tab=prefs.tab;
       if(prefs.foodSubTab)UI.foodSubTab=prefs.foodSubTab;
+      if(prefs.elevExpanded!==undefined)UI.elevExpanded=prefs.elevExpanded;
     }
     // Restore last known GPS position so ride progress is visible before GPS reconnects
     const lastGps=await DB.getKV('lastGpsState').catch(()=>null);
@@ -4064,6 +4070,8 @@ document.addEventListener('click',e=>{
     // sizeLiveMap sets cvs._forcedH so drawMap uses correct height immediately
     if(id==='live-map'&&typeof _liveResizeHandler==='function')_liveResizeHandler();
     redrawMap(id);
+    // Redraw elevation profile so it syncs to new zoom
+    if(id==='live-map'&&UI.elevExpanded){const _r=cur();if(_r)setTimeout(()=>drawElevProfile(_r,UI.gpsDistKm||0),50);}
     // If GPS is active on live-map, return to GPS following after 5 seconds
     if(id==='live-map'){
       const gpsOn=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
@@ -4077,6 +4085,7 @@ document.addEventListener('click',e=>{
           // Restore ride-level zoom
           st.zoom=zoomForKmWidth('live-map',UI.gpsZoom||0.15);
           redrawMap('live-map');
+          if(UI.elevExpanded){const _r=cur();if(_r)setTimeout(()=>drawElevProfile(_r,UI.gpsDistKm||0),50);}
         },5000);
       }
     }
@@ -5504,6 +5513,225 @@ function buildLiveStrip(r,liveDist,sdt){
   return`<div class="live-next-strip" id="live-next-strip">${html}</div>`;
 }
 
+// ─── Elevation profile for ride tab ───
+// Grade colour: uphill green 0-3.9%, yellow 4-7.9%, orange 8-11.9%, red 12-19.9%, brown 20%+; downhill grey
+function gradeCol(g){
+  if(g<0.5)return'#555'; // downhill or flat — grey (Wahoo convention)
+  if(g<4)return'#4ade80';
+  if(g<8)return'#fbbf24';
+  if(g<12)return'#f97316';
+  if(g<20)return'#ef4444';
+  return'#92400e';
+}
+// For the stats bar, show colour based on absolute grade (both up and down)
+function gradeColAbs(g){
+  const a=Math.abs(g);
+  if(a<0.5)return'#888';
+  if(a<4)return'#4ade80';
+  if(a<8)return'#fbbf24';
+  if(a<12)return'#f97316';
+  if(a<20)return'#ef4444';
+  return'#92400e';
+}
+function gradeArrow(g){return g>0.5?'↗':g<-0.5?'↘':'→';}
+
+// Compute grade segments (~50m) from route points — cached on route object
+function getGradeSegs(r){
+  if(r._gradeSegs)return r._gradeSegs;
+  const pts=r.points;if(!pts||pts.length<2){r._gradeSegs=[];return r._gradeSegs;}
+  const segs=[];
+  let i=0;
+  while(i<pts.length-1){
+    const startDist=pts[i].dist;
+    const startEle=pts[i].ele||0;
+    let j=i+1;
+    while(j<pts.length&&(pts[j].dist-startDist)<0.05)j++; // ~50m segments
+    if(j>=pts.length)j=pts.length-1;
+    const endDist=pts[j].dist;
+    const endEle=pts[j].ele||0;
+    const dx=(endDist-startDist)*1000; // metres
+    const dy=endEle-startEle;
+    const grade=dx>0?(dy/dx*100):0;
+    segs.push({from:startDist,to:endDist,ele:startEle,eleEnd:endEle,grade});
+    i=j;
+  }
+  r._gradeSegs=segs;
+  return segs;
+}
+
+// Build the elevation strip HTML (collapsed bar)
+function buildElevStrip(r,liveDist){
+  const pts=r.points;
+  if(!pts||pts.length<2)return'';
+  // Current elevation and grade at liveDist
+  const idx=cidx(r,liveDist);
+  const curEle=Math.round(pts[idx].ele||0);
+  const segs=getGradeSegs(r);
+  const curSeg=segs.find(s=>liveDist>=s.from&&liveDist<=s.to)||segs[0];
+  const curGrade=curSeg?curSeg.grade:0;
+  const arrow=gradeArrow(curGrade);
+  const gc=gradeColAbs(curGrade);
+  // Climbed so far vs total
+  const ptsSoFar=pts.filter(p=>p.dist<=liveDist+0.01);
+  const climbed=ptsSoFar.length>1?elevGain(ptsSoFar):0;
+  const totalGain=elevGain(pts);
+  const expandIcon=UI.elevExpanded?'▾':'▸';
+
+  const bar=`<div class="live-elev-bar" id="elev-bar">
+    <div style="display:flex;align-items:baseline;gap:6px;">
+      <span style="font-size:13px;color:var(--text3);">${expandIcon}</span>
+      <span class="live-elev-stat">${curEle}<span class="live-elev-unit">m asl</span></span>
+      <span class="live-elev-stat" style="color:${gc};">${arrow} ${Math.abs(curGrade).toFixed(1)}<span class="live-elev-unit">%</span></span>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:4px;">
+      <span class="live-elev-stat" style="font-size:14px;">↑ ${climbed.toLocaleString()}<span class="live-elev-unit">m</span></span>
+      <span style="font-size:13px;color:var(--text3);">/</span>
+      <span class="live-elev-stat" style="font-size:14px;color:var(--text3);">${totalGain.toLocaleString()}<span class="live-elev-unit">m</span></span>
+    </div>
+  </div>`;
+  const profile=UI.elevExpanded?'<canvas id="elev-profile-cvs" class="live-elev-profile" height="90"></canvas>':'';
+  return`<div class="live-elev-strip" id="live-elev-strip">${bar}${profile}</div>`;
+}
+
+// Draw the expanded elevation profile on canvas
+function drawElevProfile(r,liveDist){
+  const cvs=document.getElementById('elev-profile-cvs');
+  if(!cvs)return;
+  const mapCvs=document.getElementById('live-map');
+  const segs=getGradeSegs(r);
+  if(!segs.length)return;
+
+  // Determine visible distance range: GPS fixed at 10% from left, range from map zoom
+  let distMin=0,distMax=r.totalDist;
+  const gpsFrac=0.10; // GPS reference line at 10% from left edge
+  if(mapCvs&&mapCvs._kx&&mapCvs._scale&&mapCvs._cLon!==undefined&&liveDist>0){
+    // Calculate how many km of route the map is currently showing
+    const mW=mapCvs._W,kx=mapCvs._kx,scale=mapCvs._scale,cLon=mapCvs._cLon;
+    const lonLeft=cLon-mW/2/(kx*scale);
+    const lonRight=cLon+mW/2/(kx*scale);
+    const mH=mapCvs._H,ky=mapCvs._ky,cLat=mapCvs._cLat,anchor=mapCvs._anchor||0.5;
+    const latTop=cLat+mH*anchor/(ky*scale);
+    const latBot=cLat-mH*(1-anchor)/(ky*scale);
+    const vis=r.points.filter(p=>p.lon>=lonLeft&&p.lon<=lonRight&&p.lat>=latBot&&p.lat<=latTop);
+    if(vis.length>1){
+      const visSpan=vis[vis.length-1].dist-vis[0].dist;
+      if(visSpan>0.1){
+        // If map shows >=90% of route (e.g. fit-route), show full route
+        if(visSpan>=r.totalDist*0.9){
+          distMin=0;distMax=r.totalDist;
+        } else {
+          // Anchor GPS at 10% from left, show visSpan worth of route
+          distMin=Math.max(0,liveDist-gpsFrac*visSpan);
+          distMax=Math.min(r.totalDist,distMin+visSpan);
+          // Re-adjust distMin if distMax hit the end
+          distMin=Math.max(0,distMax-visSpan);
+        }
+      }
+    }
+  }
+  if(distMax-distMin<0.1){distMin=0;distMax=r.totalDist;} // fallback to full
+
+  const dpr=window.devicePixelRatio||1;
+  const rect=cvs.getBoundingClientRect();
+  const W=rect.width||cvs.parentElement?.offsetWidth||window.innerWidth;
+  if(W<10)return; // not laid out yet
+  const H=90;
+  cvs.width=W*dpr;cvs.height=H*dpr;
+  cvs.style.width=W+'px';
+  cvs.style.height=H+'px';
+  const ctx=cvs.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  // Get elevation range for visible portion
+  const visPts=r.points.filter(p=>p.dist>=distMin&&p.dist<=distMax);
+  if(visPts.length<2)return;
+  let eleMin=Infinity,eleMax=-Infinity;
+  for(const p of visPts){
+    const e=p.ele||0;
+    if(e<eleMin)eleMin=e;
+    if(e>eleMax)eleMax=e;
+  }
+  // Add vertical padding
+  const elePad=Math.max(20,(eleMax-eleMin)*0.1);
+  eleMin-=elePad;eleMax+=elePad;
+  const eleRange=eleMax-eleMin||1;
+  const distRange=distMax-distMin||1;
+
+  const xOf=d=>(d-distMin)/distRange*W;
+  const yOf=e=>H-(e-eleMin)/eleRange*(H-8)-4; // 4px top/bottom margin
+
+  // Fill gradient-coloured area using actual route points (matches white outline exactly)
+  // Assign each route point a grade colour from the nearest grade segment, then merge runs
+  const visSegs=segs.filter(s=>s.to>=distMin&&s.from<=distMax);
+  // Build a lookup: for each visible point, find its grade colour
+  let segIdx=0;
+  const ptCols=[];
+  for(let pi=0;pi<visPts.length;pi++){
+    const d=visPts[pi].dist;
+    while(segIdx<visSegs.length-1&&visSegs[segIdx].to<d)segIdx++;
+    const g=segIdx<visSegs.length?visSegs[segIdx].grade:0;
+    ptCols.push(gradeCol(g));
+  }
+  // Draw merged colour runs using actual route points as top edge
+  let runStartPt=0,curCol=ptCols[0];
+  const flushPtRun=(endPt)=>{
+    const x1=Math.max(0,xOf(visPts[runStartPt].dist));
+    const x2=Math.min(W,xOf(visPts[endPt].dist));
+    if(x2-x1<0.3){return;}
+    ctx.beginPath();
+    ctx.moveTo(x1,yOf(visPts[runStartPt].ele||0));
+    for(let k=runStartPt+1;k<=endPt;k++){
+      ctx.lineTo(Math.min(W,xOf(visPts[k].dist)),yOf(visPts[k].ele||0));
+    }
+    ctx.lineTo(x2,H);ctx.lineTo(x1,H);ctx.closePath();
+    ctx.fillStyle=curCol;
+    ctx.globalAlpha=0.75;
+    ctx.fill();
+    ctx.globalAlpha=1;
+  };
+  for(let pi=1;pi<visPts.length;pi++){
+    if(ptCols[pi]===curCol)continue;
+    flushPtRun(pi);
+    runStartPt=pi;curCol=ptCols[pi];
+  }
+  if(runStartPt<visPts.length-1)flushPtRun(visPts.length-1);
+
+  // Thin white elevation outline on top of the filled area
+  ctx.beginPath();
+  let started=false;
+  for(const p of visPts){
+    const x=xOf(p.dist),y=yOf(p.ele||0);
+    if(!started){ctx.moveTo(x,y);started=true;}
+    else ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='rgba(255,255,255,0.6)';
+  ctx.lineWidth=1;
+  ctx.stroke();
+
+  // GPS position reference line
+  if(liveDist>=distMin&&liveDist<=distMax){
+    const gx=xOf(liveDist);
+    const curEle=visPts.reduce((best,p)=>Math.abs(p.dist-liveDist)<Math.abs(best.dist-liveDist)?p:best,visPts[0]);
+    const gy=yOf(curEle.ele||0);
+    // Vertical line
+    ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);
+    ctx.strokeStyle='rgba(74,222,128,0.5)';ctx.lineWidth=1;ctx.stroke();
+    ctx.setLineDash([]);
+    // GPS dot
+    ctx.beginPath();ctx.arc(gx,gy,4,0,Math.PI*2);
+    ctx.fillStyle='#4ade80';ctx.fill();
+    ctx.strokeStyle='#0a0f0a';ctx.lineWidth=1;ctx.stroke();
+  }
+
+  // Elevation axis labels (left side)
+  ctx.font='10px DM Mono, monospace';ctx.textAlign='left';ctx.textBaseline='top';
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.fillText(Math.round(eleMax)+'m',3,2);
+  ctx.textBaseline='bottom';
+  ctx.fillText(Math.round(eleMin+elePad)+'m',3,H-2);
+}
+
 // Fork & knife food icon — use currentColor so context controls colour
 const ICON_FOOD=`<svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>`;
 const ICON_FOOD_BTN=`<span style="display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;padding:3px 5px;color:rgba(255,255,255,0.85);">${ICON_FOOD}</span>`;
@@ -6250,6 +6478,7 @@ function tLiveShell(r){
           </div>`;
         })()}
       </div>
+      ${buildElevStrip(r,liveDist)}
       ${buildLiveStrip(r,liveDist,sdt)}
       <div class="live-stop-list" id="live-stop-list">
         ${stopListHtml}
@@ -6285,9 +6514,11 @@ function initLiveMap(r){
       const strip=document.getElementById('live-next-strip');
       const progressBar=document.querySelector('.live-progress-bar');
       // Subtract strip and progress bar — both are flow elements above/below the map
+      const elevStrip=document.getElementById('live-elev-strip');
       const stripH=strip&&strip.offsetHeight>0?strip.offsetHeight:105;
       const progressBarH=progressBar&&progressBar.offsetHeight>0?progressBar.offsetHeight:44;
-      const avail=viewH-tabsH-stripH-progressBarH-4;
+      const elevH=elevStrip&&elevStrip.offsetHeight>0?elevStrip.offsetHeight:0;
+      const avail=viewH-tabsH-stripH-progressBarH-elevH-4;
       mapH=Math.min(ideal,Math.max(200,avail));
     }
     // Suppress micro-fluctuations (strip/weather bar text changes during GPS ticks
@@ -6329,6 +6560,10 @@ function initLiveMap(r){
     window.addEventListener('resize',debouncedSize);
   }
   attachMap(cvs,null); // no add-stop on ride tab — stops added via stops tab only
+  // Draw elevation profile after layout settles (needs map dimensions)
+  if(UI.elevExpanded){
+    setTimeout(()=>drawElevProfile(r,UI.gpsDistKm||0),300);
+  }
 }
 
 // ─── Combined Route tab (routes list + route detail) ───
@@ -8314,6 +8549,22 @@ function updateLive(){
   patchCard(nextWater,'water');
   patchCard(nextFood,'food');
 
+  // Update elevation strip stats inline
+  const elevStrip=document.getElementById('live-elev-strip');
+  if(elevStrip&&r.points.length>1){
+    const newElevHtml=buildElevStrip(r,liveDist);
+    const tmp2=document.createElement('div');tmp2.innerHTML=newElevHtml;
+    const newElev=tmp2.firstElementChild;
+    if(newElev){
+      // Only patch the bar stats, not the canvas (avoid flicker)
+      const oldBar=elevStrip.querySelector('#elev-bar');
+      const newBar=newElev.querySelector('#elev-bar');
+      if(oldBar&&newBar&&oldBar.innerHTML!==newBar.innerHTML)oldBar.innerHTML=newBar.innerHTML;
+    }
+    // Redraw profile canvas if expanded
+    if(UI.elevExpanded)drawElevProfile(r,liveDist);
+  }
+
   // Update weather bar
   // Update weather bar at most every 30s — it changes slowly and rebuilding it every GPS tick causes map flicker
   const wb=document.getElementById('live-weather-bar-wrap');
@@ -9114,6 +9365,21 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     UI._adaptiveMsg=null;
     const wrap=document.getElementById('adaptive-msg-bar-wrap');
     if(wrap)wrap.innerHTML='';
+    return;
+  }
+  if(e.target.closest('#live-elev-strip')){
+    UI.elevExpanded=!UI.elevExpanded;
+    saveAll();
+    const r2=cur();if(!r2)return;
+    const ld=UI.gpsDistKm||0;
+    const strip=document.getElementById('live-elev-strip');
+    if(strip)strip.outerHTML=buildElevStrip(r2,ld);
+    // Force map to resize — clear cached height so sizeLiveMap recalculates
+    const mc=document.getElementById('live-map');
+    if(mc)mc._forcedH=0;
+    if(typeof _liveResizeHandler==='function')_liveResizeHandler();
+    // Draw profile after layout settles
+    if(UI.elevExpanded)setTimeout(()=>drawElevProfile(r2,ld),100);
     return;
   }
 
@@ -10146,7 +10412,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v48';
+  const CACHE_NAME='packtimes-v55';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
