@@ -5425,7 +5425,7 @@ function liveStripIcons(s,reason){
 function buildLiveStrip(r,liveDist,sdt){
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
   const ahead=r.stops.filter(s=>s.dist>liveDist&&starred(s));
-  if(!ahead.length)return'<div class="live-next-strip"><div class="live-next-row" style="justify-content:center;color:var(--accent);font-size:14px;">🏁 All stops passed</div></div>';
+  if(!ahead.length)return'<div class="live-next-strip" id="live-next-strip"><div class="live-next-row" style="justify-content:center;color:var(--accent);font-size:14px;padding:8px 0;">🏁 All stops passed</div></div>';
 
   const seen=new Set();
   const rows=[];
@@ -8543,7 +8543,11 @@ function updateLive(){
     const newHtml=buildLiveStrip(r,liveDist,sdt);
     const tmp=document.createElement('div');tmp.innerHTML=newHtml;
     const newStrip=tmp.firstElementChild;
-    if(newStrip&&strip.innerHTML!==newStrip.innerHTML)strip.innerHTML=newStrip.innerHTML;
+    if(newStrip&&strip.innerHTML!==newStrip.innerHTML){
+      strip.innerHTML=newStrip.innerHTML;
+      // Strip height changed — recalculate map size so it reclaims space
+      if(typeof _liveResizeHandler==='function')requestAnimationFrame(_liveResizeHandler);
+    }
   }
   patchCard(next,'next');
   patchCard(nextWater,'water');
@@ -10412,7 +10416,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v55';
+  const CACHE_NAME='packtimes-v56';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
