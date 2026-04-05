@@ -94,7 +94,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
 .live-elev-stat{font-family:var(--font);font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;}
 .live-elev-unit{font-size:14px;color:var(--text3);font-weight:400;}
-.live-elev-profile{width:100%;display:block;}
+.live-elev-profile{width:100%;display:block;touch-action:none;}
 /* Stops tab: fixed map + scrollable below */
 .stops-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 .stops-map-panel{flex-shrink:0;background:#0a0f0a;position:relative;}
@@ -5797,7 +5797,7 @@ function drawElevProfile(r,liveDist){
       const dx=t.clientX-startX;
       const W=cvs.getBoundingClientRect().width||300;
       // Drag right = zoom out, drag left = zoom in; scale factor relative to canvas width
-      const factor=Math.pow(2,-dx/W*2); // drag right = zoom in (less km), drag left = zoom out (more km)
+      const factor=Math.pow(2,-dx/W*2); // swipe right = fewer km (zoom in), swipe left = more km (zoom out)
       const r2=cur();
       const maxZoom=r2?r2.totalDist:500;
       UI.elevZoomKm=Math.max(2,Math.min(maxZoom,startZoom*factor));
