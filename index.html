@@ -5642,31 +5642,30 @@ function drawElevProfile(r,liveDist){
   const segs=getGradeSegs(r);
   if(!segs.length)return;
 
-  // Determine visible distance range: GPS fixed at 10% from left, range from map zoom
+  // Determine visible distance range: GPS fixed at 10% from left, span from map zoom level
   let distMin=0,distMax=r.totalDist;
   const gpsFrac=0.10; // GPS reference line at 10% from left edge
-  if(mapCvs&&mapCvs._kx&&mapCvs._scale&&mapCvs._cLon!==undefined&&liveDist>0){
-    // Calculate how many km of route the map is currently showing
-    const mW=mapCvs._W,kx=mapCvs._kx,scale=mapCvs._scale,cLon=mapCvs._cLon;
-    const lonLeft=cLon-mW/2/(kx*scale);
-    const lonRight=cLon+mW/2/(kx*scale);
-    const mH=mapCvs._H,ky=mapCvs._ky,cLat=mapCvs._cLat,anchor=mapCvs._anchor||0.5;
-    const latTop=cLat+mH*anchor/(ky*scale);
-    const latBot=cLat-mH*(1-anchor)/(ky*scale);
-    const vis=r.points.filter(p=>p.lon>=lonLeft&&p.lon<=lonRight&&p.lat>=latBot&&p.lat<=latTop);
-    if(vis.length>1){
-      const visSpan=vis[vis.length-1].dist-vis[0].dist;
-      if(visSpan>0.1){
-        // If map shows >=90% of route (e.g. fit-route), show full route
-        if(visSpan>=r.totalDist*0.9){
-          distMin=0;distMax=r.totalDist;
-        } else {
-          // Anchor GPS at 10% from left, show visSpan worth of route
-          distMin=Math.max(0,liveDist-gpsFrac*visSpan);
-          distMax=Math.min(r.totalDist,distMin+visSpan);
-          // Re-adjust distMin if distMax hit the end
-          distMin=Math.max(0,distMax-visSpan);
-        }
+  if(mapCvs&&mapCvs._kx&&mapCvs._scale&&liveDist>0){
+    // Calculate the km width the map viewport covers (diagonal for safety)
+    const mW=mapCvs._W,kx=mapCvs._kx,scale=mapCvs._scale;
+    const mH=mapCvs._H,ky=mapCvs._ky;
+    const kmW=mW/(kx*scale); // degrees longitude visible
+    const kmH=mH/(ky*scale); // degrees latitude visible
+    // Convert to approximate km (1 deg lat ≈ 111km, lon scaled by cos)
+    const lat=mapCvs._cLat||0;
+    const visKmW=kmW*111*Math.cos(lat*Math.PI/180);
+    const visKmH=kmH*111;
+    // Use the larger dimension as the route distance span
+    const visSpan=Math.max(visKmW,visKmH);
+    if(visSpan>0.1){
+      // If viewport covers most of the route, show full route
+      if(visSpan>=r.totalDist*0.9){
+        distMin=0;distMax=r.totalDist;
+      } else {
+        // Anchor GPS at 10% from left, show visSpan worth of route
+        distMin=Math.max(0,liveDist-gpsFrac*visSpan);
+        distMax=Math.min(r.totalDist,distMin+visSpan);
+        distMin=Math.max(0,distMax-visSpan);
       }
     }
   }
@@ -10455,7 +10454,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v57';
+  const CACHE_NAME='packtimes-v58';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
