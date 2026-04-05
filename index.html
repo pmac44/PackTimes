@@ -90,6 +90,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .turn-label{font-size:16px;color:var(--text2);margin-top:2px;}
 .turn-auto{font-size:12px;color:var(--text3);margin-top:2px;}
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
+.live-dist-bar{position:relative;height:30px;background:#1a1a1a;flex-shrink:0;overflow:hidden;border-bottom:1px solid var(--border);}
+.live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:rgba(74,222,128,0.15);border-right:2px solid var(--accent);}
+.live-dist-done{position:absolute;top:0;bottom:0;display:flex;align-items:center;padding-left:8px;font-family:var(--sans);font-weight:500;font-size:19px;color:var(--accent);white-space:nowrap;}
+.live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--font);font-weight:600;font-size:13px;color:#fbbf24;white-space:nowrap;pointer-events:none;}
+.live-dist-left{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-family:var(--sans);font-weight:500;font-size:19px;color:var(--text);white-space:nowrap;}
 .live-elev-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;}
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
 .live-elev-stat{font-family:var(--font);font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;}
@@ -512,7 +517,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
-  ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['done','left','finish','speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
+  ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
   _rideAvgSessionKm:null,                  // dist at start of current GPS session
@@ -6500,7 +6505,7 @@ function tLiveShell(r){
   };
   const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
   const makePill=(slotIdx)=>{
-    const key=(UI.liveStatSlots||['done','left','finish','speed','rideavg'])[slotIdx]||STAT_ORDER[slotIdx];
+    const key=(UI.liveStatSlots||['speed','rideavg'])[slotIdx]||STAT_ORDER[slotIdx];
     const stat=LIVE_STATS[key]||LIVE_STATS.done;
     const valStr=stat.val();
     return`<div style="flex:1;background:#000;border:1px solid #222;border-radius:6px;padding:4px 7px;cursor:pointer;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
@@ -6529,11 +6534,20 @@ function tLiveShell(r){
          <div style="font-size:20px;font-weight:500;color:${sensorValCol};font-family:var(--sans);line-height:1.2;" id="live-sensor-sub">${sSub}</div>`
       :`<div style="font-size:20px;font-weight:500;color:var(--text);font-family:var(--sans);line-height:1.2;word-break:break-word;" id="live-sensor-val">tap to pair</div><div id="live-sensor-sub"></div>`}
   </div>`;
-  const progressOverlay=`<div class="live-progress-bar">
+  const doneTxt=liveDist.toFixed(1);
+  const leftTxt=(r.totalDist-liveDist).toFixed(1);
+  const pct=Math.max(0,Math.min(100,prog*100));
+  const finTxt=(finDay?finDay.trim()+' ':'')+fmtT(finEta);
+  const distBar=`<div class="live-dist-bar" id="live-dist-bar">
+    <div class="live-dist-fill" id="live-dist-fill" style="width:${pct.toFixed(1)}%"></div>
+    <div class="live-dist-done" id="live-dist-done">${doneTxt}<span style="font-size:13px;color:rgba(74,222,128,0.6);margin-left:2px;">km</span></div>
+    <div class="live-dist-finish" id="live-dist-finish">${finTxt}</div>
+    <div class="live-dist-left" id="live-dist-left">${leftTxt}<span style="font-size:13px;color:rgba(255,255,255,0.5);margin-left:2px;">km</span></div>
+  </div>`;
+  const progressOverlay=`${distBar}<div class="live-progress-bar">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">
-      ${makePill(0)}${makePill(1)}${makePill(2)}${makePill(3)}${makePill(4)}${sensorPill}
+      ${makePill(0)}${makePill(1)}${sensorPill}
     </div>
-    <div class="prog" style="margin-top:5px;height:3px;display:none;"><div class="progf" id="live-progf" style="width:${(prog*100).toFixed(1)}%"></div></div>
   </div>`;
 
   return`
@@ -6613,10 +6627,12 @@ function initLiveMap(r){
       const progressBar=document.querySelector('.live-progress-bar');
       // Subtract strip and progress bar — both are flow elements above/below the map
       const elevStrip=document.getElementById('live-elev-strip');
+      const distBar=document.getElementById('live-dist-bar');
+      const distBarH=distBar&&distBar.offsetHeight>0?distBar.offsetHeight:26;
       const stripH=strip&&strip.offsetHeight>0?strip.offsetHeight:105;
       const progressBarH=progressBar&&progressBar.offsetHeight>0?progressBar.offsetHeight:44;
       const elevH=elevStrip&&elevStrip.offsetHeight>0?elevStrip.offsetHeight:0;
-      const avail=viewH-tabsH-stripH-progressBarH-elevH-4;
+      const avail=viewH-tabsH-distBarH-stripH-progressBarH-elevH-4;
       mapH=Math.min(ideal,Math.max(200,avail));
     }
     // Suppress micro-fluctuations (strip/weather bar text changes during GPS ticks
@@ -8631,7 +8647,7 @@ function updateLive(){
     },
   };
   const UNIT_MAP={done:'km',left:'km',finish:'',speed:'km/h','1hr':'km/h',rideavg:'km/h'};
-  (UI.liveStatSlots||['done','left','finish','speed','rideavg']).forEach((key,i)=>{
+  (UI.liveStatSlots||['speed','rideavg']).forEach((key,i)=>{
     const fn=LIVE_STAT_VALS[key];if(!fn)return;
     const el=document.getElementById('live-val-slot'+i);
     if(el){
@@ -8642,6 +8658,15 @@ function updateLive(){
     }
   });
   const pf=document.getElementById('live-progf');if(pf)pf.style.width=(prog*100).toFixed(1)+'%';
+  // Update distance bar
+  const distFill=document.getElementById('live-dist-fill');
+  const distDone=document.getElementById('live-dist-done');
+  const distLeft=document.getElementById('live-dist-left');
+  if(distFill)distFill.style.width=(prog*100).toFixed(1)+'%';
+  if(distDone){const h=liveDist.toFixed(1)+'<span style="font-size:13px;color:rgba(74,222,128,0.6);margin-left:2px;">km</span>';if(distDone.innerHTML!==h)distDone.innerHTML=h;}
+  if(distLeft){const h=(r.totalDist-liveDist).toFixed(1)+'<span style="font-size:13px;color:rgba(255,255,255,0.5);margin-left:2px;">km</span>';if(distLeft.innerHTML!==h)distLeft.innerHTML=h;}
+  const distFinish=document.getElementById('live-dist-finish');
+  if(distFinish){const sdt2=startDT(r);const fe=etaAt(r.totalDist,r);const fd=sdt2&&fe?dayOff(fe,sdt2):'';const h=(fd?fd.trim()+' ':'')+fmtT(fe);if(distFinish.textContent!==h)distFinish.textContent=h;}
 
   const patchCard=(s,idSuffix)=>{
     // Legacy no-op — strip is rebuilt wholesale below
@@ -9333,7 +9358,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(sp&&UI.tab==='live'&&sp.dataset.slot!=='dist'){
     const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
     const slotIdx=+sp.dataset.slot;
-    const slots=UI.liveStatSlots||['done','left','finish','speed','rideavg'];
+    const slots=UI.liveStatSlots||['speed','rideavg'];
     const cur=slots[slotIdx]||STAT_ORDER[slotIdx];
     const nextKey=STAT_ORDER[(STAT_ORDER.indexOf(cur)+1)%STAT_ORDER.length];
     UI.liveStatSlots=slots.map((k,i)=>i===slotIdx?nextKey:k);
@@ -10521,7 +10546,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v61';
+  const CACHE_NAME='packtimes-v63';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
