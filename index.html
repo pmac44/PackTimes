@@ -176,6 +176,7 @@ select option{background:var(--bg3);}
 .ld{display:flex;align-items:center;gap:8px;color:var(--text3);font-size:18px;padding:8px 0;}
 .spin{width:13px;height:13px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0;}
 @keyframes spin{to{transform:rotate(360deg);}}
+@keyframes warnPulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
 .secrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .secrow .ctitle{margin-bottom:0;line-height:1;}
 .startbar{background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px;margin-top:9px;}
@@ -5685,9 +5686,21 @@ function drawElevProfile(r,liveDist){
   // Get elevation range for visible portion
   const visPts=r.points.filter(p=>p.dist>=distMin&&p.dist<=distMax);
   if(visPts.length<2)return;
+  // Smooth elevation to remove DEM staircase artefacts (~150m window)
+  const smoothR=0.15; // km radius
+  const smEle=new Float64Array(visPts.length);
+  for(let i=0;i<visPts.length;i++){
+    const d0=visPts[i].dist;
+    let sum=0,cnt=0;
+    // Expand left
+    for(let j=i;j>=0&&d0-visPts[j].dist<=smoothR;j--){sum+=(visPts[j].ele||0);cnt++;}
+    // Expand right (skip i to avoid double-count)
+    for(let j=i+1;j<visPts.length&&visPts[j].dist-d0<=smoothR;j++){sum+=(visPts[j].ele||0);cnt++;}
+    smEle[i]=sum/cnt;
+  }
   let eleMin=Infinity,eleMax=-Infinity;
-  for(const p of visPts){
-    const e=p.ele||0;
+  for(let i=0;i<visPts.length;i++){
+    const e=smEle[i];
     if(e<eleMin)eleMin=e;
     if(e>eleMax)eleMax=e;
   }
@@ -5719,9 +5732,9 @@ function drawElevProfile(r,liveDist){
     const x2=Math.min(W,xOf(visPts[endPt].dist));
     if(x2-x1<0.3){return;}
     ctx.beginPath();
-    ctx.moveTo(x1,yOf(visPts[runStartPt].ele||0));
+    ctx.moveTo(x1,yOf(smEle[runStartPt]));
     for(let k=runStartPt+1;k<=endPt;k++){
-      ctx.lineTo(Math.min(W,xOf(visPts[k].dist)),yOf(visPts[k].ele||0));
+      ctx.lineTo(Math.min(W,xOf(visPts[k].dist)),yOf(smEle[k]));
     }
     ctx.lineTo(x2,H);ctx.lineTo(x1,H);ctx.closePath();
     ctx.fillStyle=curCol;
@@ -5739,8 +5752,8 @@ function drawElevProfile(r,liveDist){
   // Thin white elevation outline on top of the filled area
   ctx.beginPath();
   let started=false;
-  for(const p of visPts){
-    const x=xOf(p.dist),y=yOf(p.ele||0);
+  for(let i=0;i<visPts.length;i++){
+    const x=xOf(visPts[i].dist),y=yOf(smEle[i]);
     if(!started){ctx.moveTo(x,y);started=true;}
     else ctx.lineTo(x,y);
   }
@@ -5751,8 +5764,8 @@ function drawElevProfile(r,liveDist){
   // GPS position reference line
   if(liveDist>=distMin&&liveDist<=distMax){
     const gx=xOf(liveDist);
-    const curEle=visPts.reduce((best,p)=>Math.abs(p.dist-liveDist)<Math.abs(best.dist-liveDist)?p:best,visPts[0]);
-    const gy=yOf(curEle.ele||0);
+    let bestI=0;for(let i=1;i<visPts.length;i++){if(Math.abs(visPts[i].dist-liveDist)<Math.abs(visPts[bestI].dist-liveDist))bestI=i;}
+    const gy=yOf(smEle[bestI]);
     // Vertical line
     ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);
@@ -7536,7 +7549,7 @@ function weatherBarHTML(){
       <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
       ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
       <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
-      ${alert?`<div style="margin-left:auto;font-size:12px;font-weight:600;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);border-radius:4px;padding:2px 6px;">⚠ ${alert}</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">${_weatherExpanded?'▲':'▼'}</div>`}
+      ${alert?`<div style="margin-left:auto;font-size:16px;line-height:1;animation:warnPulse 1.2s ease-in-out infinite;" title="${alert}">⚠</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">${_weatherExpanded?'▲':'▼'}</div>`}
     </div>
     ${expandedHTML}
   </div>`;
@@ -10454,7 +10467,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v58';
+  const CACHE_NAME='packtimes-v59';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
