@@ -2300,6 +2300,13 @@ function runAdaptiveCalibration(){
   // Surface as a non-blocking banner on the live tab
   UI._adaptiveMsg={msg,ts:now};
   if(UI.tab==='live')renderKeepScroll();
+  // Auto-dismiss after 30s even if no re-render happens
+  if(UI._adaptiveDismissTimer)clearTimeout(UI._adaptiveDismissTimer);
+  UI._adaptiveDismissTimer=setTimeout(()=>{
+    UI._adaptiveMsg=null;
+    const wrap=document.getElementById('adaptive-msg-bar-wrap');
+    if(wrap)wrap.innerHTML='';
+  },30000);
 }
 function updateGPSPill(){
   const el=document.getElementById('gpspill');if(!el)return;
