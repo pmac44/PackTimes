@@ -90,7 +90,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .turn-label{font-size:16px;color:var(--text2);margin-top:2px;}
 .turn-auto{font-size:12px;color:var(--text3);margin-top:2px;}
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
-.live-dist-bar{position:absolute;top:6px;left:6px;right:6px;height:34px;background:#1a1a1a;border:2px solid #0a0f0a;border-radius:6px;overflow:hidden;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,0.5);}
+.live-dist-bar{position:absolute;top:6px;left:6px;right:6px;height:34px;background:#1a1a1a;border-radius:6px;overflow:hidden;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,0.5);}
 .live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:#2dd4bf;}
 .live-dist-done{position:absolute;top:0;bottom:0;display:flex;align-items:center;padding-left:8px;font-family:var(--font);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;z-index:2;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
 .live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--font);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;pointer-events:none;z-index:1;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
@@ -2375,7 +2375,7 @@ function updateGPSPill(){
 // ═══════════════════════════════════════════
 //  RIDE SIMULATOR
 // ═══════════════════════════════════════════
-let _simPts=null,_simIdx=0,_simTimer=null;
+let _simPts=null,_simIdx=0,_simTimer=null,_simElapsedMs=0;
 
 function _updateSimButtons(){
   const startBtn=document.getElementById('btn-sim-start');
@@ -2409,6 +2409,7 @@ function simStart(){
     // Start from current slider position if set, otherwise from beginning
     const startDist=UI.gpsDistKm||0;
     _simIdx=startDist>0?Math.max(0,r.points.findIndex(p=>p.dist>=startDist)):0;
+    _simElapsedMs=0;
     UI.alertedStops=new Set();
     _offRouteStart=null;_offRouteAlerted=false;
   }
@@ -2434,10 +2435,20 @@ function simStart(){
       }
       if(spd==null||spd>30)spd=5; // fallback ~18 km/h if no timestamps or unrealistic
     }
-    // Accumulate cumulative GPS distance from sim points
+    // Accumulate cumulative GPS distance and simulated elapsed time from sim points
     if(_simIdx>0){
       const prevPt=_simPts[_simIdx-1];
-      UI.gpsTravelledKm+=hav(prevPt,p);
+      const stepKm=hav(prevPt,p);
+      UI.gpsTravelledKm+=stepKm;
+      let gotTime=false;
+      if(prevPt.time&&p.time){
+        const gpxDt=new Date(p.time)-new Date(prevPt.time);
+        if(gpxDt>0&&gpxDt<7200000){_simElapsedMs+=gpxDt;gotTime=true;}
+      }
+      if(!gotTime&&stepKm>0){
+        // Fallback: estimate time from distance at 18 km/h
+        _simElapsedMs+=stepKm/18*3600000;
+      }
     }
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
     const r=cur();
@@ -6592,7 +6603,7 @@ function tLiveShell(r){
     rideavg: {label:'Ride Avg',  val:()=>{
       const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
       const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsDistKm!==null)?Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm):0;
-      const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
+      const sessMs=UI.simRunning?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       return totalH>0.01?(totalKm/totalH).toFixed(1):'—';
     },unit:'km/h'},
@@ -6640,7 +6651,7 @@ function tLiveShell(r){
       const curSpd=s!==null&&s>=0.3?s.toFixed(1):'—';
       const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
       const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
-      const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
+      const sessMs=UI.simRunning?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       const avgVal=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-speed">
@@ -8829,7 +8840,7 @@ function updateLive(){
   if(avgEl){
     const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
     const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
-    const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
+    const sessMs=UI.simRunning?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
     const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
     const av=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
     if(avgEl.textContent!==av)avgEl.textContent=av;
@@ -10774,7 +10785,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v104';
+  const CACHE_NAME='packtimes-v106';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
