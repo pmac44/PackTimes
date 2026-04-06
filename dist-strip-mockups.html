@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Distance Strip Mockups</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d1a0d; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; }
+  h2 { font-size: 14px; color: rgba(255,255,255,0.4); font-weight: 400; margin-bottom: 8px; letter-spacing: 0.5px; }
+  .section { margin-bottom: 40px; }
+  .label { font-size: 12px; color: rgba(255,255,255,0.3); margin-top: 6px; text-align: center; }
+
+  /* Shared */
+  .strip { position: relative; height: 38px; overflow: hidden; border-bottom: 1px solid rgba(255,255,255,0.1); }
+  .done-text { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 10px; font-weight: 600; font-size: 18px; white-space: nowrap; z-index: 2; }
+  .finish-text { position: absolute; top: 0; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 18px; white-space: nowrap; pointer-events: none; z-index: 1; }
+  .left-text { position: absolute; top: 0; bottom: 0; right: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; font-weight: 500; font-size: 18px; white-space: nowrap; z-index: 2; }
+  .flag { vertical-align: -2px; margin-right: 4px; }
+
+  /* SVG flag template */
+  .flag-svg { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; }
+
+  /* ── Option A: Solid blue fill ── */
+  .a-strip { background: #1a1a1a; }
+  .a-fill { position: absolute; top: 0; left: 0; bottom: 0; width: 42%;
+    background: rgba(96,165,250,0.22);
+    border-right: 3px solid #60a5fa;
+    box-shadow: 0 0 8px 1px rgba(96,165,250,0.5);
+  }
+  .a-strip .done-text { color: #fff; }
+  .a-strip .finish-text { color: rgba(255,255,255,0.85); }
+  .a-strip .left-text { color: rgba(255,255,255,0.5); }
+
+  /* ── Option B: Bottom bar ── */
+  .b-strip { background: #1a1a1a; }
+  .b-bar { position: absolute; bottom: 0; left: 0; height: 4px; width: 42%;
+    background: #60a5fa;
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 6px 1px rgba(96,165,250,0.6);
+  }
+  .b-strip .done-text { color: #60a5fa; }
+  .b-strip .finish-text { color: rgba(255,255,255,0.85); }
+  .b-strip .left-text { color: rgba(255,255,255,0.5); }
+
+  /* ── Option C: Gradient ── */
+  .c-strip { background: #1a1a1a; }
+  .c-fill { position: absolute; top: 0; left: 0; bottom: 0; width: 100%;
+    background: linear-gradient(to right,
+      rgba(96,165,250,0.22) 0%,
+      rgba(96,165,250,0.22) 40%,
+      rgba(96,165,250,0.0) 44%,
+      transparent 100%
+    );
+  }
+  .c-strip .done-text { color: #fff; }
+  .c-strip .finish-text { color: rgba(255,255,255,0.85); }
+  .c-strip .left-text { color: rgba(255,255,255,0.5); }
+
+  /* ── Option D: Solid teal fill (day-split colour #2dd4bf) ── */
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&display=swap');
+  .d-strip { background: #1a1a1a; }
+  .d-fill { position: absolute; top: 0; left: 0; bottom: 0; width: 42%;
+    background: #2dd4bf;
+  }
+  .d-strip .done-text { color: #fff; font-family: 'DM Mono', 'Courier New', monospace; font-weight: 700; }
+  .d-strip .finish-text { color: #fff; font-family: 'DM Mono', 'Courier New', monospace; font-weight: 700; }
+  .d-strip .left-text { color: #fff; font-family: 'DM Mono', 'Courier New', monospace; font-weight: 700; }
+
+  /* Simulated map background behind strips */
+  .map-bg {
+    background: #0f1a0f;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+</style>
+</head>
+<body>
+
+<div class="section">
+  <h2>OPTION A — SOLID BLUE FILL</h2>
+  <div class="map-bg">
+    <div class="strip a-strip">
+      <div class="a-fill"></div>
+      <div class="done-text">128.4 km</div>
+      <div class="finish-text">
+        <svg class="flag" width="14" height="14" viewBox="0 0 16 16"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>
+        Thu 17:45
+      </div>
+      <div class="left-text">176.2 km</div>
+    </div>
+  </div>
+  <div class="label">Solid blue-tinted done region · bright edge line · white text on blue, dimmer on dark</div>
+</div>
+
+<div class="section">
+  <h2>OPTION B — BOTTOM BAR</h2>
+  <div class="map-bg">
+    <div class="strip b-strip">
+      <div class="b-bar"></div>
+      <div class="done-text">128.4 km</div>
+      <div class="finish-text">
+        <svg class="flag" width="14" height="14" viewBox="0 0 16 16"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>
+        Thu 17:45
+      </div>
+      <div class="left-text">176.2 km</div>
+    </div>
+  </div>
+  <div class="label">Clean dark strip · bright 4px blue bar along the bottom edge · minimal</div>
+</div>
+
+<div class="section">
+  <h2>OPTION C — GRADIENT</h2>
+  <div class="map-bg">
+    <div class="strip c-strip">
+      <div class="c-fill"></div>
+      <div class="done-text">128.4 km</div>
+      <div class="finish-text">
+        <svg class="flag" width="14" height="14" viewBox="0 0 16 16"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>
+        Thu 17:45
+      </div>
+      <div class="left-text">176.2 km</div>
+    </div>
+  </div>
+  <div class="label">Blue gradient fading at progress point · no borders · colour transition is the indicator</div>
+</div>
+
+<div class="section">
+  <h2>OPTION D — SOLID TEAL FILL (DAY-SPLIT COLOUR)</h2>
+  <div class="map-bg">
+    <div class="strip d-strip">
+      <div class="d-fill"></div>
+      <div class="done-text">128.4 km</div>
+      <div class="finish-text">
+        <svg class="flag" width="14" height="14" viewBox="0 0 16 16"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>
+        Thu 17:45
+      </div>
+      <div class="left-text">176.2 km</div>
+    </div>
+  </div>
+  <div class="label">Same as A but using #2dd4bf teal (day-split marker colour) · cohesive with existing design language</div>
+</div>
+
+<!-- Stress tests: solid teal overlapping text at extremes -->
+<div class="section" style="margin-top:48px;">
+  <h2>OPTION D AT 5% — TEAL OVERLAPS FINISH TEXT</h2>
+  <div class="map-bg">
+    <div class="strip d-strip">
+      <div class="d-fill" style="width:5%"></div>
+      <div class="done-text">15.2 km</div>
+      <div class="finish-text"><svg class="flag" width="14" height="14" viewBox="0 0 16 16"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg> Fri 06:30</div>
+      <div class="left-text">289.4 km</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>OPTION D AT 95% — TEAL OVERLAPS REMAINING TEXT</h2>
+  <div class="map-bg">
+    <div class="strip d-strip">
+      <div class="d-fill" style="width:95%"></div>
+      <div class="done-text">289.4 km</div>
+      <div class="finish-text"><svg class="flag" width="14" height="14" viewBox="0 0 16 16"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg> Thu 15:20</div>
+      <div class="left-text">15.2 km</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>OPTION D AT 42% — MID RIDE</h2>
+  <div class="map-bg">
+    <div class="strip d-strip">
+      <div class="d-fill" style="width:42%"></div>
+      <div class="done-text">128.4 km</div>
+      <div class="finish-text"><svg class="flag" width="14" height="14" viewBox="0 0 16 16"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg> Thu 17:45</div>
+      <div class="left-text">176.2 km</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

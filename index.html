@@ -90,11 +90,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .turn-label{font-size:16px;color:var(--text2);margin-top:2px;}
 .turn-auto{font-size:12px;color:var(--text3);margin-top:2px;}
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
-.live-dist-bar{position:relative;height:36px;background:#1a1a1a;flex-shrink:0;overflow:hidden;border-bottom:1px solid var(--border);}
-.live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:rgba(96,165,250,0.1);border-right:3px solid #60a5fa;border-left:2px solid rgba(96,165,250,0.5);border-top:2px solid rgba(96,165,250,0.5);border-bottom:2px solid rgba(96,165,250,0.5);box-shadow:0 0 6px 1px rgba(96,165,250,0.7);}
-.live-dist-done{position:absolute;top:0;bottom:0;display:flex;align-items:center;padding-left:8px;font-family:var(--sans);font-weight:500;font-size:19px;color:#60a5fa;white-space:nowrap;}
-.live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-weight:500;font-size:19px;color:var(--text);white-space:nowrap;pointer-events:none;}
-.live-dist-left{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-family:var(--sans);font-weight:500;font-size:19px;color:var(--text);white-space:nowrap;}
+.live-dist-bar{position:absolute;top:6px;left:6px;right:6px;height:34px;background:#1a1a1a;border:2px solid #0a0f0a;border-radius:6px;overflow:hidden;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,0.5);}
+.live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:#2dd4bf;}
+.live-dist-done{position:absolute;top:0;bottom:0;display:flex;align-items:center;padding-left:8px;font-family:var(--font);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;z-index:2;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
+.live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--font);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;pointer-events:none;z-index:1;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
+.live-dist-left{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-family:var(--font);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;z-index:2;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
 .live-elev-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;}
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
 .live-elev-stat{font-family:var(--font);font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;}
@@ -2423,12 +2423,16 @@ function simStart(){
     const speed=+(document.getElementById('sim-speed')?.value||20); // read live so speed changes take effect immediately
     if(_simIdx>=_simPts.length){simStop();return;}
     const p=_simPts[_simIdx];
-    // Calculate speed from adjacent points
+    // Calculate realistic speed from route timestamps (or fallback to ~18 km/h)
     let spd=null;
     if(_simIdx>0){
       const prev=_simPts[_simIdx-1];
       const d=hav(prev,p)*1000; // metres
-      spd=d/(1/speed); // m/s at simulation speed
+      if(prev.time&&p.time){
+        const dt=(new Date(p.time)-new Date(prev.time))/1000; // seconds
+        if(dt>0&&dt<600)spd=d/dt; // m/s from real GPX timestamps
+      }
+      if(spd==null||spd>30)spd=5; // fallback ~18 km/h if no timestamps or unrealistic
     }
     // Accumulate cumulative GPS distance from sim points
     if(_simIdx>0){
@@ -3241,7 +3245,7 @@ function drawMap(cvs,r,opts){
   const midLat=(maxLat+minLat)/2;
   const kx=111.32*Math.cos(midLat*Math.PI/180),ky=110.57;
   const pad=id==='desktop-map'?60:18;
-  const padTop=id==='desktop-map'?60:(id==='live-map'?44:18); // live-map: clear overlays; stops-map: reasonable top gap
+  const padTop=id==='desktop-map'?60:(id==='live-map'?50:18); // live-map: clear dist overlay bar; stops-map: reasonable top gap
   const weatherBarWrap=id==='live-map'?document.getElementById('live-weather-bar-wrap'):null;
   const weatherBarH=weatherBarWrap&&weatherBarWrap.offsetHeight>0?weatherBarWrap.offsetHeight:0;
   const padBottom=id==='desktop-map'?160:(id==='live-map'?44:18); // live-map: weather is now a floating pill, just keep standard padding
@@ -6623,7 +6627,7 @@ function tLiveShell(r){
     const base='position:absolute;z-index:12;cursor:pointer;-webkit-tap-highlight-color:transparent;';
     const pos=slotIdx===0?'left:16.67%;transform:translateX(-50%);':slotIdx===1?'left:50%;transform:translateX(-50%);':'left:83.33%;transform:translateX(-50%);';
     if(type==='off'){
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:6px;${pos}">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}">
         <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:rgba(10,15,10,0.7);border:1px solid rgba(255,255,255,0.15);border-radius:7px;">
           <span style="font-size:18px;color:rgba(255,255,255,0.5);line-height:1;">+</span>
         </div></div>`;
@@ -6639,7 +6643,7 @@ function tLiveShell(r){
       const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       const avgVal=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:6px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-speed">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-speed">
         <div style="font-size:26px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-speed-cur">${curSpd}</div>
         <div style="font-size:26px;font-weight:400;color:rgba(255,255,255,0.55);font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-speed-avg">${avgVal}</div>
         <div style="font-size:11px;color:rgba(255,255,255,0.35);font-family:var(--font);white-space:nowrap;line-height:1.3;">km/h (avg)</div>
@@ -6647,7 +6651,7 @@ function tLiveShell(r){
     }
     if(type==='power'){
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}top:6px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;width:72px;text-align:center;" id="live-fpill-power">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;width:72px;text-align:center;" id="live-fpill-power">
           <div style="font-size:20px;line-height:1;">&#x26A1;</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
         </div>`;
@@ -6661,7 +6665,7 @@ function tLiveShell(r){
       const np=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):'—';
       const subCol=pz?col:'rgba(255,255,255,0.55)';
       const lblCol=pz?col:'rgba(255,255,255,0.35)';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:6px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-power">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-power">
         <div style="font-size:26px;font-weight:500;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-power-cur">${curVal}</div>
         <div style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-power-np">${np}</div>
         <div style="font-size:11px;color:${lblCol};font-family:var(--font);white-space:nowrap;line-height:1.3;" id="live-power-lbl">W (wP)</div>
@@ -6669,7 +6673,7 @@ function tLiveShell(r){
     }
     if(type==='hr'){
       if(!UI.hrConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}top:6px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;width:72px;text-align:center;" id="live-fpill-hr">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;width:72px;text-align:center;" id="live-fpill-hr">
           <div style="font-size:20px;line-height:1;color:#ef4444;">&#x2764;&#xFE0F;</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
         </div>`;
@@ -6683,7 +6687,7 @@ function tLiveShell(r){
       const val=bpm!==null?bpm:'—';
       const subCol=hz?col:'rgba(255,255,255,0.55)';
       const lblCol=hz?col:'rgba(255,255,255,0.35)';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:6px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-hr">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-hr">
         <div style="font-size:26px;font-weight:500;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-hr-cur">${val}</div>
         <div style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-hr-avg">—</div>
         <div style="font-size:11px;color:${lblCol};font-family:var(--font);white-space:nowrap;line-height:1.3;">bpm (avg)</div>
@@ -6695,9 +6699,9 @@ function tLiveShell(r){
 
   return`
   <div class="live-outer" id="live-scroller">
-      ${distBar}
       <div class="live-map-section" id="live-map-section">
         <canvas id="live-map"></canvas>
+        ${distBar}
         ${mapCtrlHTML('live-map',true)}
         ${floatingPills}
         <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:10;pointer-events:none;">${weatherBarHTML()}</div>
@@ -6770,11 +6774,10 @@ function initLiveMap(r){
       const strip=document.getElementById('live-next-strip');
       // Subtract strip and distance bar — pills now float on map, no progressBar in flow
       const elevStrip=document.getElementById('live-elev-strip');
-      const distBar=document.getElementById('live-dist-bar');
-      const distBarH=distBar&&distBar.offsetHeight>0?distBar.offsetHeight:26;
+      // distBar is now overlaid on map, not in flow — don't subtract its height
       const stripH=strip&&strip.offsetHeight>0?strip.offsetHeight:105;
       const elevH=elevStrip&&elevStrip.offsetHeight>0?elevStrip.offsetHeight:0;
-      const avail=viewH-tabsH-distBarH-stripH-elevH-4;
+      const avail=viewH-tabsH-stripH-elevH-4;
       mapH=Math.min(ideal,Math.max(200,avail));
     }
     // Suppress micro-fluctuations (strip/weather bar text changes during GPS ticks
@@ -10771,7 +10774,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v101';
+  const CACHE_NAME='packtimes-v104';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
