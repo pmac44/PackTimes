@@ -6655,7 +6655,7 @@ function tLiveShell(r){
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       const avgVal=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-speed">
-        <div style="font-size:26px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-speed-cur">${curSpd}</div>
+        <div style="font-size:26px;font-weight:800;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-speed-cur">${curSpd}</div>
         <div style="font-size:26px;font-weight:400;color:rgba(255,255,255,0.55);font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-speed-avg">${avgVal}</div>
         <div style="font-size:11px;color:rgba(255,255,255,0.35);font-family:var(--font);white-space:nowrap;line-height:1.3;">km/h (avg)</div>
       </div>`;
@@ -6677,7 +6677,7 @@ function tLiveShell(r){
       const subCol=pz?col:'rgba(255,255,255,0.55)';
       const lblCol=pz?col:'rgba(255,255,255,0.35)';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-power">
-        <div style="font-size:26px;font-weight:500;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-power-cur">${curVal}</div>
+        <div style="font-size:26px;font-weight:800;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-power-cur">${curVal}</div>
         <div style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-power-np">${np}</div>
         <div style="font-size:11px;color:${lblCol};font-family:var(--font);white-space:nowrap;line-height:1.3;" id="live-power-lbl">W (wP)</div>
       </div>`;
@@ -6699,7 +6699,7 @@ function tLiveShell(r){
       const subCol=hz?col:'rgba(255,255,255,0.55)';
       const lblCol=hz?col:'rgba(255,255,255,0.35)';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;width:78px;text-align:center;" id="live-fpill-hr">
-        <div style="font-size:26px;font-weight:500;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-hr-cur">${val}</div>
+        <div style="font-size:26px;font-weight:800;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-hr-cur">${val}</div>
         <div style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-hr-avg">—</div>
         <div style="font-size:11px;color:${lblCol};font-family:var(--font);white-space:nowrap;line-height:1.3;">bpm (avg)</div>
       </div>`;
@@ -10785,7 +10785,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v106';
+  const CACHE_NAME='packtimes-v107';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
