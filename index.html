@@ -6585,33 +6585,47 @@ function tLiveShell(r){
       </div>`;
     }
     if(type==='power'){
+      if(!UI.powerConnected){
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}top:6px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;width:72px;text-align:center;" id="live-fpill-power">
+          <div style="font-size:20px;line-height:1;">&#x26A1;</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
+        </div>`;
+      }
       const pw=UI.powerWatts;
-      const pz=UI.powerConnected&&pw!==null?powerZone(pw,UI.ftp):null;
+      const pz=pw!==null?powerZone(pw,UI.ftp):null;
       const bg=pz?pz.bg:pillBg;
       const bdr=pz?('2px solid '+pz.border):pillBorder;
-      const col=pz?(pz.textDark?'#000':'#fff'):(UI.powerConnected?'#fbbf24':'var(--text)');
-      const curVal=UI.powerConnected&&pw!==null?pw:'—';
+      const col=pz?(pz.textDark?'#000':'#fff'):'#fbbf24';
+      const curVal=pw!==null?pw:'—';
       const np=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):'—';
-      const npVal=UI.powerConnected?np:'—';
       const subCol=pz?col:'rgba(255,255,255,0.55)';
       const lblCol=pz?col:'rgba(255,255,255,0.35)';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:6px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;width:72px;text-align:center;" id="live-fpill-power">
         <div style="font-size:22px;font-weight:500;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-power-cur">${curVal}</div>
-        <div style="font-size:17px;font-weight:400;color:${subCol};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-power-np">${npVal}</div>
-        <div style="font-size:10px;color:${lblCol};font-family:var(--font);white-space:nowrap;line-height:1.3;" id="live-power-lbl">${UI.powerConnected?'w (NP)':'tap to pair'}</div>
+        <div style="font-size:17px;font-weight:400;color:${subCol};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-power-np">${np}</div>
+        <div style="font-size:10px;color:${lblCol};font-family:var(--font);white-space:nowrap;line-height:1.3;" id="live-power-lbl">W (NP)</div>
       </div>`;
     }
     if(type==='hr'){
+      if(!UI.hrConnected){
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}top:6px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;width:72px;text-align:center;" id="live-fpill-hr">
+          <div style="font-size:20px;line-height:1;">&#x2764;&#xFE0E;</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
+        </div>`;
+      }
       const bpm=UI.hrBpm;
-      const hz=UI.hrConnected&&bpm!==null?hrZone(bpm,UI.maxHr):null;
+      const hz=bpm!==null?hrZone(bpm,UI.maxHr):null;
       const bg=hz?hz.bg:pillBg;
       const bdr=hz?('2px solid '+hz.border):pillBorder;
-      const col=hz?(hz.textDark?'#000':'#fff'):(UI.hrConnected?'#ef4444':'var(--text)');
+      const col=hz?(hz.textDark?'#000':'#fff'):'#ef4444';
       const lbl=hz?hz.label:'bpm';
-      const val=UI.hrConnected&&bpm!==null?bpm:'—';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:6px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 8px;min-width:70px;" id="live-fpill-hr">
-        <div style="font-size:19px;font-weight:500;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-hr-cur">${val}<span style="font-size:13px;color:${col};margin-left:1px;">${lbl}</span></div>
-        <div style="font-size:13px;color:${hz?col:'rgba(255,255,255,0.45)'};font-family:var(--sans);white-space:nowrap;line-height:1.2;margin-top:1px;" id="live-hr-avg">${UI.hrConnected?'avg —':'tap to pair'}</div>
+      const val=bpm!==null?bpm:'—';
+      const subCol=hz?col:'rgba(255,255,255,0.55)';
+      const lblCol=hz?col:'rgba(255,255,255,0.35)';
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:6px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;width:72px;text-align:center;" id="live-fpill-hr">
+        <div style="font-size:22px;font-weight:500;color:${col};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-hr-cur">${val}</div>
+        <div style="font-size:17px;font-weight:400;color:${subCol};font-family:var(--sans);white-space:nowrap;line-height:1.15;" id="live-hr-avg">—</div>
+        <div style="font-size:10px;color:${lblCol};font-family:var(--font);white-space:nowrap;line-height:1.3;">bpm (avg)</div>
       </div>`;
     }
     return'';
@@ -7211,7 +7225,7 @@ function tSettings(r){
   const ftpBody=''
     +'<p style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:12px;">Set your FTP and max heart rate to see colour-coded zones on the ride screen. The sensor display changes colour based on your current zone.</p>'
     // FTP
-    +'<div class="field"><label class="lbl">⚡ FTP &mdash; <span id="ftp-val" class="unit">'+(UI.ftp?UI.ftp+'w':'Not set')+'</span></label>'
+    +'<div class="field"><label class="lbl">⚡ FTP &mdash; <span id="ftp-val" class="unit">'+(UI.ftp?UI.ftp+'W':'Not set')+'</span></label>'
     +'<div style="display:flex;gap:8px;align-items:center;">'
     +'<input type="number" id="ftp-input" min="50" max="600" step="1" value="'+(UI.ftp||'')+'" placeholder="e.g. 250" style="width:100px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;">'
     +'<span style="font-size:16px;color:var(--text3);">watts</span>'
@@ -9445,9 +9459,10 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Floating pill tap → cycle through: speed → power → hr → off → speed...
-  // Long-press on power/hr pill opens BLE pair dialog
+  // (Long-press on unpaired power/hr pill triggers BLE pairing — see _fpillLP handler below)
   const fpill=e.target.closest('.live-fpill');
   if(fpill&&UI.tab==='live'){
+    if(_fpillLP.fired){_fpillLP.fired=false;return;} // suppress click after long-press
     const PILL_CYCLE=['speed','power','hr','off'];
     const slot=+fpill.dataset.slot;
     const pills=UI.livePills||['speed','off','off'];
@@ -9966,7 +9981,7 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     const v=parseInt(e.target.value);
     UI.ftp=(v>=50&&v<=600)?v:null;
     const lbl=document.getElementById('ftp-val');
-    if(lbl)lbl.textContent=UI.ftp?UI.ftp+'w':'Not set';
+    if(lbl)lbl.textContent=UI.ftp?UI.ftp+'W':'Not set';
     saveAll();
     if(UI.tab==='settings')render();
     return;
@@ -10389,6 +10404,22 @@ function loadDemo(){
   saveAll();render();
 }
 
+// ─── Long-press on floating pill to pair BLE sensor ───
+const _fpillLP={timer:null,fired:false};
+document.addEventListener('pointerdown',e=>{
+  const fp=e.target.closest('.live-fpill[data-pair]');
+  if(!fp)return;
+  _fpillLP.fired=false;
+  _fpillLP.timer=setTimeout(()=>{
+    _fpillLP.fired=true;
+    const t=fp.dataset.pair;
+    if(t==='power')connectPowerMeter();
+    else if(t==='hr')connectHRMonitor();
+  },600);
+});
+document.addEventListener('pointerup',()=>{if(_fpillLP.timer){clearTimeout(_fpillLP.timer);_fpillLP.timer=null;}});
+document.addEventListener('pointercancel',()=>{if(_fpillLP.timer){clearTimeout(_fpillLP.timer);_fpillLP.timer=null;}});
+
 // ═══════════════════════════════════════════
 //  POWER METER (BLE Cycling Power Service)
 // ═══════════════════════════════════════════
@@ -10490,7 +10521,7 @@ async function connectPowerMeter(){
         const np=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):'—';
         npEl.textContent=np;
       }
-      if(lblEl&&lblEl.textContent==='tap to pair')lblEl.textContent='w (NP)';
+      if(lblEl&&lblEl.textContent==='hold to pair')lblEl.textContent='W (NP)';
       // Update zone colour if FTP is set
       const pz=powerZone(avg,UI.ftp);
       if(pill&&pz){
@@ -10541,6 +10572,7 @@ async function connectHRMonitor(){
     });
     _hrDevice.addEventListener('gattserverdisconnected',()=>{
       UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
+      UI._hrSum=0;UI._hrCount=0;
       if(UI.tab==='live')renderKeepScroll();
     });
     const server=await _hrDevice.gatt.connect();
@@ -10552,14 +10584,23 @@ async function connectHRMonitor(){
       const flags=d.getUint8(0);
       const bpm=(flags&0x1)?d.getUint16(1,true):d.getUint8(1);
       UI.hrBpm=bpm;
+      // HR average accumulator
+      if(!UI._hrSum){UI._hrSum=0;UI._hrCount=0;}
+      UI._hrSum+=bpm;UI._hrCount++;
+      const hrAvg=Math.round(UI._hrSum/UI._hrCount);
       // Update floating HR pill if visible
       const hz=hrZone(bpm,UI.maxHr);
       const hrCur=document.getElementById('live-hr-cur');
       if(hrCur){
-        const col=hz?(hz.textDark?'#000':'#fff'):(UI.hrConnected?'#ef4444':'var(--text)');
-        const lbl=hz?hz.label:'bpm';
-        hrCur.innerHTML=bpm+'<span style="font-size:13px;color:'+col+';margin-left:1px;">'+lbl+'</span>';
+        const col=hz?(hz.textDark?'#000':'#fff'):'#ef4444';
+        hrCur.textContent=bpm;
         hrCur.style.color=col;
+      }
+      const hrAvgEl=document.getElementById('live-hr-avg');
+      if(hrAvgEl){
+        const col=hz?(hz.textDark?'#000':'#fff'):'rgba(255,255,255,0.55)';
+        hrAvgEl.textContent=hrAvg;
+        hrAvgEl.style.color=col;
       }
       const hrPill=document.getElementById('live-fpill-hr');
       if(hrPill&&hz){hrPill.style.background=hz.bg;hrPill.style.borderColor=hz.border;hrPill.style.borderWidth='2px';}
@@ -10573,6 +10614,7 @@ async function connectHRMonitor(){
 function disconnectHRMonitor(){
   if(_hrDevice&&_hrDevice.gatt.connected)_hrDevice.gatt.disconnect();
   UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
+  UI._hrSum=0;UI._hrCount=0;
   if(UI.tab==='live')renderKeepScroll();
 }
 // ═══════════════════════════════════════════
@@ -10621,7 +10663,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v79';
+  const CACHE_NAME='packtimes-v81';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
