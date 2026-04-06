@@ -7404,6 +7404,36 @@ function stopChip(s,r){
   return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+openDot+sleepTag+'</span>';
 }
 
+// ─── Weather radar URL (auto-detected from GPS country) ───
+let _radarUrl=null;
+const RADAR_URLS={
+  AU:'https://www.bom.gov.au/weather-and-climate/rain-radar-and-weather-maps',
+  NZ:'https://www.metservice.com/maps-radar/rain-radar',
+  US:'https://radar.weather.gov/',
+  GB:'https://www.metoffice.gov.uk/weather/maps-and-charts/precipitation-radar',
+  IE:'https://www.met.ie/weather-maps/rainfall-radar',
+  DE:'https://www.dwd.de/DE/leistungen/radarbild_film/radarbild_film.html',
+  FR:'https://meteofrance.com/previsions-meteo-france/radar-pluie',
+  ZA:'https://www.weathersa.co.za/home/radar',
+};
+function detectRadarUrl(lat,lon){
+  if(_radarUrl)return;
+  const cc=geoCountry(lat,lon);
+  if(cc&&RADAR_URLS[cc])_radarUrl=RADAR_URLS[cc];
+}
+function geoCountry(lat,lon){
+  // Simple bounding-box country detection for radar links
+  if(lat>=-44&&lat<=-10&&lon>=112&&lon<=154)return'AU';
+  if(lat>=-47&&lat<=-34&&lon>=166&&lon<=179)return'NZ';
+  if(lat>=24&&lat<=50&&lon>=-125&&lon<=-66)return'US';
+  if(lat>=49&&lat<=61&&lon>=-8&&lon<=2)return'GB';
+  if(lat>=51&&lat<=55.5&&lon>=-10.5&&lon<=-6)return'IE';
+  if(lat>=47&&lat<=55&&lon>=6&&lon<=15)return'DE';
+  if(lat>=42&&lat<=51&&lon>=-5&&lon<=8)return'FR';
+  if(lat>=-35&&lat<=-22&&lon>=16&&lon<=33)return'ZA';
+  return null;
+}
+
 // ─── Weather cache (Open-Meteo, free, no key) ───
 const _weatherCache={}; // key='lat2,lon2' → {fetchedAt, current:{temp,windspeed,winddeg,code}, hourly:[{time,temp,windspeed,winddeg,code}]}
 let _weatherFetching=false;
@@ -7445,7 +7475,7 @@ async function fetchWeather(lat,lon,days){
   const cached=_weatherCache[key];
   if(cached&&(Date.now()-cached.fetchedAt)<30*60*1000)return cached;
   try{
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&current_weather=true&hourly=temperature_2m,windspeed_10m,winddirection_10m,weathercode,precipitation_probability&forecast_days=${days}&timezone=auto`;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&current_weather=true&hourly=temperature_2m,apparent_temperature,windspeed_10m,winddirection_10m,weathercode,precipitation_probability&forecast_days=${days}&timezone=auto`;
     const res=await fetch(url);
     const j=await res.json();
     if(!j.current_weather)return null;
@@ -7456,14 +7486,17 @@ async function fetchWeather(lat,lon,days){
     const hourly=(j.hourly.time||[]).map((t,i)=>({
       time:t,
       temp:j.hourly.temperature_2m[i],
+      feelsLike:j.hourly.apparent_temperature?j.hourly.apparent_temperature[i]:null,
       windspeed:j.hourly.windspeed_10m[i],
       winddeg:j.hourly.winddirection_10m[i],
       code:j.hourly.weathercode[i],
       precip:j.hourly.precipitation_probability[i]
     }));
+    // Current feels-like: use the hourly value at the current time index
+    const curFeelsLike=j.hourly.apparent_temperature?j.hourly.apparent_temperature[idx]:null;
     const result={
       fetchedAt:Date.now(),
-      current:{temp:cw.temperature,windspeed:cw.windspeed,winddeg:cw.winddirection,code:cw.weathercode},
+      current:{temp:cw.temperature,feelsLike:curFeelsLike,windspeed:cw.windspeed,winddeg:cw.winddirection,code:cw.weathercode},
       hourly
     };
     _weatherCache[key]=result;
@@ -7474,6 +7507,11 @@ async function fetchWeather(lat,lon,days){
 
 function ensureWeatherCache(r){
   if(!r.points.length)return;
+  // Detect radar URL from GPS position or route start
+  if(!_radarUrl){
+    const rp=UI.gpsPos||r.points[0];
+    if(rp)detectRadarUrl(rp.lat,rp.lon);
+  }
   const sdt=startDT(r);
   const spacingKm=UI.weatherSpacingKm||100;
   // Build list of sample points: GPS position + route samples every spacingKm
@@ -7686,10 +7724,12 @@ function weatherBarHTML(){
       <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">${hourChips}</div>
     </div>
     <div style="border-top:1px solid var(--border);padding:8px 10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+      ${c.feelsLike!=null&&Math.abs(Math.round(c.feelsLike)-Math.round(c.temp))>=2?`<span style="font-size:15px;color:${Math.round(c.feelsLike)<Math.round(c.temp)?'#93c5fd':'#fca5a5'};">Feels ${Math.round(c.feelsLike)}°</span>`:''}
       ${rainProb!=null?`<span style="font-size:15px;color:${rainProb>50?'#93c5fd':'var(--text2)'};">💧 ${rainProb}% rain</span>`:''}
       ${lowWarning?`<span style="font-size:15px;color:#93c5fd;">🥶 Low ${Math.round(tonightLow)}° tonight</span>`:(tonightLow!=null?`<span style="font-size:15px;color:var(--text2);">Low ${Math.round(tonightLow)}° tonight</span>`:'')}
       ${windRelHTML}
       ${sunHTML}
+      ${_radarUrl?`<a href="${_radarUrl}" target="_blank" rel="noopener" style="font-size:14px;color:var(--blue);text-decoration:none;font-weight:600;" onclick="event.stopPropagation();">Radar ↗</a>`:''}
       <span style="margin-left:auto;font-size:13px;color:var(--text3);">▲ tap to close</span>
     </div>`;
   }
@@ -10677,7 +10717,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v90';
+  const CACHE_NAME='packtimes-v92';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
