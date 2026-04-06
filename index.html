@@ -93,7 +93,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-dist-bar{position:relative;height:30px;background:#1a1a1a;flex-shrink:0;overflow:hidden;border-bottom:1px solid var(--border);}
 .live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:rgba(74,222,128,0.15);border-right:2px solid var(--accent);}
 .live-dist-done{position:absolute;top:0;bottom:0;display:flex;align-items:center;padding-left:8px;font-family:var(--sans);font-weight:500;font-size:19px;color:var(--accent);white-space:nowrap;}
-.live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--font);font-weight:600;font-size:13px;color:#fbbf24;white-space:nowrap;pointer-events:none;}
+.live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-weight:500;font-size:19px;color:#fbbf24;white-space:nowrap;pointer-events:none;}
 .live-dist-left{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-family:var(--sans);font-weight:500;font-size:19px;color:var(--text);white-space:nowrap;}
 .live-elev-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);cursor:pointer;user-select:none;}
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
@@ -5709,16 +5709,17 @@ function drawElevProfile(r,liveDist){
   const xOf=d=>(d-distMin)/distRange*W;
   const yOf=e=>H-(e-eleMin)/eleRange*(H-8)-4; // 4px top/bottom margin
 
-  // Fill gradient-coloured area using actual route points (matches white outline exactly)
-  // Assign each route point a grade colour from the nearest grade segment, then merge runs
-  const visSegs=segs.filter(s=>s.to>=distMin&&s.from<=distMax);
-  // Build a lookup: for each visible point, find its grade colour
-  let segIdx=0;
+  // Fill gradient-coloured area using smoothed elevations so colours match the visual profile
+  // Grade window must be wider than smoothing radius (0.15km) to capture real gradients
+  const gradeR=0.15; // ±150m each side = 300m window
   const ptCols=[];
   for(let pi=0;pi<visPts.length;pi++){
-    const d=visPts[pi].dist;
-    while(segIdx<visSegs.length-1&&visSegs[segIdx].to<d)segIdx++;
-    const g=segIdx<visSegs.length?visSegs[segIdx].grade:0;
+    let j0=pi,j1=pi;
+    while(j0>0&&visPts[pi].dist-visPts[j0-1].dist<gradeR)j0--;
+    while(j1<visPts.length-1&&visPts[j1+1].dist-visPts[pi].dist<gradeR)j1++;
+    const dx=(visPts[j1].dist-visPts[j0].dist)*1000;
+    const dy=smEle[j1]-smEle[j0];
+    const g=dx>0?(dy/dx*100):0;
     ptCols.push(gradeCol(g));
   }
   // Draw merged colour runs using actual route points as top edge
@@ -6540,9 +6541,9 @@ function tLiveShell(r){
   const finTxt=(finDay?finDay.trim()+' ':'')+fmtT(finEta);
   const distBar=`<div class="live-dist-bar" id="live-dist-bar">
     <div class="live-dist-fill" id="live-dist-fill" style="width:${pct.toFixed(1)}%"></div>
-    <div class="live-dist-done" id="live-dist-done">${doneTxt}<span style="font-size:13px;color:rgba(74,222,128,0.6);margin-left:2px;">km</span></div>
-    <div class="live-dist-finish" id="live-dist-finish">${finTxt}</div>
-    <div class="live-dist-left" id="live-dist-left">${leftTxt}<span style="font-size:13px;color:rgba(255,255,255,0.5);margin-left:2px;">km</span></div>
+    <div class="live-dist-done" id="live-dist-done">${doneTxt} km</div>
+    <div class="live-dist-finish" id="live-dist-finish">${finTxt} fin.</div>
+    <div class="live-dist-left" id="live-dist-left">${leftTxt} km</div>
   </div>`;
   const progressOverlay=`${distBar}<div class="live-progress-bar">
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">
@@ -8663,10 +8664,10 @@ function updateLive(){
   const distDone=document.getElementById('live-dist-done');
   const distLeft=document.getElementById('live-dist-left');
   if(distFill)distFill.style.width=(prog*100).toFixed(1)+'%';
-  if(distDone){const h=liveDist.toFixed(1)+'<span style="font-size:13px;color:rgba(74,222,128,0.6);margin-left:2px;">km</span>';if(distDone.innerHTML!==h)distDone.innerHTML=h;}
-  if(distLeft){const h=(r.totalDist-liveDist).toFixed(1)+'<span style="font-size:13px;color:rgba(255,255,255,0.5);margin-left:2px;">km</span>';if(distLeft.innerHTML!==h)distLeft.innerHTML=h;}
+  if(distDone){const h=liveDist.toFixed(1)+' km';if(distDone.textContent!==h)distDone.textContent=h;}
+  if(distLeft){const h=(r.totalDist-liveDist).toFixed(1)+' km';if(distLeft.textContent!==h)distLeft.textContent=h;}
   const distFinish=document.getElementById('live-dist-finish');
-  if(distFinish){const sdt2=startDT(r);const fe=etaAt(r.totalDist,r);const fd=sdt2&&fe?dayOff(fe,sdt2):'';const h=(fd?fd.trim()+' ':'')+fmtT(fe);if(distFinish.textContent!==h)distFinish.textContent=h;}
+  if(distFinish){const sdt2=startDT(r);const fe=etaAt(r.totalDist,r);const fd=sdt2&&fe?dayOff(fe,sdt2):'';const h=(fd?fd.trim()+' ':'')+fmtT(fe)+' fin.';if(distFinish.textContent!==h)distFinish.textContent=h;}
 
   const patchCard=(s,idSuffix)=>{
     // Legacy no-op — strip is rebuilt wholesale below
@@ -9502,6 +9503,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   if(e.target.closest('#live-elev-strip')){
+    // If click is on the profile canvas, let the canvas swipe handler deal with it
+    if(e.target.id==='elev-profile-cvs')return;
     UI.elevExpanded=!UI.elevExpanded;
     saveAll();
     const r2=cur();if(!r2)return;
@@ -10546,7 +10549,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v63';
+  const CACHE_NAME='packtimes-v70';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
