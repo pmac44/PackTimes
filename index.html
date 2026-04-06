@@ -1605,7 +1605,7 @@ function snapToWay(lat,lon,ways,maxOffM){
 }
 
 function updateOverlayButtons(){
-  const labels={off:'SURF',surf:'SURF',grade:'GRADE'};
+  const labels={off:'DAY',surf:'SURF',grade:'GRADE'};
   const active=UI.routeOverlay!=='off';
   ['desktop-map','stops-map'].forEach(id=>{
     const btn=document.getElementById('btn-surface-'+id);
@@ -10717,7 +10717,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v97';
+  const CACHE_NAME='packtimes-v98';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
