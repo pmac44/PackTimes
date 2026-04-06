@@ -521,9 +521,12 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
-  _rideAvgSessionKm:null,                  // dist at start of current GPS session
+  _rideAvgSessionKm:null,                  // cumulative dist at start of current GPS session
   _rideAvgSessionTs:null,                  // timestamp at start of current GPS session
   _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
+  // Cumulative GPS distance — haversine sum, immune to out-and-back snap issues
+  gpsTravelledKm:0,
+  _lastSnapIdx:null,                       // route point index of last snap (for directional bias)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
@@ -645,6 +648,9 @@ async function loadAll(){
         if(lastGps.rideAvgKm!=null)UI._rideAvgKmAccum=lastGps.rideAvgKm;
         if(lastGps.rideAvgMs!=null)UI._rideAvgMsAccum=lastGps.rideAvgMs;
         if(lastGps.stoppedTs!=null)UI._rideAvgStoppedTs=lastGps.stoppedTs;
+        // Restore cumulative GPS distance and snap index
+        if(lastGps.travelledKm!=null)UI.gpsTravelledKm=lastGps.travelledKm;
+        if(lastGps.snapIdx!=null)UI._lastSnapIdx=lastGps.snapIdx;
         // Restore NP accumulators
         if(lastGps.npSum4!=null){_npSum4=lastGps.npSum4;_npCount=lastGps.npCount||0;}
         if(Array.isArray(lastGps.npBuffer))_npRawBuffer.push(...lastGps.npBuffer);
@@ -2026,9 +2032,24 @@ async function fetchAccommodation(){
   await saveAll();renderKeepScroll();
 }
 
-function snapTo(r,lat,lon){
+function snapTo(r,lat,lon,lastIdx){
   if(!r.points.length)return null;
   let best=null,bd=Infinity;
+  // If we have a previous snap index, search a window around it first.
+  // This prevents flip-flopping between outbound and return legs on out-and-back routes.
+  if(lastIdx!=null&&lastIdx>=0){
+    const margin=Math.max(120,Math.floor(r.points.length*0.05));
+    const lo=Math.max(0,lastIdx-margin);
+    const hi=Math.min(r.points.length-1,lastIdx+margin*3);// bias forward
+    for(let i=lo;i<=hi;i++){
+      const p=r.points[i];
+      const d=Math.sqrt((p.lat-lat)**2+(p.lon-lon)**2);
+      if(d<bd){bd=d;best={idx:i,dist:p.dist,off:hav({lat,lon},p)};}
+    }
+    if(best&&best.off<0.5)return best;// within 500m — good enough
+  }
+  // Fallback: full search (first fix, or rider far from expected window)
+  best=null;bd=Infinity;
   r.points.forEach((p,i)=>{const d=Math.sqrt((p.lat-lat)**2+(p.lon-lon)**2);if(d<bd){bd=d;best={idx:i,dist:p.dist,off:hav({lat,lon},p)};}});
   return best;
 }
@@ -2055,9 +2076,9 @@ function _resetGpsIdleTimer(){
     UI._adaptiveWindow=[];
     if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
     _lastTurnBeepDist=null;
-    // Accumulate ride avg session
-    if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null&&UI.gpsDistKm!==null){
-      UI._rideAvgKmAccum+=Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm);
+    // Accumulate ride avg session (using cumulative distance)
+    if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null){
+      UI._rideAvgKmAccum+=Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm);
       UI._rideAvgMsAccum+=Date.now()-UI._rideAvgSessionTs;
     }
     UI._rideAvgSessionKm=null;UI._rideAvgSessionTs=null;UI._rideAvgStoppedTs=Date.now();
@@ -2098,10 +2119,18 @@ function _doStartGPS(){
   UI._rideAvgSessionTs=null;
 
   UI.gpsWatchId=navigator.geolocation.watchPosition(pos=>{
+    const prevPos=UI.gpsPos;// save before overwrite for cumulative distance
     UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,speed:pos.coords.speed,ts:pos.timestamp};
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
+    // Accumulate cumulative GPS distance (haversine between consecutive fixes)
+    if(prevPos&&prevPos.lat!=null){
+      const step=hav(prevPos,UI.gpsPos);
+      // Filter GPS jumps: max 200m/s ≈ 720km/h — anything faster is noise
+      const dt=Math.max(1,(UI.gpsPos.ts-prevPos.ts)/1000);
+      if(step/dt<0.2)UI.gpsTravelledKm+=step;
+    }
     const r=cur();
-    if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon);if(snap){UI.gpsDistKm=snap.dist;}}
+    if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;}}
     if(r&&UI.gpsDistKm!==null){
       const alertKm=UI.alertKm||0.5;
       const nowTs=Date.now();
@@ -2126,6 +2155,26 @@ function _doStartGPS(){
 
       if(needsSave)saveAll();
     }
+    // Initialise session start on first fix — bridge the screen-off gap
+    // MUST run BEFORE _lastGpsState is overwritten so gap bridging reads the old state.
+    if(UI._rideAvgSessionKm===null){
+      const prev=UI._lastGpsState;
+      if(prev&&prev.ts&&prev.travelledKm!=null){
+        // Bridge gap using cumulative distance saved from previous session
+        const gapKm=Math.max(0,UI.gpsTravelledKm-prev.travelledKm);
+        const gapMs=Date.now()-prev.ts;
+        if(gapKm>0.1&&gapMs>0&&gapMs<43200000){// <12h
+          UI._rideAvgKmAccum=(UI._rideAvgKmAccum||0)+gapKm;
+          UI._rideAvgMsAccum=(UI._rideAvgMsAccum||0)+gapMs;
+        }
+      }
+      UI._rideAvgSessionKm=UI.gpsTravelledKm;
+      UI._rideAvgSessionTs=Date.now();
+      if(UI._rideAvgPendingPrompt){
+        UI._rideAvgPendingPrompt=false;
+        _showRideAvgResetPrompt();
+      }
+    }
     // Last recorded position — single entry, continuously overwritten.
     // Preserves arrivedAt (time first reached this area) separately from GPS fix time.
     if(UI.gpsDistKm!==null){
@@ -2135,30 +2184,9 @@ function _doStartGPS(){
       UI._lastGpsState={dist:UI.gpsDistKm,pos:UI.gpsPos,routeId:r?r.id:null,arrivedAt,ts:Date.now(),
         rideAvgKm:UI._rideAvgKmAccum||0,rideAvgMs:UI._rideAvgMsAccum||0,
         sessKm:UI._rideAvgSessionKm,sessTs:UI._rideAvgSessionTs,stoppedTs:UI._rideAvgStoppedTs,
+        travelledKm:UI.gpsTravelledKm,snapIdx:UI._lastSnapIdx,
         npSum4:_npSum4,npCount:_npCount,npBuffer:_npRawBuffer.slice(-NP_WINDOW_S)};
       DB.setKV('lastGpsState',UI._lastGpsState).catch(()=>{});
-    }
-    // Initialise session start on first fix — bridge the screen-off gap
-    if(UI._rideAvgSessionKm===null&&UI.gpsDistKm!==null){
-      // If we have a previous GPS state, the rider may have moved while the screen was off.
-      // Add the gap distance and time to the accumulators so the average stays correct.
-      const prev=UI._lastGpsState;
-      if(prev&&prev.ts&&prev.dist!=null){
-        const gapKm=Math.max(0,UI.gpsDistKm-prev.dist);
-        const gapMs=Date.now()-prev.ts;
-        // Only bridge if gap is reasonable (moved forward, <12h gap, >0.1km)
-        if(gapKm>0.1&&gapMs>0){
-          UI._rideAvgKmAccum=(UI._rideAvgKmAccum||0)+gapKm;
-          UI._rideAvgMsAccum=(UI._rideAvgMsAccum||0)+gapMs;
-        }
-      }
-      UI._rideAvgSessionKm=UI.gpsDistKm;
-      UI._rideAvgSessionTs=Date.now();
-      // Show prompt now we have context
-      if(UI._rideAvgPendingPrompt){
-        UI._rideAvgPendingPrompt=false;
-        _showRideAvgResetPrompt();
-      }
     }
     const speedKmh=(pos.coords.speed||0)*3.6;
     if(speedKmh>=GPS_IDLE_SPEED_KMH){
@@ -2188,8 +2216,8 @@ function _showRideAvgResetPrompt(){
   document.body.appendChild(el);
   document.getElementById('ride-avg-reset').addEventListener('click',()=>{
     UI._rideAvgKmAccum=0;UI._rideAvgMsAccum=0;
-    // Session start is current position
-    UI._rideAvgSessionKm=UI.gpsDistKm;UI._rideAvgSessionTs=Date.now();
+    // Session start is current cumulative distance
+    UI._rideAvgSessionKm=UI.gpsTravelledKm;UI._rideAvgSessionTs=Date.now();
     el.remove();
   });
   document.getElementById('ride-avg-keep').addEventListener('click',()=>{el.remove();});
@@ -2198,9 +2226,9 @@ function _showRideAvgResetPrompt(){
 function stopGPS(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
   if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
-  // Accumulate this GPS session into ride average totals
-  if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null&&UI.gpsDistKm!==null){
-    const sessionKm=Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm);
+  // Accumulate this GPS session into ride average totals (using cumulative distance)
+  if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null){
+    const sessionKm=Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm);
     const sessionMs=Date.now()-UI._rideAvgSessionTs;
     UI._rideAvgKmAccum+=sessionKm;
     UI._rideAvgMsAccum+=sessionMs;
@@ -2402,9 +2430,19 @@ function simStart(){
       const d=hav(prev,p)*1000; // metres
       spd=d/(1/speed); // m/s at simulation speed
     }
+    // Accumulate cumulative GPS distance from sim points
+    if(_simIdx>0){
+      const prevPt=_simPts[_simIdx-1];
+      UI.gpsTravelledKm+=hav(prevPt,p);
+    }
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
     const r=cur();
-    if(r){const snap=snapTo(r,p.lat,p.lon);if(snap)UI.gpsDistKm=snap.dist;}
+    if(r){const snap=snapTo(r,p.lat,p.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;}}
+    // Initialise ride-avg session on first sim fix (mirrors real GPS path)
+    if(UI._rideAvgSessionKm===null){
+      UI._rideAvgSessionKm=UI.gpsTravelledKm;
+      UI._rideAvgSessionTs=Date.now();
+    }
     checkAlerts();
     if(UI.tab==='live')updateLive();
     else updateGPSPill();
@@ -2986,13 +3024,20 @@ function getTile(z,x,y,redrawId){
   img.onload=()=>{_tileCache[key]=img;if(redrawId&&!_mapDragging)redrawMap(redrawId);};
   img.onerror=()=>{
     _tileCache[key]='error';
-    // Clear error after 30s so tiles retry when connection returns, but don't hammer offline
-    setTimeout(()=>{if(_tileCache[key]==='error')delete _tileCache[key];},30000);
+    // Only schedule retry if online — no point hammering when in airplane mode.
+    // When connection returns, the 'online' event flushes all errors for a fresh attempt.
+    if(navigator.onLine!==false){
+      setTimeout(()=>{if(_tileCache[key]==='error')delete _tileCache[key];},60000);
+    }
   };
   const tileUrl=TILE_URLS[_tileMode]||OSM_URL;
   img.src=tileUrl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
   return 'loading';
 }
+// When connectivity returns, flush all tile errors so they retry on next draw
+window.addEventListener('online',()=>{
+  Object.keys(_tileCache).forEach(k=>{if(_tileCache[k]==='error')delete _tileCache[k];});
+});
 
 // Pre-download map tiles along a route for offline use
 let _tileDownloadAbort=null;
@@ -3033,16 +3078,25 @@ async function downloadRouteTiles(r,mode,onProgress){
   const BATCH=6; // concurrent fetches
   if(onProgress)onProgress(0,total,0);
 
+  // Open tile cache directly so downloads are persisted reliably for offline use
+  const tileC=await caches.open('packtimes-tiles-v1').catch(()=>null);
+
   for(let i=0;i<tiles.length;i+=BATCH){
     if(ctrl.abort)return{ok:false,msg:'Cancelled'};
     const batch=tiles.slice(i,i+BATCH);
-    const promises=batch.map(key=>{
+    const promises=batch.map(async key=>{
       const [z,x,y]=key.split('/');
       const url=tileUrl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
-      return fetch(url,{mode:'cors'}).then(res=>{
-        if(res&&res.ok){cached++;return true;}
+      try{
+        // Skip if already in cache
+        if(tileC){const hit=await tileC.match(url);if(hit){cached++;return true;}}
+        const res=await fetch(url,{mode:'cors'});
+        if(res&&res.ok){
+          if(tileC)await tileC.put(url,res.clone());
+          cached++;return true;
+        }
         failed++;return false;
-      }).catch(()=>{failed++;return false;});
+      }catch(e){failed++;return false;}
     });
     await Promise.all(promises);
     done+=batch.length;
@@ -6581,7 +6635,7 @@ function tLiveShell(r){
       const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
       const curSpd=s!==null&&s>=0.3?s.toFixed(1):'—';
       const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
-      const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsDistKm!==null)?Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm):0;
+      const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
       const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       const avgVal=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
@@ -8771,7 +8825,7 @@ function updateLive(){
   const avgEl=document.getElementById('live-speed-avg');
   if(avgEl){
     const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
-    const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsDistKm!==null)?Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm):0;
+    const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
     const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
     const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
     const av=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
@@ -10717,7 +10771,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v98';
+  const CACHE_NAME='packtimes-v101';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
@@ -10730,10 +10784,11 @@ if('serviceWorker' in navigator && window.self===window.top){
       );
     });
     self.addEventListener('activate',e=>{
-      // Clear any old caches from previous SW versions
+      const TILE_CACHE='packtimes-tiles-v1';
+      // Clear old app caches but preserve the tile cache (user-downloaded maps)
       e.waitUntil(
         caches.keys().then(keys=>Promise.all(
-          keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))
+          keys.filter(k=>k!==CACHE&&k!==TILE_CACHE).map(k=>caches.delete(k))
         )).then(()=>clients.claim())
       );
     });
