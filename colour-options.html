@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Distance Strip Colour Options</title>
+<style>
+  body { background:#1a1a1a; color:#fff; font-family:system-ui,-apple-system,sans-serif; padding:20px; margin:0; }
+  h2 { font-size:16px; color:#aaa; margin:30px 0 12px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
+  .strip-wrap { width:340px; }
+  .label { font-size:13px; color:#999; margin-bottom:4px; }
+  .strip { height:34px; border-radius:6px; overflow:hidden; position:relative; background:rgba(10,15,10,0.85); box-shadow:0 2px 8px rgba(0,0,0,0.5); }
+  .fill { position:absolute; top:0; left:0; bottom:0; border-radius:6px 0 0 6px; }
+  .txt-done { position:absolute; top:0; bottom:0; display:flex; align-items:center; padding-left:8px; font-family:'DM Mono',monospace; font-weight:700; font-size:16px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.6); z-index:2; }
+  .txt-left { position:absolute; top:0; bottom:0; right:0; display:flex; align-items:center; padding-right:8px; font-family:'DM Mono',monospace; font-weight:700; font-size:16px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.6); z-index:2; justify-content:flex-end; }
+  .txt-mid { position:absolute; top:0; bottom:0; left:0; right:0; display:flex; align-items:center; justify-content:center; font-family:'DM Mono',monospace; font-weight:700; font-size:16px; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.6); z-index:1; }
+  .swatch { display:inline-block; width:18px; height:18px; border-radius:3px; vertical-align:middle; margin-right:6px; }
+  .black-text .txt-done, .black-text .txt-left, .black-text .txt-mid { color:#000; text-shadow:none; }
+  .section { border:1px solid #333; border-radius:8px; padding:16px; margin-bottom:20px; }
+  .contrast-row { display:flex; gap:20px; margin-top:6px; }
+  .contrast-box { padding:4px 10px; border-radius:4px; font-family:'DM Mono',monospace; font-weight:700; font-size:16px; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<h1 style="font-size:20px; margin-bottom:4px;">Distance Strip Colour Options</h1>
+<p style="color:#888; font-size:14px; margin-top:0;">All midtones — white and black text both readable. Shown at 40% and 85% progress.</p>
+
+<!-- A: Current teal -->
+<div class="section">
+  <div class="label"><span class="swatch" style="background:#2dd4bf;"></span><strong>A — Current Teal</strong> · #2dd4bf</div>
+  <div class="row">
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:40%;background:#2dd4bf;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">130.6 km</div></div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:85%;background:#2dd4bf;"></div><div class="txt-done">185.3 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">32.7 km</div></div>
+    </div>
+  </div>
+  <div class="contrast-row">
+    <div class="contrast-box" style="background:#2dd4bf; color:#fff;">White on teal</div>
+    <div class="contrast-box" style="background:#2dd4bf; color:#000;">Black on teal</div>
+  </div>
+</div>
+
+<!-- B: Lime green -->
+<div class="section">
+  <div class="label"><span class="swatch" style="background:#84cc16;"></span><strong>B — Lime Green</strong> · #84cc16</div>
+  <div class="row">
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:40%;background:#84cc16;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">130.6 km</div></div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:85%;background:#84cc16;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">32.7 km</div></div>
+    </div>
+  </div>
+  <div class="contrast-row">
+    <div class="contrast-box" style="background:#84cc16; color:#fff;">White on lime</div>
+    <div class="contrast-box" style="background:#84cc16; color:#000;">Black on lime</div>
+  </div>
+</div>
+
+<!-- C: Muted green -->
+<div class="section">
+  <div class="label"><span class="swatch" style="background:#4ade80;"></span><strong>C — Green 400</strong> · #4ade80</div>
+  <div class="row">
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:40%;background:#4ade80;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">130.6 km</div></div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:85%;background:#4ade80;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">32.7 km</div></div>
+    </div>
+  </div>
+  <div class="contrast-row">
+    <div class="contrast-box" style="background:#4ade80; color:#fff;">White on green</div>
+    <div class="contrast-box" style="background:#4ade80; color:#000;">Black on green</div>
+  </div>
+</div>
+
+<!-- D: Emerald -->
+<div class="section">
+  <div class="label"><span class="swatch" style="background:#34d399;"></span><strong>D — Emerald</strong> · #34d399</div>
+  <div class="row">
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:40%;background:#34d399;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">130.6 km</div></div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:85%;background:#34d399;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">32.7 km</div></div>
+    </div>
+  </div>
+  <div class="contrast-row">
+    <div class="contrast-box" style="background:#34d399; color:#fff;">White on emerald</div>
+    <div class="contrast-box" style="background:#34d399; color:#000;">Black on emerald</div>
+  </div>
+</div>
+
+<!-- E: Amber/Gold -->
+<div class="section">
+  <div class="label"><span class="swatch" style="background:#f59e0b;"></span><strong>E — Amber</strong> · #f59e0b</div>
+  <div class="row">
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:40%;background:#f59e0b;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">130.6 km</div></div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:85%;background:#f59e0b;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">32.7 km</div></div>
+    </div>
+  </div>
+  <div class="contrast-row">
+    <div class="contrast-box" style="background:#f59e0b; color:#fff;">White on amber</div>
+    <div class="contrast-box" style="background:#f59e0b; color:#000;">Black on amber</div>
+  </div>
+</div>
+
+<!-- F: Sky blue -->
+<div class="section">
+  <div class="label"><span class="swatch" style="background:#38bdf8;"></span><strong>F — Sky Blue</strong> · #38bdf8</div>
+  <div class="row">
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:40%;background:#38bdf8;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">130.6 km</div></div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:85%;background:#38bdf8;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">32.7 km</div></div>
+    </div>
+  </div>
+  <div class="contrast-row">
+    <div class="contrast-box" style="background:#38bdf8; color:#fff;">White on sky</div>
+    <div class="contrast-box" style="background:#38bdf8; color:#000;">Black on sky</div>
+  </div>
+</div>
+
+<!-- G: Deeper lime -->
+<div class="section">
+  <div class="label"><span class="swatch" style="background:#65a30d;"></span><strong>G — Deep Lime</strong> · #65a30d</div>
+  <div class="row">
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:40%;background:#65a30d;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">130.6 km</div></div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip"><div class="fill" style="width:85%;background:#65a30d;"></div><div class="txt-done">87.4 km</div><div class="txt-mid">☁ Thu 18:42</div><div class="txt-left">32.7 km</div></div>
+    </div>
+  </div>
+  <div class="contrast-row">
+    <div class="contrast-box" style="background:#65a30d; color:#fff;">White on deep lime</div>
+    <div class="contrast-box" style="background:#65a30d; color:#000;">Black on deep lime</div>
+  </div>
+</div>
+
+</body>
+</html>
