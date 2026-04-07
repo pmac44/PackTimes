@@ -5873,7 +5873,7 @@ function drawElevProfile(r,liveDist){
   }
   // Draw grade-coloured fill from profile line down to bottom.
   // Always extend to both canvas edges (x=0 and x=W) to avoid gaps.
-  ctx.globalAlpha=0.75;
+  ctx.globalAlpha=1.0;
   let runStart=0,curCol=ptCols[0];
   const flushRun=(end)=>{
     ctx.beginPath();
@@ -10824,7 +10824,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v119';
+  const CACHE_NAME='packtimes-v120';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
