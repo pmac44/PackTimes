@@ -5223,8 +5223,12 @@ async function dbxSave(auto){
       body:JSON.stringify(data)
     });
     if(res.ok){
-      UI.dbxSavedAt=now;
-      await DB.setKV('dbxSavedAt',now).catch(()=>{});
+      // Use Dropbox's server_modified timestamp so dbxCheckOnFocus compares
+      // the same clock, preventing false "cloud is newer" banners after our own save
+      const meta=await res.json().catch(()=>null);
+      const serverMs=meta&&meta.server_modified?new Date(meta.server_modified).getTime():now;
+      UI.dbxSavedAt=Math.max(now,serverMs);
+      await DB.setKV('dbxSavedAt',UI.dbxSavedAt).catch(()=>{});
       dbxSetStatus('☁️ Synced — '+(new Date(now).toLocaleTimeString()));
     } else if(res.status===401){
       UI.dbxToken=null;await saveAll();
@@ -10792,7 +10796,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v112';
+  const CACHE_NAME='packtimes-v113';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
