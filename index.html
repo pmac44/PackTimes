@@ -6713,8 +6713,8 @@ function tLiveShell(r){
       <div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${stat.unit}</span>`:''}</div>
     </div>`;
   };
-  const doneTxt=liveDist.toFixed(1)+'<span class="live-dist-unit">km</span>';
-  const leftTxt=(r.totalDist-liveDist).toFixed(1)+'<span class="live-dist-unit">km</span>';
+  const doneTxt='<span style="display:inline-flex;align-items:baseline;">'+liveDist.toFixed(1)+'<span class="live-dist-unit"> km/route</span></span>';
+  const leftTxt='<span style="display:inline-flex;align-items:baseline;">'+(r.totalDist-liveDist).toFixed(1)+'<span class="live-dist-unit"> km</span></span>';
   const pct=Math.max(0,Math.min(100,prog*100));
   const _flagSvg='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
   const finTxt=_flagSvg+(finDay?finDay.trim()+' ':'')+fmtT(finEta);
@@ -8978,8 +8978,8 @@ function updateLive(){
   const distDone=document.getElementById('live-dist-done');
   const distLeft=document.getElementById('live-dist-left');
   if(distFill)distFill.style.width=(prog*100).toFixed(1)+'%';
-  if(distDone){const h=liveDist.toFixed(1)+'<span class="live-dist-unit">km</span>';if(distDone._lastVal!==h){distDone._lastVal=h;distDone.innerHTML=h;}}
-  if(distLeft){const h=(r.totalDist-liveDist).toFixed(1)+'<span class="live-dist-unit">km</span>';if(distLeft._lastVal!==h){distLeft._lastVal=h;distLeft.innerHTML=h;}}
+  if(distDone){const h='<span style="display:inline-flex;align-items:baseline;">'+liveDist.toFixed(1)+'<span class="live-dist-unit"> km/route</span></span>';if(distDone._lastVal!==h){distDone._lastVal=h;distDone.innerHTML=h;}}
+  if(distLeft){const h='<span style="display:inline-flex;align-items:baseline;">'+(r.totalDist-liveDist).toFixed(1)+'<span class="live-dist-unit"> km</span></span>';if(distLeft._lastVal!==h){distLeft._lastVal=h;distLeft.innerHTML=h;}}
   const distFinish=document.getElementById('live-dist-finish');
   if(distFinish){
     const _flagSvg='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
@@ -8996,9 +8996,9 @@ function updateLive(){
       const totalMs=accumMs+sessMs;
       const hrs=Math.floor(totalMs/3600000);
       const mins=Math.floor((totalMs%3600000)/60000);
-      h='&#x23F1; '+(hrs>0?hrs+'h '+mins+'m':mins+'m')+' riding';
+      h='<span style="display:inline-flex;align-items:baseline;">&#x23F1; '+(hrs>0?hrs+'<span class="live-dist-unit">h </span>'+mins+'<span class="live-dist-unit">m mov.</span>':mins+'<span class="live-dist-unit">m mov.</span>')+'</span>';
     } else {
-      h=UI.gpsTravelledKm.toFixed(1)+'<span class="live-dist-unit">km</span> travelled';
+      h='<span style="display:inline-flex;align-items:baseline;">'+UI.gpsTravelledKm.toFixed(1)+'<span class="live-dist-unit"> km actual</span></span>';
     }
     if(distFinish._lastVal!==h){distFinish._lastVal=h;distFinish.innerHTML=h;}
   }
@@ -10919,7 +10919,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v125';
+  const CACHE_NAME='packtimes-v133';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
