@@ -2033,25 +2033,55 @@ async function fetchAccommodation(){
   await saveAll();renderKeepScroll();
 }
 
+// Direction-aware snap: prefers forward movement along the route.
+// _snapDir tracks travel direction: 1=forward (normal), -1=reverse, 0=unknown.
+// Direction is inferred from consecutive snap indices.
+let _snapDir=0,_snapDirAccum=0;
+
 function snapTo(r,lat,lon,lastIdx){
   if(!r.points.length)return null;
   let best=null,bd=Infinity;
-  // If we have a previous snap index, search a window around it first.
-  // This prevents flip-flopping between outbound and return legs on out-and-back routes.
+
   if(lastIdx!=null&&lastIdx>=0){
     const margin=Math.max(120,Math.floor(r.points.length*0.05));
-    const lo=Math.max(0,lastIdx-margin);
-    const hi=Math.min(r.points.length-1,lastIdx+margin*3);// bias forward
+    // Search window biased in travel direction
+    const fwd=_snapDir>=0; // default forward if unknown
+    const backM=fwd?Math.floor(margin*0.3):margin*3;
+    const fwdM=fwd?margin*3:Math.floor(margin*0.3);
+    const lo=Math.max(0,lastIdx-backM);
+    const hi=Math.min(r.points.length-1,lastIdx+fwdM);
     for(let i=lo;i<=hi;i++){
       const p=r.points[i];
       const d=Math.sqrt((p.lat-lat)**2+(p.lon-lon)**2);
       if(d<bd){bd=d;best={idx:i,dist:p.dist,off:hav({lat,lon},p)};}
     }
-    if(best&&best.off<0.5)return best;// within 500m — good enough
+    if(best&&best.off<0.5){
+      // Update direction from index movement (smoothed)
+      const delta=best.idx-lastIdx;
+      if(Math.abs(delta)>2){
+        _snapDirAccum+=delta>0?1:-1;
+        // Flip direction only after consistent evidence (3 consecutive same-dir snaps)
+        if(_snapDirAccum>=3){_snapDir=1;_snapDirAccum=3;}
+        else if(_snapDirAccum<=-3){_snapDir=-1;_snapDirAccum=-3;}
+      }
+      return best;
+    }
   }
   // Fallback: full search (first fix, or rider far from expected window)
   best=null;bd=Infinity;
   r.points.forEach((p,i)=>{const d=Math.sqrt((p.lat-lat)**2+(p.lon-lon)**2);if(d<bd){bd=d;best={idx:i,dist:p.dist,off:hav({lat,lon},p)};}});
+  // On first snap, try to determine direction from GPS heading vs route bearing
+  if(best&&lastIdx==null&&UI.gpsHeading!=null){
+    const bi=best.idx;
+    const ahead=Math.min(bi+20,r.points.length-1);
+    const behind=Math.max(bi-20,0);
+    const bearFwd=Math.atan2(r.points[ahead].lon-r.points[bi].lon,r.points[ahead].lat-r.points[bi].lat)*180/Math.PI;
+    const bearBwd=Math.atan2(r.points[behind].lon-r.points[bi].lon,r.points[behind].lat-r.points[bi].lat)*180/Math.PI;
+    const diffFwd=Math.abs(((UI.gpsHeading-bearFwd+540)%360)-180);
+    const diffBwd=Math.abs(((UI.gpsHeading-bearBwd+540)%360)-180);
+    _snapDir=diffFwd<=diffBwd?1:-1;
+    _snapDirAccum=_snapDir*2;
+  }
   return best;
 }
 
@@ -2100,6 +2130,7 @@ function _doStartGPS(){
   UI.gpsActive=true;
   UI._gpsAutoPaused=false;
   UI._lastMovedTs=Date.now();
+  _snapDir=0;_snapDirAccum=0; // reset direction detection on GPS start
   const liveState=ms('live-map');
   liveState._userZoomed=false;liveState._autoZoomed=false;
   liveState._fitted=false; // exit fitted/overview mode so GPS handler follows the dot
@@ -2456,6 +2487,15 @@ function simStart(){
         _simElapsedMs+=(stepKm/(spd*3.6))*3600000; // spd is m/s, convert to hours then ms
       } else if(stepKm>0){
         _simElapsedMs+=stepKm/18*3600000; // fallback 18 km/h
+      }
+    }
+    // Compute heading from consecutive sim points
+    if(_simIdx>0){
+      const prev=_simPts[_simIdx-1];
+      const dLon=(p.lon-prev.lon)*Math.cos(p.lat*Math.PI/180);
+      const dLat=p.lat-prev.lat;
+      if(Math.abs(dLon)>1e-8||Math.abs(dLat)>1e-8){
+        UI.gpsHeading=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
       }
     }
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
@@ -3673,14 +3713,24 @@ function drawMap(cvs,r,opts){
       ctx.fillStyle='rgba(96,165,250,.1)';ctx.fill();
       ctx.strokeStyle='rgba(96,165,250,.25)';ctx.lineWidth=1;ctx.stroke();
     }
-    // Arrow direction: if map is rotated to heading, arrow points up (heading already applied to map).
-    // Otherwise rotate arrow to GPS heading (0=north, clockwise).
-    let arrowDeg=0;
-    if(heading!==null){
-      arrowDeg=0; // map is rotated — arrow always points up
-    } else if(UI.gpsHeading!=null){
-      arrowDeg=UI.gpsHeading; // rotate arrow to travel direction
+    // Arrow always points in direction of travel.
+    // Derive bearing from route points near snap index, or GPS heading as fallback.
+    let travelDeg=null;
+    if(UI._lastSnapIdx!=null&&UI._lastSnapIdx>=0){
+      const si=UI._lastSnapIdx;
+      const lookAhead=_snapDir>=0?1:-1; // use snap direction
+      const ni=Math.max(0,Math.min(pts.length-1,si+lookAhead*15));
+      if(ni!==si){
+        const dLon=(pts[ni].lon-pts[si].lon)*Math.cos(pts[si].lat*Math.PI/180);
+        const dLat=pts[ni].lat-pts[si].lat;
+        travelDeg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
+      }
     }
+    if(travelDeg==null&&UI.gpsHeading!=null)travelDeg=UI.gpsHeading;
+    if(travelDeg==null)travelDeg=0;
+    // If map is rotated, subtract the map rotation so arrow still points in travel direction
+    let arrowDeg=travelDeg;
+    if(heading!==null)arrowDeg=travelDeg-heading;
     const ar=arrowDeg*Math.PI/180;
     ctx.save();
     ctx.translate(gx,gy);
@@ -6662,7 +6712,7 @@ function tLiveShell(r){
       <div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${stat.unit}</span>`:''}</div>
     </div>`;
   };
-  const doneTxt=liveDist.toFixed(1);
+  const doneTxt=liveDist.toFixed(1)+'/'+r.totalDist.toFixed(0);
   const leftTxt=(r.totalDist-liveDist).toFixed(1);
   const pct=Math.max(0,Math.min(100,prog*100));
   const finTxt=(finDay?finDay.trim()+' ':'')+fmtT(finEta);
@@ -6670,7 +6720,7 @@ function tLiveShell(r){
     <div class="live-dist-fill" id="live-dist-fill" style="width:${pct.toFixed(1)}%"></div>
     <div class="live-dist-done" id="live-dist-done">${doneTxt} km</div>
     <div class="live-dist-finish" id="live-dist-finish"><svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>${finTxt}</div>
-    <div class="live-dist-left" id="live-dist-left">${leftTxt} km</div>
+    <div class="live-dist-left" id="live-dist-left">${leftTxt} km left</div>
   </div>`;
   // ── Floating ride pills (overlay on map) ──
   // Each of 3 slots cycles: speed → power → hr → off → speed...
@@ -6697,7 +6747,7 @@ function tLiveShell(r){
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       const avgVal=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:4px 6px;text-align:center;" id="live-fpill-speed">
-        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:800;color:var(--text);font-family:var(--sans);" id="live-speed-cur">${curSpd}</span><span style="font-size:13px;font-weight:400;color:var(--text);margin-left:2px;">km/h</span></div>
+        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:32px;font-weight:800;color:var(--text);font-family:var(--sans);" id="live-speed-cur">${curSpd}</span><span style="font-size:13px;font-weight:400;color:var(--text);margin-left:2px;">km/h</span></div>
         <div style="display:flex;align-items:center;white-space:nowrap;line-height:1;"><span style="font-size:26px;font-weight:400;color:rgba(255,255,255,0.55);font-family:var(--sans);" id="live-speed-avg">${avgVal}</span><span style="display:inline-flex;flex-direction:column;margin-left:3px;font-size:11px;font-weight:400;color:rgba(255,255,255,0.35);font-family:var(--font);line-height:1.2;"><span>km/h</span><span>avg</span></span></div>
       </div>`;
     }
@@ -6718,7 +6768,7 @@ function tLiveShell(r){
       const subCol=pz?col:'rgba(255,255,255,0.55)';
       const lblCol=pz?col:'rgba(255,255,255,0.35)';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;text-align:center;" id="live-fpill-power">
-        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:800;color:${col};font-family:var(--sans);" id="live-power-cur">${curVal}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">W</span></div>
+        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:32px;font-weight:800;color:${col};font-family:var(--sans);" id="live-power-cur">${curVal}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">W</span></div>
         <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);" id="live-power-np">${np}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">W</span></div>
         <div style="font-size:11px;color:${lblCol};font-family:var(--font);line-height:1.2;" id="live-power-lbl">wP</div>
       </div>`;
@@ -6740,7 +6790,7 @@ function tLiveShell(r){
       const subCol=hz?col:'rgba(255,255,255,0.55)';
       const lblCol=hz?col:'rgba(255,255,255,0.35)';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;text-align:center;" id="live-fpill-hr">
-        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:800;color:${col};font-family:var(--sans);" id="live-hr-cur">${val}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">bpm</span></div>
+        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:32px;font-weight:800;color:${col};font-family:var(--sans);" id="live-hr-cur">${val}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">bpm</span></div>
         <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);" id="live-hr-avg">—</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">bpm</span></div>
         <div style="font-size:11px;color:${lblCol};font-family:var(--font);line-height:1.2;">avg</div>
       </div>`;
@@ -6758,7 +6808,7 @@ function tLiveShell(r){
         ${floatingPills}
         ${buildElevStrip(r,liveDist)}
         <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:11;pointer-events:none;">${weatherBarHTML()}</div>
-        <div id="adaptive-msg-bar-wrap" style="position:absolute;top:56px;left:8px;right:8px;z-index:11;">
+        <div id="adaptive-msg-bar-wrap" style="position:absolute;top:140px;left:8px;right:8px;z-index:11;">
         ${(()=>{
           if(!UI._adaptiveMsg)return'';
           const age=Date.now()-UI._adaptiveMsg.ts;
@@ -8909,10 +8959,30 @@ function updateLive(){
   const distDone=document.getElementById('live-dist-done');
   const distLeft=document.getElementById('live-dist-left');
   if(distFill)distFill.style.width=(prog*100).toFixed(1)+'%';
-  if(distDone){const h=liveDist.toFixed(1)+' km';if(distDone.textContent!==h)distDone.textContent=h;}
-  if(distLeft){const h=(r.totalDist-liveDist).toFixed(1)+' km';if(distLeft.textContent!==h)distLeft.textContent=h;}
+  if(distDone){const h=liveDist.toFixed(1)+'/'+r.totalDist.toFixed(0)+' km';if(distDone.textContent!==h)distDone.textContent=h;}
+  if(distLeft){const h=(r.totalDist-liveDist).toFixed(1)+' km left';if(distLeft.textContent!==h)distLeft.textContent=h;}
   const distFinish=document.getElementById('live-dist-finish');
-  if(distFinish){const sdt2=startDT(r);const fe=etaAt(r.totalDist,r);const fd=sdt2&&fe?dayOff(fe,sdt2):'';const _flagSvg='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';const h=_flagSvg+(fd?fd.trim()+' ':'')+fmtT(fe);if(distFinish._lastVal!==h){distFinish._lastVal=h;distFinish.innerHTML=h;}}
+  if(distFinish){
+    const _flagSvg='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
+    // Rotate between: finish ETA, ride time, GPS distance travelled
+    const phase=Math.floor(Date.now()/4000)%3;
+    let h='';
+    if(phase===0){
+      const sdt2=startDT(r);const fe=etaAt(r.totalDist,r);const fd=sdt2&&fe?dayOff(fe,sdt2):'';
+      h=_flagSvg+(fd?fd.trim()+' ':'')+fmtT(fe);
+    } else if(phase===1){
+      // Ride time
+      const accumMs=UI._rideAvgMsAccum||0;
+      const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
+      const totalMs=accumMs+sessMs;
+      const hrs=Math.floor(totalMs/3600000);
+      const mins=Math.floor((totalMs%3600000)/60000);
+      h='&#x23F1; '+(hrs>0?hrs+'h '+mins+'m':mins+'m')+' riding';
+    } else {
+      h='&#x1F4CD; '+UI.gpsTravelledKm.toFixed(1)+' km travelled';
+    }
+    if(distFinish._lastVal!==h){distFinish._lastVal=h;distFinish.innerHTML=h;}
+  }
 
   const patchCard=(s,idSuffix)=>{
     // Legacy no-op — strip is rebuilt wholesale below
@@ -10824,7 +10894,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v120';
+  const CACHE_NAME='packtimes-v122';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
