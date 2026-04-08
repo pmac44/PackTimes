@@ -531,7 +531,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,routeMgmtExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
-  powerWatts:null,powerCadence:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
+  powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
   livePills:['speed','off','off']};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -6767,10 +6767,17 @@ function tLiveShell(r){
       const np=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):'—';
       const subCol=pz?col:'rgba(255,255,255,0.55)';
       const lblCol=pz?col:'rgba(255,255,255,0.35)';
+      const cad=UI.powerCadence;
+      const bal=UI.powerBalance;
+      const cadTxt=cad!==null?cad:'—';
+      const balTxt=bal!==null?bal+'/'+(100-bal):'—';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;text-align:center;" id="live-fpill-power">
         <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:32px;font-weight:800;color:${col};font-family:var(--sans);" id="live-power-cur">${curVal}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">W</span></div>
-        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);" id="live-power-np">${np}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">W</span></div>
-        <div style="font-size:11px;color:${lblCol};font-family:var(--font);line-height:1.2;" id="live-power-lbl">wP</div>
+        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);" id="live-power-np">${np}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">wP</span></div>
+        <div style="display:flex;justify-content:center;gap:8px;margin-top:2px;">
+          <span style="font-size:14px;font-weight:600;color:${subCol};font-family:var(--sans);" id="live-power-cad">${cadTxt}<span style="font-size:11px;font-weight:400;color:${lblCol};margin-left:1px;">rpm</span></span>
+          <span style="font-size:14px;font-weight:600;color:${subCol};font-family:var(--sans);" id="live-power-bal">${balTxt}<span style="font-size:11px;font-weight:400;color:${lblCol};margin-left:1px;">L/R</span></span>
+        </div>
       </div>`;
     }
     if(type==='hr'){
@@ -8947,6 +8954,16 @@ function updateLive(){
     const np=_npCount>0?String(Math.round(Math.pow(_npSum4/_npCount,0.25))):'—';
     if(npEl.textContent!==np)npEl.textContent=np;
   }
+  const cadEl=document.getElementById('live-power-cad');
+  if(cadEl&&UI.powerConnected){
+    const v=UI.powerCadence!==null?String(UI.powerCadence):'—';
+    if(cadEl.textContent!==v)cadEl.textContent=v;
+  }
+  const balEl=document.getElementById('live-power-bal');
+  if(balEl&&UI.powerConnected){
+    const v=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
+    if(balEl.textContent!==v)balEl.textContent=v;
+  }
   // Update floating HR pill value (if visible)
   const hrEl=document.getElementById('live-hr-cur');
   if(hrEl&&UI.hrConnected&&UI.hrBpm!==null){
@@ -10675,7 +10692,12 @@ function _parsePowerMeasurement(buf){
   // Calculate dynamic offset based on optional fields present before crank data
   // Spec: after flags(2) + power(2) = offset 4
   let offset=4;
-  if(flags&(1<<0))offset+=1;  // Pedal Power Balance: 1 byte
+  let balance=null;
+  if(flags&(1<<0)){
+    // Pedal Power Balance: percentage of left pedal contribution (0-100)
+    balance=view.getUint8(offset)&0x7F; // bit 7 is pedal power balance reference
+    offset+=1;
+  }
   if(flags&(1<<2))offset+=2;  // Accumulated Torque: 2 bytes
   if(flags&(1<<4))offset+=6;  // Wheel Revolution Data: 4 bytes revs + 2 bytes time
   // Now offset points to crank revolution data if bit 5 set
@@ -10695,7 +10717,7 @@ function _parsePowerMeasurement(buf){
       _powerChar._lastCrankRevs=crankRevs;_powerChar._lastCrankTime=crankTime;
     }
   }
-  return{watts,cadence};
+  return{watts,cadence,balance};
 }
 
 async function connectPowerMeter(){
@@ -10709,7 +10731,7 @@ async function connectPowerMeter(){
       optionalServices:[CYCLING_POWER_SERVICE]
     });
     _powerDevice.addEventListener('gattserverdisconnected',()=>{
-      UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerDeviceName=null;
+      UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;
       _powerChar=null;_powerWindow.length=0;
       _npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;
       if(UI.tab==='live')renderKeepScroll();
@@ -10720,13 +10742,14 @@ async function connectPowerMeter(){
     _powerChar._lastCrankRevs=undefined;_powerChar._lastCrankTime=undefined;
     await _powerChar.startNotifications();
     _powerChar.addEventListener('characteristicvaluechanged',e=>{
-      const{watts,cadence}=_parsePowerMeasurement(e.target.value.buffer);
+      const{watts,cadence,balance}=_parsePowerMeasurement(e.target.value.buffer);
       const now=Date.now();
       _powerWindow.push({watts,ts:now});
       // Trim to smoothing window
       while(_powerWindow.length&&now-_powerWindow[0].ts>POWER_SMOOTH_MS)_powerWindow.shift();
       const avg=Math.round(_powerWindow.reduce((a,b)=>a+b.watts,0)/_powerWindow.length);
       UI.powerWatts=avg;
+      if(balance!==null&&balance>=0&&balance<=100)UI.powerBalance=balance;
       if(cadence!==null&&cadence>=0&&cadence<250)UI.powerCadence=cadence;
       // NP: sample instantaneous watts every ~1s into 30s rolling buffer
       if(now-_npLastSampleTs>=950){
@@ -10782,7 +10805,7 @@ async function connectPowerMeter(){
 
 function disconnectPowerMeter(){
   if(_powerDevice&&_powerDevice.gatt.connected)_powerDevice.gatt.disconnect();
-  UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerDeviceName=null;
+  UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;
   _powerChar=null;_powerWindow.length=0;
   // Reset NP accumulators
   _npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;
@@ -10894,7 +10917,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v122';
+  const CACHE_NAME='packtimes-v123';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
