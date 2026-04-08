@@ -91,10 +91,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .turn-auto{font-size:12px;color:var(--text3);margin-top:2px;}
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
 .live-dist-bar{position:absolute;top:6px;left:6px;right:6px;height:34px;background:rgba(10,15,10,0.85);border-radius:6px;overflow:hidden;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,0.5);}
-.live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:#c0d904;}
-.live-dist-done{position:absolute;top:0;bottom:0;display:flex;align-items:center;padding-left:8px;font-family:var(--font);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;z-index:2;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
-.live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--font);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;pointer-events:none;z-index:1;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
-.live-dist-left{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-family:var(--font);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;z-index:2;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
+.live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:var(--accent3);}
+.live-dist-done{position:absolute;top:0;bottom:0;display:flex;align-items:center;padding-left:8px;font-family:var(--sans);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;z-index:2;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
+.live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;pointer-events:none;z-index:1;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
+.live-dist-left{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-family:var(--sans);font-weight:700;font-size:16px;color:#fff;white-space:nowrap;z-index:2;text-shadow:0 1px 3px rgba(0,0,0,0.6);}
 .live-elev-strip{position:absolute;bottom:0;left:0;right:0;z-index:10;background:transparent;cursor:pointer;user-select:none;border-radius:0;}
 .live-elev-bar{background:rgba(10,15,10,0.88);}
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
@@ -6712,15 +6712,16 @@ function tLiveShell(r){
       <div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${stat.unit}</span>`:''}</div>
     </div>`;
   };
-  const doneTxt=liveDist.toFixed(1)+'/'+r.totalDist.toFixed(0);
-  const leftTxt=(r.totalDist-liveDist).toFixed(1);
+  const doneTxt=liveDist.toFixed(1)+' km';
+  const leftTxt=(r.totalDist-liveDist).toFixed(1)+' km';
   const pct=Math.max(0,Math.min(100,prog*100));
-  const finTxt=(finDay?finDay.trim()+' ':'')+fmtT(finEta);
+  const _flagSvg='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
+  const finTxt=_flagSvg+(finDay?finDay.trim()+' ':'')+fmtT(finEta);
   const distBar=`<div class="live-dist-bar" id="live-dist-bar">
     <div class="live-dist-fill" id="live-dist-fill" style="width:${pct.toFixed(1)}%"></div>
-    <div class="live-dist-done" id="live-dist-done">${doneTxt} km</div>
-    <div class="live-dist-finish" id="live-dist-finish"><svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>${finTxt}</div>
-    <div class="live-dist-left" id="live-dist-left">${leftTxt} km left</div>
+    <div class="live-dist-done" id="live-dist-done">${doneTxt}</div>
+    <div class="live-dist-finish" id="live-dist-finish">${finTxt}</div>
+    <div class="live-dist-left" id="live-dist-left">${leftTxt}</div>
   </div>`;
   // ── Floating ride pills (overlay on map) ──
   // Each of 3 slots cycles: speed → power → hr → off → speed...
@@ -8976,8 +8977,8 @@ function updateLive(){
   const distDone=document.getElementById('live-dist-done');
   const distLeft=document.getElementById('live-dist-left');
   if(distFill)distFill.style.width=(prog*100).toFixed(1)+'%';
-  if(distDone){const h=liveDist.toFixed(1)+'/'+r.totalDist.toFixed(0)+' km';if(distDone.textContent!==h)distDone.textContent=h;}
-  if(distLeft){const h=(r.totalDist-liveDist).toFixed(1)+' km left';if(distLeft.textContent!==h)distLeft.textContent=h;}
+  if(distDone){const h=liveDist.toFixed(1)+' km';if(distDone.textContent!==h)distDone.textContent=h;}
+  if(distLeft){const h=(r.totalDist-liveDist).toFixed(1)+' km';if(distLeft.textContent!==h)distLeft.textContent=h;}
   const distFinish=document.getElementById('live-dist-finish');
   if(distFinish){
     const _flagSvg='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
@@ -10917,7 +10918,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v123';
+  const CACHE_NAME='packtimes-v124';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
