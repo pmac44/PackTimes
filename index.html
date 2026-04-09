@@ -1552,7 +1552,8 @@ function addStop(r,dist,type,name,opts){
     offRouteM:opts.offRouteM||null,
     noCluster:opts.noCluster||false,
     snapIdx:opts.snapIdx!==undefined?opts.snapIdx:null,
-    bookingUrl:opts.bookingUrl||null});
+    bookingUrl:opts.bookingUrl||null,
+    population:opts.population||null});
   r.stops.sort((a,b)=>a.dist-b.dist);
 }
 function delStop(r,id){r.stops=r.stops.filter(s=>String(s.id)!==String(id));}
@@ -1797,7 +1798,8 @@ async function fetchOverpass(){
         if(isDupe)return;
         if(tags.amenity==='toilets'&&!tags.drinking_water){
           addStop(r,dist,'wc',name||('Toilets '+dist.toFixed(1)+'km'),{auto:true,...offOpts});return;}
-        if(tags.place){if(!name)return;addStop(r,dist,'town',name,{auto:true,ohRaw,ohRules,...offOpts});}
+        const pop=tags.population?parseInt(tags.population,10)||null:null;
+        if(tags.place){if(!name)return;addStop(r,dist,'town',name,{auto:true,ohRaw,ohRules,population:pop,...offOpts});}
         else if(tags.amenity==='drinking_water'||(tags.amenity==='toilets'&&tags.drinking_water==='yes'))
           addStop(r,dist,'water',name||('Water '+dist.toFixed(1)+'km'),{auto:true,...offOpts});
         else{
@@ -1934,9 +1936,10 @@ async function fetchTownSearch(query){
             (name&&s.name.trim().toLowerCase()===name.toLowerCase()&&s.lat&&Math.abs(s.lat-lat)<0.001&&Math.abs(s.lon-lon)<0.001)
         ));
         if(isDupe)return;
+        const pop=tags.population?parseInt(tags.population,10)||null:null;
         if(tags.amenity==='toilets'&&!tags.drinking_water){
           addStop(r,dist,'wc',name||('Toilets '+dist.toFixed(1)+'km'),{auto:true,...offOpts});added++;return;}
-        if(tags.place){if(!name)return;addStop(r,dist,'town',name,{auto:true,ohRaw,ohRules,...offOpts});added++;}
+        if(tags.place){if(!name)return;addStop(r,dist,'town',name,{auto:true,ohRaw,ohRules,population:pop,...offOpts});added++;}
         else if(tags.amenity==='drinking_water'||(tags.amenity==='toilets'&&tags.drinking_water==='yes')||tags.man_made==='water_tap'){
           addStop(r,dist,'water',name||(tags.man_made==='water_tap'?'Water tap':'Water '+dist.toFixed(1)+'km'),{auto:true,...offOpts});added++;}
         else{
@@ -5449,7 +5452,8 @@ function exportPlan(r){
     stops:r.stops.map(s=>({
       id:s.id,dist:s.dist,type:s.type,name:s.name,
       sleepH:s.sleepH,ohRaw:s.ohRaw,auto:s.auto,
-      lat:s.lat,lon:s.lon,offRouteM:s.offRouteM,snapIdx:s.snapIdx
+      lat:s.lat,lon:s.lon,offRouteM:s.offRouteM,snapIdx:s.snapIdx,
+      population:s.population||null
     }))
   });
 }
@@ -5637,6 +5641,22 @@ const STRIP_ICON_FOOD='<svg width="24" height="28" viewBox="0 0 24 24" fill="non
 const STRIP_ICON_SHOP='<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>';
 const STRIP_ICON_STAR='<svg width="26" height="26" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
 
+// Format population badge — short "p1234" style
+function popBadge(s,style){
+  if(!s.population)return'';
+  const p=s.population>=10000?(Math.round(s.population/1000)+'k'):s.population.toLocaleString();
+  if(style==='chip')return' <span style="font-size:12px;color:#8bc34a;font-family:var(--font);font-weight:500;">p'+p+'</span>';
+  if(style==='inline')return' <span style="font-size:14px;color:#8bc34a;font-family:var(--font);font-weight:500;">pop'+p+'</span>';
+  return' <span style="font-size:13px;color:#8bc34a;font-family:var(--font);font-weight:500;">p'+p+'</span>';
+}
+// Find population for a cluster (use the town stop's population, or sum if multiple towns)
+function clusterPop(cl){
+  const towns=cl.stops.filter(s=>s.population);
+  if(!towns.length)return null;
+  // Use the largest town population in the cluster
+  return towns.reduce((max,s)=>s.population>max?s.population:max,0);
+}
+
 // Build pill label for a stop in the live strip — consistent with stop list labels
 function liveStripIcons(s,reason){
   const typeColor={
@@ -5746,7 +5766,7 @@ function buildLiveStrip(r,liveDist,sdt){
     const displayName=rowDisplayName[s.id]||s.name;
     return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
       <div class="live-next-icons">${icons}</div>
-      <div class="live-next-name">${displayName}${openBadge}</div>
+      <div class="live-next-name">${displayName}${popBadge(s)}${openBadge}</div>
       <div class="live-next-in" style="flex-shrink:0;">${dt}km/${inStr||timeStr}</div>
     </div>`;
   }).join('');
@@ -6616,9 +6636,11 @@ function tLiveShell(r){
       } else {
         const {s,cl}=tile;
         if(cl.stops.length>1&&cl.stops[0]===s){
+          const cpop=clusterPop(cl);
+          const cpopStr=cpop?(' <span style="font-size:13px;color:#8bc34a;font-weight:500;">p'+(cpop>=10000?(Math.round(cpop/1000)+'k'):cpop.toLocaleString())+'</span>'):'';
           html+='<div style="display:flex;align-items:center;gap:6px;margin:4px 0 2px;">'
             +'<div style="width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0;"></div>'
-            +'<span style="font-size:16px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);">'+cl.name+' cluster · '+cl.stops.length+' stops</span>'
+            +'<span style="font-size:16px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);">'+cl.name+' cluster · '+cl.stops.length+' stops'+cpopStr+'</span>'
             +'<div style="flex:1;height:1px;background:var(--border);"></div>'
             +'</div>';
         }
@@ -6642,7 +6664,7 @@ function tLiveShell(r){
         html+=`<div class="si live-stop" data-sid="${s.id}" style="${tileBg}">
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
-            <div class="si-name">${s.name}${orBadge}</div>
+            <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}</div>
             <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${(s.dist-liveDist).toFixed(1)} km</span> · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
             ${stEl?`<div class="si-st" style="margin-top:2px;">${stEl}</div>`:''}
             ${hasSleep?`<div style="margin-top:2px;font-size:14px;color:#b39ddb;">😴 ${s.sleepH||10}h bivi</div>`:''}
@@ -6676,7 +6698,7 @@ function tLiveShell(r){
     const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
     return`<div class="next-card live-summary-card" data-sid="${s.id}" style="flex:1;padding:8px 12px;cursor:pointer;">
       <div class="nlbl">${label}</div>
-      <div class="nname" id="live-${idSuffix}-name">${s.icon} ${s.name}</div>
+      <div class="nname" id="live-${idSuffix}-name">${s.icon} ${s.name}${popBadge(s)}</div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:3px;">
         <div class="nkm" id="live-${idSuffix}-km" style="font-size:20px;">${dt.toFixed(1)}<span style="font-size:14px;color:var(--text3);margin-left:2px;">km</span></div>
         <div class="neta" id="live-${idSuffix}-eta" style="font-size:15px;">${timeStr}</div>
@@ -7458,9 +7480,11 @@ function clusteredStopRows(r,sdt){
   clusters.forEach(cl=>{
     if(cl.stops.length>1){
       // Group header
+      const cpop=clusterPop(cl);
+      const cpopStr=cpop?(' <span style="font-size:13px;color:#8bc34a;font-weight:500;">p'+(cpop>=10000?(Math.round(cpop/1000)+'k'):cpop.toLocaleString())+'</span>'):'';
       html+='<div style="display:flex;align-items:center;gap:6px;margin:8px 0 4px;">'
         +'<div style="width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0;"></div>'
-        +'<span style="font-size:15px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);">'+cl.name+' cluster · '+cl.stops.length+' stops</span>'
+        +'<span style="font-size:15px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);">'+cl.name+' cluster · '+cl.stops.length+' stops'+cpopStr+'</span>'
         +'<div style="flex:1;height:1px;background:var(--border);"></div>'
         +'</div>';
     }
@@ -7491,7 +7515,7 @@ function stopRow(s,r,sdt,inCluster){
     <div class="si-inf">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">
         <div style="flex:1;min-width:0;">
-          <div class="si-name">${s.name}${orBadge}${autoBadge}</div>
+          <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}${autoBadge}</div>
           <div class="si-meta">${r.points.length?s.dist.toFixed(1)+' km · ':''}<span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
           ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
           <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='accom')&&s.ohRules?stEl:''}</div>
@@ -7568,7 +7592,7 @@ function stopChip(s,r){
   const stOpen=s.ohRules?shopSt(s,r):'';
   const openDot=stOpen==='open'?'<span style="color:var(--accent)">●</span>':stOpen==='closed'?'<span style="color:var(--red)">●</span>':'';
   const sleepTag=s.type==='sleep'?' 😴'+(s.sleepH||10)+'h':s.sleepAt?' 😴'+(s.sleepH||10)+'h':'';
-  return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+openDot+sleepTag+'</span>';
+  return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+popBadge(s,'chip')+openDot+sleepTag+'</span>';
 }
 
 // ─── Weather radar URL (auto-detected from GPS country) ───
@@ -8248,7 +8272,7 @@ function tPlan(r){
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
         +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
-            +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+'</div>'
+            +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+(node.cluster?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">p'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+'</span>':'')(clusterPop(node.cluster)):'')+'</div>'
             +'<div style="font-size:18px;font-weight:500;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km</div>'
             +(node.isStart?
               '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">'
