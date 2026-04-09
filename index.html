@@ -1791,14 +1791,14 @@ async function fetchOverpass(){
         }
 
         // Dedup by name+dist, OR by type+dist for unnamed stops
-        const isDupe=r.stops.some(s=>s.auto&&Math.abs(s.dist-dist)<0.5&&(
+        const pop=tags.population?parseInt(tags.population,10)||null:null;
+        const dupeStop=r.stops.find(s=>s.auto&&Math.abs(s.dist-dist)<0.5&&(
           (name&&s.name.trim().toLowerCase()===name.toLowerCase())||
           (!name&&s.type===( tags.place?'town':tags.amenity==='drinking_water'||tags.drinking_water==='yes'?'water':'wc'))
         ));
-        if(isDupe)return;
+        if(dupeStop){if(pop&&!dupeStop.population)dupeStop.population=pop;return;}
         if(tags.amenity==='toilets'&&!tags.drinking_water){
           addStop(r,dist,'wc',name||('Toilets '+dist.toFixed(1)+'km'),{auto:true,...offOpts});return;}
-        const pop=tags.population?parseInt(tags.population,10)||null:null;
         if(tags.place){if(!name)return;addStop(r,dist,'town',name,{auto:true,ohRaw,ohRules,population:pop,...offOpts});}
         else if(tags.amenity==='drinking_water'||(tags.amenity==='toilets'&&tags.drinking_water==='yes'))
           addStop(r,dist,'water',name||('Water '+dist.toFixed(1)+'km'),{auto:true,...offOpts});
@@ -1930,13 +1930,13 @@ async function fetchTownSearch(query){
           offOpts={lat,lon,offRouteM:0};
         }
         // Dedup by name+coords for blank plans, or by name+dist for route plans
-        const isDupe=r.stops.some(s=>s.auto&&(
+        const pop=tags.population?parseInt(tags.population,10)||null:null;
+        const dupeStop=r.stops.find(s=>s.auto&&(
           r.points.length?
             (Math.abs(s.dist-dist)<0.5&&((name&&s.name.trim().toLowerCase()===name.toLowerCase())||(!name&&s.type===(tags.place?'town':tags.amenity==='drinking_water'||tags.drinking_water==='yes'?'water':'wc')))):
             (name&&s.name.trim().toLowerCase()===name.toLowerCase()&&s.lat&&Math.abs(s.lat-lat)<0.001&&Math.abs(s.lon-lon)<0.001)
         ));
-        if(isDupe)return;
-        const pop=tags.population?parseInt(tags.population,10)||null:null;
+        if(dupeStop){if(pop&&!dupeStop.population)dupeStop.population=pop;return;}
         if(tags.amenity==='toilets'&&!tags.drinking_water){
           addStop(r,dist,'wc',name||('Toilets '+dist.toFixed(1)+'km'),{auto:true,...offOpts});added++;return;}
         if(tags.place){if(!name)return;addStop(r,dist,'town',name,{auto:true,ohRaw,ohRules,population:pop,...offOpts});added++;}
