@@ -538,6 +538,8 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
+  // Recording state
+  recId:null,recMinMoveM:null,recStopDetectMs:null,
   livePills:['speed','off','off']};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -602,7 +604,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -639,7 +641,12 @@ async function loadAll(){
       if(prefs.routeOverlay)UI.routeOverlay=prefs.routeOverlay;
       if(prefs.elevZoomKm)UI.elevZoomKm=prefs.elevZoomKm;
       if(Array.isArray(prefs.livePills)&&prefs.livePills.length===3)UI.livePills=prefs.livePills;
+      if(prefs.recId)UI.recId=prefs.recId;
+      if(prefs.recMinMoveM)UI.recMinMoveM=prefs.recMinMoveM;
+      if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
     }
+    // Rehydrate active recording (if any) from IDB
+    await _recRehydrate().catch(()=>{});
     // Restore last known GPS position so ride progress is visible before GPS reconnects
     const lastGps=await DB.getKV('lastGpsState').catch(()=>null);
     if(lastGps&&lastGps.dist!=null){
@@ -2411,6 +2418,186 @@ function updateGPSPill(){
   const el=document.getElementById('gpspill');if(!el)return;
   if(UI.gpsActive){el.className='gpspill gpson';el.innerHTML='<div class="pulse"></div>GPS';}
   else{el.className='gpspill gpsoff';el.textContent='GPS off';}
+}
+
+// ═══════════════════════════════════════════
+//  RECORDING
+//  ───────────────────────────────────────────
+//  Movement-based GPS sampling. State machine has two modes:
+//    active     — store points when meaningfully different from last stored
+//    stationary — phone hasn't moved; don't store points until movement resumes
+//
+//  Recording shape (stored in DB.recordings):
+//    {id, routeId|null, status, startTS, endTS|null,
+//     points: [{lat, lon, ele, t, accuracy, _stop?, _resume?, _synthetic?}],
+//     gaps:   [{startT, endT, fillStrategy}],
+//     totalDist, totalDur,
+//     stravaUploadedAt: null|ms, stravaActivityUrl: null|string,
+//     stravaUploadAttempts: [{at, ok, error?}]}
+// ═══════════════════════════════════════════
+
+// Defaults — tunable in Settings later (UI.recMinMoveM / UI.recStopDetectMs)
+const REC_MIN_MOVE_M_DEFAULT     = 5;     // metres: store new point at this distance
+const REC_STATIONARY_M           = 10;    // metres: within = "not meaningfully moving"
+const REC_STOP_DETECT_MS_DEFAULT = 5000;  // ms: must stay stationary this long before "stopped"
+const REC_MIN_TICK_MS            = 1000;  // ms: don't store more than once per second
+
+// Active-recording state (module-local, mirrors the IDB row)
+let _rec        = null;          // the active recording, or null
+let _recMode    = 'active';      // 'active' | 'stationary'
+let _recLastFix = null;          // {lat, lon, t} of last GPS fix seen (whether stored or not)
+let _recStop    = null;          // {lat, lon, t} when stationary mode entered
+let _recStored  = null;          // {lat, lon, t} of last point we actually wrote
+
+function _recId(){
+  return Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+}
+
+function _recDist(a, b){
+  // Haversine in metres
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+  const x = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+async function startRecording(routeId){
+  if(_rec) return _rec;  // already recording — do nothing
+  _rec = {
+    id: _recId(),
+    routeId: routeId || null,
+    status: 'active',
+    startTS: Date.now(),
+    endTS: null,
+    points: [],
+    gaps: [],
+    totalDist: 0,
+    totalDur: 0,
+    stravaUploadedAt: null,
+    stravaActivityUrl: null,
+    stravaUploadAttempts: [],
+  };
+  _recMode = 'active';
+  _recLastFix = null;
+  _recStop = null;
+  _recStored = null;
+  UI.recId = _rec.id;
+  await DB.putRecording(_rec).catch(()=>{});
+  await saveAll().catch(()=>{});
+  return _rec;
+}
+
+function pauseRecording(){
+  if(_rec && _rec.status === 'active') _rec.status = 'paused';
+}
+
+function resumeRecording(){
+  if(_rec && _rec.status === 'paused'){
+    _rec.status = 'active';
+    // Reset sampling state so we don't accidentally fill across the pause as a "gap"
+    _recLastFix = null;
+    _recStop = null;
+    _recMode = 'active';
+  }
+}
+
+async function finaliseRecording(){
+  if(!_rec) return null;
+  _rec.status = 'finalised';
+  _rec.endTS  = Date.now();
+  _rec.totalDur = _rec.endTS - _rec.startTS;
+  // totalDist is maintained incrementally; trust it
+  await DB.putRecording(_rec).catch(()=>{});
+  const finalised = _rec;
+  _rec = null;
+  _recMode = 'active';
+  _recLastFix = null;
+  _recStop = null;
+  _recStored = null;
+  UI.recId = null;
+  await saveAll().catch(()=>{});
+  return finalised;
+}
+
+// _appendPoint — the heart of movement-based sampling.
+// Returns true if the point was stored, false if filtered out.
+function _appendPoint(lat, lon, ele, t, accuracy){
+  if(!_rec || _rec.status !== 'active') return false;
+  const fix = {lat, lon, t};
+  _recLastFix = fix;
+  // First point of recording — always store
+  if(_rec.points.length === 0){
+    _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy});
+    _recStored = fix;
+    _recMode = 'active';
+    return true;
+  }
+  const minMoveM     = UI.recMinMoveM     || REC_MIN_MOVE_M_DEFAULT;
+  const stopDetectMs = UI.recStopDetectMs || REC_STOP_DETECT_MS_DEFAULT;
+  const distFromStored = _recDist(_recStored, fix);
+  if(_recMode === 'active'){
+    // Store if moved enough AND enough time has passed
+    if(distFromStored >= minMoveM && (t - _recStored.t) >= REC_MIN_TICK_MS){
+      _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy});
+      _rec.totalDist += distFromStored;
+      _recStored = fix;
+      // Reset the stationary clock (we just moved)
+      _recStop = null;
+      // Persist in the background — best-effort, don't await on the GPS critical path
+      DB.putRecording(_rec).catch(()=>{});
+      return true;
+    }
+    // Not moved enough — check if we've been stationary long enough to enter stationary mode
+    if(distFromStored < REC_STATIONARY_M){
+      if(!_recStop) _recStop = fix;
+      else if((t - _recStop.t) >= stopDetectMs){
+        // Enter stationary mode. Mark a stop point at the current location.
+        _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy, _stop: true});
+        _recStored = fix;
+        _recMode = 'stationary';
+        DB.putRecording(_rec).catch(()=>{});
+        return true;
+      }
+    } else {
+      // Drifted out of the stationary radius without crossing the move threshold —
+      // reset the stationary timer
+      _recStop = fix;
+    }
+    return false;
+  }
+  // _recMode === 'stationary' — wait for movement past the stationary radius
+  if(distFromStored > REC_STATIONARY_M){
+    // Movement resumed. Mark a resume point and return to active mode.
+    _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy, _resume: true});
+    _rec.totalDist += distFromStored;
+    _recStored = fix;
+    _recStop = null;
+    _recMode = 'active';
+    DB.putRecording(_rec).catch(()=>{});
+    return true;
+  }
+  return false;
+}
+
+// Restore an active recording from IDB after a page reload.
+// Called from loadAll().  Safe to call when no recording is in progress.
+async function _recRehydrate(){
+  if(!UI.recId) return;
+  try{
+    const r = await DB.getRecording(UI.recId);
+    if(r && r.status === 'active'){
+      _rec = r;
+      _recMode = 'active';
+      _recLastFix = null;
+      _recStop = null;
+      // Last stored point becomes our reference for the sampling state machine
+      const lp = r.points && r.points.length ? r.points[r.points.length - 1] : null;
+      _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
+    } else {
+      // Stored recId points to nothing (or to a finalised recording) — clear it
+      UI.recId = null;
+    }
+  } catch(e){ UI.recId = null; }
 }
 
 // ═══════════════════════════════════════════
@@ -10948,7 +11135,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v134';
+  const CACHE_NAME='packtimes-v135';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
