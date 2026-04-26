@@ -59,6 +59,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .gpsoff{color:var(--text3);border-color:var(--border);}
 .pulse{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.4s infinite;}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.3;transform:scale(.6);}}
+/* Gentle background pulse for the Recording-state map-control button. Subtle on purpose — visible at a glance, never distracting on a long ride. */
+.rec-pulse{animation:recpulse 1.6s ease-in-out infinite;}
+@keyframes recpulse{0%,100%{background:rgba(248,113,113,.10);}50%{background:rgba(248,113,113,.22);}}
 .tabs{display:flex;justify-content:space-around;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;padding:0;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:0 1 auto;min-width:0;padding:8px 6px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
@@ -2179,6 +2182,9 @@ function _doStartGPS(){
     }
     const r=cur();
     if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;}}
+    // Phase 1a Step 3: feed every real GPS fix into the recording sampler.
+    // _appendPoint guards on _rec internally — safe to call when no recording is active.
+    _appendPoint(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude, pos.timestamp, pos.coords.accuracy);
     if(r&&UI.gpsDistKm!==null){
       const alertKm=UI.alertKm||0.5;
       const nowTs=Date.now();
@@ -2539,7 +2545,7 @@ function _appendPoint(lat, lon, ele, t, accuracy){
     // Store if moved enough AND enough time has passed
     if(distFromStored >= minMoveM && (t - _recStored.t) >= REC_MIN_TICK_MS){
       _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy});
-      _rec.totalDist += distFromStored;
+      _rec.totalDist += distFromStored / 1000;  // store in km, _recDist returns metres
       _recStored = fix;
       // Reset the stationary clock (we just moved)
       _recStop = null;
@@ -2569,7 +2575,7 @@ function _appendPoint(lat, lon, ele, t, accuracy){
   if(distFromStored > REC_STATIONARY_M){
     // Movement resumed. Mark a resume point and return to active mode.
     _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy, _resume: true});
-    _rec.totalDist += distFromStored;
+    _rec.totalDist += distFromStored / 1000;  // store in km, _recDist returns metres
     _recStored = fix;
     _recStop = null;
     _recMode = 'active';
@@ -2579,13 +2585,58 @@ function _appendPoint(lat, lon, ele, t, accuracy){
   return false;
 }
 
-// Restore an active recording from IDB after a page reload.
+// One-time unit migration: early Step 2 recordings stored totalDist in metres.
+// From Step 4 onwards everything is km. If we see a value clearly in metres
+// (>1000 — no recording is 1000+ km), divide and persist back.
+// Returns the (possibly-mutated) recording. Safe to call on already-migrated rows.
+async function _recMigrate(rec){
+  if(!rec) return rec;
+  if(typeof rec.totalDist === 'number' && rec.totalDist > 1000){
+    rec.totalDist = rec.totalDist / 1000;
+    await DB.putRecording(rec).catch(()=>{});
+  }
+  return rec;
+}
+
+// Auto-finalise orphans: any non-finalised recording that ISN'T the current
+// session's recording (i.e. doesn't match UI.recId) is leftover from a tab close
+// or page navigation that never reached "Stop & save". Give it an honest end time
+// (last stored point's timestamp, or startTS as fallback), compute totalDur, and
+// mark it finalised. Never deletes — just closes the loop so it stops looking
+// like an in-progress recording.
+async function _recFinaliseOrphans(){
+  try{
+    const all = await DB.allRecordings();
+    if(!all || !all.length) return;
+    for(const rec of all){
+      if(rec.status === 'finalised') continue;
+      if(UI.recId && rec.id === UI.recId) continue;  // current session's — don't touch
+      // Pick an end time: last stored point's timestamp, or startTS if no points
+      const lastT = rec.points && rec.points.length
+        ? rec.points[rec.points.length - 1].t
+        : rec.startTS;
+      rec.endTS = lastT || rec.startTS || Date.now();
+      rec.totalDur = rec.endTS - rec.startTS;
+      rec.status = 'finalised';
+      await _recMigrate(rec);  // also catches stale-units rows
+      await DB.putRecording(rec).catch(()=>{});
+    }
+  } catch(e){}
+}
+
+// Restore an active OR paused recording from IDB after a page reload.
 // Called from loadAll().  Safe to call when no recording is in progress.
+//
+// Paused recordings restore too (not just active) — otherwise pausing then
+// reloading orphans the recording.
 async function _recRehydrate(){
+  // First, run the orphan-finalisation sweep so previous-session leftovers don't
+  // sit around looking like in-progress recordings forever.
+  await _recFinaliseOrphans();
   if(!UI.recId) return;
   try{
-    const r = await DB.getRecording(UI.recId);
-    if(r && r.status === 'active'){
+    const r = await _recMigrate(await DB.getRecording(UI.recId));
+    if(r && (r.status === 'active' || r.status === 'paused')){
       _rec = r;
       _recMode = 'active';
       _recLastFix = null;
@@ -2598,6 +2649,111 @@ async function _recRehydrate(){
       UI.recId = null;
     }
   } catch(e){ UI.recId = null; }
+}
+
+// ── Live-tab recording control: tap handlers for the play/pause/stop buttons ──
+//
+// These wrap startRecording/pauseRecording/resumeRecording/finaliseRecording with
+// the small bits of UI plumbing needed: starting GPS when idle, showing the stop
+// confirm strip, the 5-second undo strip, etc.
+//
+// The buttons themselves live in mapCtrlHTML (live-map case). After any state
+// change we call render() so the button re-renders with the right icon.
+
+let _recLastFinalised = null;          // for the Undo strip — stays set until the undo window expires
+let _recUndoTimer     = null;
+const  REC_UNDO_MS    = 5000;
+
+// Show or hide the small stop-confirmation strip inline on the Live tab.
+function _recShowStopConfirm(show){
+  const el = document.getElementById('rec-stop-confirm');
+  if(el){ el.style.display = show ? 'flex' : 'none'; return; }
+  // No element yet — force a render to insert it
+  if(show && UI.tab==='live') render();
+}
+
+// Show or hide the 5-second undo strip after a recording is stopped.
+function _recShowUndoStrip(show){
+  const el = document.getElementById('rec-undo-strip');
+  if(el){ el.style.display = show ? 'flex' : 'none'; return; }
+  if(show && UI.tab==='live') render();
+}
+
+async function _recControlTap(){
+  // Three-state primary button:
+  //   no recording  → start GPS + start recording (and link to current route if loaded)
+  //   active        → pause
+  //   paused        → resume
+  if(!_rec){
+    if(!UI.gpsActive) startGPS();
+    const r = cur();
+    await startRecording(r ? r.id : null);
+    render();
+    return;
+  }
+  if(_rec.status === 'active'){
+    pauseRecording();
+    await DB.putRecording(_rec).catch(()=>{});
+    render();
+    return;
+  }
+  if(_rec.status === 'paused'){
+    resumeRecording();
+    await DB.putRecording(_rec).catch(()=>{});
+    // If user was looking at the stop-confirm strip, hide it
+    _recShowStopConfirm(false);
+    render();
+    return;
+  }
+}
+
+// Tap the "Stop ride" button → reveal the inline confirm strip.
+function _recStopTap(){
+  if(!_rec || _rec.status !== 'paused') return;
+  _recShowStopConfirm(true);
+}
+
+// Tap "Cancel" in the confirm strip → hide it, no state change.
+function _recStopCancel(){
+  _recShowStopConfirm(false);
+}
+
+// Tap "Stop & save" in the confirm strip → finalise the recording, show the undo strip.
+async function _recStopConfirm(){
+  if(!_rec) return;
+  const finalised = await finaliseRecording();
+  _recLastFinalised = finalised;
+  _recShowStopConfirm(false);
+  // Force a render so the buttons go back to "idle" and the undo strip gets inserted
+  render();
+  _recShowUndoStrip(true);
+  if(_recUndoTimer) clearTimeout(_recUndoTimer);
+  _recUndoTimer = setTimeout(()=>{
+    _recLastFinalised = null;
+    _recShowUndoStrip(false);
+  }, REC_UNDO_MS);
+}
+
+// Tap "Undo" within 5 seconds → re-open the just-finalised recording as active again.
+async function _recStopUndo(){
+  if(!_recLastFinalised) return;
+  const rec = _recLastFinalised;
+  rec.status = 'active';
+  rec.endTS  = null;
+  await DB.putRecording(rec).catch(()=>{});
+  _rec = rec;
+  _recMode = 'active';
+  _recLastFix = null;
+  _recStop = null;
+  // Restore _recStored from the last point so sampling continues smoothly
+  const lp = rec.points && rec.points.length ? rec.points[rec.points.length-1] : null;
+  _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
+  UI.recId = rec.id;
+  await saveAll().catch(()=>{});
+  _recLastFinalised = null;
+  if(_recUndoTimer){ clearTimeout(_recUndoTimer); _recUndoTimer = null; }
+  _recShowUndoStrip(false);
+  render();
 }
 
 // ═══════════════════════════════════════════
@@ -2697,6 +2853,9 @@ function simStart(){
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
     const r=cur();
     if(r){const snap=snapTo(r,p.lat,p.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;}}
+    // Phase 1a Step 3: feed simulated fixes into the recording sampler too,
+    // so the simulator is a real test bed for the recording engine.
+    _appendPoint(p.lat, p.lon, p.ele==null?null:p.ele, Date.now(), 5);
     // Initialise ride-avg session on first sim fix (mirrors real GPS path)
     if(UI._rideAvgSessionKm===null){
       UI._rideAvgSessionKm=UI.gpsTravelledKm;
@@ -4445,23 +4604,57 @@ function hitTest(cvs,cx,cy,cb){
 let _pendingOffRoute=null;
 
 // Render map controls HTML (zoom +/-, recenter, tile toggle)
+//
+// Live tab: the GPS button is re-purposed as the Recording control.
+//   - Idle (no recording):   ▶  → tap = startGPS + startRecording
+//   - Recording active:      ⏸  → tap = pauseRecording (GPS stays on)
+//   - Paused:                ▶  → tap = resumeRecording
+//                            + a "Stop ride" button appears beside it
+//                            (which leads to a confirm strip → finalise → undo strip)
+//
+// Stops/desktop maps: the button stays a plain GPS toggle. (Recording is a Live-tab thing.)
 function mapCtrlHTML(mapId,showGPS){
   const isStopsMobile=mapId==='stops-map'&&!IS_DESKTOP();
   const isLiveMobile=mapId==='live-map'&&!IS_DESKTOP();
-  // Live map: raise buttons above the weather bar overlay; z-index below weather bar so bar expands over buttons
+  // Live map: raise buttons above the weather bar overlay; z-index below weather bar so bar expands over buttons.
+  // bottom value here is a baseline — _adjustMapCtrlForElev() adjusts it dynamically to clear the elevation strip.
   const pos=isLiveMobile?'top:auto;bottom:90px;right:8px;left:auto;transform:none;z-index:5;':isStopsMobile?'top:auto;bottom:8px;right:8px;left:auto;transform:none;':'';
-  const btnSize=isLiveMobile?'width:48px;height:48px;font-size:22px;':'';
-  const gpsBtn=UI.gpsActive?
-    `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
-    `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);">GPS</button>`;
+  const btnSize=isLiveMobile?'width:52px;height:52px;font-size:22px;':'';
+  // Build the recording-or-GPS button. On live-map it's the recording control; elsewhere it's the GPS toggle.
+  let gpsBtn='';
+  let stopBtn='';
+  if(mapId==='live-map'){
+    const recActive = _rec && _rec.status === 'active';
+    const recPaused = _rec && _rec.status === 'paused';
+    // SVG icons sized to fit a 52px button. Play triangle / Pause bars.
+    const playSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;margin:auto;"><path d="M7 5 L19 12 L7 19 Z" fill="currentColor"/></svg>';
+    const pauseSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;margin:auto;"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg>';
+    if(recActive){
+      // Recording — pause icon, red accent + gentle background pulse
+      gpsBtn=`<button class="zbtn rec-pulse" id="btn-gpstoggle" title="Pause recording" style="${btnSize}padding:0;overflow:hidden;color:var(--red);border-color:rgba(248,113,113,.5);">${pauseSvg}</button>`;
+    } else if(recPaused){
+      // Paused — play icon (means "resume"), amber accent. Also show the Stop ride button.
+      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Resume recording" style="${btnSize}padding:0;overflow:hidden;color:var(--amber);border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.10);">${playSvg}</button>`;
+      stopBtn=`<button class="zbtn" id="btn-recstop" title="Stop ride" style="${btnSize}width:auto;padding:0 10px;font-size:13px;font-family:var(--font);font-weight:600;color:var(--text);border-color:var(--border2);">Stop ride</button>`;
+    } else {
+      // Idle — play icon, green (universal "go") to advertise this as the primary action on the map
+      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${btnSize}padding:0;overflow:hidden;color:var(--accent);border-color:rgba(74,222,128,.5);background:rgba(74,222,128,.10);">${playSvg}</button>`;
+    }
+  } else {
+    // Non-Live maps: keep the original GPS-toggle behaviour
+    gpsBtn=UI.gpsActive?
+      `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
+      `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);">GPS</button>`;
+  }
   const expandBtn=isStopsMobile?`<button class="zbtn" id="stops-map-expand" title="${UI.stopsMapExpanded?'Shrink map':'Expand map'}" style="padding:0;overflow:hidden;">${UI.stopsMapExpanded?ICON_COLLAPSE:ICON_EXPAND}</button>`:'';
   const recenterBtn=(!isLiveMobile&&showGPS)?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="${btnSize}padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:'';
-  return`<div class="map-ctrl" style="${pos}">
+  return`<div class="map-ctrl" style="${pos}" id="${mapId==='live-map'?'live-map-ctrl':''}">
     ${expandBtn}
     <button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${recenterBtn}
     ${mapId==='live-map'?gpsBtn:''}
+    ${stopBtn}
     ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:''}
   </div>`;
 }
@@ -6049,9 +6242,16 @@ function buildElevStrip(r,liveDist){
 function _adjustWeatherForElev(){
   const wb=document.getElementById('live-weather-bar-wrap');
   const es=document.getElementById('live-elev-strip');
-  if(!wb)return;
   const h=es?es.offsetHeight:0;
-  wb.style.bottom=h+'px';
+  if(wb) wb.style.bottom=h+'px';
+  // Phase 1a Step 4: also lift the map controls and the recording strips
+  // above the elevation profile so they're never masked.
+  const mc=document.getElementById('live-map-ctrl');
+  if(mc) mc.style.bottom=(h+12)+'px';
+  const sc=document.getElementById('rec-stop-confirm');
+  if(sc) sc.style.bottom=(h+82)+'px';   // sits above the map controls
+  const us=document.getElementById('rec-undo-strip');
+  if(us) us.style.bottom=(h+82)+'px';   // sits above the map controls
 }
 
 // Draw the expanded elevation profile on canvas
@@ -6916,8 +7116,16 @@ function tLiveShell(r){
     },unit:'km/h'},
     done:    {label:'Done',      val:()=>liveDist.toFixed(1),unit:'km'},
     left:    {label:'To go',     val:()=>(r.totalDist-liveDist).toFixed(1),unit:'km'},
+    recdist: {label:'Rec dist',  val:()=>_rec?_rec.totalDist.toFixed(1):'—',unit:'km'},
+    rectime: {label:'Rec time',  val:()=>{
+      if(!_rec)return'—';
+      const ms=(_rec.status==='finalised'&&_rec.endTS?_rec.endTS:Date.now())-_rec.startTS;
+      const totalSec=Math.floor(ms/1000);
+      const h=Math.floor(totalSec/3600),m=Math.floor((totalSec%3600)/60);
+      return h>0?h+':'+String(m).padStart(2,'0'):m+':'+String(totalSec%60).padStart(2,'0');
+    },unit:''},
   };
-  const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
+  const STAT_ORDER=['done','left','finish','speed','1hr','rideavg','recdist','rectime'];
   const makePill=(slotIdx)=>{
     const key=(UI.liveStatSlots||['speed','rideavg'])[slotIdx]||STAT_ORDER[slotIdx];
     const stat=LIVE_STATS[key]||LIVE_STATS.done;
@@ -7028,6 +7236,29 @@ function tLiveShell(r){
         <canvas id="live-map"></canvas>
         ${distBar}
         ${mapCtrlHTML('live-map',true)}
+        ${(()=>{
+          // Inline confirmation strip — only visible after the user taps "Stop ride".
+          // Sits just under the map controls, right side. Hidden by default.
+          // _recStopConfirm shows it; _recStopCancel/_recStopConfirm hide it.
+          const ptsStr = _rec ? (_rec.points.length + ' pts') : '';
+          const distStr = _rec ? (_rec.totalDist.toFixed(1) + ' km') : '';
+          return `<div id="rec-stop-confirm" style="display:none;position:absolute;bottom:160px;right:8px;z-index:6;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;font-family:var(--font);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:10px;max-width:300px;">
+            <div style="font-size:14px;color:var(--text);line-height:1.3;">
+              <div style="font-weight:600;margin-bottom:2px;">Stop ride?</div>
+              <div style="font-size:12px;color:var(--text3);">${ptsStr}${ptsStr&&distStr?' · ':''}${distStr}</div>
+            </div>
+            <button class="btn btn-sm" id="btn-recstop-cancel" style="flex-shrink:0;">Cancel</button>
+            <button class="btn btn-sm btn-r" id="btn-recstop-confirm" style="flex-shrink:0;font-weight:600;">Stop &amp; save</button>
+          </div>`;
+        })()}
+        ${(()=>{
+          // 5-second Undo strip — only visible right after a recording is finalised.
+          // Sits at the bottom-centre. _recStopConfirm shows it; the undo timer hides it.
+          return `<div id="rec-undo-strip" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:10px;padding:10px 14px;font-family:var(--font);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:14px;">
+            <span style="font-size:14px;color:var(--text);">Recording saved</span>
+            <button class="btn btn-sm" id="btn-recstop-undo" style="flex-shrink:0;">Undo</button>
+          </div>`;
+        })()}
         ${floatingPills}
         ${buildElevStrip(r,liveDist)}
         <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:11;pointer-events:none;">${weatherBarHTML()}</div>
@@ -9420,6 +9651,48 @@ function updateLive(){
       }
     }
   }
+
+  // Phase 1a Step 4: rebuild the map controls if the recording state changed.
+  // Without this, the play/pause icon stays stale on desktop because _render()
+  // skips the full re-render path while GPS is active (to prevent map flashing).
+  // mapCtrlHTML returns a wrapper div; we extract its inner HTML and patch only
+  // when changed, so this is essentially free when nothing's different.
+  // (Variable name `mcCtrl` to avoid shadowing the `mc` declared above for live-map.)
+  const mcCtrl=document.getElementById('live-map-ctrl');
+  if(mcCtrl){
+    const newCtrlHtml = mapCtrlHTML('live-map', true);
+    const tmpC = document.createElement('div');
+    tmpC.innerHTML = newCtrlHtml;
+    const newInner = tmpC.firstElementChild ? tmpC.firstElementChild.innerHTML : '';
+    if(mcCtrl.innerHTML !== newInner) mcCtrl.innerHTML = newInner;
+  }
+
+  // Phase 1a Step 4: live-update the configurable stat-pill values when they
+  // depend on recording state (recdist / rectime tick during a recording).
+  // Cheap: just recompute and patch text on the two slot elements.
+  const slots=UI.liveStatSlots||['speed','rideavg'];
+  for(let i=0;i<2;i++){
+    const key=slots[i];
+    if(key!=='recdist'&&key!=='rectime')continue;
+    const valEl=document.getElementById('live-val-slot'+i);
+    if(!valEl)continue;
+    let valStr,unit;
+    if(key==='recdist'){
+      valStr=_rec?_rec.totalDist.toFixed(1):'—';
+      unit='km';
+    } else {
+      if(!_rec){ valStr='—'; unit=''; }
+      else {
+        const ms2=(_rec.status==='finalised'&&_rec.endTS?_rec.endTS:Date.now())-_rec.startTS;
+        const totalSec=Math.floor(ms2/1000);
+        const h=Math.floor(totalSec/3600),m=Math.floor((totalSec%3600)/60);
+        valStr=h>0?h+':'+String(m).padStart(2,'0'):m+':'+String(totalSec%60).padStart(2,'0');
+        unit='';
+      }
+    }
+    const newHtml=valStr+(unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${unit}</span>`:'');
+    if(valEl.innerHTML!==newHtml)valEl.innerHTML=newHtml;
+  }
 }
 
 function patchGPSInfo(){
@@ -9908,14 +10181,14 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Tap a configurable stat pill → cycle to next metric
   const sp=e.target.closest('.live-stat-pill');
   if(sp&&UI.tab==='live'&&sp.dataset.slot!=='dist'){
-    const STAT_ORDER=['done','left','finish','speed','1hr','rideavg'];
+    const STAT_ORDER=['done','left','finish','speed','1hr','rideavg','recdist','rectime'];
     const slotIdx=+sp.dataset.slot;
     const slots=UI.liveStatSlots||['speed','rideavg'];
     const cur=slots[slotIdx]||STAT_ORDER[slotIdx];
     const nextKey=STAT_ORDER[(STAT_ORDER.indexOf(cur)+1)%STAT_ORDER.length];
     UI.liveStatSlots=slots.map((k,i)=>i===slotIdx?nextKey:k);
     saveAll();
-    const LABEL_MAP={done:'Done',left:'To go',finish:'Finish',speed:'Speed','1hr':'1hr',rideavg:'Ride Avg'};
+    const LABEL_MAP={done:'Done',left:'To go',finish:'Finish',speed:'Speed','1hr':'1hr',rideavg:'Ride Avg',recdist:'Rec dist',rectime:'Rec time'};
     const lbl=document.getElementById('live-lbl-slot'+slotIdx);
     if(lbl)lbl.textContent=LABEL_MAP[nextKey]||nextKey;
     updateLive();
@@ -10338,7 +10611,20 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(q){UI.tsQuery=q;fetchTownSearch(q);}
     return;
   }
-  if(e.target.closest('#btn-gpstoggle')||e.target.closest('#btn-live-gps')){toggleGPS();return;}
+  if(e.target.closest('#btn-gpstoggle')||e.target.closest('#btn-live-gps')){
+    // On the Live tab, the GPS button is the recording control.
+    // Elsewhere it's a plain GPS toggle.
+    if(UI.tab==='live'){
+      _recControlTap();
+    } else {
+      toggleGPS();
+    }
+    return;
+  }
+  if(e.target.closest('#btn-recstop')){_recStopTap();return;}
+  if(e.target.closest('#btn-recstop-cancel')){_recStopCancel();return;}
+  if(e.target.closest('#btn-recstop-confirm')){_recStopConfirm();return;}
+  if(e.target.closest('#btn-recstop-undo')){_recStopUndo();return;}
   if(e.target.closest('#btn-qr-export')){const r=cur();if(r)showQRModal(r);return;}
   if(e.target.closest('#btn-import-plan')){document.getElementById('plan-file-input').click();return;}
   if(e.target.closest('#btn-clearall')){
@@ -11135,7 +11421,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v135';
+  const CACHE_NAME='packtimes-v137';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
