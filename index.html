@@ -487,10 +487,11 @@ const DB=(()=>{
   let db=null;
   const open=()=>new Promise((res,rej)=>{
     if(db)return res(db);
-    const req=indexedDB.open('packtimes',3);
+    const req=indexedDB.open('packtimes',4);
     req.onupgradeneeded=e=>{const d=e.target.result;
       if(!d.objectStoreNames.contains('routes'))d.createObjectStore('routes',{keyPath:'id'});
-      if(!d.objectStoreNames.contains('kv'))d.createObjectStore('kv',{keyPath:'k'});};
+      if(!d.objectStoreNames.contains('kv'))d.createObjectStore('kv',{keyPath:'k'});
+      if(!d.objectStoreNames.contains('recordings'))d.createObjectStore('recordings',{keyPath:'id'});};
     req.onsuccess=e=>{db=e.target.result;res(db);};
     req.onerror=()=>rej(req.error);
   });
@@ -505,6 +506,10 @@ const DB=(()=>{
     del:(id)=>tx('routes','readwrite',s=>s.delete(id)),
     setKV:(k,v)=>tx('kv','readwrite',s=>s.put({k,v})),
     getKV:(k)=>tx('kv','readonly',s=>s.get(k)).then(r=>r?r.v:null),
+    putRecording:(r)=>tx('recordings','readwrite',s=>s.put(r)),
+    getRecording:(id)=>tx('recordings','readonly',s=>s.get(id)),
+    allRecordings:()=>tx('recordings','readonly',s=>s.getAll()),
+    delRecording:(id)=>tx('recordings','readwrite',s=>s.delete(id)),
   };
 })();
 
@@ -9148,7 +9153,7 @@ function updateLive(){
           return`<div class="si live-stop" data-sid="${s.id}" style="${tileBg}">
             <div class="sdot d-${s.type}"></div>
             <div class="si-inf">
-              <div class="si-name">${s.name}${orBadge}</div>
+              <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}</div>
               <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${dt} km</span> · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
               ${stEl?`<div class="si-st" style="margin-top:2px;">${stEl}</div>`:''}
               ${sleepEl?`<div style="margin-top:2px;">${sleepEl}</div>`:''}
@@ -10943,7 +10948,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v133';
+  const CACHE_NAME='packtimes-v134';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
