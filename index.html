@@ -2132,6 +2132,8 @@ function _resetGpsIdleTimer(){
       UI._rideAvgMsAccum+=Date.now()-UI._rideAvgSessionTs;
     }
     UI._rideAvgSessionKm=null;UI._rideAvgSessionTs=null;UI._rideAvgStoppedTs=Date.now();
+    // Remember where we paused so a later screen-wake can detect movement and auto-resume.
+    UI._autoPausePos=UI.gpsPos?{lat:UI.gpsPos.lat,lon:UI.gpsPos.lon}:null;
     releaseWakeLock();
     UI._gpsAutoPaused=true;
     updateGPSPill();
@@ -2172,7 +2174,20 @@ function _doStartGPS(){
   UI.gpsWatchId=navigator.geolocation.watchPosition(pos=>{
     const prevPos=UI.gpsPos;// save before overwrite for cumulative distance
     UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,speed:pos.coords.speed,ts:pos.timestamp};
-    if(pos.coords.heading!=null&&!isNaN(pos.coords.heading))UI.gpsHeading=pos.coords.heading;
+    if(pos.coords.heading!=null&&!isNaN(pos.coords.heading)){
+      UI.gpsHeading=pos.coords.heading;
+    } else if(prevPos&&prevPos.lat!=null){
+      // Many phones don't report coords.heading (especially at low speed or on a
+      // fresh fix). Without it the position arrow defaulted to north. Derive a
+      // heading from actual movement instead — but only when we've moved far
+      // enough (>5 m) that the bearing isn't just GPS jitter.
+      const moved=hav(prevPos,UI.gpsPos); // km
+      if(moved>=0.005){
+        const dLon=(UI.gpsPos.lon-prevPos.lon)*Math.cos(prevPos.lat*Math.PI/180);
+        const dLat=UI.gpsPos.lat-prevPos.lat;
+        UI.gpsHeading=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
+      }
+    }
     // Accumulate cumulative GPS distance (haversine between consecutive fixes)
     if(prevPos&&prevPos.lat!=null){
       const step=hav(prevPos,UI.gpsPos);
@@ -3041,36 +3056,88 @@ async function requestWakeLock(){
 function releaseWakeLock(){
   if(_wakeLock){_wakeLock.release();_wakeLock=null;}
 }
+// Perform the actual idle auto-pause: clear the watch, release the wake lock,
+// bank the ride-average session, and flip into the auto-paused state.
+function _doGpsAutoPause(){
+  if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
+  if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
+  UI.gpsWatchId=null;
+  UI.gpsActive=false;
+  _offRouteStart=null;_offRouteAlerted=false;
+  UI._adaptiveWindow=[];
+  if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
+  _lastTurnBeepDist=null;
+  // Accumulate ride avg session
+  if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null&&UI.gpsDistKm!==null){
+    UI._rideAvgKmAccum+=Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm);
+    UI._rideAvgMsAccum+=Date.now()-UI._rideAvgSessionTs;
+  }
+  UI._rideAvgSessionKm=null;UI._rideAvgSessionTs=null;UI._rideAvgStoppedTs=Date.now();
+  // Remember where we were when we paused — used to detect movement on wake.
+  UI._autoPausePos=UI.gpsPos?{lat:UI.gpsPos.lat,lon:UI.gpsPos.lon}:null;
+  releaseWakeLock();
+  UI._gpsAutoPaused=true;
+  updateGPSPill();
+  if(UI.tab==='live'||UI.tab==='settings')render();
+}
+
+// How far the rider must have moved (km) for a screen-wake to count as "still riding".
+const WAKE_MOVE_KM=0.05; // 50 m
+
 // Re-request wake lock when page becomes visible again (e.g. after screen dim)
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
     if(UI.gpsActive&&UI.keepScreenOn)requestWakeLock();
     // Check if Dropbox has a newer copy — lightweight metadata check only
     dbxCheckOnFocus();
-    // Check if we've been stationary long enough to auto-stop GPS
-    // This catches the case where the timer didn't fire while the app was suspended
+
+    // ── Case A: GPS is still active. The screen was off (app suspended), so the
+    // idle timer was frozen and no fixes arrived. We must NOT assume "no fix for
+    // 5 min = stopped" — the rider may have been moving the whole time. Instead,
+    // take a fresh reading and only pause if the rider really hasn't moved since
+    // the last known position.
     if(UI.gpsActive&&UI._lastMovedTs){
       const idleMs=Date.now()-UI._lastMovedTs;
       if(idleMs>=GPS_IDLE_STOP_MS){
-        if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
-        if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
-        UI.gpsWatchId=null;
-        UI.gpsActive=false;
-        _offRouteStart=null;_offRouteAlerted=false;
-        UI._adaptiveWindow=[];
-        if(_turnBeepTimer){clearTimeout(_turnBeepTimer);_turnBeepTimer=null;}
-        _lastTurnBeepDist=null;
-        // Accumulate ride avg session
-        if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null&&UI.gpsDistKm!==null){
-          UI._rideAvgKmAccum+=Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm);
-          UI._rideAvgMsAccum+=Date.now()-UI._rideAvgSessionTs;
-        }
-        UI._rideAvgSessionKm=null;UI._rideAvgSessionTs=null;UI._rideAvgStoppedTs=Date.now();
-        releaseWakeLock();
-        UI._gpsAutoPaused=true;
-        updateGPSPill();
-        if(UI.tab==='live'||UI.tab==='settings')render();
+        const before=UI.gpsPos?{lat:UI.gpsPos.lat,lon:UI.gpsPos.lon}:null;
+        navigator.geolocation.getCurrentPosition(pos=>{
+          const here={lat:pos.coords.latitude,lon:pos.coords.longitude};
+          const moved=before?hav(before,here):Infinity;// no prior fix → assume moving
+          if(moved>=WAKE_MOVE_KM){
+            // Rider moved while the screen was off → still riding. Keep GPS going,
+            // just refresh the movement clock so we don't pause spuriously.
+            UI._lastMovedTs=Date.now();
+            _resetGpsIdleTimer();
+          } else {
+            // Genuinely hasn't moved → safe to auto-pause now.
+            _doGpsAutoPause();
+          }
+        },()=>{
+          // Couldn't get a fresh fix — leave GPS running rather than pause wrongly.
+          UI._lastMovedTs=Date.now();
+          _resetGpsIdleTimer();
+        },{enableHighAccuracy:true,maximumAge:0,timeout:10000});
       }
+    }
+
+    // ── Case B: GPS was already auto-paused (a real stop earlier). On wake, take a
+    // fresh fix; if the rider has set off again, silently restart GPS + recording
+    // so they don't have to tap Resume.
+    else if(UI._gpsAutoPaused){
+      const before=UI._autoPausePos;
+      navigator.geolocation.getCurrentPosition(pos=>{
+        const here={lat:pos.coords.latitude,lon:pos.coords.longitude};
+        const moved=before?hav(before,here):Infinity;
+        if(moved>=WAKE_MOVE_KM){
+          startGPS();
+          if(_rec&&_rec.status==='paused'){
+            resumeRecording();
+            DB.putRecording(_rec).catch(()=>{});
+            _recShowStopConfirm(false);
+          }
+          if(UI.tab==='live'||UI.tab==='settings')render();
+        }
+      },()=>{},{enableHighAccuracy:true,maximumAge:0,timeout:10000});
     }
   }
 });
@@ -4082,7 +4149,10 @@ function drawMap(cvs,r,opts){
       }
     }
     if(travelDeg==null&&UI.gpsHeading!=null)travelDeg=UI.gpsHeading;
-    if(travelDeg==null)travelDeg=0;
+    // Last resort: keep the previous arrow angle rather than snapping to north (0°).
+    // A hard default of 0 was what made the arrow appear "stuck pointing north".
+    if(travelDeg==null)travelDeg=(UI._lastArrowDeg!=null?UI._lastArrowDeg:0);
+    UI._lastArrowDeg=travelDeg;
     // If map is rotated, subtract the map rotation so arrow still points in travel direction
     let arrowDeg=travelDeg;
     if(heading!==null)arrowDeg=travelDeg-heading;
@@ -4637,8 +4707,10 @@ function mapCtrlHTML(mapId,showGPS){
       gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Resume recording" style="${btnSize}padding:0;overflow:hidden;color:var(--amber);border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.10);">${playSvg}</button>`;
       stopBtn=`<button class="zbtn" id="btn-recstop" title="Stop ride" style="${btnSize}width:auto;padding:0 10px;font-size:13px;font-family:var(--font);font-weight:600;color:var(--text);border-color:var(--border2);">Stop ride</button>`;
     } else {
-      // Idle — play icon, green (universal "go") to advertise this as the primary action on the map
-      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${btnSize}padding:0;overflow:hidden;color:var(--accent);border-color:rgba(74,222,128,.5);background:rgba(74,222,128,.10);">${playSvg}</button>`;
+      // Idle — play icon. Solid green fill with a dark glyph so it stands out as
+      // the primary "go" action on top of any map tile (the old faint-green-on-
+      // transparent version blended into the map and was nearly invisible).
+      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${btnSize}padding:0;overflow:hidden;color:#0a0f0a;background:var(--accent);border-color:var(--accent2);box-shadow:0 2px 8px rgba(0,0,0,.45);">${playSvg}</button>`;
     }
   } else {
     // Non-Live maps: keep the original GPS-toggle behaviour
@@ -10615,6 +10687,23 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     // On the Live tab, the GPS button is the recording control.
     // Elsewhere it's a plain GPS toggle.
     if(UI.tab==='live'){
+      // GPS auto-paused after idle (e.g. screen slept while stopped/coasting).
+      // The watch was cleared, so the dot is frozen. Restart GPS *first*, no
+      // matter the recording state — otherwise resumeRecording() runs without
+      // ever re-acquiring location and nothing happens. (Previously this only
+      // restarted GPS when there was no recording at all, which forced a
+      // Stop & Clear to get going again.)
+      if(UI._gpsAutoPaused){
+        startGPS();
+        // If a recording exists and was paused, resume it too so the ride continues.
+        if(_rec && _rec.status === 'paused'){
+          resumeRecording();
+          DB.putRecording(_rec).catch(()=>{});
+          _recShowStopConfirm(false);
+        }
+        render();
+        return;
+      }
       _recControlTap();
     } else {
       toggleGPS();
@@ -11421,7 +11510,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v137';
+  const CACHE_NAME='packtimes-v139';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';

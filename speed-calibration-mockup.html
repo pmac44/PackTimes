@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PackTimes — Speed Factor calibration (mockup)</title>
+<style>
+  :root {
+    --bg: #1a1d22;
+    --panel: #23272e;
+    --panel-2: #2c3138;
+    --border: #3a4049;
+    --text: #e8ebef;
+    --muted: #9aa3ad;
+    --accent: #ff8a3d;
+    --accent-dim: #b85f1f;
+    --good: #6ec77e;
+    --warn: #f3b73a;
+    --bad: #e06b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    min-height: 100%;
+  }
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .sub {
+    color: var(--muted);
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  .pre-note {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+  .pre-note strong { color: var(--text); }
+  .ride-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .ride-card h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ride-card .badge {
+    background: var(--accent);
+    color: #1a1d22;
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .ride-card .remove {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 3px 9px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .ride-card .remove:hover {
+    border-color: var(--bad);
+    color: var(--bad);
+  }
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .field label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .field.full {
+    grid-column: 1 / -1;
+  }
+  input[type="number"], select {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-size: 15px;
+    font-family: inherit;
+    width: 100%;
+  }
+  input[type="number"]:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .input-with-unit {
+    position: relative;
+  }
+  .input-with-unit .unit {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 13px;
+    pointer-events: none;
+  }
+  .input-with-unit input {
+    padding-right: 42px;
+  }
+  .add-ride {
+    display: block;
+    width: 100%;
+    background: transparent;
+    border: 1.5px dashed var(--border);
+    color: var(--muted);
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    margin-bottom: 22px;
+  }
+  .add-ride:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .add-ride:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .result {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 22px;
+  }
+  .result h2 {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .factor-display {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .factor-num {
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .factor-label {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .factor-explain {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .per-ride {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .per-ride .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .per-ride .row span:last-child {
+    color: var(--text);
+  }
+  .actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  .btn {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+  }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #1a1d22;
+    font-weight: 600;
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .empty {
+    color: var(--muted);
+    font-style: italic;
+    font-size: 14px;
+  }
+  @media (max-width: 480px) {
+    .field-grid { grid-template-columns: 1fr; }
+    .factor-num { font-size: 34px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Calibrate your Speed Factor</h1>
+  <p class="sub">Add one or more rides you've actually done. PackTimes will work out your Speed Factor from real data.</p>
+
+  <div class="pre-note">
+    <strong>How it works.</strong> Grab the numbers from Strava, your headunit, or wherever you log rides. Add at least one ride — three across different conditions gives the most accurate result. Heavier loads slow you on climbs <em>and</em> on the flat (panniers add a lot of aero drag), so it helps to vary the load if you can.
+  </div>
+
+  <div id="rides"></div>
+
+  <button class="add-ride" id="addBtn">+ Add another reference ride</button>
+
+  <div class="result">
+    <h2>Calculated Speed Factor</h2>
+    <div class="factor-display">
+      <div class="factor-num" id="factorNum">—</div>
+      <div class="factor-label" id="factorLabel">add a ride to calculate</div>
+    </div>
+    <div class="factor-explain" id="factorExplain">
+      A factor below 1.00 means you're faster than the model's baseline; above 1.00 means slower. PackTimes will use this when planning all your routes.
+    </div>
+    <div class="per-ride" id="perRide"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn">Cancel</button>
+    <button class="btn primary" id="saveBtn">Save Speed Factor</button>
+  </div>
+</div>
+
+<script>
+// ===========================================================================
+// SIMPLIFIED PACE MODEL — mirrors the structure of PackTimes' real model,
+// using rough versions of the same constants. This is enough to demonstrate
+// the calibration flow; the real index.html has more nuance.
+// ===========================================================================
+
+// km/h on flat ground for an average rider, no load, by surface
+const FLAT_KMH_BY_SURFACE = {
+  sealed: 24.0,
+  gravel: 18.0,
+  rough:  11.0
+};
+
+// VAM (vertical ascent metres/hour) baseline by surface
+const VAM_BY_SURFACE = {
+  sealed: 600,
+  gravel: 480,
+  rough:  320
+};
+
+// Aero penalty per kg of load on flat (higher = more drag from panniers)
+// Sealed road riders feel this most; rough off-road less because they're slow anyway
+const AERO_PENALTY = {
+  sealed: 0.012,  // 1.2% slower per kg of load on flat sealed
+  gravel: 0.008,
+  rough:  0.003
+};
+
+// Gravity penalty per kg of load on climbs
+const GRAVITY_PENALTY_VAM = 8;  // VAM drops by ~8 m/h per kg of load
+
+function predictTimeHours(distKm, elevM, surface, loadKg) {
+  // Split the ride into "climbing" and "flat-equivalent" portions.
+  // Time on climbs = elev / VAM (with load penalty).
+  // Time on the rest = (distance) / (flat speed with aero penalty).
+  // This is a simplification — the real model integrates over each segment.
+
+  const vam = VAM_BY_SURFACE[surface] - GRAVITY_PENALTY_VAM * loadKg;
+  const flatKmh = FLAT_KMH_BY_SURFACE[surface] * (1 - AERO_PENALTY[surface] * loadKg);
+
+  const climbHours = elevM / Math.max(vam, 50);
+  const flatHours = distKm / Math.max(flatKmh, 3);
+
+  // The full ride is "flat distance" + "climbing time on top".
+  // (descents partially offset climbing — bake that into VAM already)
+  return flatHours + climbHours * 0.6;  // 0.6 because descents recover some time
+}
+
+// ===========================================================================
+// UI STATE
+// ===========================================================================
+
+const MAX_RIDES = 3;
+let rides = [];
+
+function newRide() {
+  return {
+    id: Math.random().toString(36).slice(2, 8),
+    surface: 'sealed',
+    distance: '',
+    elevation: '',
+    avgSpeed: '',
+    loadKg: 5
+  };
+}
+
+function addRide() {
+  if (rides.length >= MAX_RIDES) return;
+  rides.push(newRide());
+  render();
+}
+
+function removeRide(id) {
+  rides = rides.filter(r => r.id !== id);
+  if (rides.length === 0) rides.push(newRide());
+  render();
+}
+
+function updateRide(id, field, value) {
+  const r = rides.find(r => r.id === id);
+  if (!r) return;
+  r[field] = value;
+  computeAndRender();
+}
+
+// ===========================================================================
+// CALCULATION
+// ===========================================================================
+
+function calcRideFactor(ride) {
+  const d = parseFloat(ride.distance);
+  const e = parseFloat(ride.elevation);
+  const s = parseFloat(ride.avgSpeed);
+  const l = parseFloat(ride.loadKg) || 0;
+  if (!d || !s || d <= 0 || s <= 0) return null;
+  const elev = isFinite(e) ? e : 0;
+
+  const actualHours = d / s;
+  const predictedHours = predictTimeHours(d, elev, ride.surface, l);
+  if (predictedHours <= 0) return null;
+
+  // Factor > 1 means slower than baseline; factor < 1 means faster.
+  return actualHours / predictedHours;
+}
+
+function calcAggregateFactor() {
+  const valid = rides
+    .map(r => ({ride: r, factor: calcRideFactor(r), dist: parseFloat(r.distance) || 0}))
+    .filter(x => x.factor !== null);
+  if (valid.length === 0) return {factor: null, perRide: []};
+
+  // Weight by distance — a 200km ride should count more than a 30km one
+  const totalDist = valid.reduce((s, x) => s + x.dist, 0);
+  const weighted = valid.reduce((s, x) => s + x.factor * x.dist, 0);
+  return {
+    factor: weighted / totalDist,
+    perRide: valid.map((x, i) => ({
+      idx: rides.indexOf(x.ride) + 1,
+      factor: x.factor,
+      dist: x.dist,
+      surface: x.ride.surface
+    }))
+  };
+}
+
+// ===========================================================================
+// RENDERING
+// ===========================================================================
+
+function rideCardHTML(ride, idx) {
+  return `
+    <div class="ride-card" data-id="${ride.id}">
+      <h3><span class="badge">${idx + 1}</span> Reference ride</h3>
+      ${rides.length > 1 ? `<button class="remove" data-remove="${ride.id}">remove</button>` : ''}
+      <div class="field-grid">
+        <div class="field full">
+          <label>Surface</label>
+          <select data-id="${ride.id}" data-field="surface">
+            <option value="sealed" ${ride.surface==='sealed'?'selected':''}>Sealed road</option>
+            <option value="gravel" ${ride.surface==='gravel'?'selected':''}>Gravel / dirt road</option>
+            <option value="rough" ${ride.surface==='rough'?'selected':''}>Rough off-road / singletrack</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Distance</label>
+          <div class="input-with-unit">
+            <input type="number" inputmode="decimal" step="0.1" min="0"
+              data-id="${ride.id}" data-field="distance"
+              value="${ride.distance}" placeholder="e.g. 80">
+            <span class="unit">km</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Avg speed (Strava)</label>
+          <div class="input-with-unit">
+            <input type="number" inputmode="decimal" step="0.1" min="0"
+              data-id="${ride.id}" data-field="avgSpeed"
+              value="${ride.avgSpeed}" placeholder="e.g. 22.5">
+            <span class="unit">km/h</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Elevation gain</label>
+          <div class="input-with-unit">
+            <input type="number" inputmode="numeric" step="10" min="0"
+              data-id="${ride.id}" data-field="elevation"
+              value="${ride.elevation}" placeholder="e.g. 600">
+            <span class="unit">m</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Load (bike + gear)</label>
+          <div class="input-with-unit">
+            <input type="number" inputmode="numeric" step="0.5" min="0" max="40"
+              data-id="${ride.id}" data-field="loadKg"
+              value="${ride.loadKg}" placeholder="e.g. 5">
+            <span class="unit">kg</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  const ridesDiv = document.getElementById('rides');
+  ridesDiv.innerHTML = rides.map((r, i) => rideCardHTML(r, i)).join('');
+  document.getElementById('addBtn').disabled = rides.length >= MAX_RIDES;
+  if (rides.length >= MAX_RIDES) {
+    document.getElementById('addBtn').textContent = 'Maximum 3 rides';
+  } else {
+    document.getElementById('addBtn').textContent = '+ Add another reference ride';
+  }
+  computeAndRender();
+}
+
+function computeAndRender() {
+  const result = calcAggregateFactor();
+  const numEl = document.getElementById('factorNum');
+  const labelEl = document.getElementById('factorLabel');
+  const explainEl = document.getElementById('factorExplain');
+  const perRideEl = document.getElementById('perRide');
+  const saveBtn = document.getElementById('saveBtn');
+
+  if (result.factor === null) {
+    numEl.textContent = '—';
+    labelEl.textContent = 'add a ride to calculate';
+    explainEl.textContent = "A factor below 1.00 means you're faster than the model's baseline; above 1.00 means slower. PackTimes will use this when planning all your routes.";
+    perRideEl.innerHTML = '';
+    saveBtn.disabled = true;
+    return;
+  }
+
+  saveBtn.disabled = false;
+  const f = result.factor;
+  numEl.textContent = f.toFixed(2);
+  if (f < 0.95) {
+    labelEl.textContent = `you're ${Math.round((1-f)*100)}% faster than the baseline`;
+    numEl.style.color = 'var(--good)';
+  } else if (f > 1.05) {
+    labelEl.textContent = `you're ${Math.round((f-1)*100)}% slower than the baseline`;
+    numEl.style.color = 'var(--warn)';
+  } else {
+    labelEl.textContent = 'right around the baseline';
+    numEl.style.color = 'var(--accent)';
+  }
+
+  if (result.perRide.length > 1) {
+    explainEl.textContent = `Averaged across ${result.perRide.length} rides, weighted by distance.`;
+    perRideEl.innerHTML = result.perRide.map(p =>
+      `<div class="row"><span>Ride ${p.idx} (${p.surface}, ${p.dist} km)</span><span>${p.factor.toFixed(3)}</span></div>`
+    ).join('');
+  } else {
+    explainEl.textContent = "Add a couple more rides in different conditions for a more accurate factor.";
+    perRideEl.innerHTML = '';
+  }
+}
+
+// ===========================================================================
+// EVENTS
+// ===========================================================================
+
+document.getElementById('addBtn').addEventListener('click', addRide);
+
+document.addEventListener('input', e => {
+  const id = e.target.dataset.id;
+  const field = e.target.dataset.field;
+  if (id && field) updateRide(id, field, e.target.value);
+});
+
+document.addEventListener('change', e => {
+  const id = e.target.dataset.id;
+  const field = e.target.dataset.field;
+  if (id && field) updateRide(id, field, e.target.value);
+});
+
+document.addEventListener('click', e => {
+  const removeId = e.target.dataset.remove;
+  if (removeId) removeRide(removeId);
+});
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  const result = calcAggregateFactor();
+  if (result.factor !== null) {
+    alert(`Speed Factor saved: ${result.factor.toFixed(2)}\n\n(In the real app this would write to UI prefs and apply to all your routes.)`);
+  }
+});
+
+// Start with one empty ride
+rides.push(newRide());
+render();
+</script>
+</body>
+</html>
