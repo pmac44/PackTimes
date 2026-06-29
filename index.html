@@ -1793,7 +1793,9 @@ async function fetchOverpass(){
         const ohRaw=tags.opening_hours||null,ohRules=ohRaw?parseOH(ohRaw):null;
         const offM=Math.round(snap.off*1000);
         const offRoute=offM>50;
-        const offOpts=offRoute?{lat,lon,offRouteM:offM}:{};
+        // Always keep the real OSM coordinates so stops survive GPX edits;
+        // offRouteM stays null for on-route stops (it's only the off-route badge/connector flag).
+        const offOpts=offRoute?{lat,lon,offRouteM:offM}:{lat,lon};
 
         // Waterways: collect into 500m buckets, keep closest per bucket
         if(tags.waterway){
@@ -2043,7 +2045,8 @@ async function fetchAccommodation(){
     addStop(r,snap.dist,type,name,{
       auto:true,
       bookingUrl,
-      ...(offM>50?{lat,lon,offRouteM:offM}:{})
+      // Always keep real coordinates so the stop survives GPX edits; offRouteM is just the off-route badge flag.
+      lat,lon,...(offM>50?{offRouteM:offM}:{})
     });
     added++;
   });
@@ -5330,6 +5333,12 @@ document.getElementById('modal-ok').addEventListener('click',()=>{
   const stopName=name||fallbackName;
   const offRoute=_pendingOffRoute?{..._pendingOffRoute}:{};
   _pendingOffRoute=null;
+  // On-route stops have no pending coords — back-fill lat/lon from the route point at this
+  // distance so the stop survives GPX edits (off-route stops already carry their own coords).
+  if(offRoute.lat==null&&r.points.length){
+    const _pt=r.points[cidx(r,dist)];
+    if(_pt){offRoute.lat=_pt.lat;offRoute.lon=_pt.lon;}
+  }
   addStop(r,dist,t,stopName,{sleepH:isWakeMode?null:sleepH,departTime:isWakeMode?departTime:null,ohRaw,ohRules,...offRoute});
   saveAll();closeModal();render();
   if(t==='stop'&&!name){
@@ -11510,7 +11519,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v139';
+  const CACHE_NAME='packtimes-v140';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
