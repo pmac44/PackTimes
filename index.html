@@ -262,7 +262,7 @@ select option{background:var(--bg3);}
     <div id="qr-status" style="font-size:18px;color:var(--text2);margin-bottom:12px;"></div>
     <canvas id="qr-canvas" style="border-radius:8px;max-width:100%;"></canvas>
     <div id="qr-hint" style="font-size:17px;color:var(--text3);margin-top:10px;line-height:1.6;"></div>
-    <button class="btn btn-p btn-full" id="qr-json-dl" style="margin-top:12px;display:none;">📥 Download plan JSON instead</button>
+    <button class="btn btn-p btn-full" id="qr-json-dl" style="margin-top:12px;display:none;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download plan JSON instead</button>
   </div>
 </div>
 
@@ -7651,8 +7651,9 @@ function tRoutes(r){
     <div style="font-size:13px;color:var(--text3);line-height:1.4;margin-bottom:8px;">Upload a route file to plan stops along it, or create a blank plan to search an area.</div>
     <div style="display:flex;gap:6px;">
       <button class="btn btn-sm btn-p" id="btn-upload-route" style="flex:1;">↑ Upload GPX / TCX / KML / FIT</button>
-      <button class="btn btn-sm" id="btn-new-plan" style="white-space:nowrap;" title="Create a plan without a route">+ New Plan</button>
+      <button class="btn btn-sm" id="btn-new-plan" style="white-space:nowrap;" title="Start a plan with no route loaded — search an area and drop stops to scout a ride before you have a GPX">+ New Empty Plan</button>
     </div>
+    <button class="btn btn-sm btn-full" id="btn-open-ride-route" style="margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:7px;" title="Open a PackTimes ride file someone shared with you"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Open a shared ride file</button>
     <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
     ${ROUTES.length?ROUTES.map((rt,i)=>({rt,i})).reverse().map(({rt,i})=>{
       const autoCount=rt.turns?rt.turns.filter(t=>t.auto).length:0;
@@ -7690,7 +7691,8 @@ function tRoutes(r){
     `:''}
   </div>
   <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-input" style="display:none;">
-  <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-reload-input" style="display:none;">`;
+  <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-reload-input" style="display:none;">
+  <input type="file" id="ride-file-input" accept=".packtimes,.json,.txt" style="display:none;">`;
   if(!r)return routeList;
   if(!r.points.length)return routeList+`
   <div class="card" style="padding:14px;">
@@ -7964,15 +7966,12 @@ function tSettings(r){
 
   const offlineBody=`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;">Routes saved in IndexedDB — persists offline between sessions.</p>
-    <button class="btn btn-sm btn-full" id="btn-export" style="margin-top:9px;">📤 Export routes (JSON)</button>
-    <button class="btn btn-sm btn-p btn-full" id="btn-qr-export" style="margin-top:6px;">📱 Transfer plan to phone (QR)</button>
+    <button class="btn btn-sm btn-full" id="btn-export" style="margin-top:9px;display:inline-flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Export routes (JSON)</button>
+    <button class="btn btn-sm btn-p btn-full" id="btn-qr-export" style="margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="17"/><line x1="17" y1="14" x2="21" y2="14"/><line x1="21" y1="17" x2="21" y2="21"/><line x1="14" y1="21" x2="17" y2="21"/><line x1="17" y1="17" x2="17" y2="18"/></svg>Transfer plan to phone (QR)</button>
     <div style="font-size:16px;color:var(--text3);margin-top:5px;line-height:1.5;">Import a plan: load the same route file on your phone, then use Import Plan below.</div>
-    <button class="btn btn-sm btn-full" id="btn-import-plan" style="margin-top:6px;">📲 Import plan from file</button>
+    <button class="btn btn-sm btn-full" id="btn-import-plan" style="margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import plan from file</button>
     <input type="file" id="plan-file-input" accept=".json" style="display:none;">
-    <div style="border-top:1px solid var(--border);margin:14px 0 9px;"></div>
-    <div style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:7px;"><strong>Open a shared ride.</strong> Someone sent you a PackTimes ride file? Open it here — it's added as your own copy on the Route tab. (To share one of your rides, use the share button on its tile on the Route tab.)</div>
-    <button class="btn btn-sm btn-full" id="btn-open-ride" style="margin-top:2px;">📥 Open a shared ride file</button>
-    <input type="file" id="ride-file-input" accept=".packtimes,.json,.txt" style="display:none;">`;
+    <div style="font-size:13px;color:var(--text3);margin-top:9px;line-height:1.5;">Sharing a whole ride? Use the share button on a route's tile, and "Open a shared ride file" on the Route tab.</div>`;
 
   const offlineMapsBody=`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">PackTimes caches map tiles as you view them. Before heading into remote areas <strong>without internet</strong>, open the map on the Route or Stops tab and pan/zoom along your route — tiles you've viewed will be available offline.</p>
@@ -10527,6 +10526,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   if(e.target.closest('#btn-geoapify-clear')){UI.geoapifyKey=null;saveAll();render();return;}
   if(e.target.closest('#btn-upload-route')){document.getElementById('gpx-input').click();return;}
+  if(e.target.closest('#btn-open-ride-route')){document.getElementById('ride-file-input').click();return;}
   if(e.target.closest('#btn-new-plan')){createBlankPlan();return;}
   if(e.isTrusted&&(e.target.id==='btn-sim-start'||e.target.closest('#btn-sim-start')===e.target.parentElement)){const b=document.getElementById('btn-sim-start');if(b&&!b.disabled)simStart();return;}
   if(e.isTrusted&&(e.target.id==='btn-sim-pause'||e.target.closest('#btn-sim-pause')===e.target.parentElement)){simPause();return;}
@@ -10835,7 +10835,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-recstop-undo')){_recStopUndo();return;}
   if(e.target.closest('#btn-qr-export')){const r=cur();if(r)showQRModal(r);return;}
   if(e.target.closest('#btn-import-plan')){document.getElementById('plan-file-input').click();return;}
-  if(e.target.closest('#btn-open-ride')){document.getElementById('ride-file-input').click();return;}
   if(e.target.closest('#btn-clearall')){
     if(!confirm('Delete ALL routes, stops and settings? This cannot be undone.'))return;
     indexedDB.deleteDatabase('packtimes');
@@ -11646,7 +11645,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v142';
+  const CACHE_NAME='packtimes-v145';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
