@@ -6036,6 +6036,109 @@ async function decodePlanStr(encoded){
   return encoded; // raw JSON fallback
 }
 
+// ═══════════════════════════════════════════
+//  SHARE WHOLE RIDE (route + plan, one file)
+// ═══════════════════════════════════════════
+// Unlike exportPlan (stops only, needs the route pre-loaded), this bundles the
+// ENTIRE route — track points, turns, dates, pace settings — plus all stops, so
+// a recipient can open it cold with nothing loaded. Same PT1: deflate scheme as
+// the QR path. Produces an independent COPY on import: no live link back to us.
+function exportRideFileObj(r){
+  // packRoute compresses points to arrays and rounds cumRiding — reuse it so the
+  // bundle stays compact and matches exactly what unpackRoute expects on the way back in.
+  const packed=packRoute(r);
+  return {
+    _ride:1,
+    name:r.name,
+    label:r.label||r.name,
+    totalDist:r.totalDist,
+    hasTS:r.hasTS,
+    startDate:r.startDate,
+    startTime:r.startTime,
+    timeFactor:r.timeFactor,
+    baseTimeFactor:r.baseTimeFactor,
+    riderPreset:r.riderPreset,
+    loadPreset:r.loadPreset,
+    daySplitCount:r.daySplitCount,
+    adaptiveSpeed:r.adaptiveSpeed,
+    paceSegs:r.paceSegs||[],
+    turns:r.turns||[],
+    nearMissTurns:r.nearMissTurns||[],
+    points:packed.points,                 // already array-compressed by packRoute
+    stops:(r.stops||[]).map(s=>({
+      id:s.id,dist:s.dist,type:s.type,name:s.name,
+      sleepH:s.sleepH,sleepAt:s.sleepAt,ohRaw:s.ohRaw,auto:s.auto,starred:s.starred,
+      lat:s.lat,lon:s.lon,offRouteM:s.offRouteM,snapIdx:s.snapIdx,
+      population:s.population||null
+    })),
+  };
+}
+
+// Build the downloadable, deflate-compressed share string (PT1:) for a ride.
+async function buildRideShareStr(r){
+  const json=JSON.stringify(exportRideFileObj(r));
+  try{
+    const cs=new CompressionStream('deflate-raw');
+    const compressed=await new Response(new Blob([json]).stream().pipeThrough(cs)).arrayBuffer();
+    const bytes=new Uint8Array(compressed);
+    // Chunked btoa — a long route is too big for String.fromCharCode(...bytes) (call-stack limit).
+    let bin='';for(let i=0;i<bytes.length;i+=8192){bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));}
+    return 'PT1:'+btoa(bin);
+  }catch(e){
+    return 'PT0:'+btoa(encodeURIComponent(json));
+  }
+}
+
+// Trigger a download of the whole ride as a .packtimes file.
+async function shareRideFile(r){
+  if(!r){alert('Load a route first.');return;}
+  let str;
+  try{str=await buildRideShareStr(r);}
+  catch(e){alert('Could not build the share file.');return;}
+  const safe=(r.name||'ride').replace(/[^\w\-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'ride';
+  const blob=new Blob([str],{type:'application/octet-stream'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=safe+'.packtimes';
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+
+// Rebuild a shared ride bundle into a brand-new, independent route and switch to it.
+// Returns true on success. Adds rather than overwrites — the recipient keeps their
+// own routes, and this copy has no link back to the sender (Option 2: a copy).
+function importRideFile(obj){
+  if(!obj||obj._ride!==1||!Array.isArray(obj.points)||!obj.points.length){
+    alert('This file is not a PackTimes ride. (For a stops-only plan, use "Import plan from file".)');
+    return false;
+  }
+  const r=newRoute(obj.name||'Shared ride');
+  r.label=obj.label||obj.name||'Shared ride';
+  r.totalDist=obj.totalDist||0;
+  r.hasTS=!!obj.hasTS;
+  if(obj.startDate)r.startDate=obj.startDate;
+  if(obj.startTime)r.startTime=obj.startTime;
+  if(obj.timeFactor)r.timeFactor=obj.timeFactor;
+  if(obj.baseTimeFactor)r.baseTimeFactor=obj.baseTimeFactor;
+  if(obj.riderPreset)r.riderPreset=obj.riderPreset;
+  if(obj.loadPreset)r.loadPreset=obj.loadPreset;
+  if(obj.daySplitCount)r.daySplitCount=obj.daySplitCount;
+  if(obj.adaptiveSpeed!==undefined)r.adaptiveSpeed=obj.adaptiveSpeed;
+  r.paceSegs=obj.paceSegs||[];
+  r.turns=obj.turns||[];
+  r.nearMissTurns=obj.nearMissTurns||[];
+  r.stops=obj.stops||[];
+  r.points=obj.points;  // still array-compressed
+  // unpackRoute expands the compressed points, restores ohRules Sets, re-IDs any
+  // clashing stop IDs, and rebuilds cumRiding + estDuration from scratch.
+  const built=unpackRoute(r);
+  ROUTES.push(built);CUR=ROUTES.length-1;
+  UI.tab='routes';
+  delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
+  saveAll();render();
+  return true;
+}
+
 const TABS=[
   {id:'routes',icon:'≡',label:'Route'},
   {id:'stops',icon:'⊙',label:'Stops'},
@@ -7572,6 +7675,7 @@ function tRoutes(r){
         +'<button class="btn btn-sm rename-route" data-ridx="'+i+'" title="Rename">'+ICON_EDIT+'</button>'
         +'<button class="btn btn-sm route-turns-btn" data-ridx="'+i+'" title="Turn navigation" style="display:inline-flex;align-items:center;">'+turnLabel+'</button>'
         +'<button class="btn btn-sm dl-tiles-btn" data-ridx="'+i+'" title="Download offline map tiles" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-family:var(--font);"'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?' disabled':'')+'>'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?'<div class="spin" style="width:14px;height:14px;"></div> Downloading…':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Offline map')+'</button>'
+        +'<button class="btn btn-sm share-route" data-ridx="'+i+'" title="Share this ride (route + plan)" style="display:inline-flex;align-items:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>'
         +'<button class="btn btn-sm reload-route" data-ridx="'+i+'" title="Update route (reimport GPX)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>'
         +'<button class="btn btn-sm btn-r del-route" data-ridx="'+i+'" style="margin-left:auto;">✕</button>'
         +'</div>'
@@ -7864,7 +7968,11 @@ function tSettings(r){
     <button class="btn btn-sm btn-p btn-full" id="btn-qr-export" style="margin-top:6px;">📱 Transfer plan to phone (QR)</button>
     <div style="font-size:16px;color:var(--text3);margin-top:5px;line-height:1.5;">Import a plan: load the same route file on your phone, then use Import Plan below.</div>
     <button class="btn btn-sm btn-full" id="btn-import-plan" style="margin-top:6px;">📲 Import plan from file</button>
-    <input type="file" id="plan-file-input" accept=".json" style="display:none;">`;
+    <input type="file" id="plan-file-input" accept=".json" style="display:none;">
+    <div style="border-top:1px solid var(--border);margin:14px 0 9px;"></div>
+    <div style="font-size:16px;color:var(--text2);line-height:1.6;margin-bottom:7px;"><strong>Open a shared ride.</strong> Someone sent you a PackTimes ride file? Open it here — it's added as your own copy on the Route tab. (To share one of your rides, use the share button on its tile on the Route tab.)</div>
+    <button class="btn btn-sm btn-full" id="btn-open-ride" style="margin-top:2px;">📥 Open a shared ride file</button>
+    <input type="file" id="ride-file-input" accept=".packtimes,.json,.txt" style="display:none;">`;
 
   const offlineMapsBody=`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">PackTimes caches map tiles as you view them. Before heading into remote areas <strong>without internet</strong>, open the map on the Route or Stops tab and pan/zoom along your route — tiles you've viewed will be available offline.</p>
@@ -9848,7 +9956,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;}
   // Route list select
   const rli=e.target.closest('.rli');
-  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('.reload-route')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
+  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('.reload-route')&&!e.target.closest('.share-route')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
     const newIdx=+rli.dataset.ridx;
     if(newIdx!==CUR&&IS_DESKTOP()){
       // Reset desktop map so it zooms to fit the newly selected route
@@ -9950,6 +10058,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   const dlBtn=e.target.closest('.dl-tiles-btn');
   if(dlBtn){const i=+dlBtn.dataset.ridx;startTileDownload(i);return;}
   // Reload/update route
+  const shBtn=e.target.closest('.share-route');
+  if(shBtn){const i=+shBtn.dataset.ridx;shareRideFile(ROUTES[i]);return;}
   const rlBtn=e.target.closest('.reload-route');
   if(rlBtn){const i=+rlBtn.dataset.ridx;_reloadRouteIdx=i;document.getElementById('gpx-reload-input').click();return;}
   // Delete route
@@ -10725,6 +10835,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-recstop-undo')){_recStopUndo();return;}
   if(e.target.closest('#btn-qr-export')){const r=cur();if(r)showQRModal(r);return;}
   if(e.target.closest('#btn-import-plan')){document.getElementById('plan-file-input').click();return;}
+  if(e.target.closest('#btn-open-ride')){document.getElementById('ride-file-input').click();return;}
   if(e.target.closest('#btn-clearall')){
     if(!confirm('Delete ALL routes, stops and settings? This cannot be undone.'))return;
     indexedDB.deleteDatabase('packtimes');
@@ -10962,6 +11073,22 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
       let planStr=ev.target.result;
       if(planStr.startsWith('PT1:')||planStr.startsWith('PT0:'))planStr=await decodePlanStr(planStr);
       if(importPlan(planStr,r)){saveAll();render();alert('Plan imported successfully.');}
+      e.target.value='';
+    };
+    reader.readAsText(f);
+  }
+  if(e.target.id==='ride-file-input'){
+    const f=e.target.files[0];if(!f)return;
+    const reader=new FileReader();
+    reader.onload=async ev=>{
+      let str=ev.target.result;
+      try{
+        if(str.startsWith('PT1:')||str.startsWith('PT0:'))str=await decodePlanStr(str);
+        const obj=JSON.parse(str);
+        if(importRideFile(obj))alert('Ride added. You\'ll find it on the Route tab — it\'s your own copy.');
+      }catch(err){
+        alert('Could not read that file — it doesn\'t look like a PackTimes ride.');
+      }
       e.target.value='';
     };
     reader.readAsText(f);
@@ -11519,7 +11646,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v140';
+  const CACHE_NAME='packtimes-v142';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
