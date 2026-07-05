@@ -9426,7 +9426,7 @@ function printMission(){
         <td style="padding:6px 8px;font-size:13px;color:#666;">${s.dist.toFixed(1)}</td>
         <td style="padding:6px 8px;font-size:14px;font-weight:${isSleep?'600':'400'};">${s.icon||'📍'} ${s.name}${chips?'<br><span style="font-size:11px;color:#888;">'+chips+'</span>':''}</td>
         <td style="padding:6px 8px;font-size:13px;">${eta?fmtDT(eta):''}</td>
-        <td style="padding:6px 8px;font-size:13px;color:#666;">${isSleep?(s.sleepH||10)+'h sleep':''}</td>
+        <td style="padding:6px 8px;font-size:13px;color:#666;">${isSleep?(+sleepHoursFor(s,eta).toFixed(1))+'h sleep':''}</td>
       </tr>`;
     });
   });
@@ -11645,7 +11645,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v146';
+  const CACHE_NAME='packtimes-v147';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
