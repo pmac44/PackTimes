@@ -1285,7 +1285,7 @@ function startDT(r){
 }
 // Get effective sleep hours for a stop — handles fixed departure time
 function sleepHoursFor(s,arrivalEta){
-  if(!s.departTime)return s.sleepH||(s.sleepAt||s.type==='stop'||s.type==='sleep'?10:0);
+  if(!s.departTime)return s.sleepH||(s.sleepAt||s.type==='sleep'?10:0);
   // Fixed wake time mode — calculate hours from arrival to next occurrence of wakeTime
   const [dh,dm]=s.departTime.split(':').map(Number);
   if(!arrivalEta)return s.sleepH||10;
@@ -4828,7 +4828,7 @@ function drawElev(cvs,r){
   for(let i=1;i<pts.length;i++)ctx.lineTo(x(i),y(i));
   ctx.strokeStyle='#a855f7';ctx.lineWidth=1.5;ctx.stroke();
   // Sleep stop markers
-  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='stop'||s.sleepAt);
+  const sleepStops=r.stops.filter(s=>s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt);
   sleepStops.forEach(s=>{
     const sx=xd(s.dist);
     const pi=pts.reduce((bi,p,i)=>Math.abs(p.dist-s.dist)<Math.abs(pts[bi].dist-s.dist)?i:bi,0);
@@ -5606,7 +5606,7 @@ function renderDesktopMap(){
       const x=ex(s.dist);
       const nearPt=epts.reduce((best,p)=>Math.abs(p.dist-s.dist)<Math.abs(best.dist-s.dist)?p:best,epts[0]);
       const y=ey(nearPt.ele);
-      const isSleep=s.type==='sleep'||s.type==='stop'||s.sleepAt;
+      const isSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
       ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
       ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
       ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=0.5;ctx.stroke();
@@ -9041,7 +9041,7 @@ function tPlan(r){
   if(finEta&&sdt)summaryParts.push('<span style="color:var(--accent);">Finish '+fmtT(finEta)+dayOff(finEta,sdt)+'</span>');
   // Sleep per night + unplanned nights warning
   const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;
-  const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.type==='stop'||s.sleepAt).length;
+  const sleepStops=r.stops.filter(s=>s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt).length;
   let sleepExtra='';
   if(nights>0&&totalSleepH){
     const avgSleep=(totalSleepH/sleepStops).toFixed(1);
@@ -9420,7 +9420,7 @@ function printMission(){
     const stops=sleepStops.length?sleepStops:[...nonSleepStops];
     stops.forEach(s=>{
       const eta=sdt?etaAt(s.dist,r):null;
-      const isSleep=s.type==='sleep'||s.type==='stop'||s.sleepAt;
+      const isSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
       const chips=nonSleepStops.length&&isSleep?nonSleepStops.map(x=>`<span style="display:inline-block;background:#f0f0f0;border-radius:4px;padding:1px 6px;font-size:11px;margin:1px;">${x.icon||'📍'} ${x.name}</span>`).join(' '):'';
       rows+=`<tr style="border-bottom:1px solid #ddd;${isSleep?'background:#f3f0ff;':''}">
         <td style="padding:6px 8px;font-size:13px;color:#666;">${s.dist.toFixed(1)}</td>
@@ -11645,7 +11645,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v145';
+  const CACHE_NAME='packtimes-v146';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
