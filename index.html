@@ -4157,8 +4157,10 @@ function drawMap(cvs,r,opts){
   r.stops.forEach(s=>{
     const isSleepRelated=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
     const isOnMap=cvs.id==='desktop-map'||cvs.id==='stops-map';
+    const isFoodRelated=!!(s.meals&&s.meals.length);
     const hiddenByType=(UI.hiddenMapTypes.has(s.type))&&isOnMap
-      &&!(isSleepRelated&&!UI.hiddenMapTypes.has('allsleep')&&isOnMap);
+      &&!(isSleepRelated&&!UI.hiddenMapTypes.has('allsleep')&&isOnMap)
+      &&!(isFoodRelated&&!UI.hiddenMapTypes.has('allfood')&&isOnMap);
     const savedByMission=isOnMap&&!UI.hiddenMapTypes.has('mission')&&(s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH)));
     const isHidden=hiddenByType&&!savedByMission;
     const isHighlighted=opts.highlightId&&String(opts.highlightId)===String(s.id);
@@ -7262,6 +7264,7 @@ const LAYER_TYPES=[
   {type:'town',col:'#4ade80',label:'Towns'},
   {type:'weather',col:'#60a5fa',label:'ETA Weather'},
   {type:'allsleep',col:'#b39ddb',label:'All sleep'},
+  {type:'allfood',col:'#fbbf24',label:'All food'},
   {type:'mission',col:'#ffffff',label:'Mission'},
   {type:'stop',col:'#94856a',label:'Manual Stops'},
   {type:'water',col:'#60a5fa',label:'Water'},
@@ -7289,7 +7292,7 @@ const LAYER_TYPES=[
   {type:'daysplit',col:'#2dd4bf',label:'Day splits'},
 ];
 function sortedLayers(r){
-  const PRIORITY=['daysplit','kmmarkers','turns','town','weather','mission','allsleep','stop','water','sleep','hike'];
+  const PRIORITY=['daysplit','kmmarkers','turns','town','weather','mission','allsleep','allfood','stop','water','sleep','hike'];
   const counts={};
   (r?r.stops:[]).forEach(s=>{counts[s.type]=(counts[s.type]||0)+1;});
   const present=new Set(r?r.stops.map(s=>s.type):[]);
@@ -7297,6 +7300,7 @@ function sortedLayers(r){
   present.add('kmmarkers');
   if(r&&r.points.length)present.add('weather');
   if(r&&r.stops.some(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))))present.add('allsleep');
+  if(r&&r.stops.some(s=>s.meals&&s.meals.length))present.add('allfood');
   if(r&&r.stops.some(s=>s.type==='stop'))present.add('stop');
   if(r&&r.stops.some(s=>s.starred!==false))present.add('mission');
   if(r&&r.paceSegs&&r.paceSegs.length)present.add('hike');
