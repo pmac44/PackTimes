@@ -4396,8 +4396,10 @@ function attachMap(cvs,tapCb){
     e.preventDefault();
     const factor=e.deltaY<0?1.25:0.8;
     const rect=cvs.getBoundingClientRect();
-    const mouseX=(e.clientX-rect.left)*(cvs.width/rect.width);
-    const mouseY=(e.clientY-rect.top)*(cvs.height/rect.height);
+    // CSS pixel coords — the map projection (_px/_py/_W/_H) works in CSS pixels,
+    // so no dpr conversion here or the zoom anchor drifts on scaled displays
+    const mouseX=e.clientX-rect.left;
+    const mouseY=e.clientY-rect.top;
     zoomMap(id,factor,mouseX,mouseY);
   },{passive:false});
 
@@ -11698,7 +11700,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v150';
+  const CACHE_NAME='packtimes-v151';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
