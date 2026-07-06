@@ -1689,8 +1689,8 @@ async function fetchSurfaceData(force){
   const result=new Array(samples.length).fill(null);
   const sampleIdxMap=new Map(samples.map((s,i)=>[s,i]));
   let lastErr='';
-  // Main overpass-api.de instance first — most reliable. mail.ru last: often very slow from Australia.
-  const SURF_MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  // kumi first — empirically fast from Australia (Jul 2026); overpass-api.de often queues.
+  const SURF_MIRRORS=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   let goodMirror=null; // sticky: once a mirror answers, use it first for the remaining chunks
   for(let ci=0;ci<chunks.length;ci++){
     const chunk=chunks[ci];
@@ -1714,8 +1714,9 @@ async function fetchSurfaceData(force){
     const mirrorOrder=goodMirror?[goodMirror,...SURF_MIRRORS.filter(m=>m!==goodMirror)]:SURF_MIRRORS;
     for(const mirror of mirrorOrder){
       const abort=new AbortController();
-      // Hard client-side cap — a hung mirror must fail over, not stall the whole fetch
-      const abortTimer=setTimeout(()=>abort.abort(),28000);
+      // Hard client-side cap — a healthy mirror answers the thin corridor query in
+      // 2-5 s, so anything past 12 s is queueing; fail over rather than wait
+      const abortTimer=setTimeout(()=>abort.abort(),12000);
       const t0=Date.now();
       try{
         // POST — the corridor polyline makes the query too long for a GET URL
@@ -11757,7 +11758,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v157';
+  const CACHE_NAME='packtimes-v159';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
