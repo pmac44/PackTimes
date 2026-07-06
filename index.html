@@ -576,6 +576,7 @@ const newRoute=name=>({
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
   calibRides:[],   // Advanced Calibration sample rides — global (rider property, not route)
+  estModeAdv:false, // Basic vs Advanced estimation — global (rider property, not route); syncs via plan.json
   ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
@@ -655,7 +656,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[]}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -696,7 +697,15 @@ async function loadAll(){
       if(prefs.recMinMoveM)UI.recMinMoveM=prefs.recMinMoveM;
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
       if(Array.isArray(prefs.calibRides))UI.calibRides=prefs.calibRides;
+      if(prefs.estModeAdv!==undefined)UI.estModeAdv=prefs.estModeAdv;
     }
+    // Estimation mode is global (v166). Older versions stored it per-route as
+    // riderPreset='custom' — if the pref was never saved, infer it from the routes
+    // so nobody's choice is lost on upgrade.
+    if((!prefs||prefs.estModeAdv===undefined)&&ROUTES.some(rt=>rt&&rt.riderPreset==='custom'))UI.estModeAdv=true;
+    // Routes were unpacked before prefs (calibRides + mode) were known — rebuild
+    // so Advanced times are correct from first render, not stuck on the Regular fallback
+    if(UI.estModeAdv)for(const rt of ROUTES)rebuildPace(rt);
     // Rehydrate active recording (if any) from IDB
     await _recRehydrate().catch(()=>{});
     // Restore last known GPS position so ride progress is visible before GPS reconnects
@@ -1203,6 +1212,12 @@ function calibRiderMult(){
   const f=calibFactor();
   return f===null?null:{vam:1/f,spd:1/f};
 }
+function riderSimplePreset(r){
+  // Legacy plans stored Advanced mode per-route as riderPreset='custom'; the mode
+  // is global now (UI.estModeAdv), so resolve those to their stashed simple preset.
+  const p=r&&r.riderPreset;
+  return p==='custom'?((r&&r.riderPresetSimple)||'regular'):(p||'regular');
+}
 
 function surfaceCatAt(midDist,r){
   if(!r||!r.surfaceSegs||!r.surfaceSegs.length)return null;
@@ -1243,9 +1258,9 @@ function naismith(pts,d,r){
 function buildCumRiding(pts,paceSegs,r){
   if(!pts||pts.length<2)return null;
   paceSegs=paceSegs||[];
-  // 'custom' = Advanced Calibration; falls back to Regular if no samples exist
-  // (e.g. route synced to a device that hasn't entered calibration rides)
-  const rm=((r&&r.riderPreset)==='custom'?calibRiderMult():null)||RIDER_MULT[(r&&r.riderPreset)||'regular']||RIDER_MULT.regular;
+  // Advanced Calibration is a global mode (not per-route); falls back to the route's
+  // simple preset if no samples exist (e.g. a device that hasn't entered calibration rides)
+  const rm=(UI.estModeAdv?calibRiderMult():null)||RIDER_MULT[riderSimplePreset(r)]||RIDER_MULT.regular;
   const lm=LOAD_MULT[(r&&r.loadPreset)||'moderate']||LOAD_MULT.moderate;
   // Surface-aware elevation smoothing — GPS noise is worse on smooth sealed roads
   // than on rough tracks where elevation changes are real terrain variation
@@ -5464,13 +5479,10 @@ function _calibRenderModal(){
 function saveCalibModal(){
   const valid=_calibDraft.map(_calibDraftToRide).filter(s=>calibRideFactor(s)!==null);
   UI.calibRides=valid;
-  const r=cur();
-  if(r&&valid.length&&r.riderPreset!=='custom'){
-    r.riderPresetSimple=r.riderPreset;
-    r.riderPreset='custom';
-  }
-  // Calibration is global — rebuild every route that uses it
-  for(const rt of ROUTES){if(rt.riderPreset==='custom')rebuildPace(rt);}
+  // Entering sample rides means you want to use them — switch to Advanced globally
+  if(valid.length)UI.estModeAdv=true;
+  // Calibration and mode are global — rebuild every route when Advanced is active
+  if(UI.estModeAdv)for(const rt of ROUTES)rebuildPace(rt);
   saveAll();
   closeCalibModal();
   if(document.getElementById('speed-modal').style.display==='flex')_speedRefresh();
@@ -5485,9 +5497,9 @@ function saveCalibModal(){
 function _speedSummaryHTML(r){
   if(!r)return'';
   const f=calibFactor();
-  const adv=r.riderPreset==='custom';
+  const adv=UI.estModeAdv;
   const riderLbl=adv?(f!==null?`Calibrated ${f.toFixed(2)} ×`:'Calibrated — no samples yet')
-    :(({social:'Social',regular:'Regular',strong:'Strong'})[r.riderPreset]||'Regular')+' rider';
+    :(({social:'Social',regular:'Regular',strong:'Strong'})[riderSimplePreset(r)]||'Regular')+' rider';
   const loadLbl=({heavy:'Heavy',moderate:'Moderate',light:'Light'})[r.loadPreset]||'Moderate';
   const avg=(r.estDuration&&r.totalDist)?(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1):null;
   return `${avg?`<div style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);margin-bottom:10px;">${avg} km/h avg</div>`:''}
@@ -5509,14 +5521,14 @@ function _speedLiveHTML(r){
   </div>`;
 }
 function _speedControlsHTML(r){
-  const adv=r.riderPreset==='custom';
+  const adv=UI.estModeAdv;
   const f=calibFactor();
   const tabBtn=(mode,label,active)=>`<button class="btn btn-sm" onclick="speedSetMode('${mode}')" style="flex:1;justify-content:center;font-size:13px;padding:6px 4px;${active?'border-color:var(--accent);color:var(--accent);':''}">${label}</button>`;
   let riderBody;
   if(!adv){
     riderBody=`<div style="display:flex;gap:6px;">
       ${[['social','Social','Relaxed pace, enjoy the scenery'],['regular','Regular','Steady endurance pace'],['strong','Strong','Hard effort, competitive pace']].map(([val,label,sub])=>`
-        <button class="btn btn-sm" onclick="speedSetRider('${val}')" style="flex:1;flex-direction:column;gap:2px;padding:6px 4px;text-align:center;align-items:center;min-height:52px;${r.riderPreset===val?'border-color:var(--accent);color:var(--accent);':''}">
+        <button class="btn btn-sm" onclick="speedSetRider('${val}')" style="flex:1;flex-direction:column;gap:2px;padding:6px 4px;text-align:center;align-items:center;min-height:52px;${riderSimplePreset(r)===val?'border-color:var(--accent);color:var(--accent);':''}">
           <span style="font-size:14px;font-weight:600;font-family:var(--font);">${label}</span>
           <span style="font-size:10px;color:var(--text3);white-space:normal;line-height:1.3;">${sub}</span>
         </button>`).join('')}
@@ -5593,14 +5605,12 @@ function _speedRefresh(){
   patchSpeedFactor(r); // keeps finish time + stats block on the Routes tab current
 }
 function speedSetMode(mode){
-  const r=cur();if(!r)return;
-  if(mode==='adv'&&r.riderPreset!=='custom'){
-    r.riderPresetSimple=r.riderPreset;
-    r.riderPreset='custom';
-    rebuildPace(r);saveAll();
-  } else if(mode==='simple'&&r.riderPreset==='custom'){
-    r.riderPreset=r.riderPresetSimple||'regular';
-    rebuildPace(r);saveAll();
+  const want=(mode==='adv');
+  if(UI.estModeAdv!==want){
+    UI.estModeAdv=want;
+    // Mode is global — every route's ETAs move with it
+    for(const rt of ROUTES)rebuildPace(rt);
+    saveAll();
   }
   _speedRefresh();
 }
@@ -6361,7 +6371,7 @@ async function dbxSave(auto){
   if(!auto)dbxSetStatus('Saving…');
   try{
     const now=Date.now();
-    const data={_v:2,savedAt:now,cur:CUR>=0?ROUTES[CUR].id:null,routes:ROUTES.map(packRoute),calibRides:UI.calibRides||[]};
+    const data={_v:2,savedAt:now,cur:CUR>=0?ROUTES[CUR].id:null,routes:ROUTES.map(packRoute),calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv};
     const res=await fetch('https://content.dropboxapi.com/2/files/upload',{
       method:'POST',
       headers:{
@@ -6410,21 +6420,20 @@ async function dbxLoad(force){
     if(!force&&cloudTime<=localTime&&localTime>0){
       dbxSetStatus('☁️ Synced — local is up to date');return;
     }
+    // Advanced Calibration rides + estimation mode ride along in plan.json.
+    // Apply them BEFORE unpacking routes so times are built with the fresh
+    // factor/mode. (Guards keep local values if an older app wrote the plan.)
+    if(Array.isArray(data.calibRides))UI.calibRides=data.calibRides;
+    if(typeof data.estModeAdv==='boolean')UI.estModeAdv=data.estModeAdv;
+    {
+      const prefs=await DB.getKV('uiPrefs').catch(()=>null)||{};
+      prefs.calibRides=UI.calibRides;prefs.estModeAdv=UI.estModeAdv;
+      await DB.setKV('uiPrefs',prefs).catch(()=>{});
+    }
     ROUTES=data.routes.map(unpackRoute);
     const idx=data.cur?ROUTES.findIndex(r=>r.id===data.cur):-1;
     CUR=idx>=0?idx:(ROUTES.length?0:-1);
     UI.dbxSavedAt=cloudTime;
-    // Advanced Calibration rides ride along in plan.json (guard keeps local
-    // calibration if an older app version wrote a plan without the field)
-    if(Array.isArray(data.calibRides)){
-      UI.calibRides=data.calibRides;
-      const prefs=await DB.getKV('uiPrefs').catch(()=>null)||{};
-      prefs.calibRides=UI.calibRides;
-      await DB.setKV('uiPrefs',prefs).catch(()=>{});
-      // Routes using Advanced Calibration need their times rebuilt with the
-      // freshly loaded factor
-      for(const rt of ROUTES)if(rt.riderPreset==='custom')rebuildPace(rt);
-    }
     // Save locally only — do NOT call dbxScheduleSave; we just loaded from cloud
     // so there is nothing new to write back. Calling saveAll() here would trigger
     // another upload and start a ping-pong loop between devices.
@@ -12229,7 +12238,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v165';
+  const CACHE_NAME='packtimes-v166';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
