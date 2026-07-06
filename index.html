@@ -1630,7 +1630,7 @@ function snapToWay(lat,lon,ways,maxOffM){
       const nx=ax+t*dx,ny=ay+t*dy;
       const dlat=(lat-ny)*deg2rad*R,dlon=(lon-nx)*Math.cos(lat*deg2rad)*deg2rad*R;
       const d=Math.sqrt(dlat*dlat+dlon*dlon);
-      if(d<bd){bd=d;best={cat:w.cat,offM:d};}
+      if(d<bd){bd=d;best={cat:w.cat,guess:w.guess,offM:d};}
     }
   });
   return best&&best.offM<=maxOffM?best:null;
@@ -1689,51 +1689,83 @@ async function fetchSurfaceData(force){
   const result=new Array(samples.length).fill(null);
   const sampleIdxMap=new Map(samples.map((s,i)=>[s,i]));
   let lastErr='';
-  const SURF_MIRRORS=['https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
+  // Main overpass-api.de instance first — most reliable. mail.ru last: often very slow from Australia.
+  const SURF_MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   for(let ci=0;ci<chunks.length;ci++){
     const chunk=chunks[ci];
     UI.surfaceMsg=`Fetching surface data\u2026 ${ci+1}/${chunks.length}`;
     const msgEl=document.getElementById('surface-status-msg');
     if(msgEl)msgEl.textContent=UI.surfaceMsg;
-    const lats=chunk.map(p=>p.lat),lons=chunk.map(p=>p.lon);
-    const buf=0.001;
-    const bb=`${(Math.min(...lats)-buf).toFixed(5)},${(Math.min(...lons)-buf).toFixed(5)},${(Math.max(...lats)+buf).toFixed(5)},${(Math.max(...lons)+buf).toFixed(5)}`;
-    const q=`[out:json][timeout:30][maxsize:16000000];(`+
-      `way["highway"="primary"](${bb});way["highway"="secondary"](${bb});`+
-      `way["highway"="tertiary"](${bb});way["highway"="unclassified"](${bb});`+
-      `way["highway"="residential"](${bb});way["highway"="service"](${bb});`+
-      `way["highway"="track"](${bb});way["highway"="path"](${bb});`+
-      `way["highway"="footway"](${bb});way["highway"="bridleway"](${bb});`+
-      `way["highway"="cycleway"](${bb});way["highway"="trunk"](${bb});`+
-      `);out geom qt tags;`;
+    // Corridor query — only ways within ~80 m of the route line. Vastly less
+    // data than the old bounding-box query, which pulled every road/footpath
+    // in the whole rectangular region (huge near towns, and very slow).
+    const poly=chunk.map(p=>p.lat.toFixed(5)+','+p.lon.toFixed(5)).join(',');
+    const q=`[out:json][timeout:30][maxsize:16000000];`+
+      `way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|track|path|footway|bridleway|cycleway)$"]`+
+      `(around:80,${poly});out geom qt tags;`;
     let fetched=false;
     for(const mirror of SURF_MIRRORS){
+      const abort=new AbortController();
+      // Hard client-side cap — a hung mirror must fail over, not stall the whole fetch
+      const abortTimer=setTimeout(()=>abort.abort(),35000);
       try{
-        const res=await fetch(mirror+'?data='+encodeURIComponent(q),{mode:'cors'});
+        // POST — the corridor polyline makes the query too long for a GET URL
+        const res=await fetch(mirror,{method:'POST',mode:'cors',signal:abort.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
         if(!res.ok)throw new Error('HTTP '+res.status);
         const json=await res.json();
-        const ways=json.elements.filter(el=>el.type==='way'&&el.geometry&&el.geometry.length>1).map(el=>({
-          nodes:el.geometry.map(n=>({lat:n.lat,lon:n.lon})),
-          cat:surfaceCategory(el.tags?.highway,el.tags?.tracktype,el.tags?.surface),
-        })).filter(w=>w.cat!==null);
+        const ways=json.elements.filter(el=>el.type==='way'&&el.geometry&&el.geometry.length>1).map(el=>{
+          const cat=surfaceCategory(el.tags?.highway,el.tags?.tracktype,el.tags?.surface);
+          // guess = minor road with no surface tag — "sealed" is only an assumption,
+          // eligible for neighbour-based inference below
+          return{
+            nodes:el.geometry.map(n=>({lat:n.lat,lon:n.lon})),
+            cat,
+            guess:cat==='road_minor'&&!el.tags?.surface,
+          };
+        }).filter(w=>w.cat!==null);
         chunk.forEach(s=>{
           const idx=sampleIdxMap.get(s);
           if(idx===undefined||result[idx]!==null)return;
           const snap=snapToWay(s.lat,s.lon,ways,MAX_OFF_M);
-          result[idx]=snap?snap.cat:null;
+          result[idx]=snap?{cat:snap.cat,guess:!!snap.guess}:null;
         });
         fetched=true;break;
-      }catch(e){lastErr=e.message;}
+      }catch(e){lastErr=e.name==='AbortError'?'timeout':e.message;}
+      finally{clearTimeout(abortTimer);}
     }
     if(!fetched){UI.surfaceStatus='error';UI.surfaceMsg=`Surface fetch failed (${lastErr})`;renderKeepScroll();return;}
     await new Promise(res=>setTimeout(res,300));
   }
+  // Neighbour inference for untagged minor roads: if the nearest confidently-known
+  // surface on either side of an untagged stretch is dirt, assume the stretch is
+  // dirt too (roads rarely change surface exactly where an OSM way happens to end).
+  // Explicitly tagged surfaces are never overridden. If both sides are dirt, take
+  // the rougher — conservative for pacing.
+  const ROUGHNESS=['road','road_minor','grade1','grade2','grade3','grade4','grade5','path'];
+  const isDirtCat=c=>ROUGHNESS.indexOf(c)>=3; // grade2 and rougher
+  let gi=0;
+  while(gi<result.length){
+    if(result[gi]&&result[gi].guess){
+      let ge=gi;while(ge<result.length&&result[ge]&&result[ge].guess)ge++;
+      let L=gi-1;while(L>=0&&(!result[L]||result[L].guess))L--;
+      let R=ge;while(R<result.length&&(!result[R]||result[R].guess))R++;
+      const lc=L>=0&&result[L]?result[L].cat:null;
+      const rc=R<result.length&&result[R]?result[R].cat:null;
+      const dirt=[lc,rc].filter(c=>c&&isDirtCat(c));
+      if(dirt.length){
+        const cat=dirt.sort((a,b)=>ROUGHNESS.indexOf(b)-ROUGHNESS.indexOf(a))[0];
+        for(let k=gi;k<ge;k++)if(result[k])result[k]={cat,guess:false};
+      }
+      gi=ge;
+    } else gi++;
+  }
+  const cats=result.map(v=>v?v.cat:null);
   const segs=[];
-  let runCat=result[0],runFrom=samples[0].dist;
+  let runCat=cats[0],runFrom=samples[0].dist;
   for(let i=1;i<samples.length;i++){
-    if(result[i]!==runCat){
+    if(cats[i]!==runCat){
       if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[i-1].dist,cat:runCat});
-      runCat=result[i];runFrom=samples[i].dist;
+      runCat=cats[i];runFrom=samples[i].dist;
     }
   }
   if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[samples.length-1].dist,cat:runCat});
@@ -11710,7 +11742,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v153';
+  const CACHE_NAME='packtimes-v156';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
