@@ -490,9 +490,12 @@ select option{background:var(--bg3);}
       <button class="btn btn-sm" onclick="closeCalibModal()">✕</button>
     </div>
     <p style="font-size:13px;color:var(--text3);line-height:1.55;margin:0 0 12px;">
-      Enter rides you've actually done — steady endurance rides, not short hard efforts.
+      Enter rides you've actually done, ridden <b style="color:var(--text2);">the way you'd ride the event you're planning</b> — steady all-day endurance pace, long enough to be honest.
+      Don't use sprints or segment PBs ridden flat out; a short maximum effort will make every plan optimistic.
       Each sample should be <b style="color:var(--text2);">mostly one surface</b>.
-      A section of a longer ride is fine: enter just that section's distance, moving time and climb.
+      A section of a longer ride or a Strava segment works well — shorter sections make a single surface more likely.
+      Set each sample's <b style="color:var(--text2);">section shape</b>: rolling/loop for sections finishing near their start height, or mostly-climbing for climb segments.
+      Avoid mostly-downhill sections — they measure braking, not fitness.
       Use <b style="color:var(--text2);">moving time</b> from Strava or your head unit, not elapsed time.
     </p>
     <div id="calib-rides-wrap"></div>
@@ -1141,15 +1144,20 @@ const LOAD_MULT={
 //   {surface:'road'|'grade2'|'grade4', distKm, hours, elevM, load:'light'|'moderate'|'heavy'}
 // Each sample is corrected for the load carried that day, so the aggregate is a
 // pure rider-ability factor. The route's own Load preset still applies on top.
-const CALIB_MAX_RIDES=3;
-function calibPredictH(distKm,elevM,surface,load){
-  // Predict the sample ride with the SAME segment model the planner uses,
-  // on a synthetic profile: one climb + matching descent at a typical grade
-  // for the surface, remainder flat. Self-consistent with segTimeH by
-  // construction — a rider who matches the baseline gets factor ≈ 1.00.
-  // Baseline rider = Regular (1.0); load mult corrects for the sample's load.
+const CALIB_MAX_RIDES=10;
+function calibPredictH(distKm,elevM,surface,load,profile){
+  // Predict the sample ride with the SAME segment model the planner uses.
+  // profile 'rolling' (default): synthetic loop — one climb + matching descent
+  // at a typical grade for the surface, remainder flat (assumes the section
+  // finishes near the height it started).
+  // profile 'climb': mostly-uphill section (e.g. a Strava climb segment) —
+  // predicted as one continuous climb, no phantom descent credited.
+  // Self-consistent with segTimeH by construction — a rider who matches the
+  // baseline gets factor ≈ 1.00. Baseline rider = Regular (1.0); load mult
+  // corrects for the sample's load.
   const lm=LOAD_MULT[load]||LOAD_MULT.moderate;
   const rm=RIDER_MULT.regular;
+  if(profile==='climb')return segTimeH(distKm,elevM,surface,rm,lm);
   const TYP_GRADE={road:0.05,road_minor:0.05,grade1:0.06,grade2:0.06,grade3:0.07,grade4:0.10,grade5:0.10,path:0.10};
   const g=TYP_GRADE[surface]||0.06;
   const climbKm=Math.min(elevM/1000/g,distKm/2);
@@ -1162,7 +1170,7 @@ function calibPredictH(distKm,elevM,surface,load){
 function calibRideFactor(s){
   const d=parseFloat(s.distKm),h=parseFloat(s.hours),e=parseFloat(s.elevM)||0;
   if(!d||!h||d<=0||h<=0)return null;
-  const pred=calibPredictH(d,e,s.surface||'road',s.load||'moderate');
+  const pred=calibPredictH(d,e,s.surface||'road',s.load||'moderate',s.profile||'rolling');
   if(pred<=0)return null;
   return h/pred; // >1 = slower than the Regular baseline, <1 = faster
 }
@@ -5286,7 +5294,9 @@ document.getElementById('pace-modal-x').addEventListener('click',closePaceModal)
 // Edits a draft copy; nothing is written to UI.calibRides until Save.
 // Inputs update the draft + factor readouts only (no re-render → no lost focus).
 let _calibDraft=[];
-function _calibNewDraft(){return {surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate'};}
+let _calibOpenIdx=0; // accordion: which sample's fields are expanded (-1 = none)
+function _calibNewDraft(){return {surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate',profile:'rolling'};}
+function _calibOpen(i){_calibOpenIdx=(_calibOpenIdx===i?-1:i);_calibRenderModal();}
 function openCalibModal(){
   _calibDraft=(UI.calibRides||[]).map(s=>({
     surface:s.surface||'road',
@@ -5294,25 +5304,30 @@ function openCalibModal(){
     h:s.hours!=null?String(Math.floor(s.hours)):'',
     m:s.hours!=null?String(Math.round((s.hours-Math.floor(s.hours))*60)):'',
     elevM:s.elevM!=null?String(s.elevM):'',
-    load:s.load||'moderate'
+    load:s.load||'moderate',
+    profile:s.profile||'rolling'
   }));
   if(!_calibDraft.length)_calibDraft.push(_calibNewDraft());
+  // Expand the first incomplete sample; if all are complete, start collapsed
+  _calibOpenIdx=_calibDraft.findIndex(d=>calibRideFactor(_calibDraftToRide(d))===null);
   _calibRenderModal();
   document.getElementById('calib-modal').style.display='flex';
 }
 function closeCalibModal(){document.getElementById('calib-modal').style.display='none';}
 function _calibDraftToRide(d){
   const hours=(parseFloat(d.h)||0)+(parseFloat(d.m)||0)/60;
-  return {surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load};
+  return {surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load,profile:d.profile||'rolling'};
 }
 function _calibAdd(){
   if(_calibDraft.length>=CALIB_MAX_RIDES)return;
   _calibDraft.push(_calibNewDraft());
+  _calibOpenIdx=_calibDraft.length-1;
   _calibRenderModal();
 }
 function _calibRemove(i){
   _calibDraft.splice(i,1);
   if(!_calibDraft.length)_calibDraft.push(_calibNewDraft());
+  if(_calibOpenIdx>=_calibDraft.length)_calibOpenIdx=_calibDraft.length-1;
   _calibRenderModal();
 }
 function _calibField(i,field,value){
@@ -5339,10 +5354,27 @@ function _calibUpdateFactors(){
 }
 function _calibRenderModal(){
   const wrap=document.getElementById('calib-rides-wrap');
-  wrap.innerHTML=_calibDraft.map((d,i)=>`
-    <div style="border:1px solid var(--border2);border-radius:10px;padding:10px 10px 4px;margin-bottom:10px;">
+  const surfShort={road:'Sealed',grade2:'Gravel',grade4:'Rough'};
+  const loadShort={light:'Light',moderate:'Moderate',heavy:'Heavy'};
+  wrap.innerHTML=_calibDraft.map((d,i)=>{
+    if(i!==_calibOpenIdx){
+      // Collapsed one-line summary — tap to expand
+      const complete=calibRideFactor(_calibDraftToRide(d))!==null;
+      const bits=complete
+        ?`${surfShort[d.surface]||d.surface} · ${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑ · ${loadShort[d.load]||d.load}${d.profile==='climb'?' · climb':''}`
+        :'incomplete — tap to finish';
+      return `<div onclick="_calibOpen(${i})" style="border:1px solid var(--border2);border-radius:10px;padding:9px 10px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span style="font-size:13px;color:${complete?'var(--text2)':'var(--text3)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${bits}</span>
+        <span style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+          <span id="calib-rf-${i}" style="font-size:13px;color:var(--accent);font-family:var(--font);"></span>
+          ${_calibDraft.length>1?`<button class="btn btn-sm" onclick="event.stopPropagation();_calibRemove(${i})" style="padding:2px 8px;">✕</button>`:''}
+        </span>
+      </div>`;
+    }
+    return `
+    <div style="border:1px solid var(--accent3,var(--border2));border-radius:10px;padding:10px 10px 4px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <span style="font-size:14px;font-weight:600;color:var(--text2);font-family:var(--font);">Sample ride ${i+1}</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text2);font-family:var(--font);cursor:pointer;" onclick="_calibOpen(${i})">Sample ride ${i+1}</span>
         <span style="display:flex;gap:8px;align-items:center;">
           <span id="calib-rf-${i}" style="font-size:13px;color:var(--accent);font-family:var(--font);"></span>
           ${_calibDraft.length>1?`<button class="btn btn-sm" onclick="_calibRemove(${i})" style="padding:2px 8px;">✕</button>`:''}
@@ -5354,6 +5386,13 @@ function _calibRenderModal(){
           <option value="road" ${d.surface==='road'?'selected':''}>Sealed road</option>
           <option value="grade2" ${d.surface==='grade2'?'selected':''}>Gravel / dirt road</option>
           <option value="grade4" ${d.surface==='grade4'?'selected':''}>Rough track / hike-a-bike</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="lbl">Section shape</label>
+        <select onchange="_calibField(${i},'profile',this.value)">
+          <option value="rolling" ${d.profile!=='climb'?'selected':''}>Rolling / loop — finishes near start height</option>
+          <option value="climb" ${d.profile==='climb'?'selected':''}>Mostly climbing — finishes higher than it starts</option>
         </select>
       </div>
       <div style="display:flex;gap:8px;">
@@ -5384,7 +5423,7 @@ function _calibRenderModal(){
           <option value="heavy" ${d.load==='heavy'?'selected':''}>Heavy — full expedition or touring load</option>
         </select>
       </div>
-    </div>`).join('');
+    </div>`;}).join('');
   const addBtn=document.getElementById('calib-add');
   addBtn.style.display=_calibDraft.length>=CALIB_MAX_RIDES?'none':'';
   _calibUpdateFactors();
@@ -5459,7 +5498,7 @@ function _speedControlsHTML(r){
     const rows=(UI.calibRides||[]).map(s=>{
       const rf=calibRideFactor(s);if(rf===null)return'';
       const hh=Math.floor(s.hours),mm=Math.round((s.hours-hh)*60);
-      return `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);padding:2px 0;"><span>${surfLabels[s.surface]||s.surface} · ${(+s.distKm).toFixed(0)} km · ${hh}h ${mm}m · ${(+s.elevM||0).toFixed(0)} m ↑</span><span style="color:var(--text2);">${rf.toFixed(2)}×</span></div>`;
+      return `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);padding:2px 0;"><span>${surfLabels[s.surface]||s.surface} · ${(+s.distKm).toFixed(0)} km · ${hh}h ${mm}m · ${(+s.elevM||0).toFixed(0)} m ↑${s.profile==='climb'?' · climb':''}</span><span style="color:var(--text2);">${rf.toFixed(2)}×</span></div>`;
     }).join('');
     riderBody=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
         <span style="font-size:24px;font-weight:700;color:var(--accent);font-family:var(--font);">${f.toFixed(2)}×</span>
