@@ -1583,16 +1583,24 @@ function shopSt(s,r){
 // ═══════════════════════════════════════════
 // ─── Surface type fetch ──────────────────────────────────────────────────────
 const SURFACE_COLS={
-  road:'#4a6080',road_minor:'#c8a97a',grade1:'#b8925a',grade2:'#a07840',
+  road:'#4a6080',road_minor:'#6f8cad',grade1:'#b8925a',grade2:'#a07840',
   grade3:'#886030',grade4:'#704820',grade5:'#583010',path:'#c0392b',
 };
 
 function surfaceCategory(highway,tracktype,surface){
   if(!highway)return null;
-  if(highway==='primary'||highway==='secondary'||highway==='trunk'||highway==='motorway')return'road';
-  if(highway==='tertiary'||highway==='unclassified')return'road_minor';
-  if(highway==='residential'||highway==='service'||highway==='living_street')return'road_minor';
-  if(highway==='cycleway')return'grade1';
+  // Respect the OSM surface tag on roads — an unclassified road can be dirt,
+  // and pacing/colour should reflect the actual surface, not the road class.
+  const unsealed=surface==='gravel'||surface==='compacted'||surface==='fine_gravel'||surface==='unpaved'||surface==='dirt'||surface==='earth'||surface==='ground'||surface==='sand'||surface==='grass'||surface==='mud';
+  const unsealedCat=()=>{
+    if(surface==='compacted'||surface==='fine_gravel'||surface==='gravel'||surface==='unpaved')return'grade2';
+    if(surface==='dirt'||surface==='earth'||surface==='ground')return'grade3';
+    return'grade4'; // sand / grass / mud
+  };
+  if(highway==='primary'||highway==='secondary'||highway==='trunk'||highway==='motorway')return unsealed?unsealedCat():'road';
+  if(highway==='tertiary'||highway==='unclassified')return unsealed?unsealedCat():'road_minor';
+  if(highway==='residential'||highway==='service'||highway==='living_street')return unsealed?unsealedCat():'road_minor';
+  if(highway==='cycleway')return unsealed?'grade2':'grade1';
   if(highway==='path'||highway==='footway'||highway==='bridleway')return'path';
   if(highway==='track'){
     if(tracktype==='grade1')return'grade1';
@@ -1640,9 +1648,11 @@ function updateOverlayButtons(){
     }
   });
 }
-async function fetchSurfaceData(){
+async function fetchSurfaceData(force){
   const r=cur();
   if(!r||r.points.length<2)return;
+  // force=true (Settings Refresh button) discards cached data and re-fetches from OSM
+  if(force)r.surfaceSegs=null;
   if(r.surfaceSegs&&r.surfaceSegs.length){
     // Cycle: off → surf → grade → off
     const cycle={off:'surf',surf:'grade',grade:'off'};
@@ -7845,7 +7855,7 @@ function tRoutes(r){
   <div class="card">
     <div class="secrow">
       <div class="ctitle">Surface Data</div>
-      <button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData()" ${UI.surfaceStatus==='loading'?'disabled':''}>
+      <button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData(true)" ${UI.surfaceStatus==='loading'?'disabled':''}>
         ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':r&&r.surfaceSegs?'↺ Refresh':'⛰ Fetch Surface'}
       </button>
     </div>
@@ -11700,7 +11710,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v152';
+  const CACHE_NAME='packtimes-v153';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
