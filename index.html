@@ -5601,7 +5601,7 @@ function renderDesktopMap(){
       for(let i=fromIdx;i<=toIdx;i++)ctx.lineTo(ex(epts[i].dist),ey(epts[i].ele));
       ctx.lineTo(ex(epts[toIdx].dist),H-pad);
       ctx.closePath();
-      ctx.fillStyle=`rgba(${m[1]},${m[2]},${m[3]},0.25)`;ctx.fill();
+      ctx.fillStyle=`rgb(${m[1]},${m[2]},${m[3]})`;ctx.fill();
     };
     // Draw fills by colour segment
     for(let i=1;i<epts.length;i++){
@@ -11666,7 +11666,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v148';
+  const CACHE_NAME='packtimes-v149';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
