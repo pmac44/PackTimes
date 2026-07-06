@@ -200,6 +200,17 @@ No analytics, no user accounts, no backend.
 
 ---
 
+## Design system — READ THE STYLE GUIDE
+
+`PackTimes-style-guide.md` (in this folder) is the source of truth for all UI styling. **Before making any change that touches CSS, HTML structure, or user-facing UI, read that file and follow it.** The short version:
+
+- All sizing, spacing, radii, and category colours come from CSS tokens in `:root` — never hard-code px values or hex colours. Type scale has 5 steps (`--fs-xs` to `--fs-xl`), spacing is a 4px grid (`--sp-1` to `--sp-5`), radius is two values only (`--r-ctrl` 8px, `--r-card` 12px).
+- New stop categories get ONE `--cat-*` token; dots and tag chips both derive from it (chips via `color-mix`).
+- No emoji in UI chrome — tab bar, header, and transport controls use inline SVG line icons (stroke `currentColor`, 1.5 width, 18×18 viewBox). Map/list category pins are still emoji — that's a known, deliberate exception.
+- Buttons use `.btn` / `.btn-p` / `.btn-r` / `.btn-sm`; inputs use the shared input rule with the accent focus ring. Don't invent ad-hoc inline styles.
+
+The current `index.html` was restyled to this system in July 2026 (Peter has a backup of the pre-restyle version).
+
 ## How I (Claude) should work on this codebase
 
 Peter has been clear in his global instructions:
