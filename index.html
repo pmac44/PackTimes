@@ -5556,7 +5556,21 @@ function renderDesktopMap(){
     // Draw coloured fill segments first, then line on top
     const emidLat=(r.points.reduce((a,p)=>a<p.lat?a:p.lat,Infinity)+r.points.reduce((a,p)=>a>p.lat?a:p.lat,-Infinity))/2;
     const emidLon=(r.points.reduce((a,p)=>a<p.lon?a:p.lon,Infinity)+r.points.reduce((a,p)=>a>p.lon?a:p.lon,-Infinity))/2;
+    // Colour the profile to match the map's route-line mode: off = day/night, surf, grade
+    const elevGrSegs=UI.routeOverlay==='grade'?getGradeSegs(r):null;
+    const elevSfSegs=(UI.routeOverlay==='surf'&&r.surfaceSegs&&r.surfaceSegs.length)?r.surfaceSegs:null;
+    let _elevSegIdx=0;
     const getElevColAt=i=>{
+      const d=epts[i].dist;
+      if(elevGrSegs&&elevGrSegs.length){
+        if(_elevSegIdx>=elevGrSegs.length||d<elevGrSegs[_elevSegIdx].from)_elevSegIdx=0;
+        while(_elevSegIdx<elevGrSegs.length-1&&d>elevGrSegs[_elevSegIdx].to)_elevSegIdx++;
+        return gradeCol(elevGrSegs[_elevSegIdx].grade);
+      }
+      if(elevSfSegs){
+        const seg=elevSfSegs.find(sg=>d>=sg.fromDist-0.05&&d<=sg.toDist+0.05);
+        return seg&&SURFACE_COLS[seg.cat]?SURFACE_COLS[seg.cat]:'rgba(150,150,150,0.85)';
+      }
       if(!startDT(r)||!Object.keys(_sunCache).length)return'rgba(34,211,238,0.85)';
       const eta=etaAt(epts[i].dist,r);
       if(!eta)return'rgba(34,211,238,0.85)';
@@ -5567,13 +5581,20 @@ function renderDesktopMap(){
       const m=bg.match(/rgba?\((\d+),(\d+),(\d+)/);
       return m?`rgba(${m[1]},${m[2]},${m[3]},0.9)`:'rgba(34,211,238,0.85)';
     };
+    // Day/night changes slowly (sample every 10 pts); grade/surface change often (every point)
+    const elevSample=(elevGrSegs||elevSfSegs)?1:10;
     // No background — transparent so map shows through
     // Draw coloured fill segments first, then line on top
     let fillCol=getElevColAt(0);
     let fillStart=0;
     const drawFill=(fromIdx,toIdx,col)=>{
       if(fromIdx>=toIdx)return;
-      const m=col.match(/rgba?\((\d+),(\d+),(\d+)/);
+      let m=col.match(/rgba?\((\d+),(\d+),(\d+)/);
+      if(!m){ // hex colours from grade/surface palettes (#abc or #aabbcc)
+        const h=col.replace('#','');
+        if(/^[0-9a-f]{3}$/i.test(h))m=[null,parseInt(h[0]+h[0],16),parseInt(h[1]+h[1],16),parseInt(h[2]+h[2],16)];
+        else if(/^[0-9a-f]{6}$/i.test(h)){const n=parseInt(h,16);m=[null,(n>>16)&255,(n>>8)&255,n&255];}
+      }
       if(!m)return;
       ctx.beginPath();
       ctx.moveTo(ex(epts[fromIdx].dist),H-pad);
@@ -5584,7 +5605,7 @@ function renderDesktopMap(){
     };
     // Draw fills by colour segment
     for(let i=1;i<epts.length;i++){
-      const col=i%10===0?getElevColAt(i):fillCol;
+      const col=i%elevSample===0?getElevColAt(i):fillCol;
       if(col!==fillCol){drawFill(fillStart,i-1,fillCol);fillStart=i-1;fillCol=col;}
     }
     drawFill(fillStart,epts.length-1,fillCol);
@@ -5592,7 +5613,7 @@ function renderDesktopMap(){
     let curCol=getElevColAt(0);
     ctx.beginPath();ctx.moveTo(ex(epts[0].dist),ey(epts[0].ele));
     for(let i=1;i<epts.length;i++){
-      const col=i%10===0?getElevColAt(i):curCol;
+      const col=i%elevSample===0?getElevColAt(i):curCol;
       if(col!==curCol){
         ctx.strokeStyle=curCol;ctx.lineWidth=1.5;ctx.stroke();
         ctx.beginPath();ctx.moveTo(ex(epts[i-1].dist),ey(epts[i-1].ele));
@@ -11645,7 +11666,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v147';
+  const CACHE_NAME='packtimes-v148';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
