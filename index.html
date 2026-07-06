@@ -481,6 +481,26 @@ select option{background:var(--bg3);}
     <button class="btn btn-p btn-full" id="pace-save">Save Segment</button>
   </div>
 </div>
+
+<!-- Advanced Calibration modal (sample rides) -->
+<div id="calib-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <span style="font-size:18px;font-weight:600;color:var(--text);">Advanced Estimation</span>
+      <button class="btn btn-sm" onclick="closeCalibModal()">✕</button>
+    </div>
+    <p style="font-size:13px;color:var(--text3);line-height:1.55;margin:0 0 12px;">
+      Enter rides you've actually done — steady endurance rides, not short hard efforts.
+      Each sample should be <b style="color:var(--text2);">mostly one surface</b>.
+      A section of a longer ride is fine: enter just that section's distance, moving time and climb.
+      Use <b style="color:var(--text2);">moving time</b> from Strava or your head unit, not elapsed time.
+    </p>
+    <div id="calib-rides-wrap"></div>
+    <button class="btn btn-sm" id="calib-add" onclick="_calibAdd()" style="width:100%;justify-content:center;margin-bottom:12px;">+ Add another sample ride</button>
+    <div id="calib-factor-row" style="font-size:14px;color:var(--text2);text-align:center;margin-bottom:10px;min-height:20px;"></div>
+    <button class="btn btn-p btn-full" onclick="saveCalibModal()">Save Sample Rides</button>
+  </div>
+</div>
 <script>
 'use strict';
 // ═══════════════════════════════════════════
@@ -528,6 +548,7 @@ const newRoute=name=>({
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
+  calibRides:[],   // Advanced Calibration sample rides — global (rider property, not route)
   ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
@@ -607,7 +628,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[]}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -647,6 +668,7 @@ async function loadAll(){
       if(prefs.recId)UI.recId=prefs.recId;
       if(prefs.recMinMoveM)UI.recMinMoveM=prefs.recMinMoveM;
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
+      if(Array.isArray(prefs.calibRides))UI.calibRides=prefs.calibRides;
     }
     // Rehydrate active recording (if any) from IDB
     await _recRehydrate().catch(()=>{});
@@ -1102,6 +1124,54 @@ const LOAD_MULT={
   heavy:   {vam:0.85,spd:0.92}
 };
 
+// ─── Advanced Calibration (sample rides → rider factor) ─────────────────────
+// UI.calibRides holds up to 3 real rides the user has done:
+//   {surface:'road'|'grade2'|'grade4', distKm, hours, elevM, load:'light'|'moderate'|'heavy'}
+// Each sample is corrected for the load carried that day, so the aggregate is a
+// pure rider-ability factor. The route's own Load preset still applies on top.
+const CALIB_MAX_RIDES=3;
+function calibPredictH(distKm,elevM,surface,load){
+  // Predict the sample ride with the SAME segment model the planner uses,
+  // on a synthetic profile: one climb + matching descent at a typical grade
+  // for the surface, remainder flat. Self-consistent with segTimeH by
+  // construction — a rider who matches the baseline gets factor ≈ 1.00.
+  // Baseline rider = Regular (1.0); load mult corrects for the sample's load.
+  const lm=LOAD_MULT[load]||LOAD_MULT.moderate;
+  const rm=RIDER_MULT.regular;
+  const TYP_GRADE={road:0.05,road_minor:0.05,grade1:0.06,grade2:0.06,grade3:0.07,grade4:0.10,grade5:0.10,path:0.10};
+  const g=TYP_GRADE[surface]||0.06;
+  const climbKm=Math.min(elevM/1000/g,distKm/2);
+  const descKm=climbKm;
+  const flatKm=Math.max(distKm-climbKm-descKm,0);
+  return segTimeH(climbKm,elevM,surface,rm,lm)
+        +segTimeH(descKm,-elevM,surface,rm,lm)
+        +segTimeH(flatKm,0,surface,rm,lm);
+}
+function calibRideFactor(s){
+  const d=parseFloat(s.distKm),h=parseFloat(s.hours),e=parseFloat(s.elevM)||0;
+  if(!d||!h||d<=0||h<=0)return null;
+  const pred=calibPredictH(d,e,s.surface||'road',s.load||'moderate');
+  if(pred<=0)return null;
+  return h/pred; // >1 = slower than the Regular baseline, <1 = faster
+}
+function calibFactor(){
+  // Distance-weighted mean across valid samples; null if none entered yet.
+  let wsum=0,dsum=0;
+  for(const s of (UI.calibRides||[])){
+    const f=calibRideFactor(s);
+    if(f===null)continue;
+    const d=parseFloat(s.distKm);
+    wsum+=f*d;dsum+=d;
+  }
+  if(!dsum)return null;
+  // Clamp so one bad entry can't produce a silly plan
+  return Math.min(1.8,Math.max(0.55,wsum/dsum));
+}
+function calibRiderMult(){
+  const f=calibFactor();
+  return f===null?null:{vam:1/f,spd:1/f};
+}
+
 function surfaceCatAt(midDist,r){
   if(!r||!r.surfaceSegs||!r.surfaceSegs.length)return null;
   const seg=r.surfaceSegs.find(s=>midDist>=s.fromDist&&midDist<=s.toDist);
@@ -1141,7 +1211,9 @@ function naismith(pts,d,r){
 function buildCumRiding(pts,paceSegs,r){
   if(!pts||pts.length<2)return null;
   paceSegs=paceSegs||[];
-  const rm=RIDER_MULT[(r&&r.riderPreset)||'regular']||RIDER_MULT.regular;
+  // 'custom' = Advanced Calibration; falls back to Regular if no samples exist
+  // (e.g. route synced to a device that hasn't entered calibration rides)
+  const rm=((r&&r.riderPreset)==='custom'?calibRiderMult():null)||RIDER_MULT[(r&&r.riderPreset)||'regular']||RIDER_MULT.regular;
   const lm=LOAD_MULT[(r&&r.loadPreset)||'moderate']||LOAD_MULT.moderate;
   // Surface-aware elevation smoothing — GPS noise is worse on smooth sealed roads
   // than on rough tracks where elevation changes are real terrain variation
@@ -5140,6 +5212,128 @@ function _redrawPaceMap(){
 
 document.getElementById('pace-modal-x').addEventListener('click',closePaceModal);
 
+// ─── Advanced Calibration modal ─────────────────────────────────────────────
+// Edits a draft copy; nothing is written to UI.calibRides until Save.
+// Inputs update the draft + factor readouts only (no re-render → no lost focus).
+let _calibDraft=[];
+function _calibNewDraft(){return {surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate'};}
+function openCalibModal(){
+  _calibDraft=(UI.calibRides||[]).map(s=>({
+    surface:s.surface||'road',
+    distKm:s.distKm!=null?String(s.distKm):'',
+    h:s.hours!=null?String(Math.floor(s.hours)):'',
+    m:s.hours!=null?String(Math.round((s.hours-Math.floor(s.hours))*60)):'',
+    elevM:s.elevM!=null?String(s.elevM):'',
+    load:s.load||'moderate'
+  }));
+  if(!_calibDraft.length)_calibDraft.push(_calibNewDraft());
+  _calibRenderModal();
+  document.getElementById('calib-modal').style.display='flex';
+}
+function closeCalibModal(){document.getElementById('calib-modal').style.display='none';}
+function _calibDraftToRide(d){
+  const hours=(parseFloat(d.h)||0)+(parseFloat(d.m)||0)/60;
+  return {surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load};
+}
+function _calibAdd(){
+  if(_calibDraft.length>=CALIB_MAX_RIDES)return;
+  _calibDraft.push(_calibNewDraft());
+  _calibRenderModal();
+}
+function _calibRemove(i){
+  _calibDraft.splice(i,1);
+  if(!_calibDraft.length)_calibDraft.push(_calibNewDraft());
+  _calibRenderModal();
+}
+function _calibField(i,field,value){
+  if(!_calibDraft[i])return;
+  _calibDraft[i][field]=value;
+  _calibUpdateFactors();
+}
+function _calibUpdateFactors(){
+  let wsum=0,dsum=0;
+  _calibDraft.forEach((d,i)=>{
+    const f=calibRideFactor(_calibDraftToRide(d));
+    const el=document.getElementById('calib-rf-'+i);
+    if(el)el.textContent=f===null?'':f.toFixed(2)+'×';
+    if(f!==null){const dist=parseFloat(d.distKm);wsum+=f*dist;dsum+=dist;}
+  });
+  const row=document.getElementById('calib-factor-row');
+  if(!row)return;
+  if(!dsum){row.textContent='Fill in at least one ride to calculate your factor.';row.style.color='var(--text3)';return;}
+  const f=Math.min(1.8,Math.max(0.55,wsum/dsum));
+  const pct=Math.round(Math.abs(1-f)*100);
+  const desc=f<0.98?`${pct}% faster than the Regular baseline`:(f>1.02?`${pct}% slower than the Regular baseline`:'right on the Regular baseline');
+  row.style.color='var(--text2)';
+  row.innerHTML=`Your rider factor: <b style="color:var(--accent);font-family:var(--font);">${f.toFixed(2)}×</b> — ${desc}`;
+}
+function _calibRenderModal(){
+  const wrap=document.getElementById('calib-rides-wrap');
+  wrap.innerHTML=_calibDraft.map((d,i)=>`
+    <div style="border:1px solid var(--border2);border-radius:10px;padding:10px 10px 4px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:14px;font-weight:600;color:var(--text2);font-family:var(--font);">Sample ride ${i+1}</span>
+        <span style="display:flex;gap:8px;align-items:center;">
+          <span id="calib-rf-${i}" style="font-size:13px;color:var(--accent);font-family:var(--font);"></span>
+          ${_calibDraft.length>1?`<button class="btn btn-sm" onclick="_calibRemove(${i})" style="padding:2px 8px;">✕</button>`:''}
+        </span>
+      </div>
+      <div class="field">
+        <label class="lbl">Surface (mostly)</label>
+        <select onchange="_calibField(${i},'surface',this.value)">
+          <option value="road" ${d.surface==='road'?'selected':''}>Sealed road</option>
+          <option value="grade2" ${d.surface==='grade2'?'selected':''}>Gravel / dirt road</option>
+          <option value="grade4" ${d.surface==='grade4'?'selected':''}>Rough track / hike-a-bike</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="field" style="flex:1;">
+          <label class="lbl">Distance (km)</label>
+          <input type="number" inputmode="decimal" min="0" step="0.1" value="${d.distKm}" placeholder="e.g. 80" oninput="_calibField(${i},'distKm',this.value)">
+        </div>
+        <div class="field" style="flex:1;">
+          <label class="lbl">Climb (m)</label>
+          <input type="number" inputmode="numeric" min="0" step="10" value="${d.elevM}" placeholder="e.g. 900" oninput="_calibField(${i},'elevM',this.value)">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="field" style="flex:1;">
+          <label class="lbl">Moving time (h)</label>
+          <input type="number" inputmode="numeric" min="0" step="1" value="${d.h}" placeholder="h" oninput="_calibField(${i},'h',this.value)">
+        </div>
+        <div class="field" style="flex:1;">
+          <label class="lbl">&nbsp;(min)</label>
+          <input type="number" inputmode="numeric" min="0" max="59" step="1" value="${d.m}" placeholder="min" oninput="_calibField(${i},'m',this.value)">
+        </div>
+      </div>
+      <div class="field">
+        <label class="lbl">Load that day</label>
+        <select onchange="_calibField(${i},'load',this.value)">
+          <option value="light" ${d.load==='light'?'selected':''}>Light — minimal kit / day ride</option>
+          <option value="moderate" ${d.load==='moderate'?'selected':''}>Moderate — typical bikepacking setup</option>
+          <option value="heavy" ${d.load==='heavy'?'selected':''}>Heavy — full expedition or touring load</option>
+        </select>
+      </div>
+    </div>`).join('');
+  const addBtn=document.getElementById('calib-add');
+  addBtn.style.display=_calibDraft.length>=CALIB_MAX_RIDES?'none':'';
+  _calibUpdateFactors();
+}
+function saveCalibModal(){
+  const valid=_calibDraft.map(_calibDraftToRide).filter(s=>calibRideFactor(s)!==null);
+  UI.calibRides=valid;
+  const r=cur();
+  if(r&&valid.length&&r.riderPreset!=='custom'){
+    r.riderPresetSimple=r.riderPreset;
+    r.riderPreset='custom';
+  }
+  // Calibration is global — rebuild every route that uses it
+  for(const rt of ROUTES){if(rt.riderPreset==='custom')rebuildPace(rt);}
+  saveAll();
+  closeCalibModal();
+  renderKeepScroll();
+}
+
 // Desktop map overlay button listeners (outside content-wrap)
 document.addEventListener('click',e=>{
   if(e.target.closest('#btn-sim-start')&&!e.target.closest('#content-wrap')){simStart();}
@@ -5867,7 +6061,7 @@ async function dbxSave(auto){
   if(!auto)dbxSetStatus('Saving…');
   try{
     const now=Date.now();
-    const data={_v:2,savedAt:now,cur:CUR>=0?ROUTES[CUR].id:null,routes:ROUTES.map(packRoute)};
+    const data={_v:2,savedAt:now,cur:CUR>=0?ROUTES[CUR].id:null,routes:ROUTES.map(packRoute),calibRides:UI.calibRides||[]};
     const res=await fetch('https://content.dropboxapi.com/2/files/upload',{
       method:'POST',
       headers:{
@@ -5920,6 +6114,17 @@ async function dbxLoad(force){
     const idx=data.cur?ROUTES.findIndex(r=>r.id===data.cur):-1;
     CUR=idx>=0?idx:(ROUTES.length?0:-1);
     UI.dbxSavedAt=cloudTime;
+    // Advanced Calibration rides ride along in plan.json (guard keeps local
+    // calibration if an older app version wrote a plan without the field)
+    if(Array.isArray(data.calibRides)){
+      UI.calibRides=data.calibRides;
+      const prefs=await DB.getKV('uiPrefs').catch(()=>null)||{};
+      prefs.calibRides=UI.calibRides;
+      await DB.setKV('uiPrefs',prefs).catch(()=>{});
+      // Routes using Advanced Calibration need their times rebuilt with the
+      // freshly loaded factor
+      for(const rt of ROUTES)if(rt.riderPreset==='custom')rebuildPace(rt);
+    }
     // Save locally only — do NOT call dbxScheduleSave; we just loaded from cloud
     // so there is nothing new to write back. Calling saveAll() here would trigger
     // another upload and start a ping-pong loop between devices.
@@ -7918,13 +8123,44 @@ function tRoutes(r){
     ${!r.surfaceSegs?`<div style="display:flex;align-items:center;justify-content:space-between;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:7px;padding:7px 10px;margin-bottom:10px;"><span style="font-size:13px;color:#f97316;">⛰ Surface data not loaded — fetch it for more accurate off-road estimates</span><button class="btn btn-sm" onclick="fetchSurfaceData()" style="font-size:12px;padding:3px 8px;flex-shrink:0;">Fetch</button></div>`:''}
     <div style="margin-bottom:10px;">
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Rider</div>
-      <div style="display:flex;gap:6px;">
-        ${[['social','Social','Relaxed pace, enjoy the scenery'],['regular','Regular','Steady endurance pace'],['strong','Strong','Hard effort, competitive pace']].map(([val,label,sub])=>`
-          <button class="btn btn-sm rider-preset" data-val="${val}" style="flex:1;flex-direction:column;gap:2px;padding:6px 4px;text-align:center;align-items:center;min-height:52px;${r.riderPreset===val?'border-color:var(--accent);color:var(--accent);':''}">
-            <span style="font-size:14px;font-weight:600;font-family:var(--font);">${label}</span>
-            <span style="font-size:10px;color:var(--text3);white-space:normal;line-height:1.3;">${sub}</span>
-          </button>`).join('')}
-      </div>
+      ${(()=>{
+        const adv=r.riderPreset==='custom';
+        const f=calibFactor();
+        const tabBtn=(id,label,active)=>`<button class="btn btn-sm" id="${id}" style="flex:1;justify-content:center;font-size:13px;padding:6px 4px;${active?'border-color:var(--accent);color:var(--accent);':''}">${label}</button>`;
+        let body;
+        if(!adv){
+          body=`<div style="display:flex;gap:6px;">
+            ${[['social','Social','Relaxed pace, enjoy the scenery'],['regular','Regular','Steady endurance pace'],['strong','Strong','Hard effort, competitive pace']].map(([val,label,sub])=>`
+              <button class="btn btn-sm rider-preset" data-val="${val}" style="flex:1;flex-direction:column;gap:2px;padding:6px 4px;text-align:center;align-items:center;min-height:52px;${r.riderPreset===val?'border-color:var(--accent);color:var(--accent);':''}">
+                <span style="font-size:14px;font-weight:600;font-family:var(--font);">${label}</span>
+                <span style="font-size:10px;color:var(--text3);white-space:normal;line-height:1.3;">${sub}</span>
+              </button>`).join('')}
+          </div>`;
+        } else if(f===null){
+          body=`<p style="font-size:14px;color:var(--text3);line-height:1.5;">No sample rides yet — add at least one ride you've actually done and PackTimes will work out your speed from real data.</p>
+            <button class="btn btn-sm btn-p" id="btn-calib-edit" style="width:100%;justify-content:center;">+ Add sample rides</button>`;
+        } else {
+          const pct=Math.round(Math.abs(1-f)*100);
+          const desc=f<0.98?`about ${pct}% faster than the Regular baseline`:(f>1.02?`about ${pct}% slower than the Regular baseline`:'right on the Regular baseline');
+          const surfLabels={road:'Sealed',grade2:'Gravel/dirt',grade4:'Rough'};
+          const rows=(UI.calibRides||[]).map(s=>{
+            const rf=calibRideFactor(s);if(rf===null)return'';
+            const hh=Math.floor(s.hours),mm=Math.round((s.hours-hh)*60);
+            return `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);padding:2px 0;"><span>${surfLabels[s.surface]||s.surface} · ${(+s.distKm).toFixed(0)} km · ${hh}h ${mm}m · ${(+s.elevM||0).toFixed(0)} m ↑</span><span style="color:var(--text2);">${rf.toFixed(2)}×</span></div>`;
+          }).join('');
+          body=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
+              <span style="font-size:24px;font-weight:700;color:var(--accent);font-family:var(--font);">${f.toFixed(2)}×</span>
+              <span style="font-size:13px;color:var(--text3);">${desc}</span>
+            </div>
+            ${rows}
+            <button class="btn btn-sm" id="btn-calib-edit" style="width:100%;justify-content:center;margin-top:8px;">Edit sample rides</button>`;
+        }
+        return `<div style="display:flex;gap:6px;margin-bottom:8px;">
+            ${tabBtn('calib-tab-simple','Simple Estimation',!adv)}
+            ${tabBtn('calib-tab-adv','Advanced Estimation',adv)}
+          </div>${body}
+          ${adv?`<p style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.5;">Your route's Load setting below still applies — sample rides are corrected for the load you carried that day.</p>`:''}`;
+      })()}
     </div>
     <div style="margin-bottom:10px;">
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Load</div>
@@ -7937,7 +8173,7 @@ function tRoutes(r){
       </div>
     </div>
     <div>
-      <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Fine Tune</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Final Adjustment</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <button class="btn btn-sm" id="tf-slower" style="flex:1;justify-content:center;flex-direction:column;gap:1px;padding:6px 4px;">
           <span style="font-size:22px;">⬅</span><span style="font-size:16px;">Slower</span>
@@ -7949,7 +8185,7 @@ function tRoutes(r){
           <span style="font-size:22px;">➡</span><span style="font-size:16px;">Faster</span>
         </button>
       </div>
-      <p style="font-size:13px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Adjust after comparing estimated vs actual times on a similar ride.</p>
+      <p style="font-size:13px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Applied on top of Rider and Load. Use it for what they can't capture — rough conditions, weather, or how you're actually tracking against the plan.</p>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer;font-size:15px;color:var(--text2);">
       <input type="checkbox" id="adaptive-speed-chk" ${r.adaptiveSpeed?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
@@ -10564,11 +10800,31 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   const riderBtn=e.target.closest('.rider-preset');
   if(riderBtn&&r){
     r.riderPreset=riderBtn.dataset.val;
+    r.riderPresetSimple=riderBtn.dataset.val; // remembered when toggling Simple/Advanced
     rebuildPace(r);
     saveAll();
     setTimeout(()=>renderKeepScroll(),50);
     return;
   }
+  // Simple / Advanced Calibration tabs
+  if(e.target.closest('#calib-tab-simple')&&r){
+    if(r.riderPreset==='custom'){
+      r.riderPreset=r.riderPresetSimple||'regular';
+      rebuildPace(r);saveAll();
+    }
+    setTimeout(()=>renderKeepScroll(),50);
+    return;
+  }
+  if(e.target.closest('#calib-tab-adv')&&r){
+    if(r.riderPreset!=='custom'){
+      r.riderPresetSimple=r.riderPreset;
+      r.riderPreset='custom';
+      rebuildPace(r);saveAll();
+    }
+    setTimeout(()=>renderKeepScroll(),50);
+    return;
+  }
+  if(e.target.closest('#btn-calib-edit')){openCalibModal();return;}
   const loadBtn=e.target.closest('.load-preset');
   if(loadBtn&&r){
     r.loadPreset=loadBtn.dataset.val;
@@ -11758,7 +12014,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v159';
+  const CACHE_NAME='packtimes-v160';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
@@ -11843,4 +12099,4 @@ if('serviceWorker' in navigator && window.self===window.top){
 </script>
 </body>
 </html>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
