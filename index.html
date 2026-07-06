@@ -244,7 +244,7 @@ select option{background:var(--bg3);}
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
         <button class="zbtn tile-tog" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
-        <button class="zbtn" id="btn-surface-desktop-map" title="Toggle surface type" onclick="fetchSurfaceData()" style="font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">SURF</button>
+        <button class="zbtn" id="btn-surface-desktop-map" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">SURF</button>
       </div>
     </div>
   </div>
@@ -1732,6 +1732,25 @@ function updateOverlayButtons(){
     }
   });
 }
+function toggleRouteOverlay(){
+  // Map SURF/GRADE button: cycles the overlay only. Never silently fetches —
+  // if surface data is missing, ask first (Peter hit an unwanted auto-fetch).
+  const r=cur();
+  if(!r||r.points.length<2)return;
+  const cycle={off:'surf',surf:'grade',grade:'off'};
+  let next=cycle[UI.routeOverlay]||'surf';
+  if(next==='surf'&&!(r.surfaceSegs&&r.surfaceSegs.length)){
+    if(confirm('No surface data loaded for this route.\nFetch it from OpenStreetMap now?')){fetchSurfaceData();return;}
+    next='grade'; // skip the surface overlay, go straight to grade colouring
+  }
+  UI.routeOverlay=next;
+  if(UI.routeOverlay==='surf')UI.hiddenMapTypes.delete('surface');
+  else UI.hiddenMapTypes.add('surface');
+  updateOverlayButtons();
+  ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
+  renderDesktopMap();
+  saveAll();
+}
 async function fetchSurfaceData(force){
   const r=cur();
   if(!r||r.points.length<2)return;
@@ -1776,9 +1795,13 @@ async function fetchSurfaceData(force){
   // kumi first — empirically fast from Australia (Jul 2026); overpass-api.de often queues.
   const SURF_MIRRORS=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   let goodMirror=null; // sticky: once a mirror answers, use it first for the remaining chunks
-  for(let ci=0;ci<chunks.length;ci++){
-    const chunk=chunks[ci];
-    UI.surfaceMsg=`Fetching surface data\u2026 ${ci+1}/${chunks.length}`;
+  // Queue-based: a chunk too heavy for Overpass (dense track networks) gets
+  // split in half and retried rather than silently returning partial data
+  const chunkQueue=[...chunks];
+  let processed=0;
+  while(chunkQueue.length){
+    const chunk=chunkQueue.shift();
+    UI.surfaceMsg=`Fetching surface data\u2026 ${processed+1}/${processed+1+chunkQueue.length}`;
     const msgEl=document.getElementById('surface-status-msg');
     if(msgEl)msgEl.textContent=UI.surfaceMsg;
     // Corridor query — only ways within ~80 m of the route line. Vastly less
@@ -1807,6 +1830,10 @@ async function fetchSurfaceData(force){
         const res=await fetch(mirror,{method:'POST',mode:'cors',signal:abort.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
         if(!res.ok)throw new Error('HTTP '+res.status);
         const json=await res.json();
+        // Overpass can return HTTP 200 with PARTIAL data and a "remark" noting
+        // it timed out or ran out of memory server-side. Taking that at face
+        // value leaves whole stretches permanently "unknown" — treat as failure.
+        if(json.remark&&/tim(ed)?\s*out|out of memory|exceeded|runtime error/i.test(json.remark))throw new Error('overpass: '+String(json.remark).slice(0,80));
         const ways=json.elements.filter(el=>el.type==='way'&&el.geometry&&el.geometry.length>1).map(el=>{
           const cat=surfaceCategory(el.tags?.highway,el.tags?.tracktype,el.tags?.surface);
           // guess = minor road with no surface tag — "sealed" is only an assumption,
@@ -1824,16 +1851,28 @@ async function fetchSurfaceData(force){
           result[idx]=snap?{cat:snap.cat,guess:!!snap.guess}:null;
         });
         goodMirror=mirror;
-        console.log(`[surface] chunk ${ci+1}/${chunks.length} via ${mirror.split('/')[2]} in ${Date.now()-t0}ms`);
+        console.log(`[surface] chunk ${processed+1} via ${mirror.split('/')[2]} in ${Date.now()-t0}ms`);
         fetched=true;break;
       }catch(e){
         lastErr=e.name==='AbortError'?'timeout':e.message;
-        console.log(`[surface] chunk ${ci+1}/${chunks.length} FAILED on ${mirror.split('/')[2]} after ${Date.now()-t0}ms: ${lastErr}`);
+        console.log(`[surface] chunk ${processed+1} FAILED on ${mirror.split('/')[2]} after ${Date.now()-t0}ms: ${lastErr}`);
         if(mirror===goodMirror)goodMirror=null; // it stopped answering — re-shop next chunk
       }
       finally{clearTimeout(abortTimer);}
     }
-    if(!fetched){UI.surfaceStatus='error';UI.surfaceMsg=`Surface fetch failed (${lastErr})`;renderKeepScroll();return;}
+    if(!fetched){
+      // Every mirror choked on this stretch — usually a dense track network.
+      // Split it and try the halves; only give up when even a small piece fails.
+      const spanKm=chunk[chunk.length-1].dist-chunk[0].dist;
+      if(chunk.length>=8&&spanKm>3){
+        const mid=chunk.length>>1;
+        chunkQueue.unshift(chunk.slice(0,mid),chunk.slice(mid));
+        console.log(`[surface] splitting heavy ${spanKm.toFixed(0)}km chunk and retrying`);
+        continue;
+      }
+      UI.surfaceStatus='error';UI.surfaceMsg=`Surface fetch failed (${lastErr})`;renderKeepScroll();return;
+    }
+    processed++;
     await new Promise(res=>setTimeout(res,300));
   }
   // Neighbour inference for untagged minor roads: if the nearest confidently-known
@@ -3981,6 +4020,25 @@ function drawMap(cvs,r,opts){
   // Surface type overlay
   if(UI.routeOverlay==='surf'&&r.surfaceSegs&&r.surfaceSegs.length&&(id==='desktop-map'||id==='stops-map')){
     ctx.save();
+    // Grey out stretches with no surface data, matching the elevation strip —
+    // otherwise the day/night base line shows through the gaps and reads as
+    // if it were a surface colour (one colour language per mode)
+    (()=>{
+      const sorted=[...r.surfaceSegs].sort((a,b)=>a.fromDist-b.fromDist);
+      let cursor=0;const gaps=[];
+      for(const sg of sorted){
+        if(sg.fromDist-cursor>0.2)gaps.push([cursor,sg.fromDist]);
+        cursor=Math.max(cursor,sg.toDist);
+      }
+      if(r.totalDist-cursor>0.2)gaps.push([cursor,r.totalDist]);
+      for(const [a,b] of gaps){
+        const segPts=pts.filter(p=>p.dist>=a-0.05&&p.dist<=b+0.05);
+        if(segPts.length<2)continue;
+        ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
+        for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
+        ctx.strokeStyle='rgba(150,150,150,0.9)';ctx.lineWidth=3;ctx.stroke();
+      }
+    })();
     for(const seg of r.surfaceSegs){
       const segPts=pts.filter(p=>p.dist>=seg.fromDist-0.05&&p.dist<=seg.toDist+0.05);
       if(segPts.length<2)continue;
@@ -4874,7 +4932,7 @@ function mapCtrlHTML(mapId,showGPS){
     ${recenterBtn}
     ${mapId==='live-map'?gpsBtn:''}
     ${stopBtn}
-    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="fetchSurfaceData()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:''}
+    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:''}
   </div>`;
 }
 function zoomBtnsHTML(mapId){return mapCtrlHTML(mapId,false);}
@@ -5360,12 +5418,12 @@ function _speedSummaryHTML(r){
     :(({social:'Social',regular:'Regular',strong:'Strong'})[r.riderPreset]||'Regular')+' rider';
   const loadLbl=({heavy:'Heavy',moderate:'Moderate',light:'Light'})[r.loadPreset]||'Moderate';
   const avg=(r.estDuration&&r.totalDist)?(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1):null;
-  return `<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:14px;color:var(--text2);">
+  return `${avg?`<div style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);margin-bottom:10px;">${avg} km/h avg</div>`:''}
+    <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:14px;color:var(--text2);">
       <span>${riderLbl}</span><span style="color:var(--text3);">·</span>
       <span>${loadLbl} load</span><span style="color:var(--text3);">·</span>
       <span>Fine-tune ${r.timeFactor.toFixed(2)}×</span>
     </div>
-    ${avg?`<div style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);margin-top:5px;">${avg} km/h avg</div>`:''}
     ${r.adaptiveSpeed?'<div style="font-size:12px;color:var(--text3);margin-top:4px;">Adaptive Speed on — self-corrects during the ride</div>':''}`;
 }
 function _speedLiveHTML(r){
@@ -5443,7 +5501,7 @@ function _speedControlsHTML(r){
       <input type="checkbox" ${r.adaptiveSpeed?'checked':''} onchange="speedToggleAdaptive(this.checked)" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
       <span>Adaptive Speed</span>
     </label>
-    <p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">${r.adaptiveSpeed?`Compares your actual pace to estimates and blends in a correction. Capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Calibration window scales with ride length — shorter rides adjust every ~10 min, longer rides every ~30 min. Disable to lock the factor.`:''}</p>`;
+    <p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">While you ride, compares your actual pace to the estimate and gradually corrects the plan — capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)}×. Adjusts every ~10 min on shorter rides, ~30 min on longer ones. On: ETAs self-adjust mid-ride. Off: the factor stays locked.</p>`;
 }
 function openSpeedModal(){
   const r=cur();if(!r)return;
@@ -8283,15 +8341,17 @@ function tRoutes(r){
   <div class="card">
     <div class="secrow">
       <div class="ctitle">Surface Data</div>
-      <button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData(true)" ${UI.surfaceStatus==='loading'?'disabled':''}>
-        ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':r&&r.surfaceSegs?'↺ Refresh':'⛰ Fetch Surface'}
-      </button>
+      ${r&&r.surfaceSegs&&UI.surfaceStatus!=='loading'
+        ?`<button id="btn-fetch-surface" onclick="fetchSurfaceData(true)" title="Refresh surface data" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;color:rgba(255,255,255,0.85);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>`
+        :`<button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData(true)" ${UI.surfaceStatus==='loading'?'disabled':''}>
+        ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':'⛰ Fetch Surface'}
+      </button>`}
     </div>
     ${UI.surfaceStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="surface-status-msg">${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle via the Surface layer in the map legend.</p>`:''}
-    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}</div>`:''}
+    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}${(()=>{const covered=r.surfaceSegs.reduce((a,s)=>a+(s.toDist-s.fromDist),0);const unknown=r.totalDist-covered;return unknown>1?`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:#969696;color:#fff;white-space:nowrap;">Unknown ${unknown.toFixed(0)}km — try Refresh</span>`:'';})()}</div>`:''}
   </div>
   <div class="card">
     <div id="hike-card-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${UI.hikeExpanded?'margin-bottom:10px;':''}">
@@ -8325,7 +8385,7 @@ function tRoutes(r){
   <div class="card">
     <div class="secrow">
       <div class="ctitle">Speed Estimation</div>
-      <button class="btn btn-sm btn-p" onclick="openSpeedModal()">Edit</button>
+      <button onclick="openSpeedModal()" title="Edit speed estimation" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;color:rgba(255,255,255,0.85);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">${ICON_EDIT}</button>
     </div>
     ${!r.surfaceSegs?`<div style="display:flex;align-items:center;justify-content:space-between;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:7px;padding:7px 10px;margin-bottom:10px;"><span style="font-size:13px;color:#f97316;">⛰ Surface data not loaded — fetch it for more accurate off-road estimates</span><button class="btn btn-sm" onclick="fetchSurfaceData()" style="font-size:12px;padding:3px 8px;flex-shrink:0;">Fetch</button></div>`:''}
     <div id="speed-summary">${_speedSummaryHTML(r)}</div>
