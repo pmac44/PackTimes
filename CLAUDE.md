@@ -31,7 +31,7 @@ PackTimes is an ultra-cycling and bikepacking route planner, shipped as an insta
 
 ### Deploy flow (Peter's)
 
-1. Edit `index.html` locally (Windows, path `C:\Users\peter\Documents\PackTimes`).
+1. Edit `index.html` locally (Windows, path `F:\Dropbox\Claude\Work Areas\Apps\PackTimes-project` — the old `C:\Users\peter\Documents\PackTimes` location is retired; `push.bat` was fixed July 2026 to cd to the Dropbox path explicitly).
 2. Double-click `push.bat` → commits as "Update app" and pushes to `origin/main`.
 3. GitHub Pages picks it up and serves at `pmac44.github.io/PackTimes`.
 
