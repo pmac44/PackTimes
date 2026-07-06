@@ -4157,7 +4157,7 @@ function drawMap(cvs,r,opts){
   r.stops.forEach(s=>{
     const isSleepRelated=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
     const isOnMap=cvs.id==='desktop-map'||cvs.id==='stops-map';
-    const isFoodRelated=!!(s.meals&&s.meals.length)||(s.type==='food'&&s.starred!==false);
+    const isFoodRelated=!!(s.meals&&s.meals.length);
     const hiddenByType=(UI.hiddenMapTypes.has(s.type))&&isOnMap
       &&!(isSleepRelated&&!UI.hiddenMapTypes.has('allsleep')&&isOnMap)
       &&!(isFoodRelated&&!UI.hiddenMapTypes.has('allfood')&&isOnMap);
@@ -7299,7 +7299,7 @@ function sortedLayers(r){
   present.add('kmmarkers');
   if(r&&r.points.length)present.add('weather');
   if(r&&r.stops.some(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))))present.add('allsleep');
-  if(r&&r.stops.some(s=>(s.meals&&s.meals.length)||(s.type==='food'&&s.starred!==false)))present.add('allfood');
+  if(r&&r.stops.some(s=>s.meals&&s.meals.length))present.add('allfood');
   if(r&&r.stops.some(s=>s.type==='stop'))present.add('stop');
   if(r&&r.stops.some(s=>s.starred!==false))present.add('mission');
   if(r&&r.paceSegs&&r.paceSegs.length)present.add('hike');
