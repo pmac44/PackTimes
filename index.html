@@ -5544,13 +5544,30 @@ function renderDesktopMap(){
     const ctx=ec.getContext('2d');
     ctx.scale(dpr,dpr);
     ctx.clearRect(0,0,W,H);
-    const epts=r.points;
+    // Zoom the profile to match the map: show first-visible km → last-visible km.
+    // If the route doubles back through the view the whole span between is shown,
+    // so the profile stays one continuous line.
+    const fullDist=r.points[r.points.length-1].dist;
+    let vFrom=0,vTo=fullDist;
+    if(cvs._px&&cvs._W){
+      let minD=Infinity,maxD=-Infinity;
+      for(const p of r.points){
+        const vx=cvs._px(p.lon),vy=cvs._py(p.lat);
+        if(vx>=0&&vx<=cvs._W&&vy>=0&&vy<=cvs._H){if(p.dist<minD)minD=p.dist;if(p.dist>maxD)maxD=p.dist;}
+      }
+      if(minD<maxD-0.5){vFrom=minD;vTo=maxD;}
+    }
+    let ei0=0;while(ei0<r.points.length-1&&r.points[ei0].dist<vFrom)ei0++;
+    let ei1=r.points.length-1;while(ei1>0&&r.points[ei1].dist>vTo)ei1--;
+    if(ei1-ei0<1){ei0=0;ei1=r.points.length-1;vFrom=0;vTo=fullDist;}
+    ec._vFrom=vFrom;ec._vTo=vTo;
+    const epts=(ei0===0&&ei1===r.points.length-1)?r.points:r.points.slice(ei0,ei1+1);
     const eles=epts.map(p=>p.ele);
     const minE=Math.min(...eles),maxE=Math.max(...eles);
     const eRange=maxE-minE||1;
-    const totalDist=epts[epts.length-1].dist;
     const pad=8;
-    const ex=d=>pad+(d/totalDist)*(W-pad*2);
+    const vSpan=vTo-vFrom||1;
+    const ex=d=>pad+((d-vFrom)/vSpan)*(W-pad*2);
     const ey=e=>(H-pad)-(e-minE)/eRange*(H-pad*2)-pad;
     // No background — transparent so map shows through
     // Draw coloured fill segments first, then line on top
@@ -5624,6 +5641,7 @@ function renderDesktopMap(){
     ctx.strokeStyle=curCol;ctx.lineWidth=1.5;ctx.stroke();
     r.stops.forEach(s=>{
       if(s.starred===false&&s.type!=='sleep'&&s.type!=='stop'&&!s.sleepAt)return;
+      if(s.dist<vFrom||s.dist>vTo)return; // outside zoomed range
       const x=ex(s.dist);
       const nearPt=epts.reduce((best,p)=>Math.abs(p.dist-s.dist)<Math.abs(best.dist-s.dist)?p:best,epts[0]);
       const y=ey(nearPt.ele);
@@ -5632,6 +5650,16 @@ function renderDesktopMap(){
       ctx.fillStyle=isSleep?'#b39ddb':'rgba(74,222,128,0.9)';ctx.fill();
       ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=0.5;ctx.stroke();
     });
+    // Km range labels when zoomed in
+    if(vTo-vFrom<fullDist-0.5){
+      const lt=Math.round(vFrom)+'km',rt=Math.round(vTo)+'km';
+      ctx.font='600 11px system-ui,sans-serif';
+      ctx.textBaseline='top';
+      ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,0.65)';ctx.fillStyle='rgba(255,255,255,0.92)';
+      ctx.textAlign='left';ctx.strokeText(lt,pad+2,4);ctx.fillText(lt,pad+2,4);
+      ctx.textAlign='right';ctx.strokeText(rt,W-pad-2,4);ctx.fillText(rt,W-pad-2,4);
+      ctx.textAlign='left'; // reset
+    }
   }
   // Attach elevation tooltip — outside route check so it always attaches when canvas exists
   if(ec&&!ec._tooltipAttached){
@@ -5645,10 +5673,14 @@ function renderDesktopMap(){
       const mx=e.clientX-rect.left;
       const W2=ec.offsetWidth||rect.width;
       const totalDist2=r2.points[r2.points.length-1].dist;
+      // Respect the zoomed range the profile was last drawn with
+      const vF=(ec._vFrom!==undefined)?ec._vFrom:0;
+      const vT=(ec._vTo!==undefined&&ec._vTo>vF)?ec._vTo:totalDist2;
+      const vS=vT-vF||1;
       const pad2=8;
-      const ex2=d=>pad2+(d/totalDist2)*(W2-pad2*2);
+      const ex2=d=>pad2+((d-vF)/vS)*(W2-pad2*2);
       // Find route point at this x position
-      const hoverDist=Math.max(0,Math.min(totalDist2,(mx-pad2)/(W2-pad2*2)*totalDist2));
+      const hoverDist=Math.max(0,Math.min(totalDist2,vF+(mx-pad2)/(W2-pad2*2)*vS));
       const hoverPt=r2.points[cidx(r2,hoverDist)];
       // Draw scrubber on desktop map
       if(_elevScrubId)cancelAnimationFrame(_elevScrubId);
@@ -11666,7 +11698,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v149';
+  const CACHE_NAME='packtimes-v150';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
