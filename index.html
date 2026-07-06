@@ -1691,6 +1691,7 @@ async function fetchSurfaceData(force){
   let lastErr='';
   // Main overpass-api.de instance first — most reliable. mail.ru last: often very slow from Australia.
   const SURF_MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  let goodMirror=null; // sticky: once a mirror answers, use it first for the remaining chunks
   for(let ci=0;ci<chunks.length;ci++){
     const chunk=chunks[ci];
     UI.surfaceMsg=`Fetching surface data\u2026 ${ci+1}/${chunks.length}`;
@@ -1699,15 +1700,23 @@ async function fetchSurfaceData(force){
     // Corridor query — only ways within ~80 m of the route line. Vastly less
     // data than the old bounding-box query, which pulled every road/footpath
     // in the whole rectangular region (huge near towns, and very slow).
-    const poly=chunk.map(p=>p.lat.toFixed(5)+','+p.lon.toFixed(5)).join(',');
-    const q=`[out:json][timeout:30][maxsize:16000000];`+
+    // Thin the corridor polyline — Overpass around-query cost scales with vertex
+    // count. ~600 m spacing with a 250 m radius still hugs the route (a road can
+    // bow at most ~190 m from a 600 m chord) but is ~3× cheaper server-side.
+    const thin=[];let lastThinD=-9;
+    for(const p of chunk){if(p.dist-lastThinD>=0.6){thin.push(p);lastThinD=p.dist;}}
+    if(thin[thin.length-1]!==chunk[chunk.length-1])thin.push(chunk[chunk.length-1]);
+    const poly=thin.map(p=>p.lat.toFixed(5)+','+p.lon.toFixed(5)).join(',');
+    const q=`[out:json][timeout:25][maxsize:16000000];`+
       `way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|track|path|footway|bridleway|cycleway)$"]`+
-      `(around:80,${poly});out geom qt tags;`;
+      `(around:250,${poly});out geom qt tags;`;
     let fetched=false;
-    for(const mirror of SURF_MIRRORS){
+    const mirrorOrder=goodMirror?[goodMirror,...SURF_MIRRORS.filter(m=>m!==goodMirror)]:SURF_MIRRORS;
+    for(const mirror of mirrorOrder){
       const abort=new AbortController();
       // Hard client-side cap — a hung mirror must fail over, not stall the whole fetch
-      const abortTimer=setTimeout(()=>abort.abort(),35000);
+      const abortTimer=setTimeout(()=>abort.abort(),28000);
+      const t0=Date.now();
       try{
         // POST — the corridor polyline makes the query too long for a GET URL
         const res=await fetch(mirror,{method:'POST',mode:'cors',signal:abort.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
@@ -1729,8 +1738,14 @@ async function fetchSurfaceData(force){
           const snap=snapToWay(s.lat,s.lon,ways,MAX_OFF_M);
           result[idx]=snap?{cat:snap.cat,guess:!!snap.guess}:null;
         });
+        goodMirror=mirror;
+        console.log(`[surface] chunk ${ci+1}/${chunks.length} via ${mirror.split('/')[2]} in ${Date.now()-t0}ms`);
         fetched=true;break;
-      }catch(e){lastErr=e.name==='AbortError'?'timeout':e.message;}
+      }catch(e){
+        lastErr=e.name==='AbortError'?'timeout':e.message;
+        console.log(`[surface] chunk ${ci+1}/${chunks.length} FAILED on ${mirror.split('/')[2]} after ${Date.now()-t0}ms: ${lastErr}`);
+        if(mirror===goodMirror)goodMirror=null; // it stopped answering — re-shop next chunk
+      }
       finally{clearTimeout(abortTimer);}
     }
     if(!fetched){UI.surfaceStatus='error';UI.surfaceMsg=`Surface fetch failed (${lastErr})`;renderKeepScroll();return;}
@@ -11742,7 +11757,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v156';
+  const CACHE_NAME='packtimes-v157';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
