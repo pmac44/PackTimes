@@ -4198,11 +4198,14 @@ function drawMap(cvs,r,opts){
         ctx.beginPath();ctx.arc(px(dotLon),py(dotLat),ringR,0,Math.PI*2);
         ctx.strokeStyle='#ffffff';ctx.lineWidth=rw;ctx.stroke();
       }
-      // Badges — sleep (lavender, top-right) and food (amber, bottom-right),
-      // attached to the stop dot itself so they show regardless of layer toggles
+      // Badges — sleep (lavender, top-right) and food (amber, bottom-right).
+      // Visibility follows the matching plan layer (All sleep / Meals-Snacks);
+      // the live ride map always shows them, like the Mission ring
       if(isMapWithRings){
-        const hasSleepBadge=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
-        const hasFoodBadge=!!(s.meals&&s.meals.length);
+        const hasSleepBadge=(s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH)))
+          &&!(isOnMap&&UI.hiddenMapTypes.has('allsleep'));
+        const hasFoodBadge=!!(s.meals&&s.meals.length)
+          &&!(isOnMap&&UI.hiddenMapTypes.has('allfood'));
         if(hasSleepBadge||hasFoodBadge){
           const bo=6.5,br=4,bx=px(dotLon),by=py(dotLat);
           if(hasSleepBadge){
