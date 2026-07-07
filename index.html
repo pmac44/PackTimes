@@ -640,7 +640,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v175';
+window.APP_VERSION='v176';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -13559,8 +13559,11 @@ if('serviceWorker' in navigator && window.self===window.top){
       const isPage=url.href===PAGE_URL||url.pathname===new URL(PAGE_URL).pathname;
       if(isNavigate||isPage){
         e.respondWith(
-          // Network first — get fresh version if online
-          fetch(e.request)
+          // Network first — get fresh version if online. cache:'no-cache' forces a
+          // revalidation with GitHub instead of trusting the browser's HTTP cache
+          // (max-age=600), so a new push shows up on the very next open rather than
+          // up to 10 minutes later. When unchanged it's a cheap headers-only check.
+          fetch(e.request,{cache:'no-cache'})
             .then(res=>{
               if(res&&res.ok){
                 const clone=res.clone();
