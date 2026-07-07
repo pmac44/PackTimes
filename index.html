@@ -480,6 +480,7 @@ select option{background:var(--bg3);}
     <canvas id="rec-detail-elev" style="width:100%;height:56px;display:block;margin-bottom:10px;"></canvas>
     <div id="rdm-stats" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:14px;"></div>
     <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-p btn-full" id="rdm-fillgaps" style="display:none;">Fill missing GPS sections&hellip;</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-p" id="rdm-fit" style="flex:1;justify-content:center;">Export FIT</button>
         <button class="btn" id="rdm-gpx" style="flex:1;justify-content:center;">Export GPX</button>
@@ -635,6 +636,11 @@ const DB=(()=>{
 // ═══════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════
+// Single source of truth for the app version — the service worker's CACHE_NAME
+// derives from this (second script block), and Settings displays it. Bump HERE
+// when shipping a release; nothing else needs touching.
+window.APP_VERSION='v173';
+const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
   id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),
@@ -3402,6 +3408,10 @@ function _recDetailOpen(recId){
     (gapsAll.length ? gapsAll.length + ' GPS gap' + (gapsAll.length !== 1 ? 's' : '') + (gapsFilled ? ' · ' + gapsFilled + ' filled' : '') + (gapsOpen ? ' · ' + gapsOpen + ' left open' : '') + '<br>' : '') +
     '<span style="color:var(--text3);">Local only — not uploaded</span>';
   document.getElementById('rdm-del-confirm').style.display = 'none';
+  // Offer gap fill for any gaps still awaiting a decision (e.g. the end-of-ride
+  // prompt was missed because the phone was locked right after Stop & save)
+  document.getElementById('rdm-fillgaps').style.display =
+    _recGapQueueFor(rec).length ? 'block' : 'none';
   document.getElementById('rec-detail-modal').style.display = 'flex';
   // Draw after layout so the canvases have real offsetWidth
   requestAnimationFrame(_recDetailRedraw);
@@ -3461,6 +3471,13 @@ async function _recDetailDelete(){
   const x = $('rdm-x');
   if(!x) return;
   x.addEventListener('click', _recDetailClose);
+  $('rdm-fillgaps').addEventListener('click', ()=>{
+    const rec = _recDetailRec;
+    if(!rec) return;
+    _recDetailClose();
+    _recGapCtx = {rec, gaps: _recGapQueueFor(rec), idx: 0};
+    _recGapShow();
+  });
   $('rdm-fit').addEventListener('click', ()=>exportRecordingAsFIT());
   $('rdm-gpx').addEventListener('click', ()=>exportRecordingAsGPX());
   $('rdm-copy').addEventListener('click', _recDetailCopyAsRoute);
@@ -9688,6 +9705,7 @@ function tSettings(r){
     <p style="font-size:13px;color:var(--text3);margin-top:10px;line-height:1.5;">Each search uses 1-2 API credits. Results appear as stops with a <strong style="color:#c084fc;">Book</strong> button that opens Booking.com pre-filtered to that location.</p>
   `)}
   ${section('danger','Danger Zone',dangerBody)}
+  <div style="text-align:center;padding:10px 0 4px;font-size:12px;color:var(--text3);font-family:var(--font);">PackTimes ${APP_VERSION}</div>
   `;
 }
 
@@ -13243,7 +13261,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v172';
+  const CACHE_NAME='packtimes-'+(window.APP_VERSION||'v0');
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
