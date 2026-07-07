@@ -52,6 +52,10 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--fs-base);overscroll-behavior-y:contain;}
 .app{display:flex;flex-direction:column;height:100vh;max-width:500px;margin:0 auto;}
+/* Long pop-ups (How PackTimes Works, Speed Estimation, Advanced Estimation) go edge-to-edge
+   full-screen on phones — see PackTimes-style-guide.md "Modals" note. Reverts to a normal
+   bottom sheet on desktop widths below. */
+.modal-sheet-full{height:100dvh;border-radius:0;}
 @media(min-width:900px){
   .app{max-width:100%;flex-direction:column;}
   .desktop-layout{display:flex!important;}
@@ -62,6 +66,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   .tab{padding:8px 6px;font-size:15px;}
   .tab-icon{font-size:16px;}
   .mobile-only-logo{display:none!important;}
+  .modal-sheet-full{height:auto;max-height:90vh;border-radius:14px 14px 0 0;}
 }
 .header{display:none;}
 .hlogo{font-size:20px;}.htitle{font-size:20px;font-weight:600;color:var(--accent);letter-spacing:-.5px;}
@@ -339,11 +344,12 @@ select option{background:var(--bg3);}
 
 <!-- Edit stop modal -->
 <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Edit Stop</span>
       <button class="btn btn-sm" id="edit-modal-x">✕</button>
     </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">
     <div class="field">
       <label class="lbl">Name</label>
       <input type="text" id="em-name" placeholder="Stop name">
@@ -378,17 +384,19 @@ select option{background:var(--bg3);}
       <label class="lbl">Booking / Website URL (optional)</label>
       <input type="url" id="em-url" placeholder="https://…">
     </div>
-    <button class="btn btn-p btn-full" id="em-save">Save</button>
+    </div>
+    <button class="btn btn-p btn-full" id="em-save" style="flex-shrink:0;margin-top:10px;">Save</button>
   </div>
 </div>
 
 <!-- Add stop modal -->
 <div id="stop-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);">Add Stop</span>
       <button class="btn btn-sm" id="modal-x">✕</button>
     </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">
     <div class="field"><label class="lbl">Type</label>
       <select id="m-type">
         <option value="stop">📍 Manual Stop</option>
@@ -442,23 +450,26 @@ select option{background:var(--bg3);}
         <div style="flex:1;"><label class="lbl" style="font-size:13px;">Closes</label><input type="time" id="m-close" value="20:00" class="time-compact"></div>
       </div>
     </div>
-    <button class="btn btn-p btn-full" id="modal-ok" style="margin-top:8px;">+ Add Stop</button>
+    </div>
+    <button class="btn btn-p btn-full" id="modal-ok" style="flex-shrink:0;margin-top:8px;">+ Add Stop</button>
   </div>
 </div>
 
 <!-- Recording recovery modal — shown on launch when an unfinished recording is found -->
 <div id="rec-recovery-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);" id="rrm-title">Unfinished recording</span>
     </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">
     <div id="rrm-details" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:16px;"></div>
-    <div style="display:flex;flex-direction:column;gap:8px;">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;">
       <button class="btn btn-p btn-full" id="rrm-resume">Resume this ride</button>
       <button class="btn btn-full" id="rrm-save">Save as finished ride</button>
       <button class="btn btn-r btn-full" id="rrm-delete">Delete&hellip;</button>
     </div>
-    <div id="rrm-del-confirm" style="display:none;margin-top:12px;">
+    <div id="rrm-del-confirm" style="display:none;margin-top:12px;flex-shrink:0;">
       <p style="font-size:15px;color:var(--text2);margin-bottom:8px;">This can't be undone. Type <b>delete</b> to confirm.</p>
       <div style="display:flex;gap:8px;">
         <input type="text" id="rrm-del-input" placeholder="delete" autocomplete="off" autocapitalize="none" style="flex:1;min-width:0;">
@@ -471,14 +482,15 @@ select option{background:var(--bg3);}
 
 <!-- Recording detail modal — opened from a ride row on the Routes tab -->
 <div id="rec-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;max-height:90dvh;overflow-y:auto;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;max-height:90dvh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="rdm-title">Ride</span>
       <span style="display:flex;gap:8px;flex-shrink:0;">
         <button class="btn btn-sm" id="rdm-rename" title="Rename ride">Rename</button>
         <button class="btn btn-sm" id="rdm-x">✕</button>
       </span>
     </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">
     <div id="rdm-name-edit" style="display:none;gap:8px;margin-bottom:12px;">
       <input type="text" id="rdm-name-input" autocomplete="off" style="flex:1;min-width:0;">
       <button class="btn btn-p" id="rdm-name-save">Save</button>
@@ -505,18 +517,21 @@ select option{background:var(--bg3);}
         <button class="btn" id="rdm-del-cancel">Cancel</button>
       </div>
     </div>
+    </div>
   </div>
 </div>
 
 <!-- Gap-fill modal — offered after a ride ends when GPS gaps were detected -->
 <div id="rec-gap-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;">
-    <div style="margin-bottom:13px;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
+    <div style="margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);" id="rgm-title">Missing GPS section</span>
       <p style="font-size:14px;color:var(--text3);margin-top:4px;line-height:1.5;">GPS cut out during this ride (usually the screen turning off). Choose how to fill each missing section — filled parts are marked so nothing is pretending.</p>
     </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">
     <div id="rgm-details" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:14px;"></div>
-    <div style="display:flex;flex-direction:column;gap:8px;">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;">
       <button class="btn btn-p btn-full" id="rgm-naismith">Fill along route — realistic pace</button>
       <button class="btn btn-full" id="rgm-constant">Fill along route — steady pace</button>
       <button class="btn btn-full" id="rgm-line">Straight line</button>
@@ -527,11 +542,12 @@ select option{background:var(--bg3);}
 
 <!-- Ride save modal — name the ride and optionally feed it into Speed Calibration -->
 <div id="rec-save-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90dvh;overflow-y:auto;">
-    <div style="margin-bottom:13px;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90dvh;display:flex;flex-direction:column;">
+    <div style="margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);">Ride saved</span>
       <p id="rsm-stats" style="font-family:var(--font);font-size:15px;color:var(--text2);margin-top:4px;"></p>
     </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">
     <div class="field">
       <label class="lbl">Ride name</label>
       <input type="text" id="rsm-name" autocomplete="off" style="width:100%;">
@@ -569,7 +585,8 @@ select option{background:var(--bg3);}
         </select>
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-top:8px;">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;flex-shrink:0;">
       <button class="btn btn-p" id="rsm-save" style="flex:1;justify-content:center;">Save</button>
       <button class="btn" id="rsm-dismiss" style="flex:1;justify-content:center;">Dismiss</button>
     </div>
@@ -578,11 +595,12 @@ select option{background:var(--bg3);}
 
 <!-- Pace segment modal -->
 <div id="pace-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90vh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Hike-a-bike Section</span>
       <button class="btn btn-sm" id="pace-modal-x">✕</button>
     </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">
     <div class="field">
       <label class="lbl">Name (optional)</label>
       <input type="text" id="pace-name" placeholder="e.g. Billy Goat Bluff"></div>
@@ -620,17 +638,19 @@ select option{background:var(--bg3);}
       <div style="font-size:13px;color:var(--text3);margin-top:4px;text-align:center;">15 min steps · long-press to repeat</div>
     </div>
     <div style="font-size:14px;color:var(--accent);text-align:center;margin-bottom:8px;" id="pace-speed-hint"></div>
-    <button class="btn btn-p btn-full" id="pace-save">Save Segment</button>
+    </div>
+    <button class="btn btn-p btn-full" id="pace-save" style="flex-shrink:0;">Save Segment</button>
   </div>
 </div>
 
 <!-- Advanced Calibration modal (sample rides) -->
 <div id="calib-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+  <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Advanced Estimation</span>
       <button class="btn btn-sm" onclick="closeCalibModal()">✕</button>
     </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">
     <p style="font-size:13px;color:var(--text3);line-height:1.55;margin:0 0 12px;">
       Enter rides you've actually done, ridden <b style="color:var(--text2);">the way you'd ride the event you're planning</b> — steady all-day endurance pace, long enough to be honest.
       Don't use sprints or segment PBs ridden flat out; a short maximum effort will make every plan optimistic.
@@ -646,30 +666,31 @@ select option{background:var(--bg3);}
     <div id="calib-rides-wrap"></div>
     <button class="btn btn-sm" id="calib-add" onclick="_calibAdd()" style="width:100%;justify-content:center;margin-bottom:12px;">+ Add another sample ride</button>
     <div id="calib-factor-row" style="font-size:14px;color:var(--text2);text-align:center;margin-bottom:10px;min-height:20px;"></div>
-    <button class="btn btn-p btn-full" onclick="saveCalibModal()">Save Sample Rides</button>
+    </div>
+    <button class="btn btn-p btn-full" onclick="saveCalibModal()" style="flex-shrink:0;margin-top:8px;margin-bottom:env(safe-area-inset-bottom,0px);">Save Sample Rides</button>
   </div>
 </div>
 
 <!-- Help modal — "How PackTimes works", opened from the header "?" button or Settings -->
 <div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;max-height:90dvh;overflow-y:auto;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
+  <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:18px;font-weight:600;color:var(--text);">How PackTimes works</span>
       <button class="btn btn-sm" onclick="closeHelpModal()">✕</button>
     </div>
-    <div id="help-modal-body"></div>
+    <div id="help-modal-body" style="overflow-y:auto;flex:1;min-height:0;padding-bottom:env(safe-area-inset-bottom,0px);"></div>
   </div>
 </div>
 
 <!-- Speed Estimation modal (rider / load / final adjustment) -->
 <div id="speed-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+  <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Speed Estimation</span>
       <button class="btn btn-sm" onclick="closeSpeedModal()">✕</button>
     </div>
-    <div id="speed-modal-body"></div>
-    <button class="btn btn-p btn-full" onclick="closeSpeedModal()" style="margin-top:4px;">Done</button>
+    <div id="speed-modal-body" style="overflow-y:auto;flex:1;min-height:0;"></div>
+    <button class="btn btn-p btn-full" onclick="closeSpeedModal()" style="flex-shrink:0;margin-top:4px;margin-bottom:env(safe-area-inset-bottom,0px);">Done</button>
   </div>
 </div>
 <script>
@@ -713,7 +734,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v183';
+window.APP_VERSION='v184';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
