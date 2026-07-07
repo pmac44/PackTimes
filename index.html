@@ -446,6 +446,29 @@ select option{background:var(--bg3);}
   </div>
 </div>
 
+<!-- Recording recovery modal — shown on launch when an unfinished recording is found -->
+<div id="rec-recovery-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
+      <span style="font-size:19px;font-weight:600;color:var(--text);" id="rrm-title">Unfinished recording</span>
+    </div>
+    <div id="rrm-details" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:16px;"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-p btn-full" id="rrm-resume">Resume this ride</button>
+      <button class="btn btn-full" id="rrm-save">Save as finished ride</button>
+      <button class="btn btn-r btn-full" id="rrm-delete">Delete&hellip;</button>
+    </div>
+    <div id="rrm-del-confirm" style="display:none;margin-top:12px;">
+      <p style="font-size:15px;color:var(--text2);margin-bottom:8px;">This can't be undone. Type <b>delete</b> to confirm.</p>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="rrm-del-input" placeholder="delete" autocomplete="off" autocapitalize="none" style="flex:1;min-width:0;">
+        <button class="btn btn-r" id="rrm-del-go" disabled>Delete</button>
+        <button class="btn" id="rrm-del-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Pace segment modal -->
 <div id="pace-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
@@ -2832,30 +2855,33 @@ async function _recMigrate(rec){
   return rec;
 }
 
-// Auto-finalise orphans: any non-finalised recording that ISN'T the current
-// session's recording (i.e. doesn't match UI.recId) is leftover from a tab close
-// or page navigation that never reached "Stop & save". Give it an honest end time
-// (last stored point's timestamp, or startTS as fallback), compute totalDur, and
-// mark it finalised. Never deletes — just closes the loop so it stops looking
-// like an in-progress recording.
-async function _recFinaliseOrphans(){
-  try{
-    const all = await DB.allRecordings();
-    if(!all || !all.length) return;
-    for(const rec of all){
-      if(rec.status === 'finalised') continue;
-      if(UI.recId && rec.id === UI.recId) continue;  // current session's — don't touch
-      // Pick an end time: last stored point's timestamp, or startTS if no points
-      const lastT = rec.points && rec.points.length
-        ? rec.points[rec.points.length - 1].t
-        : rec.startTS;
-      rec.endTS = lastT || rec.startTS || Date.now();
-      rec.totalDur = rec.endTS - rec.startTS;
-      rec.status = 'finalised';
-      await _recMigrate(rec);  // also catches stale-units rows
-      await DB.putRecording(rec).catch(()=>{});
-    }
-  } catch(e){}
+// ── Crash recovery (Phase 1a Step 5) ──
+//
+// Any non-finalised recording found at launch gets an explicit Resume / Save /
+// Delete prompt (the #rec-recovery-modal), instead of the old silent auto-finalise.
+// One exception: the current session's recording (UI.recId) with activity in the
+// last 5 minutes is just a fresh reload mid-ride — rehydrate it silently and keep
+// recording, no prompt.
+//
+// Recordings awaiting a decision queue up in _recRecovery; the modal shows them
+// one at a time. Nothing is written until the user chooses, so closing the app
+// without deciding simply re-prompts on next launch. Delete requires typing
+// "delete" — no recording is ever removed without explicit confirmation.
+const REC_RECOVERY_FRESH_MS = 5 * 60 * 1000;   // activity within this = fresh reload, not a crash
+let _recRecovery = [];                          // recordings awaiting a Resume/Save/Delete decision
+
+// Timestamp of a recording's last sign of life: last stored point, else its start.
+function _recLastActivityTS(rec){
+  const lastT = rec.points && rec.points.length ? rec.points[rec.points.length - 1].t : null;
+  return lastT || rec.startTS || 0;
+}
+
+// Give a recording an honest end time (its last stored point, not "now") and finalise.
+async function _recFinaliseStale(rec){
+  rec.endTS = _recLastActivityTS(rec) || Date.now();
+  rec.totalDur = rec.endTS - rec.startTS;
+  rec.status = 'finalised';
+  await DB.putRecording(rec).catch(()=>{});
 }
 
 // Restore an active OR paused recording from IDB after a page reload.
@@ -2864,26 +2890,118 @@ async function _recFinaliseOrphans(){
 // Paused recordings restore too (not just active) — otherwise pausing then
 // reloading orphans the recording.
 async function _recRehydrate(){
-  // First, run the orphan-finalisation sweep so previous-session leftovers don't
-  // sit around looking like in-progress recordings forever.
-  await _recFinaliseOrphans();
-  if(!UI.recId) return;
-  try{
-    const r = await _recMigrate(await DB.getRecording(UI.recId));
-    if(r && (r.status === 'active' || r.status === 'paused')){
-      _rec = r;
+  _recRecovery = [];
+  let all = [];
+  try{ all = (await DB.allRecordings()) || []; } catch(e){ return; }
+  for(const raw of all){
+    if(!raw || raw.status === 'finalised') continue;
+    let rec = raw;
+    try{ rec = await _recMigrate(raw); } catch(e){}
+    const fresh = (Date.now() - _recLastActivityTS(rec)) < REC_RECOVERY_FRESH_MS;
+    if(UI.recId && rec.id === UI.recId && fresh &&
+       (rec.status === 'active' || rec.status === 'paused')){
+      // Fresh reload mid-ride — restore silently and keep recording
+      _rec = rec;
       _recMode = 'active';
       _recLastFix = null;
       _recStop = null;
       // Last stored point becomes our reference for the sampling state machine
-      const lp = r.points && r.points.length ? r.points[r.points.length - 1] : null;
+      const lp = rec.points && rec.points.length ? rec.points[rec.points.length - 1] : null;
       _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
     } else {
-      // Stored recId points to nothing (or to a finalised recording) — clear it
-      UI.recId = null;
+      // Crashed session or previous-session leftover — user decides via the modal
+      _recRecovery.push(rec);
     }
-  } catch(e){ UI.recId = null; }
+  }
+  // Oldest first so multiple leftovers are dealt with in the order they happened
+  _recRecovery.sort((a,b)=>(a.startTS||0)-(b.startTS||0));
+  // Stored recId that didn't restore to a live recording — clear it
+  if(UI.recId && (!_rec || _rec.id !== UI.recId)) UI.recId = null;
 }
+
+// Show the recovery modal for the first queued recording (or hide it when done).
+// Called from INIT after the first render, and again after each decision.
+function _recRecoveryShow(){
+  const modal = document.getElementById('rec-recovery-modal');
+  if(!modal) return;
+  if(!_recRecovery.length){ modal.style.display = 'none'; return; }
+  const rec  = _recRecovery[0];
+  const pts  = rec.points ? rec.points.length : 0;
+  const km   = (rec.totalDist || 0).toFixed(1);
+  const last = _recLastActivityTS(rec);
+  document.getElementById('rrm-title').textContent = _recRecovery.length > 1
+    ? 'Unfinished recording (1 of ' + _recRecovery.length + ')'
+    : 'Unfinished recording';
+  document.getElementById('rrm-details').innerHTML =
+    'Started ' + fmtDTY(new Date(rec.startTS)) + '<br>' +
+    pts + ' points · ' + km + ' km<br>' +
+    'Last point ' + _dbxAgoStr(last);
+  // Can't resume a second recording while one is already live
+  document.getElementById('rrm-resume').style.display = _rec ? 'none' : 'block';
+  document.getElementById('rrm-del-confirm').style.display = 'none';
+  modal.style.display = 'flex';
+}
+
+// Pop the decided recording off the queue and show the next one (if any).
+function _recRecoveryAdvance(){
+  _recRecovery.shift();
+  _recRecoveryShow();
+}
+
+async function _recRecoveryResume(){
+  const rec = _recRecovery[0];
+  if(!rec || _rec) return;   // button is hidden when a recording is live; belt-and-braces
+  rec.status = 'active';
+  rec.endTS  = null;
+  await DB.putRecording(rec).catch(()=>{});
+  _rec = rec;
+  _recMode = 'active';
+  _recLastFix = null;
+  _recStop = null;
+  const lp = rec.points && rec.points.length ? rec.points[rec.points.length - 1] : null;
+  _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
+  UI.recId = rec.id;
+  await saveAll().catch(()=>{});
+  if(!UI.gpsActive) startGPS();
+  _recRecoveryAdvance();
+  render();
+}
+
+async function _recRecoverySave(){
+  const rec = _recRecovery[0];
+  if(!rec) return;
+  await _recFinaliseStale(rec);
+  _recRecoveryAdvance();
+}
+
+async function _recRecoveryDelete(){
+  const rec = _recRecovery[0];
+  if(!rec) return;
+  await DB.delRecording(rec.id).catch(()=>{});
+  _recRecoveryAdvance();
+}
+
+// Wire the modal's buttons once (the modal markup is static HTML, parsed before
+// this script runs, so the elements exist here).
+(function(){
+  const $ = id => document.getElementById(id);
+  const resume = $('rrm-resume');
+  if(!resume) return;
+  resume.addEventListener('click', _recRecoveryResume);
+  $('rrm-save').addEventListener('click', _recRecoverySave);
+  $('rrm-delete').addEventListener('click', ()=>{
+    const row = $('rrm-del-confirm');
+    row.style.display = 'block';
+    $('rrm-del-input').value = '';
+    $('rrm-del-go').disabled = true;
+    $('rrm-del-input').focus();
+  });
+  $('rrm-del-cancel').addEventListener('click', ()=>{ $('rrm-del-confirm').style.display = 'none'; });
+  $('rrm-del-input').addEventListener('input', ()=>{
+    $('rrm-del-go').disabled = $('rrm-del-input').value.trim().toLowerCase() !== 'delete';
+  });
+  $('rrm-del-go').addEventListener('click', _recRecoveryDelete);
+})();
 
 // ── Live-tab recording control: tap handlers for the play/pause/stop buttons ──
 //
@@ -12227,6 +12345,8 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;
   DB.setKV('lastGpsState',null).catch(()=>{});
   initDesktop();render();
+  // Crash recovery: prompt for any unfinished recordings found during loadAll
+  _recRecoveryShow();
   // Auto-load from Dropbox if connected and cloud is newer
   if(UI.dbxToken)dbxAutoLoad();
 });
@@ -12238,7 +12358,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v166';
+  const CACHE_NAME='packtimes-v167';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
