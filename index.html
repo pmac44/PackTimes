@@ -474,7 +474,15 @@ select option{background:var(--bg3);}
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;max-height:90dvh;overflow-y:auto;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;">
       <span style="font-size:19px;font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="rdm-title">Ride</span>
-      <button class="btn btn-sm" id="rdm-x">✕</button>
+      <span style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="btn btn-sm" id="rdm-rename" title="Rename ride">Rename</button>
+        <button class="btn btn-sm" id="rdm-x">✕</button>
+      </span>
+    </div>
+    <div id="rdm-name-edit" style="display:none;gap:8px;margin-bottom:12px;">
+      <input type="text" id="rdm-name-input" autocomplete="off" style="flex:1;min-width:0;">
+      <button class="btn btn-p" id="rdm-name-save">Save</button>
+      <button class="btn" id="rdm-name-cancel">Cancel</button>
     </div>
     <canvas id="rec-detail-map" style="width:100%;height:240px;border-radius:var(--r-ctrl);background:var(--bg3);display:block;margin-bottom:8px;"></canvas>
     <canvas id="rec-detail-elev" style="width:100%;height:56px;display:block;margin-bottom:10px;"></canvas>
@@ -513,6 +521,57 @@ select option{background:var(--bg3);}
       <button class="btn btn-full" id="rgm-constant">Fill along route — steady pace</button>
       <button class="btn btn-full" id="rgm-line">Straight line</button>
       <button class="btn btn-full" id="rgm-none">Leave as a gap</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ride save modal — name the ride and optionally feed it into Speed Calibration -->
+<div id="rec-save-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90dvh;overflow-y:auto;">
+    <div style="margin-bottom:13px;">
+      <span style="font-size:19px;font-weight:600;color:var(--text);">Ride saved</span>
+      <p id="rsm-stats" style="font-family:var(--font);font-size:15px;color:var(--text2);margin-top:4px;"></p>
+    </div>
+    <div class="field">
+      <label class="lbl">Ride name</label>
+      <input type="text" id="rsm-name" autocomplete="off" style="width:100%;">
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:15px;color:var(--text2);margin:10px 0 4px;">
+      <input type="checkbox" id="rsm-calib" checked style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+      <span>Add to Speed Calibration</span>
+    </label>
+    <p style="font-size:13px;color:var(--text3);line-height:1.5;margin-bottom:8px;">Real rides teach PackTimes how fast you actually ride. Sample rides stay visible in Advanced Estimation — you can remove any of them later.</p>
+    <div id="rsm-calib-body">
+      <div id="rsm-auto" style="display:none;font-size:14px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:8px 10px;margin-bottom:10px;line-height:1.5;"></div>
+      <div class="field" id="rsm-surface-field" style="display:none;">
+        <label class="lbl">Surface (mostly)</label>
+        <select id="rsm-surface">
+          <option value="road">Sealed road</option>
+          <option value="grade2">Gravel / dirt road</option>
+          <option value="grade4">Rough track / hike-a-bike</option>
+        </select>
+      </div>
+      <div class="field" id="rsm-hill-field" style="display:none;">
+        <label class="lbl">Terrain</label>
+        <select id="rsm-hill">
+          <option value="3">Flat</option>
+          <option value="8" selected>Rolling</option>
+          <option value="15">Hilly</option>
+          <option value="25">Mountainous</option>
+        </select>
+      </div>
+      <div class="field" id="rsm-load-field" style="display:none;">
+        <label class="lbl">Load carried</label>
+        <select id="rsm-load">
+          <option value="light">Light — minimal kit / day ride</option>
+          <option value="moderate" selected>Moderate — typical bikepacking setup</option>
+          <option value="heavy">Heavy — full expedition or touring load</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn btn-p" id="rsm-save" style="flex:1;justify-content:center;">Save</button>
+      <button class="btn" id="rsm-dismiss" style="flex:1;justify-content:center;">Dismiss</button>
     </div>
   </div>
 </div>
@@ -579,7 +638,10 @@ select option{background:var(--bg3);}
       A section of a longer ride or a Strava segment works well — shorter sections make a single surface more likely.
       Set each sample's <b style="color:var(--text2);">section shape</b>: rolling/loop for sections finishing near their start height, or mostly-climbing for climb segments.
       Avoid mostly-downhill sections — they measure braking, not fitness.
-      Use <b style="color:var(--text2);">moving time</b> from Strava or your head unit, not elapsed time.
+      For time, use <b style="color:var(--text2);">elapsed time minus deliberate breaks</b> (meals, sleep, long resupply stops) — keep the short stops in.
+      Layers, snacks, bottles, gates: that routine faff is part of real bikepacking, and counting it here is what makes your ETAs match when you actually arrive.
+      Strava's "moving time" hides those stops — if that's all you have, add roughly 5–10% to it.
+      Rides you record in PackTimes offer themselves as samples when you save them, with this rule applied automatically: stops under 15 minutes count as ride time, longer breaks are excluded.
     </p>
     <div id="calib-rides-wrap"></div>
     <button class="btn btn-sm" id="calib-add" onclick="_calibAdd()" style="width:100%;justify-content:center;margin-bottom:12px;">+ Add another sample ride</button>
@@ -640,7 +702,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v177';
+window.APP_VERSION='v180';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2783,7 +2845,7 @@ function updateGPSPill(){
 //    stationary — phone hasn't moved; don't store points until movement resumes
 //
 //  Recording shape (stored in DB.recordings):
-//    {id, routeId|null, status, startTS, endTS|null,
+//    {id, name|undefined, routeId|null, status, startTS, endTS|null,
 //     points: [{lat, lon, ele, t, accuracy, _stop?, _resume?, _synthetic?}],
 //     gaps:   [{startT, endT, fillStrategy}],
 //     totalDist, totalDur,
@@ -2867,6 +2929,7 @@ async function finaliseRecording(){
   _rec.status = 'finalised';
   _rec.endTS  = Date.now();
   _rec.totalDur = _rec.endTS - _rec.startTS;
+  if(!_rec.name) _rec.name = _recDefaultName(_rec);
   // totalDist is maintained incrementally; trust it
   await DB.putRecording(_rec).catch(()=>{});
   // Keep the saved-rides cache in step (newest first)
@@ -3171,6 +3234,12 @@ async function _recGapFinish(){
   render();
   // Gap decisions made — NOW the ride is ready for auto-upload (the FIT includes fills)
   if(ctx.auto && UI.stravaToken && UI.stravaAutoUpload !== false) stravaQueue(ctx.rec);
+  // …and totals are final, so the name/calibration prompt can use them
+  if(_recSavePending && _recSavePending.id === ctx.rec.id){
+    const p = _recSavePending;
+    _recSavePending = null;
+    _recSaveShow(p);
+  }
 }
 
 // Wire the gap modal's static buttons once.
@@ -3209,6 +3278,7 @@ async function _recFinaliseStale(rec){
   rec.endTS = _recLastActivityTS(rec) || Date.now();
   rec.totalDur = rec.endTS - rec.startTS;
   rec.status = 'finalised';
+  if(!rec.name) rec.name = _recDefaultName(rec);
   await DB.putRecording(rec).catch(()=>{});
 }
 
@@ -3379,7 +3449,7 @@ function _ridesCardHTML(){
     const durH = (rec.totalDur || 0) / 3600000;
     return '<div class="rec-row" data-recid="' + rec.id + '" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:8px 10px;margin-bottom:5px;cursor:pointer;">'
       + '<div style="min-width:0;">'
-      + '<div style="font-size:16px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fmtDTY(new Date(rec.startTS)) + '</div>'
+      + '<div style="font-size:16px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _recDisplayName(rec) + '</div>'
       + '<div style="font-size:14px;color:var(--accent);font-family:var(--font);">' + (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(durH) + (rt ? ' · ' + (rt.label || rt.name) : ' · No route') + '</div>'
       + '</div>'
       + (rec.stravaUploadedAt
@@ -3393,7 +3463,7 @@ function _ridesCardHTML(){
     <div id="rides-card-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${_ridesExpanded?'margin-bottom:10px;':''}">
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:16px;color:var(--text3);">${_ridesExpanded?'▼':'▶'}</span>
-        <span class="ctitle" style="margin-bottom:0;">Rides</span>
+        <span class="ctitle" style="margin-bottom:0;">Recorded Rides</span>
         <span style="font-size:13px;color:var(--text3);">(${RECS.length})</span>
       </div>
     </div>
@@ -3413,11 +3483,13 @@ function _recDetailOpen(recId){
   const rt = ROUTES.find(x => x.id === rec.routeId);
   const durH = (rec.totalDur || 0) / 3600000;
   const stopsN = (rec.points || []).filter(p => p._stop).length;
-  document.getElementById('rdm-title').textContent = 'Ride — ' + fmtDTY(new Date(rec.startTS));
+  document.getElementById('rdm-title').textContent = _recDisplayName(rec);
+  document.getElementById('rdm-name-edit').style.display = 'none';
   const gapsAll = rec.gaps || [];
   const gapsFilled = gapsAll.filter(g => g.fillStrategy && g.fillStrategy !== 'none').length;
   const gapsOpen = gapsAll.length - gapsFilled;
   document.getElementById('rdm-stats').innerHTML =
+    fmtDTY(new Date(rec.startTS)) + '<br>' +
     (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(durH) + '<br>' +
     (rt ? 'Route: ' + (rt.label || rt.name) : 'No linked route') + '<br>' +
     (rec.points ? rec.points.length : 0) + ' points' + (stopsN ? ' · ' + stopsN + ' stop' + (stopsN !== 1 ? 's' : '') : '') + '<br>' +
@@ -3500,7 +3572,7 @@ function _recDetailCopyAsRoute(){
   if(!rec) return;
   const pr = _recAsRoute(rec);
   if(!pr.points.length){ alert('This recording has no points.'); return; }
-  const name = 'Ride ' + new Date(rec.startTS).toLocaleDateString('en-GB');
+  const name = rec.name || ('Ride ' + new Date(rec.startTS).toLocaleDateString('en-GB'));
   const r = newRoute(name);
   r.label = name;
   r.points = pr.points;
@@ -3565,6 +3637,212 @@ async function _recDetailDelete(){
     $('rdm-del-go').disabled = $('rdm-del-input').value.trim().toLowerCase() !== 'delete';
   });
   $('rdm-del-go').addEventListener('click', _recDetailDelete);
+})();
+
+// ── Ride save prompt & calibration feed (Phase 1a Step 10) ──
+//
+// After Stop & save (and after any gap decisions, so totals are final) the
+// rider gets one small modal: name the ride, and optionally feed it into the
+// Advanced Calibration sample-ride library. Surface mix, climb and load are
+// read straight off the followed route when the ride matches one; otherwise
+// two quick questions. Dismiss = keep the default date name, add nothing —
+// nothing enters the speed model without a deliberate Save.
+
+// Default name: "Ride 8 Jul 2026", with " (2)", " (3)"… when that name is taken.
+function _recDefaultName(rec){
+  const base = 'Ride ' + new Date(rec.startTS).toLocaleDateString('en-GB',
+    {day: 'numeric', month: 'short', year: 'numeric'});
+  const taken = n => RECS.some(x => x.id !== rec.id && (x.name || '') === n);
+  if(!taken(base)) return base;
+  for(let i = 2; i < 100; i++) if(!taken(base + ' (' + i + ')')) return base + ' (' + i + ')';
+  return base;
+}
+
+function _recDisplayName(rec){
+  return rec.name || fmtDTY(new Date(rec.startTS));
+}
+
+// Ride time in hours for calibration: elapsed minus deliberate breaks.
+// Anything under 15 minutes — snacks, gates, layers, toilet stops, regroups —
+// is the routine faff of real bikepacking and STAYS IN, so the rider factor
+// absorbs it and ETAs match the clock on the day. Spans of 15 minutes or more
+// are the stops you'd plan explicitly (meals, sleep) and come out. This also
+// counts very slow hike-a-bike honestly (it flickers in and out of stationary
+// detection in short bursts), unlike Strava-style strict moving time.
+const REC_CALIB_BREAK_MS = 15 * 60 * 1000;
+function _recMovingH(rec){
+  const pts = rec.points || [];
+  let ms = 0;
+  for(let i = 1; i < pts.length; i++){
+    const dt = pts[i].t - pts[i-1].t;
+    if(dt < REC_CALIB_BREAK_MS) ms += dt;
+  }
+  return ms / 3600000;
+}
+
+// Try to read surface mix + climb straight off the followed route.
+// Returns null when the ride can't be confidently matched to its route, else
+// {elevM, surface|null, load, secKm}. surface is null when the route has no
+// (or too little) surface data for the ridden section — the modal then asks.
+function _recCalibAuto(rec){
+  const r = _recRouteFor(rec);
+  const pts = (rec.points || []).filter(p => !p._synthetic);
+  if(!r || !r.points || r.points.length < 2 || pts.length < 2 || !rec.totalDist) return null;
+  // Five checkpoints along the ride must all sit within 300 m of the route
+  const checks = [0, 0.25, 0.5, 0.75, 1].map(f => pts[Math.round(f * (pts.length - 1))]);
+  const snaps = checks.map(p => snapTo(r, p.lat, p.lon, null));
+  if(snaps.some(s => !s || s.off > 0.3)) return null;
+  let lo = Math.min(snaps[0].dist, snaps[4].dist);
+  let hi = Math.max(snaps[0].dist, snaps[4].dist);
+  // Loops start and end at the same spot, so the endpoint span collapses —
+  // if the ridden distance roughly matches the whole route, use the whole route.
+  if(hi - lo < rec.totalDist * 0.5){
+    if(Math.abs((r.totalDist || 0) - rec.totalDist) <= rec.totalDist * 0.25){ lo = 0; hi = r.totalDist; }
+    else return null;
+  } else if(Math.abs((hi - lo) - rec.totalDist) > rec.totalDist * 0.3){
+    return null;  // section length and ridden length disagree — don't guess
+  }
+  const secPts = r.points.filter(p => p.dist >= lo && p.dist <= hi);
+  if(secPts.length < 2) return null;
+  const elevM = elevGain(secPts);
+  // Distance-weighted surface mix over the ridden section, mapped onto the
+  // three calibration buckets. Needs tagged coverage of at least half of it.
+  let surface = null;
+  if(r.surfaceSegs && r.surfaceSegs.length){
+    const MAP = {road: 'road', road_minor: 'road', grade1: 'grade2', grade2: 'grade2',
+                 grade3: 'grade2', grade4: 'grade4', grade5: 'grade4', path: 'grade4'};
+    const w = {road: 0, grade2: 0, grade4: 0};
+    for(const sg of r.surfaceSegs){
+      const overlap = Math.min(hi, sg.toDist) - Math.max(lo, sg.fromDist);
+      if(overlap > 0 && MAP[sg.cat]) w[MAP[sg.cat]] += overlap;
+    }
+    const tagged = w.road + w.grade2 + w.grade4;
+    if(tagged >= (hi - lo) * 0.5)
+      surface = Object.keys(w).reduce((a, b) => w[a] >= w[b] ? a : b);
+  }
+  return {elevM, surface, load: r.loadPreset || 'moderate', secKm: hi - lo};
+}
+
+let _recSaveCtx = null;       // {rec, auto} while the save modal is open
+let _recSavePending = null;   // finalised rec waiting for the save modal until gap decisions land
+
+function _recSaveShow(rec){
+  const modal = document.getElementById('rec-save-modal');
+  if(!modal || !rec) return;
+  const auto = _recCalibAuto(rec);
+  _recSaveCtx = {rec, auto};
+  const movH = _recMovingH(rec);
+  document.getElementById('rsm-stats').textContent =
+    (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(movH) + ' ride time (breaks over 15 min excluded)';
+  document.getElementById('rsm-name').value = rec.name || _recDefaultName(rec);
+  document.getElementById('rsm-calib').checked = true;
+  const surfLabels = {road: 'sealed road', grade2: 'gravel / dirt', grade4: 'rough track'};
+  const autoEl = document.getElementById('rsm-auto');
+  if(auto){
+    autoEl.style.display = 'block';
+    autoEl.innerHTML = 'From your route: ' + Math.round(auto.elevM) + ' m climb'
+      + (auto.surface ? ' · mostly ' + surfLabels[auto.surface] : '')
+      + ' · ' + (auto.load || 'moderate') + ' load';
+  } else {
+    autoEl.style.display = 'none';
+  }
+  document.getElementById('rsm-surface-field').style.display = (auto && auto.surface) ? 'none' : 'block';
+  document.getElementById('rsm-hill-field').style.display = auto ? 'none' : 'block';
+  document.getElementById('rsm-load-field').style.display = auto ? 'none' : 'block';
+  _recSaveCalibToggle();
+  modal.style.display = 'flex';
+}
+
+function _recSaveCalibToggle(){
+  const on = document.getElementById('rsm-calib').checked;
+  document.getElementById('rsm-calib-body').style.display = on ? 'block' : 'none';
+}
+
+function _recSaveClose(){
+  document.getElementById('rec-save-modal').style.display = 'none';
+  _recSaveCtx = null;
+}
+
+// Save tapped: store the name, and feed the ride into the calibration library
+// if the toggle is on. Dismiss tapped: keep the default name, feed nothing.
+async function _recSaveConfirm(){
+  const ctx = _recSaveCtx;
+  if(!ctx) return;
+  const rec = ctx.rec, auto = ctx.auto;
+  const name = document.getElementById('rsm-name').value.trim();
+  if(name) rec.name = name;
+  if(document.getElementById('rsm-calib').checked){
+    const distKm = +(rec.totalDist || 0).toFixed(1);
+    const hours = _recMovingH(rec);
+    const surface = (auto && auto.surface) ? auto.surface : document.getElementById('rsm-surface').value;
+    const elevM = auto ? Math.round(auto.elevM)
+                       : Math.round(distKm * (+document.getElementById('rsm-hill').value));
+    const load = auto ? (auto.load || 'moderate') : document.getElementById('rsm-load').value;
+    _recCalibAdd({surface, distKm, hours: +hours.toFixed(2), elevM, load,
+                  profile: 'rolling', src: 'rec', recId: rec.id, name: rec.name});
+  }
+  await DB.putRecording(rec).catch(()=>{});
+  const i = RECS.findIndex(x => x.id === rec.id);
+  if(i >= 0) RECS[i] = rec;
+  _recSaveClose();
+  render();
+}
+
+// Add one recorded ride to UI.calibRides. Keeps the library within
+// CALIB_MAX_RIDES by retiring the oldest recorded entry first — manually
+// entered sample rides are never evicted automatically.
+function _recCalibAdd(entry){
+  if(calibRideFactor(entry) === null){
+    _recToast("Couldn't use this ride for calibration — too short or no moving time");
+    return;
+  }
+  UI.calibRides = UI.calibRides || [];
+  const dup = UI.calibRides.findIndex(s => s.recId === entry.recId);
+  if(dup >= 0) UI.calibRides.splice(dup, 1);
+  if(UI.calibRides.length >= CALIB_MAX_RIDES){
+    const old = UI.calibRides.findIndex(s => s.src === 'rec');
+    if(old < 0){
+      _recToast('Calibration list is full (' + CALIB_MAX_RIDES + ' rides) — remove one in Advanced Estimation first');
+      return;
+    }
+    UI.calibRides.splice(old, 1);
+  }
+  UI.calibRides.push(entry);
+  // Only rebuild ETAs when Advanced Estimation is actually in use — adding a
+  // sample must never silently switch estimation modes.
+  if(UI.estModeAdv) for(const rt of ROUTES) rebuildPace(rt);
+  saveAll();
+  _recToast(UI.estModeAdv ? 'Added to Speed Calibration'
+                          : 'Saved to Speed Calibration — used when Advanced Estimation is on');
+}
+
+// Wire the save modal + rename controls once.
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$('rsm-save')) return;
+  $('rsm-save').addEventListener('click', _recSaveConfirm);
+  $('rsm-dismiss').addEventListener('click', ()=>{ _recSaveClose(); });
+  $('rsm-calib').addEventListener('change', _recSaveCalibToggle);
+  // Rename in the ride detail modal
+  $('rdm-rename').addEventListener('click', ()=>{
+    if(!_recDetailRec) return;
+    $('rdm-name-edit').style.display = 'flex';
+    $('rdm-name-input').value = _recDetailRec.name || _recDefaultName(_recDetailRec);
+    $('rdm-name-input').focus();
+  });
+  $('rdm-name-cancel').addEventListener('click', ()=>{ $('rdm-name-edit').style.display = 'none'; });
+  $('rdm-name-save').addEventListener('click', async ()=>{
+    const rec = _recDetailRec;
+    if(!rec) return;
+    const name = $('rdm-name-input').value.trim();
+    if(name){
+      rec.name = name;
+      await DB.putRecording(rec).catch(()=>{});
+      $('rdm-title').textContent = name;
+      render();   // refresh the Recorded Rides list behind the modal
+    }
+    $('rdm-name-edit').style.display = 'none';
+  });
 })();
 
 // ═══════════════════════════════════════════
@@ -4248,6 +4526,12 @@ async function _recStopConfirm(){
     // No gap prompt running → the ride is complete as-is; auto-upload if enabled
     if(!_recGapCtx && justFinished && UI.stravaToken && UI.stravaAutoUpload !== false){
       stravaQueue(justFinished);
+    }
+    if(_recGapCtx){
+      // Gap decisions first (they change the totals) — save prompt follows in _recGapFinish
+      _recSavePending = justFinished;
+    } else if(justFinished){
+      _recSaveShow(justFinished);
     }
   }, REC_UNDO_MS);
 }
@@ -6636,7 +6920,7 @@ document.getElementById('pace-modal-x').addEventListener('click',closePaceModal)
 // Inputs update the draft + factor readouts only (no re-render → no lost focus).
 let _calibDraft=[];
 let _calibOpenIdx=0; // accordion: which sample's fields are expanded (-1 = none)
-function _calibNewDraft(){return {surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate',profile:'rolling'};}
+function _calibNewDraft(){return {surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate',profile:'rolling',_x:null};}
 function _calibOpen(i){_calibOpenIdx=(_calibOpenIdx===i?-1:i);_calibRenderModal();}
 function openCalibModal(){
   _calibDraft=(UI.calibRides||[]).map(s=>({
@@ -6646,7 +6930,9 @@ function openCalibModal(){
     m:s.hours!=null?String(Math.round((s.hours-Math.floor(s.hours))*60)):'',
     elevM:s.elevM!=null?String(s.elevM):'',
     load:s.load||'moderate',
-    profile:s.profile||'rolling'
+    profile:s.profile||'rolling',
+    // Recorded rides carry extra fields (name, src, recId) — keep them through the draft
+    _x:(s.src||s.name||s.recId)?{src:s.src,recId:s.recId,name:s.name}:null
   }));
   if(!_calibDraft.length)_calibDraft.push(_calibNewDraft());
   // Expand the first incomplete sample; if all are complete, start collapsed
@@ -6657,7 +6943,7 @@ function openCalibModal(){
 function closeCalibModal(){document.getElementById('calib-modal').style.display='none';}
 function _calibDraftToRide(d){
   const hours=(parseFloat(d.h)||0)+(parseFloat(d.m)||0)/60;
-  return {surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load,profile:d.profile||'rolling'};
+  return {...(d._x||{}),surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load,profile:d.profile||'rolling'};
 }
 function _calibAdd(){
   if(_calibDraft.length>=CALIB_MAX_RIDES)return;
@@ -6702,7 +6988,7 @@ function _calibRenderModal(){
       // Collapsed one-line summary — tap to expand
       const complete=calibRideFactor(_calibDraftToRide(d))!==null;
       const bits=complete
-        ?`${surfShort[d.surface]||d.surface} · ${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑ · ${loadShort[d.load]||d.load}${d.profile==='climb'?' · climb':''}`
+        ?`${d._x&&d._x.name?d._x.name+' · ':''}${surfShort[d.surface]||d.surface} · ${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑ · ${loadShort[d.load]||d.load}${d.profile==='climb'?' · climb':''}`
         :'incomplete — tap to finish';
       return `<div onclick="_calibOpen(${i})" style="border:1px solid var(--border2);border-radius:10px;padding:9px 10px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <span style="font-size:13px;color:${complete?'var(--text2)':'var(--text3)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${bits}</span>
@@ -6748,7 +7034,7 @@ function _calibRenderModal(){
       </div>
       <div style="display:flex;gap:8px;">
         <div class="field" style="flex:1;">
-          <label class="lbl">Moving time (h)</label>
+          <label class="lbl">Ride time (h)</label>
           <input type="number" inputmode="numeric" min="0" step="1" value="${d.h}" placeholder="h" oninput="_calibField(${i},'h',this.value)">
         </div>
         <div class="field" style="flex:1;">
@@ -6836,7 +7122,7 @@ function _speedControlsHTML(r){
     const rows=(UI.calibRides||[]).map(s=>{
       const rf=calibRideFactor(s);if(rf===null)return'';
       const hh=Math.floor(s.hours),mm=Math.round((s.hours-hh)*60);
-      return `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);padding:2px 0;"><span>${surfLabels[s.surface]||s.surface} · ${(+s.distKm).toFixed(0)} km · ${hh}h ${mm}m · ${(+s.elevM||0).toFixed(0)} m ↑${s.profile==='climb'?' · climb':''}</span><span style="color:var(--text2);">${rf.toFixed(2)} ×</span></div>`;
+      return `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);padding:2px 0;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.name?s.name+' · ':''}${surfLabels[s.surface]||s.surface} · ${(+s.distKm).toFixed(0)} km · ${hh}h ${mm}m · ${(+s.elevM||0).toFixed(0)} m ↑${s.profile==='climb'?' · climb':''}</span><span style="color:var(--text2);flex-shrink:0;margin-left:6px;">${rf.toFixed(2)} ×</span></div>`;
     }).join('');
     riderBody=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
         <span style="font-size:24px;font-weight:700;color:var(--accent);font-family:var(--font);">${f.toFixed(2)} ×</span>

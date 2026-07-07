@@ -25,6 +25,12 @@ saved-rides view + detail modal (zoomable map, dashed gap-filled sections), FIT/
 export, Strava OAuth + auto-upload + retry queue. Strava athlete capacity is raised to
 10 — first beta tester connected 9 July. Deliberately deferred: Step 10 ("want to
 record?" prompt) and Step 11 (storage expiry warning — mostly moot given auto-upload).
+v178–179 added ride naming (save prompt after gap decisions, Rename in detail modal,
+"Recorded Rides" card title) and the **calibration feed**: saved rides can enter
+`UI.calibRides`, with surface/climb/load auto-read from the followed route
+(`_recCalibAuto`) and ride time from the points (`_recMovingH` — the v179 "faff rule":
+stops under 15 min count as ride time, longer deliberate breaks are excluded; NOT
+strict Strava moving time, deliberately). Live-ride test pending.
 **Next big move: Phase 1b, the Capacitor wrap** for true background GPS; the gate is a
 couple of clean soak-test rides. Peter is wary of wrapping too early (slower iteration) —
 don't push it.
@@ -88,7 +94,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
 | 1780 | `OVERPASS` | POI search, Nominatim geocode, Geoapify accommodation, surface fetcher, and `snapTo(r,lat,lon,lastIdx)` → `{idx, dist, off}` (off = km from route). |
 | 2406 | `GPS` | `toggleGPS/startGPS/stopGPS`, the watch callback (feeds recording via `_appendPoint`), idle auto-pause, **dead-watch recovery**: `_gpsRestartWatch()` + 30 s watchdog (`GPS_WATCHDOG_MS`) — rebuilds the geolocation watch on wake and whenever fixes stop arriving (the OS silently kills watches during suspension). |
 | 2655 | `ADAPTIVE SPEED CALIBRATION` | `runAdaptiveCalibration`, `updateGPSPill`, drift caps. |
-| 2779 | `RECORDING` | The whole Phase 1a recording pipeline: movement-based sampler (`_appendPoint`, active/stationary state machine), **gap detection** (>15 s no-fix + ≥100 m moved; ≤2 min auto-fills silently), **gap fill engine** (`_recFillGap`, route/Naismith via `cumRiding` weighting, straight-line fallback, `_synthetic:true` points, `_recRecomputeTotals`), **crash recovery** (`_recRehydrate`, recovery modal, typed-delete), **saved rides** (`RECS` in-memory cache, `_ridesCardHTML`, detail modal incl. `_recAsRoute` route-shaped projection + dashed synthetic overlay), **end-of-ride gap prompt** (`_recGapArm/_recGapMaybeShow`, never mid-ride), export helpers (`exportRecordingAsFIT/GPX`, `_recToast`), stop/undo tap handlers. |
+| 2779 | `RECORDING` | The whole Phase 1a recording pipeline: movement-based sampler (`_appendPoint`, active/stationary state machine), **gap detection** (>15 s no-fix + ≥100 m moved; ≤2 min auto-fills silently), **gap fill engine** (`_recFillGap`, route/Naismith via `cumRiding` weighting, straight-line fallback, `_synthetic:true` points, `_recRecomputeTotals`), **crash recovery** (`_recRehydrate`, recovery modal, typed-delete), **saved rides** (`RECS` in-memory cache, `_ridesCardHTML`, detail modal incl. `_recAsRoute` route-shaped projection + dashed synthetic overlay), **end-of-ride gap prompt** (`_recGapArm/_recGapMaybeShow`, never mid-ride), export helpers (`exportRecordingAsFIT/GPX`, `_recToast`), stop/undo tap handlers, and the **ride save prompt + calibration feed** (v178–179: `_recDefaultName`, `_recMovingH` ride time via the faff rule (<15 min stops count, longer breaks excluded), `_recCalibAuto` route-derived surface/climb/load, `_recSaveShow` modal, `_recCalibAdd` → `UI.calibRides` entries carrying `src:'rec'`/`recId`/`name`, oldest-recorded eviction when full). |
 | 3571 | `FIT WRITER` | Hand-rolled Activity FIT encoder (`encodeActivityFit`), proven against Strava + Garmin SDK (spike harness in `_planning/fit-spike/`). |
 | 3968 | `STRAVA` | OAuth (authorization-code; secret embedded — accepted trade-off), `stravaFreshToken` silent refresh, `stravaUpload` (FIT multipart + status polling, `external_id packtimes-<recId>` dedupe), `stravaQueue`/`stravaProcessQueue` retry queue (backoff 30s→daily + online/visibility/GPS-return triggers). Auto-upload fires only AFTER gap decisions. |
 | 4280 | `RIDE SIMULATOR` | GPX playback. Gap detection + watchdog + Strava GPS-trigger all skip when sim is running. |
@@ -162,6 +168,7 @@ Old stop types `rest` and standalone `sleep` are migrated on load to `stop` with
 ```js
 {
   id: string,                    // base36 timestamp + random
+  name: string|undefined,        // assigned at finalise ("Ride 8 Jul 2026", "(2)" suffix on dupes); Rename in detail modal
   routeId: string|null,          // route loaded when recording started (drives gap fill + Rides grouping)
   status: 'active'|'paused'|'finalised',
   startTS, endTS: ms,            // endTS null until finalised
