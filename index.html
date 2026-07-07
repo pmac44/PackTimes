@@ -481,8 +481,8 @@ select option{background:var(--bg3);}
     <div id="rdm-stats" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:14px;"></div>
     <div style="display:flex;flex-direction:column;gap:8px;">
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-p" id="rdm-fit" style="flex:1;">Export FIT</button>
-        <button class="btn" id="rdm-gpx" style="flex:1;">Export GPX</button>
+        <button class="btn btn-p" id="rdm-fit" style="flex:1;justify-content:center;">Export FIT</button>
+        <button class="btn" id="rdm-gpx" style="flex:1;justify-content:center;">Export GPX</button>
       </div>
       <button class="btn btn-full" id="rdm-copy">Copy as new route</button>
       <button class="btn btn-r btn-full" id="rdm-delete">Delete&hellip;</button>
@@ -2385,6 +2385,37 @@ const GPS_IDLE_STOP_MS = 5 * 60 * 1000;  // 5 minutes
 const GPS_IDLE_SPEED_KMH = 1.5;           // below this = stationary
 let _gpsIdleTimer = null;
 
+// ── Dead-watch recovery ──
+// The OS/browser can silently kill a geolocation watch (commonly around screen-off
+// suspension, sometimes mid-ride). The app then believes GPS is on but no fixes ever
+// arrive again — the v139 wake fixes decided whether to PAUSE on wake but never
+// rebuilt the subscription, so a killed watch stayed dead until a full app restart
+// (Peter's July field report). Two defences:
+//   1. On every wake (visibilitychange → visible) with GPS active, rebuild the watch.
+//   2. A watchdog: GPS active + page visible + no fix for 30s → rebuild the watch.
+// The watchdog also covers mid-ride GPS driver dropouts with the screen ON.
+let _gpsOnFix = null;         // the watchPosition success callback, captured in startGPS
+let _gpsLastFixMs = 0;        // last time any real fix arrived (or watch was created)
+const GPS_WATCHDOG_MS = 30000;
+
+function _gpsRestartWatch(){
+  if(!UI.gpsActive || !_gpsOnFix) return;
+  if(UI.simRunning || UI.simPaused) return;   // simulator drives fixes itself
+  try{ if(UI.gpsWatchId!==null) navigator.geolocation.clearWatch(UI.gpsWatchId); }catch(e){}
+  UI.gpsWatchId = navigator.geolocation.watchPosition(
+    _gpsOnFix,
+    err=>console.warn('GPS', err),
+    {enableHighAccuracy:true, maximumAge:5000, timeout:15000}
+  );
+  _gpsLastFixMs = Date.now();   // fresh watch gets a full watchdog window
+}
+
+setInterval(()=>{
+  if(!UI.gpsActive || document.visibilityState!=='visible') return;
+  if(UI.simRunning || UI.simPaused) return;
+  if(_gpsLastFixMs && Date.now()-_gpsLastFixMs > GPS_WATCHDOG_MS) _gpsRestartWatch();
+}, 15000);
+
 function _resetGpsIdleTimer(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
   if(!UI.gpsActive)return;
@@ -2442,7 +2473,8 @@ function _doStartGPS(){
   UI._rideAvgSessionKm=null;
   UI._rideAvgSessionTs=null;
 
-  UI.gpsWatchId=navigator.geolocation.watchPosition(pos=>{
+  UI.gpsWatchId=navigator.geolocation.watchPosition(_gpsOnFix=pos=>{
+    _gpsLastFixMs=Date.now();// feed the dead-watch watchdog
     const prevPos=UI.gpsPos;// save before overwrite for cumulative distance
     UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,speed:pos.coords.speed,ts:pos.timestamp};
     if(pos.coords.heading!=null&&!isNaN(pos.coords.heading)){
@@ -2539,6 +2571,7 @@ function _doStartGPS(){
     else if(UI.tab==='settings')patchGPSInfo();
     else updateGPSPill();
   },err=>console.warn('GPS',err),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+  _gpsLastFixMs=Date.now();// fresh watch gets a full watchdog window before any restart
   _resetGpsIdleTimer();
   updateGPSPill();if(UI.tab==='live'||UI.tab==='settings')render();
   requestWakeLock();
@@ -3525,9 +3558,31 @@ function _recDownload(content, filename, mime){
 }
 
 function _recExportName(rec){
+  // Includes start time (HHMM) so multiple recordings on the same day never
+  // collide — same-name downloads trigger a confusing "download again?" prompt.
   const d = new Date(rec.startTS);
   const pad = n => String(n).padStart(2, '0');
-  return 'packtimes-ride-' + d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  return 'packtimes-ride-' + d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+       + '-' + pad(d.getHours()) + pad(d.getMinutes());
+}
+
+// Small transient confirmation toast (exports have no other visible effect).
+function _recToast(msg){
+  let el = document.getElementById('rec-toast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'rec-toast';
+    el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--accent2);color:var(--text);padding:10px 16px;border-radius:var(--r-ctrl);font-size:15px;z-index:1001;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:opacity .3s;max-width:90vw;text-align:center;';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>{
+    el.style.opacity = '0';
+    setTimeout(()=>{ el.style.display = 'none'; }, 350);
+  }, 2500);
 }
 
 function exportRecordingAsFIT(rec){
@@ -3538,7 +3593,9 @@ function exportRecordingAsFIT(rec){
     endTS:   rec.endTS || _recLastActivityTS(rec),
     points:  rec.points,
   });
-  _recDownload(bytes, _recExportName(rec) + '.fit', 'application/octet-stream');
+  const fname = _recExportName(rec) + '.fit';
+  _recDownload(bytes, fname, 'application/octet-stream');
+  _recToast('Exported ' + fname);
 }
 
 function exportRecordingAsGPX(rec){
@@ -3556,7 +3613,9 @@ function exportRecordingAsGPX(rec){
       + '</trkpt>\n';
   }
   g += '</trkseg></trk>\n</gpx>\n';
-  _recDownload(g, _recExportName(rec) + '.gpx', 'application/gpx+xml');
+  const fname = _recExportName(rec) + '.gpx';
+  _recDownload(g, fname, 'application/gpx+xml');
+  _recToast('Exported ' + fname);
 }
 
 // ── Live-tab recording control: tap handlers for the play/pause/stop buttons ──
@@ -3982,6 +4041,9 @@ const WAKE_MOVE_KM=0.05; // 50 m
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
     if(UI.gpsActive&&UI.keepScreenOn)requestWakeLock();
+    // The suspension may have silently killed the geolocation watch — always
+    // rebuild it on wake so fixes actually resume (guards inside the helper).
+    _gpsRestartWatch();
     // Check if Dropbox has a newer copy — lightweight metadata check only
     dbxCheckOnFocus();
 
@@ -12922,7 +12984,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v169';
+  const CACHE_NAME='packtimes-v171';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
