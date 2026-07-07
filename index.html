@@ -498,6 +498,23 @@ select option{background:var(--bg3);}
   </div>
 </div>
 
+<!-- Gap-fill modal — offered after a ride ends when GPS gaps were detected -->
+<div id="rec-gap-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;">
+    <div style="margin-bottom:13px;">
+      <span style="font-size:19px;font-weight:600;color:var(--text);" id="rgm-title">Missing GPS section</span>
+      <p style="font-size:14px;color:var(--text3);margin-top:4px;line-height:1.5;">GPS cut out during this ride (usually the screen turning off). Choose how to fill each missing section — filled parts are marked so nothing is pretending.</p>
+    </div>
+    <div id="rgm-details" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:14px;"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-p btn-full" id="rgm-naismith">Fill along route — realistic pace</button>
+      <button class="btn btn-full" id="rgm-constant">Fill along route — steady pace</button>
+      <button class="btn btn-full" id="rgm-line">Straight line</button>
+      <button class="btn btn-full" id="rgm-none">Leave as a gap</button>
+    </div>
+  </div>
+</div>
+
 <!-- Pace segment modal -->
 <div id="pace-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
@@ -2767,6 +2784,12 @@ const REC_STATIONARY_M           = 10;    // metres: within = "not meaningfully 
 const REC_STOP_DETECT_MS_DEFAULT = 5000;  // ms: must stay stationary this long before "stopped"
 const REC_MIN_TICK_MS            = 1000;  // ms: don't store more than once per second
 
+// Gap detection & fill (Phase 1a Step 5b)
+const GAP_THRESHOLD_MS = 15000;    // no fix for this long while recording = a gap
+const GAP_AUTOFILL_MS  = 120000;   // gaps up to 2 min fill silently; longer ones prompt at ride end
+const GAP_MIN_MOVE_M   = 100;      // rider must have moved this far for it to count as a gap
+                                   // (a stationary blackout is already covered by stop/resume markers)
+
 // Active-recording state (module-local, mirrors the IDB row)
 let _rec        = null;          // the active recording, or null
 let _recMode    = 'active';      // 'active' | 'stationary'
@@ -2852,6 +2875,34 @@ async function finaliseRecording(){
 function _appendPoint(lat, lon, ele, t, accuracy){
   if(!_rec || _rec.status !== 'active') return false;
   const fix = {lat, lon, t};
+  // ── Gap detection (Step 5b) ──
+  // A gap = no fixes at all for GAP_THRESHOLD_MS while recording (screen-off
+  // suspension, GPS dropout) AND the rider actually moved meanwhile. Pauses and
+  // rehydrates reset _recLastFix to null, so they can never register as gaps.
+  // The simulator replays fixes with artificial timing — skip it entirely.
+  if(_recLastFix && _rec.points.length && !(UI.simRunning || UI.simPaused)
+     && (t - _recLastFix.t) > GAP_THRESHOLD_MS
+     && _recDist(_recLastFix, fix) >= GAP_MIN_MOVE_M){
+    const gap = {
+      startT: _recLastFix.t, endT: t,
+      startLat: _recLastFix.lat, startLon: _recLastFix.lon,
+      endLat: lat, endLon: lon,
+      fillStrategy: 'none', queued: true,
+    };
+    _rec.gaps = _rec.gaps || [];
+    _rec.gaps.push(gap);
+    if((t - _recLastFix.t) <= GAP_AUTOFILL_MS){
+      // Short gap — fill silently now (route-projected if a route is loaded,
+      // straight line otherwise). _recFillGap resets _recStored to the last
+      // synthetic point so the arriving fix doesn't double-count distance.
+      _recFillGap(_rec, gap, null);
+    }
+    // Longer gaps stay queued — prompted at end of ride, never mid-ride.
+    // Either way: exit stationary mode so the arriving fix stores normally.
+    _recMode = 'active';
+    _recStop = null;
+    DB.putRecording(_rec).catch(()=>{});
+  }
   _recLastFix = fix;
   // First point of recording — always store
   if(_rec.points.length === 0){
@@ -2919,6 +2970,201 @@ async function _recMigrate(rec){
   }
   return rec;
 }
+
+// ── Gap fill engine (Step 5b) ──
+//
+// Fills a recording gap with synthetic points marked `_synthetic: true`.
+// Strategies:
+//   'route-naismith' — along the planned route, time weighted by the route's own
+//                      cumRiding profile (slower on climbs — the honest estimate)
+//   'route-constant' — along the route at steady pace (distance-proportional)
+//   'line'           — straight-line interpolation (no route, or route match failed)
+//   null             — auto: route-naismith when possible, else line (silent short gaps)
+// Gap-fill only ever follows the route or a straight line — it never invents a path.
+
+function _recRouteFor(rec){
+  return rec && rec.routeId ? (ROUTES.find(x => x.id === rec.routeId) || null) : null;
+}
+
+// Recompute totalDist from the full points list (incremental totals double-count
+// the straight-line jump once synthetic points are inserted inside it).
+function _recRecomputeTotals(rec){
+  let d = 0;
+  for(let i = 1; i < rec.points.length; i++) d += _recDist(rec.points[i-1], rec.points[i]) / 1000;
+  rec.totalDist = d;
+  if(rec.endTS) rec.totalDur = rec.endTS - rec.startTS;
+}
+
+// Synthetic points along the route between the gap's end positions.
+// Returns null when the route can't be matched sanely (caller falls back to 'line').
+function _recSynthFromRoute(r, gap, naismith){
+  const s = snapTo(r, gap.startLat, gap.startLon, null);
+  const e = snapTo(r, gap.endLat, gap.endLon, null);
+  if(!s || !e) return null;
+  if(s.off > 0.3 || e.off > 0.3) return null;   // either end >300 m off route — don't invent
+  const i0 = s.idx, i1 = e.idx;
+  if(i1 <= i0) return null;                     // backwards along the route — fall back
+  const cr = r.cumRiding;
+  const durMs = gap.endT - gap.startT;
+  // Per-segment weights across route points i0..i1
+  const w = [];
+  let tot = 0;
+  for(let i = i0 + 1; i <= i1; i++){
+    let seg;
+    if(naismith && cr && cr[i] != null && cr[i-1] != null) seg = Math.max(0, cr[i] - cr[i-1]);
+    else seg = Math.max(0, (r.points[i].dist || 0) - (r.points[i-1].dist || 0));
+    w.push(seg);
+    tot += seg;
+  }
+  if(tot <= 0) return null;
+  // ~1 synthetic point per 30 s of gap, capped; sample the route at that density
+  const targetN = Math.min(600, Math.max(2, Math.round(durMs / 30000)));
+  const step = Math.max(1, Math.floor((i1 - i0) / targetN));
+  const synth = [];
+  let acc = 0;
+  for(let i = i0 + 1; i <= i1; i++){
+    acc += w[i - i0 - 1];
+    if(((i - i0) % step) !== 0 && i !== i1) continue;
+    const p = r.points[i];
+    const frac = acc / tot;
+    // Keep synthetic times strictly inside the gap (1 s margin each end)
+    const t = Math.round(gap.startT + 1000 + frac * Math.max(0, durMs - 2000));
+    synth.push({lat: p.lat, lon: p.lon, ele: p.ele == null ? null : p.ele,
+                t, accuracy: null, _synthetic: true});
+  }
+  return synth.length ? synth : null;
+}
+
+// Straight-line synthetic points (honest time distribution, no invented path).
+function _recSynthLine(gap){
+  const durMs = gap.endT - gap.startT;
+  const n = Math.min(120, Math.max(1, Math.round(durMs / 30000)));
+  const synth = [];
+  for(let k = 1; k <= n; k++){
+    const f = k / (n + 1);
+    synth.push({lat: gap.startLat + (gap.endLat - gap.startLat) * f,
+                lon: gap.startLon + (gap.endLon - gap.startLon) * f,
+                ele: null, t: Math.round(gap.startT + f * durMs),
+                accuracy: null, _synthetic: true});
+  }
+  return synth;
+}
+
+// Fill one gap. Returns true if points were inserted.
+function _recFillGap(rec, gap, strategy){
+  const r = _recRouteFor(rec);
+  if(!strategy) strategy = (r && r.points.length) ? 'route-naismith' : 'line';
+  let synth = null;
+  if(strategy === 'route-naismith' || strategy === 'route-constant'){
+    if(r && r.points.length) synth = _recSynthFromRoute(r, gap, strategy === 'route-naismith');
+    if(!synth) strategy = 'line';   // route match failed — honest fallback
+  }
+  if(strategy === 'line') synth = _recSynthLine(gap);
+  if(!synth || !synth.length){ gap.queued = false; gap.fillStrategy = 'none'; return false; }
+  // Insert in time order: before the first point that postdates the gap start
+  // (mid-ride silent fills run before the arriving fix is stored, so this appends)
+  const idx = rec.points.findIndex(p => p.t > gap.startT);
+  const at = idx === -1 ? rec.points.length : idx;
+  rec.points.splice(at, 0, ...synth);
+  gap.fillStrategy = strategy;
+  gap.queued = false;
+  _recRecomputeTotals(rec);
+  // If this recording is live (silent mid-ride fill), anchor the sampler on the
+  // last synthetic point so the arriving fix doesn't re-add the whole jump.
+  if(_rec && rec.id === _rec.id){
+    const lp = synth[synth.length - 1];
+    _recStored = {lat: lp.lat, lon: lp.lon, t: lp.t};
+  }
+  return true;
+}
+
+// ── End-of-ride gap prompt ──
+// Strictly end-of-ride only: queued while riding, shown after Stop & save (once the
+// undo window has passed) or after a crash-recovery Save. Skipped entirely when a
+// ride has no queued gaps.
+let _recGapPending = null;   // finalised recording waiting for its gap prompt
+let _recGapCtx = null;       // {rec, gaps, idx} while the prompt is live
+
+function _recGapQueueFor(rec){
+  return (rec && rec.gaps ? rec.gaps : []).filter(g => g.queued);
+}
+
+// Called when a ride has just properly ended — arms the prompt if needed.
+function _recGapArm(rec){
+  if(_recGapQueueFor(rec).length) _recGapPending = rec;
+}
+
+// Show the prompt for the pending recording (if any). Safe to call any time.
+function _recGapMaybeShow(){
+  if(!_recGapPending) return;
+  const rec = _recGapPending;
+  _recGapPending = null;
+  _recGapCtx = {rec, gaps: _recGapQueueFor(rec), idx: 0};
+  _recGapShow();
+}
+
+function _recGapShow(){
+  const modal = document.getElementById('rec-gap-modal');
+  if(!modal) return;
+  const ctx = _recGapCtx;
+  if(!ctx || ctx.idx >= ctx.gaps.length){
+    modal.style.display = 'none';
+    if(ctx) _recGapFinish();
+    return;
+  }
+  const gap = ctx.gaps[ctx.idx];
+  const durMin = Math.max(1, Math.round((gap.endT - gap.startT) / 60000));
+  const lineKm = hav({lat: gap.startLat, lon: gap.startLon}, {lat: gap.endLat, lon: gap.endLon});
+  document.getElementById('rgm-title').textContent = ctx.gaps.length > 1
+    ? 'Missing GPS section ' + (ctx.idx + 1) + ' of ' + ctx.gaps.length
+    : 'Missing GPS section';
+  document.getElementById('rgm-details').innerHTML =
+    durMin + ' min from ' + fmtT(new Date(gap.startT)) + '<br>' +
+    lineKm.toFixed(1) + ' km between the last and next GPS points';
+  // Route-based options only make sense when the ride has a matchable route
+  const hasRoute = !!_recRouteFor(ctx.rec);
+  document.getElementById('rgm-naismith').style.display = hasRoute ? 'block' : 'none';
+  document.getElementById('rgm-constant').style.display = hasRoute ? 'block' : 'none';
+  modal.style.display = 'flex';
+}
+
+function _recGapChoose(strategy){
+  const ctx = _recGapCtx;
+  if(!ctx || ctx.idx >= ctx.gaps.length) return;
+  const gap = ctx.gaps[ctx.idx];
+  if(strategy === 'none'){
+    gap.queued = false;
+    gap.fillStrategy = 'none';
+  } else {
+    const wantedRoute = strategy !== 'line';
+    const ok = _recFillGap(ctx.rec, gap, strategy);
+    if(ok && wantedRoute && gap.fillStrategy === 'line'){
+      _recToast("Couldn't match the route there — used a straight line");
+    }
+  }
+  ctx.idx++;
+  _recGapShow();
+}
+
+async function _recGapFinish(){
+  const ctx = _recGapCtx;
+  _recGapCtx = null;
+  if(!ctx) return;
+  await DB.putRecording(ctx.rec).catch(()=>{});
+  const i = RECS.findIndex(x => x.id === ctx.rec.id);
+  if(i >= 0) RECS[i] = ctx.rec;
+  render();
+}
+
+// Wire the gap modal's static buttons once.
+(function(){
+  const $ = id => document.getElementById(id);
+  if(!$('rgm-naismith')) return;
+  $('rgm-naismith').addEventListener('click', ()=>_recGapChoose('route-naismith'));
+  $('rgm-constant').addEventListener('click', ()=>_recGapChoose('route-constant'));
+  $('rgm-line').addEventListener('click', ()=>_recGapChoose('line'));
+  $('rgm-none').addEventListener('click', ()=>_recGapChoose('none'));
+})();
 
 // ── Crash recovery (Phase 1a Step 5) ──
 //
@@ -2991,7 +3237,11 @@ async function _recRehydrate(){
 function _recRecoveryShow(){
   const modal = document.getElementById('rec-recovery-modal');
   if(!modal) return;
-  if(!_recRecovery.length){ modal.style.display = 'none'; return; }
+  if(!_recRecovery.length){
+    modal.style.display = 'none';
+    _recGapMaybeShow();   // recovery done — show any gap prompt armed by a Save
+    return;
+  }
   const rec  = _recRecovery[0];
   const pts  = rec.points ? rec.points.length : 0;
   const km   = (rec.totalDist || 0).toFixed(1);
@@ -3040,6 +3290,7 @@ async function _recRecoverySave(){
   await _recFinaliseStale(rec);
   RECS.unshift(rec);
   RECS.sort((a,b)=>(b.startTS||0)-(a.startTS||0));
+  _recGapArm(rec);   // crashed rides often have gaps — offer fill once recovery is done
   _recRecoveryAdvance();
   render();
 }
@@ -3141,10 +3392,14 @@ function _recDetailOpen(recId){
   const durH = (rec.totalDur || 0) / 3600000;
   const stopsN = (rec.points || []).filter(p => p._stop).length;
   document.getElementById('rdm-title').textContent = 'Ride — ' + fmtDTY(new Date(rec.startTS));
+  const gapsAll = rec.gaps || [];
+  const gapsFilled = gapsAll.filter(g => g.fillStrategy && g.fillStrategy !== 'none').length;
+  const gapsOpen = gapsAll.length - gapsFilled;
   document.getElementById('rdm-stats').innerHTML =
     (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(durH) + '<br>' +
     (rt ? 'Route: ' + (rt.label || rt.name) : 'No linked route') + '<br>' +
     (rec.points ? rec.points.length : 0) + ' points' + (stopsN ? ' · ' + stopsN + ' stop' + (stopsN !== 1 ? 's' : '') : '') + '<br>' +
+    (gapsAll.length ? gapsAll.length + ' GPS gap' + (gapsAll.length !== 1 ? 's' : '') + (gapsFilled ? ' · ' + gapsFilled + ' filled' : '') + (gapsOpen ? ' · ' + gapsOpen + ' left open' : '') + '<br>' : '') +
     '<span style="color:var(--text3);">Local only — not uploaded</span>';
   document.getElementById('rdm-del-confirm').style.display = 'none';
   document.getElementById('rec-detail-modal').style.display = 'flex';
@@ -3604,12 +3859,13 @@ function exportRecordingAsGPX(rec){
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const name = 'PackTimes ride ' + new Date(rec.startTS).toLocaleDateString('en-GB');
   let g = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    + '<gpx version="1.1" creator="PackTimes" xmlns="http://www.topografix.com/GPX/1/1">\n'
+    + '<gpx version="1.1" creator="PackTimes" xmlns="http://www.topografix.com/GPX/1/1" xmlns:pt="urn:packtimes:gpx">\n'
     + '<trk><name>' + esc(name) + '</name><trkseg>\n';
   for(const p of rec.points){
     g += '<trkpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">'
       + (p.ele != null ? '<ele>' + (Math.round(p.ele * 10) / 10) + '</ele>' : '')
       + (p.t ? '<time>' + new Date(p.t).toISOString() + '</time>' : '')
+      + (p._synthetic ? '<extensions><pt:synthetic/></extensions>' : '')
       + '</trkpt>\n';
   }
   g += '</trkseg></trk>\n</gpx>\n';
@@ -3690,6 +3946,7 @@ async function _recStopConfirm(){
   if(!_rec) return;
   const finalised = await finaliseRecording();
   _recLastFinalised = finalised;
+  _recGapArm(finalised);   // queue the gap prompt (shown after the undo window)
   _recShowStopConfirm(false);
   // Force a render so the buttons go back to "idle" and the undo strip gets inserted
   render();
@@ -3698,6 +3955,7 @@ async function _recStopConfirm(){
   _recUndoTimer = setTimeout(()=>{
     _recLastFinalised = null;
     _recShowUndoStrip(false);
+    _recGapMaybeShow();   // undo window passed — offer gap fill if any were queued
   }, REC_UNDO_MS);
 }
 
@@ -3708,6 +3966,7 @@ async function _recStopUndo(){
   rec.status = 'active';
   rec.endTS  = null;
   RECS = RECS.filter(x => x.id !== rec.id);   // no longer a finished ride
+  _recGapPending = null;                       // ride resumed — no gap prompt
   await DB.putRecording(rec).catch(()=>{});
   _rec = rec;
   _recMode = 'active';
@@ -12984,7 +13243,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v171';
+  const CACHE_NAME='packtimes-v172';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
