@@ -482,8 +482,8 @@ select option{background:var(--bg3);}
 
 <!-- Recording detail modal — opened from a ride row on the Routes tab -->
 <div id="rec-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;max-height:90dvh;display:flex;flex-direction:column;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
+  <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:19px;font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="rdm-title">Ride</span>
       <span style="display:flex;gap:8px;flex-shrink:0;">
         <button class="btn btn-sm" id="rdm-rename" title="Rename ride">Rename</button>
@@ -499,6 +499,8 @@ select option{background:var(--bg3);}
     <canvas id="rec-detail-map" style="width:100%;height:240px;border-radius:var(--r-ctrl);background:var(--bg3);display:block;margin-bottom:8px;"></canvas>
     <canvas id="rec-detail-elev" style="width:100%;height:56px;display:block;margin-bottom:10px;"></canvas>
     <div id="rdm-stats" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:14px;"></div>
+    </div>
+    <div style="flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);">
     <div style="display:flex;flex-direction:column;gap:8px;">
       <button class="btn btn-p btn-full" id="rdm-fillgaps" style="display:none;">Fill missing GPS sections&hellip;</button>
       <button class="btn btn-full" id="rdm-strava" style="display:none;">Upload to Strava</button>
@@ -734,7 +736,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v184';
+window.APP_VERSION='v185';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
