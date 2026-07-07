@@ -481,6 +481,7 @@ select option{background:var(--bg3);}
     <div id="rdm-stats" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:14px;"></div>
     <div style="display:flex;flex-direction:column;gap:8px;">
       <button class="btn btn-p btn-full" id="rdm-fillgaps" style="display:none;">Fill missing GPS sections&hellip;</button>
+      <button class="btn btn-full" id="rdm-strava" style="display:none;">Upload to Strava</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-p" id="rdm-fit" style="flex:1;justify-content:center;">Export FIT</button>
         <button class="btn" id="rdm-gpx" style="flex:1;justify-content:center;">Export GPX</button>
@@ -639,7 +640,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v173';
+window.APP_VERSION='v174';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -731,6 +732,7 @@ async function saveAll(){
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
+  await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
   await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv}).catch(()=>{});
   dbxScheduleSave();
 }
@@ -743,6 +745,8 @@ async function loadAll(){
     UI.dbxToken=await DB.getKV('dbxToken')||null;
     UI.dbxRefreshToken=await DB.getKV('dbxRefreshToken')||null;
     UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
+    const sa=await DB.getKV('stravaAuth').catch(()=>null);
+    if(sa){UI.stravaToken=sa.token||null;UI.stravaRefreshToken=sa.refresh||null;UI.stravaExpiresAt=sa.expiresAt||null;UI.stravaAthlete=sa.athlete||null;UI.stravaAutoUpload=sa.autoUpload!==false;}
     // Restore UI prefs
     const prefs=await DB.getKV('uiPrefs').catch(()=>null);
     if(prefs){
@@ -2497,6 +2501,9 @@ function _doStartGPS(){
   UI._rideAvgSessionTs=null;
 
   UI.gpsWatchId=navigator.geolocation.watchPosition(_gpsOnFix=pos=>{
+    // A fix after a >2 min silence usually means signal is back — good moment
+    // to retry any queued Strava uploads (cheap no-op when queue is empty)
+    if(_gpsLastFixMs&&Date.now()-_gpsLastFixMs>120000)setTimeout(()=>stravaProcessQueue(true),0);
     _gpsLastFixMs=Date.now();// feed the dead-watch watchdog
     const prevPos=UI.gpsPos;// save before overwrite for cumulative distance
     UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,speed:pos.coords.speed,ts:pos.timestamp};
@@ -3088,24 +3095,26 @@ function _recFillGap(rec, gap, strategy){
 // Strictly end-of-ride only: queued while riding, shown after Stop & save (once the
 // undo window has passed) or after a crash-recovery Save. Skipped entirely when a
 // ride has no queued gaps.
-let _recGapPending = null;   // finalised recording waiting for its gap prompt
-let _recGapCtx = null;       // {rec, gaps, idx} while the prompt is live
+let _recGapPending = null;   // {rec, auto} — finalised recording waiting for its gap prompt
+let _recGapCtx = null;       // {rec, gaps, idx, auto} while the prompt is live
 
 function _recGapQueueFor(rec){
   return (rec && rec.gaps ? rec.gaps : []).filter(g => g.queued);
 }
 
-// Called when a ride has just properly ended — arms the prompt if needed.
-function _recGapArm(rec){
-  if(_recGapQueueFor(rec).length) _recGapPending = rec;
+// Called when a ride has just ended — arms the prompt if needed.
+// auto=true → this ride is eligible for Strava auto-upload once gaps are decided
+// (fresh Stop & save). Recovery saves and manual fills pass auto=false.
+function _recGapArm(rec, auto){
+  if(_recGapQueueFor(rec).length) _recGapPending = {rec, auto: !!auto};
 }
 
 // Show the prompt for the pending recording (if any). Safe to call any time.
 function _recGapMaybeShow(){
   if(!_recGapPending) return;
-  const rec = _recGapPending;
+  const {rec, auto} = _recGapPending;
   _recGapPending = null;
-  _recGapCtx = {rec, gaps: _recGapQueueFor(rec), idx: 0};
+  _recGapCtx = {rec, gaps: _recGapQueueFor(rec), idx: 0, auto};
   _recGapShow();
 }
 
@@ -3160,6 +3169,8 @@ async function _recGapFinish(){
   const i = RECS.findIndex(x => x.id === ctx.rec.id);
   if(i >= 0) RECS[i] = ctx.rec;
   render();
+  // Gap decisions made — NOW the ride is ready for auto-upload (the FIT includes fills)
+  if(ctx.auto && UI.stravaToken && UI.stravaAutoUpload !== false) stravaQueue(ctx.rec);
 }
 
 // Wire the gap modal's static buttons once.
@@ -3296,7 +3307,7 @@ async function _recRecoverySave(){
   await _recFinaliseStale(rec);
   RECS.unshift(rec);
   RECS.sort((a,b)=>(b.startTS||0)-(a.startTS||0));
-  _recGapArm(rec);   // crashed rides often have gaps — offer fill once recovery is done
+  _recGapArm(rec, false);   // crashed rides often have gaps — offer fill once recovery is done (no auto-upload)
   _recRecoveryAdvance();
   render();
 }
@@ -3370,7 +3381,11 @@ function _ridesCardHTML(){
       + '<div style="font-size:16px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fmtDTY(new Date(rec.startTS)) + '</div>'
       + '<div style="font-size:14px;color:var(--accent);font-family:var(--font);">' + (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(durH) + (rt ? ' · ' + (rt.label || rt.name) : ' · No route') + '</div>'
       + '</div>'
-      + '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);white-space:nowrap;flex-shrink:0;">Local only</span>'
+      + (rec.stravaUploadedAt
+          ? '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid var(--accent2);color:var(--accent);white-space:nowrap;flex-shrink:0;">On Strava ✓</span>'
+          : rec.stravaUploadStatus === 'queued'
+          ? '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid rgba(249,115,22,.4);color:#f97316;white-space:nowrap;flex-shrink:0;">Queued</span>'
+          : '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);white-space:nowrap;flex-shrink:0;">Local only</span>')
       + '</div>';
   }).join('');
   return `<div class="card">
@@ -3406,7 +3421,21 @@ function _recDetailOpen(recId){
     (rt ? 'Route: ' + (rt.label || rt.name) : 'No linked route') + '<br>' +
     (rec.points ? rec.points.length : 0) + ' points' + (stopsN ? ' · ' + stopsN + ' stop' + (stopsN !== 1 ? 's' : '') : '') + '<br>' +
     (gapsAll.length ? gapsAll.length + ' GPS gap' + (gapsAll.length !== 1 ? 's' : '') + (gapsFilled ? ' · ' + gapsFilled + ' filled' : '') + (gapsOpen ? ' · ' + gapsOpen + ' left open' : '') + '<br>' : '') +
-    '<span style="color:var(--text3);">Local only — not uploaded</span>';
+    (rec.stravaUploadedAt
+      ? '<a href="' + rec.stravaActivityUrl + '" target="_blank" rel="noopener" style="color:var(--accent);">On Strava ✓ — view activity</a>'
+      : rec.stravaUploadStatus === 'queued'
+      ? '<span style="color:#f97316;">Queued for Strava upload</span>'
+      : '<span style="color:var(--text3);">Local only — not uploaded</span>');
+  // Strava button: hidden unless connected; label reflects upload state
+  const sBtn = document.getElementById('rdm-strava');
+  if(!UI.stravaToken){
+    sBtn.style.display = 'none';
+  } else {
+    sBtn.style.display = 'block';
+    sBtn.textContent = rec.stravaUploadedAt ? 'Upload to Strava again'
+                     : rec.stravaUploadStatus === 'queued' ? 'Retry Strava upload now'
+                     : 'Upload to Strava';
+  }
   document.getElementById('rdm-del-confirm').style.display = 'none';
   // Offer gap fill for any gaps still awaiting a decision (e.g. the end-of-ride
   // prompt was missed because the phone was locked right after Stop & save)
@@ -3475,8 +3504,21 @@ async function _recDetailDelete(){
     const rec = _recDetailRec;
     if(!rec) return;
     _recDetailClose();
-    _recGapCtx = {rec, gaps: _recGapQueueFor(rec), idx: 0};
+    _recGapCtx = {rec, gaps: _recGapQueueFor(rec), idx: 0, auto: false};
     _recGapShow();
+  });
+  $('rdm-strava').addEventListener('click', ()=>{
+    const rec = _recDetailRec;
+    if(!rec) return;
+    if(rec.stravaUploadedAt){
+      if(!confirm('This ride is already on Strava. Upload again? (Strava may reject it as a duplicate.)')) return;
+      rec.stravaUploadedAt = null;
+      rec.stravaActivityUrl = null;
+    }
+    _recToast('Uploading to Strava…');
+    _stravaLastForce = 0;   // bypass the trigger debounce for an explicit tap
+    stravaQueue(rec);
+    _recDetailClose();
   });
   $('rdm-fit').addEventListener('click', ()=>exportRecordingAsFIT());
   $('rdm-gpx').addEventListener('click', ()=>exportRecordingAsGPX());
@@ -3891,6 +3933,204 @@ function exportRecordingAsGPX(rec){
   _recToast('Exported ' + fname);
 }
 
+// ═══════════════════════════════════════════
+//  STRAVA (Phase 1a Step 9)
+//  ───────────────────────────────────────────
+//  OAuth connect, FIT upload, auto-upload after each ride, and a retry queue so
+//  a failed upload in a dead spot is never lost — just retried when possible.
+//  Retry triggers: 60 s backoff timer, browser 'online' event, app foregrounded,
+//  and a GPS fix arriving after a >2 min gap (usually means signal is back).
+//  NOTE: the client secret is embedded by necessity (no backend). It cannot access
+//  the account — worst case is app impersonation against our rate limits. Accepted.
+// ═══════════════════════════════════════════
+
+const STRAVA_CLIENT_ID     = '230638';
+const STRAVA_CLIENT_SECRET = '7d905392e1f69afe73548ca10ed250744026d376';
+const STRAVA_REDIRECT      = 'https://pmac44.github.io/PackTimes/';
+const STRAVA_SCOPES        = 'activity:write,read';
+// Backoff between retries per queued ride: 30s, 5min, 30min, 2h, 8h, then daily
+const STRAVA_BACKOFF_MS = [30e3, 5*60e3, 30*60e3, 2*3600e3, 8*3600e3, 24*3600e3];
+
+let _stravaBusy = false;
+let _stravaLastForce = 0;
+
+function stravaAuthURL(){
+  const state = 'strava_' + Math.random().toString(36).slice(2);
+  sessionStorage.setItem('strava_state', state);
+  return 'https://www.strava.com/oauth/authorize?' + new URLSearchParams({
+    client_id: STRAVA_CLIENT_ID,
+    redirect_uri: STRAVA_REDIRECT,
+    response_type: 'code',
+    approval_prompt: 'auto',
+    scope: STRAVA_SCOPES,
+    state,
+  });
+}
+
+async function stravaHandleRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  history.replaceState(null, '', window.location.pathname);
+  if(!code) return;
+  if(state !== sessionStorage.getItem('strava_state')){ _recToast('Strava sign-in didn’t match — try again'); return; }
+  sessionStorage.removeItem('strava_state');
+  try{
+    const res = await fetch('https://www.strava.com/oauth/token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({client_id: STRAVA_CLIENT_ID, client_secret: STRAVA_CLIENT_SECRET,
+                                 code, grant_type: 'authorization_code'})
+    });
+    const data = await res.json();
+    if(data.access_token){
+      UI.stravaToken = data.access_token;
+      UI.stravaRefreshToken = data.refresh_token || null;
+      UI.stravaExpiresAt = (data.expires_at || 0) * 1000;
+      UI.stravaAthlete = data.athlete ? ((data.athlete.firstname||'') + ' ' + (data.athlete.lastname||'')).trim() : null;
+      if(UI.stravaAutoUpload == null) UI.stravaAutoUpload = true;   // default ON at first connect
+      const returnTab = sessionStorage.getItem('strava_return_tab');
+      if(returnTab) UI.tab = returnTab;
+      sessionStorage.removeItem('strava_return_tab');
+      await saveAll();
+      render();
+      _recToast('Connected to Strava — auto-upload is on (change in Settings)');
+    } else {
+      _recToast('Strava connect failed: ' + (data.message || JSON.stringify(data)));
+    }
+  }catch(e){ _recToast('Strava connect error: ' + e.message); }
+}
+
+// Returns a currently-valid access token (refreshing silently if near expiry),
+// or null when refresh fails — callers treat null as a retryable upload failure.
+async function stravaFreshToken(){
+  if(!UI.stravaToken) return null;
+  if(UI.stravaExpiresAt && Date.now() < UI.stravaExpiresAt - 5*60e3) return UI.stravaToken;
+  if(!UI.stravaRefreshToken) return UI.stravaToken;
+  try{
+    const res = await fetch('https://www.strava.com/oauth/token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({client_id: STRAVA_CLIENT_ID, client_secret: STRAVA_CLIENT_SECRET,
+                                 grant_type: 'refresh_token', refresh_token: UI.stravaRefreshToken})
+    });
+    const data = await res.json();
+    if(data.access_token){
+      UI.stravaToken = data.access_token;
+      if(data.refresh_token) UI.stravaRefreshToken = data.refresh_token;
+      UI.stravaExpiresAt = (data.expires_at || 0) * 1000;
+      await saveAll();
+      return UI.stravaToken;
+    }
+  }catch(e){}
+  return null;
+}
+
+function stravaDisconnect(){
+  UI.stravaToken = null;
+  UI.stravaRefreshToken = null;
+  UI.stravaExpiresAt = null;
+  UI.stravaAthlete = null;
+  saveAll();
+  render();
+}
+
+// Mark a recording for upload and kick the queue.
+function stravaQueue(rec){
+  if(!rec || rec.stravaUploadedAt) return;
+  rec.stravaUploadStatus = 'queued';
+  rec.stravaUploadAttempts = rec.stravaUploadAttempts || [];
+  DB.putRecording(rec).catch(()=>{});
+  if(UI.tab === 'routes') render();
+  stravaProcessQueue(true);
+}
+
+// Upload one recording as FIT. Returns the Strava activity id, or throws.
+async function stravaUpload(rec){
+  const token = await stravaFreshToken();
+  if(!token) throw new Error('not connected / token refresh failed');
+  const bytes = encodeActivityFit({
+    startTS: rec.startTS,
+    endTS: rec.endTS || _recLastActivityTS(rec),
+    points: rec.points,
+  });
+  const fd = new FormData();
+  fd.append('file', new Blob([bytes], {type: 'application/octet-stream'}), _recExportName(rec) + '.fit');
+  fd.append('data_type', 'fit');
+  fd.append('name', 'PackTimes ride ' + new Date(rec.startTS).toLocaleDateString('en-GB'));
+  fd.append('external_id', 'packtimes-' + rec.id);   // lets Strava dedupe re-sends
+  const res = await fetch('https://www.strava.com/api/v3/uploads', {
+    method: 'POST',
+    headers: {'Authorization': 'Bearer ' + token},
+    body: fd,
+  });
+  const up = await res.json().catch(()=>({}));
+  if(!res.ok || up.error) throw new Error(up.error || ('upload failed, HTTP ' + res.status));
+  // Strava processes uploads asynchronously — poll until done
+  const upId = up.id_str || up.id;
+  for(let i = 0; i < 15; i++){
+    await new Promise(r => setTimeout(r, 2000));
+    const st = await fetch('https://www.strava.com/api/v3/uploads/' + upId, {
+      headers: {'Authorization': 'Bearer ' + token},
+    });
+    const s = await st.json().catch(()=>({}));
+    if(s.error) throw new Error(s.error);
+    if(s.activity_id) return s.activity_id;
+  }
+  throw new Error('Strava is still processing — will check again on the next retry');
+}
+
+// Work through everything queued. force=true ignores per-ride backoff
+// (used by the online/foreground/GPS-return triggers), debounced to 20 s.
+async function stravaProcessQueue(force){
+  if(_stravaBusy || !UI.stravaToken) return;
+  if(force){
+    if(Date.now() - _stravaLastForce < 20000) return;
+    _stravaLastForce = Date.now();
+  }
+  const queued = RECS.filter(r => r.stravaUploadStatus === 'queued' && !r.stravaUploadedAt);
+  if(!queued.length) return;
+  _stravaBusy = true;
+  try{
+    for(const rec of queued){
+      const attempts = rec.stravaUploadAttempts || [];
+      if(!force && attempts.length){
+        const last = attempts[attempts.length - 1].at;
+        const delay = STRAVA_BACKOFF_MS[Math.min(attempts.length - 1, STRAVA_BACKOFF_MS.length - 1)];
+        if(Date.now() - last < delay) continue;
+      }
+      try{
+        const actId = await stravaUpload(rec);
+        rec.stravaUploadedAt = Date.now();
+        rec.stravaActivityUrl = 'https://www.strava.com/activities/' + actId;
+        rec.stravaUploadStatus = null;
+        (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: true});
+        _recToast('Ride uploaded to Strava ✓');
+      }catch(e){
+        // A "duplicate" rejection means the ride IS on Strava — link it and move on
+        const m = String(e.message || '').match(/duplicate of activity (\d+)/i);
+        if(m){
+          rec.stravaUploadedAt = Date.now();
+          rec.stravaActivityUrl = 'https://www.strava.com/activities/' + m[1];
+          rec.stravaUploadStatus = null;
+          (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: true, note: 'duplicate'});
+        } else {
+          (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: false, error: String(e.message || e)});
+        }
+      }
+      await DB.putRecording(rec).catch(()=>{});
+    }
+  } finally {
+    _stravaBusy = false;
+    if(UI.tab === 'routes' || UI.tab === 'settings') render();
+  }
+}
+
+// Retry triggers: backoff timer + connectivity/foreground events
+setInterval(()=>stravaProcessQueue(false), 60000);
+window.addEventListener('online', ()=>stravaProcessQueue(true));
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) stravaProcessQueue(true); });
+
 // ── Live-tab recording control: tap handlers for the play/pause/stop buttons ──
 //
 // These wrap startRecording/pauseRecording/resumeRecording/finaliseRecording with
@@ -3963,16 +4203,21 @@ async function _recStopConfirm(){
   if(!_rec) return;
   const finalised = await finaliseRecording();
   _recLastFinalised = finalised;
-  _recGapArm(finalised);   // queue the gap prompt (shown after the undo window)
+  _recGapArm(finalised, true);   // queue the gap prompt (shown after the undo window)
   _recShowStopConfirm(false);
   // Force a render so the buttons go back to "idle" and the undo strip gets inserted
   render();
   _recShowUndoStrip(true);
   if(_recUndoTimer) clearTimeout(_recUndoTimer);
   _recUndoTimer = setTimeout(()=>{
+    const justFinished = _recLastFinalised;
     _recLastFinalised = null;
     _recShowUndoStrip(false);
     _recGapMaybeShow();   // undo window passed — offer gap fill if any were queued
+    // No gap prompt running → the ride is complete as-is; auto-upload if enabled
+    if(!_recGapCtx && justFinished && UI.stravaToken && UI.stravaAutoUpload !== false){
+      stravaQueue(justFinished);
+    }
   }, REC_UNDO_MS);
 }
 
@@ -7531,8 +7776,12 @@ function _dbxAgoStr(ms){
   return Math.round(diffS/86400)+'d ago';
 }
 
-// Handle OAuth redirect on page load
-if(new URLSearchParams(window.location.search).get('code'))dbxHandleRedirect();
+// Handle OAuth redirect on page load — the state param says which provider it's from
+if(new URLSearchParams(window.location.search).get('code')){
+  const _oauthState=new URLSearchParams(window.location.search).get('state')||'';
+  if(_oauthState.startsWith('strava_'))stravaHandleRedirect();
+  else dbxHandleRedirect();
+}
 
 
 // Tiny QR encoder — uses qrcodejs via CDN
@@ -9681,6 +9930,23 @@ function tSettings(r){
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="color:var(--accent);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
   </div>
+  ${section('strava','Strava',(()=>{
+    if(!UI.stravaToken)return`
+      <p style="font-size:15px;color:var(--text3);margin-bottom:10px;line-height:1.5;">Connect your Strava account to upload recorded rides straight from PackTimes. After connecting, each finished ride uploads automatically (you can turn that off here).</p>
+      <button class="btn btn-p" id="btn-strava-connect">Connect to Strava</button>`;
+    const queued=RECS.filter(r=>r.stravaUploadStatus==='queued'&&!r.stravaUploadedAt);
+    const lastFail=(()=>{if(!queued.length)return null;const a=queued[0].stravaUploadAttempts||[];const l=a[a.length-1];return l&&!l.ok?l.error:null;})();
+    return`
+      <p style="font-size:15px;color:var(--text2);margin-bottom:10px;">Connected${UI.stravaAthlete?' as <strong>'+UI.stravaAthlete+'</strong>':''}</p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:15px;margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="strava-auto-toggle" ${UI.stravaAutoUpload!==false?'checked':''}> Auto-upload after each ride is finished
+      </label>
+      ${queued.length
+        ?`<div style="font-size:14px;color:#f97316;margin-bottom:8px;line-height:1.4;">${queued.length} upload${queued.length!==1?'s':''} waiting${lastFail?' — last attempt: '+lastFail:''}</div>
+          <button class="btn btn-sm" id="btn-strava-retry">Retry now</button>`
+        :`<div style="font-size:14px;color:var(--text3);margin-bottom:8px;">No uploads waiting.</div>`}
+      <div style="margin-top:10px;"><button class="btn btn-sm" id="btn-strava-disconnect">Disconnect</button></div>`;
+  })())}
   ${section('dropbox','Dropbox Sync',dropboxBody)}
   ${section('alerts','Proximity Alerts',alertsBody,!!r)}
   ${section('ftp','⚡❤️ Sensors & Zones',ftpBody)}
@@ -12139,6 +12405,10 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
 
   /* alert-ok handler removed — stop alerts now use next-strip pulse + audio chime */
+  if(e.target.closest('#btn-strava-connect')){sessionStorage.setItem('strava_return_tab',UI.tab);window.location.href=stravaAuthURL();return;}
+  if(e.target.closest('#btn-strava-retry')){_recToast('Retrying Strava uploads…');_stravaLastForce=0;stravaProcessQueue(true);return;}
+  if(e.target.closest('#btn-strava-disconnect')){stravaDisconnect();return;}
+  if(e.target.id==='strava-auto-toggle'){UI.stravaAutoUpload=e.target.checked;saveAll();return;}
   if(e.target.closest('#btn-dbx-connect')){sessionStorage.setItem('dbx_return_tab',UI.tab);window.location.href=dbxAuthURL();return;}
   if(e.target.closest('#btn-dbx-save')){dbxSave(false);return;}
   if(e.target.closest('#btn-dbx-load')){dbxLoad(true);return;}
