@@ -640,7 +640,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v174';
+window.APP_VERSION='v175';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -663,7 +663,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   gpsTravelledKm:0,
   _lastSnapIdx:null,                       // route point index of last snap (for directional bias)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,
-  settingsExp:{dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
+  settingsExp:{strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
   // Recording state
