@@ -480,6 +480,10 @@ select option{background:var(--bg3);}
     <canvas id="rec-detail-elev" style="width:100%;height:56px;display:block;margin-bottom:10px;"></canvas>
     <div id="rdm-stats" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:14px;"></div>
     <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-p" id="rdm-fit" style="flex:1;">Export FIT</button>
+        <button class="btn" id="rdm-gpx" style="flex:1;">Export GPX</button>
+      </div>
       <button class="btn btn-full" id="rdm-copy">Copy as new route</button>
       <button class="btn btn-r btn-full" id="rdm-delete">Delete&hellip;</button>
     </div>
@@ -3169,6 +3173,8 @@ async function _recDetailDelete(){
   const x = $('rdm-x');
   if(!x) return;
   x.addEventListener('click', _recDetailClose);
+  $('rdm-fit').addEventListener('click', ()=>exportRecordingAsFIT());
+  $('rdm-gpx').addEventListener('click', ()=>exportRecordingAsGPX());
   $('rdm-copy').addEventListener('click', _recDetailCopyAsRoute);
   $('rdm-delete').addEventListener('click', ()=>{
     $('rdm-del-confirm').style.display = 'block';
@@ -3182,6 +3188,376 @@ async function _recDetailDelete(){
   });
   $('rdm-del-go').addEventListener('click', _recDetailDelete);
 })();
+
+// ═══════════════════════════════════════════
+//  FIT WRITER (Phase 1a Step 7)
+//  ───────────────────────────────────────────
+//  Minimal Activity FIT encoder, proven against Strava + the official Garmin
+//  SDK decoder in the April 2026 spike (_planning/fit-spike/). Inlined here
+//  verbatim from fit-encoder.js. Writes 6 message types: file_id, event,
+//  record, lap, session, activity. No dependencies.
+//  Spec refs: Garmin FIT SDK 21.201, developer.garmin.com/fit/protocol/
+// ═══════════════════════════════════════════
+
+const HEADER_SIZE         = 14;     // FIT file header (with CRC)
+const PROTOCOL_VERSION    = 0x20;   // FIT protocol version 2.0
+const PROFILE_VERSION     = 21201;  // Profile 21.201
+const ARCH_LITTLE_ENDIAN  = 0x00;
+const MESG_DEFINITION_BIT = 0x40;
+const FIT_EPOCH_OFFSET    = 631065600;  // 1989-12-31 00:00:00 UTC in Unix seconds
+
+const MESG_FILE_ID  = 0;
+const MESG_SESSION  = 18;
+const MESG_LAP      = 19;
+const MESG_RECORD   = 20;
+const MESG_EVENT    = 21;
+const MESG_ACTIVITY = 34;
+
+const BT_ENUM   = 0x00;
+const BT_UINT8  = 0x02;
+const BT_SINT16 = 0x83;
+const BT_UINT16 = 0x84;
+const BT_SINT32 = 0x85;
+const BT_UINT32 = 0x86;
+
+const BASE_TYPE_INFO = {
+  [BT_ENUM]:   { size: 1, write: (dv, off, v) => dv.setUint8 (off, v & 0xFF) },
+  [BT_UINT8]:  { size: 1, write: (dv, off, v) => dv.setUint8 (off, v & 0xFF) },
+  [BT_SINT16]: { size: 2, write: (dv, off, v) => dv.setInt16 (off, v|0,        true) },
+  [BT_UINT16]: { size: 2, write: (dv, off, v) => dv.setUint16(off, v & 0xFFFF, true) },
+  [BT_SINT32]: { size: 4, write: (dv, off, v) => dv.setInt32 (off, v|0,        true) },
+  [BT_UINT32]: { size: 4, write: (dv, off, v) => dv.setUint32(off, v >>> 0,    true) },
+};
+
+const FILE_TYPE_ACTIVITY = 4;
+const MANUFACTURER_DEVELOPMENT = 255;
+const EVENT_TIMER          = 0;
+const EVENT_TYPE_START     = 0;
+const EVENT_TYPE_STOP_ALL  = 4;
+const SPORT_CYCLING        = 2;
+const SUB_SPORT_GENERIC    = 0;
+
+const CRC_TABLE = [
+  0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
+  0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
+];
+
+function fitCrc(buf, start, end) {
+  let crc = 0;
+  for (let i = start; i < end; i++) {
+    let v = buf[i];
+    let tmp = CRC_TABLE[crc & 0xF];
+    crc = (crc >> 4) & 0x0FFF;
+    crc = crc ^ tmp ^ CRC_TABLE[v & 0xF];
+    tmp = CRC_TABLE[crc & 0xF];
+    crc = (crc >> 4) & 0x0FFF;
+    crc = crc ^ tmp ^ CRC_TABLE[(v >> 4) & 0xF];
+  }
+  return crc;
+}
+
+function semicircles(degrees) {
+  return Math.round(degrees * (0x80000000 / 180));
+}
+
+function fitTime(unixMs) {
+  return Math.round(unixMs / 1000) - FIT_EPOCH_OFFSET;
+}
+
+function fitAltitude(metres) {
+  return Math.round((metres + 500) * 5);
+}
+
+class ByteWriter {
+  constructor(initialCapacity = 4096) {
+    this.buf = new Uint8Array(initialCapacity);
+    this.dv  = new DataView(this.buf.buffer);
+    this.len = 0;
+  }
+  _ensure(n) {
+    if (this.len + n > this.buf.length) {
+      let cap = this.buf.length;
+      while (cap < this.len + n) cap *= 2;
+      const nb = new Uint8Array(cap);
+      nb.set(this.buf);
+      this.buf = nb;
+      this.dv  = new DataView(this.buf.buffer);
+    }
+  }
+  u8(v)  { this._ensure(1); this.dv.setUint8 (this.len, v & 0xFF);     this.len += 1; }
+  u16(v) { this._ensure(2); this.dv.setUint16(this.len, v & 0xFFFF, true); this.len += 2; }
+  u32(v) { this._ensure(4); this.dv.setUint32(this.len, v >>> 0,     true); this.len += 4; }
+  bytes(arr) { this._ensure(arr.length); this.buf.set(arr, this.len); this.len += arr.length; }
+  result() { return this.buf.subarray(0, this.len); }
+}
+
+function writeMesgDefinition(w, localMesgNum, globalMesgNum, fields) {
+  w.u8(MESG_DEFINITION_BIT | (localMesgNum & 0x0F));
+  w.u8(0);
+  w.u8(ARCH_LITTLE_ENDIAN);
+  w.u16(globalMesgNum);
+  w.u8(fields.length);
+  for (const f of fields) {
+    const sz = BASE_TYPE_INFO[f.baseType].size;
+    w.u8(f.fieldDefNum);
+    w.u8(sz);
+    w.u8(f.baseType);
+  }
+}
+
+function writeMesgData(w, localMesgNum, fields, values) {
+  w.u8(localMesgNum & 0x0F);
+  for (const f of fields) {
+    const info = BASE_TYPE_INFO[f.baseType];
+    let v = values[f.fieldDefNum];
+    if (v == null) v = invalidValueFor(f.baseType);
+    w._ensure(info.size);
+    info.write(w.dv, w.len, v);
+    w.len += info.size;
+  }
+}
+
+function invalidValueFor(baseType) {
+  switch (baseType) {
+    case BT_ENUM:   return 0xFF;
+    case BT_UINT8:  return 0xFF;
+    case BT_SINT16: return 0x7FFF;
+    case BT_UINT16: return 0xFFFF;
+    case BT_SINT32: return 0x7FFFFFFF;
+    case BT_UINT32: return 0xFFFFFFFF;
+    default:        return 0;
+  }
+}
+
+const FIELDS_FILE_ID = [
+  { fieldDefNum: 0, baseType: BT_ENUM   },  // type (4 = activity)
+  { fieldDefNum: 1, baseType: BT_UINT16 },  // manufacturer
+  { fieldDefNum: 2, baseType: BT_UINT16 },  // product
+  { fieldDefNum: 3, baseType: BT_UINT32 },  // serial_number
+  { fieldDefNum: 4, baseType: BT_UINT32 },  // time_created
+];
+const FIELDS_EVENT = [
+  { fieldDefNum: 253, baseType: BT_UINT32 }, // timestamp
+  { fieldDefNum: 0,   baseType: BT_ENUM   }, // event (0 = timer)
+  { fieldDefNum: 1,   baseType: BT_ENUM   }, // event_type (0=start, 4=stop_all)
+];
+const FIELDS_RECORD = [
+  { fieldDefNum: 253, baseType: BT_UINT32 }, // timestamp
+  { fieldDefNum: 0,   baseType: BT_SINT32 }, // position_lat (semicircles)
+  { fieldDefNum: 1,   baseType: BT_SINT32 }, // position_long (semicircles)
+  { fieldDefNum: 2,   baseType: BT_UINT16 }, // altitude ((m+500)*5)
+  { fieldDefNum: 5,   baseType: BT_UINT32 }, // distance (m * 100)
+];
+const FIELDS_LAP = [
+  { fieldDefNum: 253, baseType: BT_UINT32 },
+  { fieldDefNum: 2,   baseType: BT_UINT32 }, // start_time
+  { fieldDefNum: 7,   baseType: BT_UINT32 }, // total_elapsed_time (ms)
+  { fieldDefNum: 8,   baseType: BT_UINT32 }, // total_timer_time (ms)
+  { fieldDefNum: 9,   baseType: BT_UINT32 }, // total_distance (m * 100)
+  { fieldDefNum: 0,   baseType: BT_ENUM   }, // event (9 = lap)
+  { fieldDefNum: 1,   baseType: BT_ENUM   }, // event_type (1 = stop)
+];
+const FIELDS_SESSION = [
+  { fieldDefNum: 253, baseType: BT_UINT32 },
+  { fieldDefNum: 2,   baseType: BT_UINT32 },
+  { fieldDefNum: 7,   baseType: BT_UINT32 },
+  { fieldDefNum: 8,   baseType: BT_UINT32 },
+  { fieldDefNum: 9,   baseType: BT_UINT32 },
+  { fieldDefNum: 5,   baseType: BT_ENUM   }, // sport (2 = cycling)
+  { fieldDefNum: 6,   baseType: BT_ENUM   }, // sub_sport
+  { fieldDefNum: 0,   baseType: BT_ENUM   }, // event (8 = session)
+  { fieldDefNum: 1,   baseType: BT_ENUM   }, // event_type (1 = stop)
+];
+const FIELDS_ACTIVITY = [
+  { fieldDefNum: 253, baseType: BT_UINT32 },
+  { fieldDefNum: 0,   baseType: BT_UINT32 }, // total_timer_time (ms)
+  { fieldDefNum: 1,   baseType: BT_UINT16 }, // num_sessions
+  { fieldDefNum: 2,   baseType: BT_ENUM   }, // type (0 = manual)
+  { fieldDefNum: 3,   baseType: BT_ENUM   }, // event (26 = activity)
+  { fieldDefNum: 4,   baseType: BT_ENUM   }, // event_type (1 = stop)
+];
+
+const LOCAL_FILE_ID  = 0;
+const LOCAL_EVENT    = 1;
+const LOCAL_RECORD   = 2;
+const LOCAL_LAP      = 3;
+const LOCAL_SESSION  = 4;
+const LOCAL_ACTIVITY = 5;
+
+// Encode {startTS, endTS, points:[{lat,lon,ele,t}]} → Uint8Array (.fit file)
+function encodeActivityFit(recording) {
+  const data = new ByteWriter(8192);
+  const totalDistM = computeDistanceMetres(recording.points);
+  const elapsedRaw = Math.round(recording.endTS - recording.startTS);  // ms = spec's s*1000 scaling
+
+  writeMesgDefinition(data, LOCAL_FILE_ID, MESG_FILE_ID, FIELDS_FILE_ID);
+  writeMesgData(data, LOCAL_FILE_ID, FIELDS_FILE_ID, {
+    0: FILE_TYPE_ACTIVITY,
+    1: MANUFACTURER_DEVELOPMENT,
+    2: 1,
+    3: hashSerial(recording.startTS),
+    4: fitTime(recording.startTS),
+  });
+
+  writeMesgDefinition(data, LOCAL_EVENT, MESG_EVENT, FIELDS_EVENT);
+  writeMesgData(data, LOCAL_EVENT, FIELDS_EVENT, {
+    253: fitTime(recording.startTS),
+    0:   EVENT_TIMER,
+    1:   EVENT_TYPE_START,
+  });
+
+  writeMesgDefinition(data, LOCAL_RECORD, MESG_RECORD, FIELDS_RECORD);
+  let cumDist = 0;
+  for (let i = 0; i < recording.points.length; i++) {
+    const p = recording.points[i];
+    if (i > 0) {
+      cumDist += haversineM(
+        recording.points[i-1].lat, recording.points[i-1].lon,
+        p.lat, p.lon);
+    }
+    writeMesgData(data, LOCAL_RECORD, FIELDS_RECORD, {
+      253: fitTime(p.t),
+      0:   semicircles(p.lat),
+      1:   semicircles(p.lon),
+      2:   p.ele != null ? fitAltitude(p.ele) : null,
+      5:   Math.round(cumDist * 100),
+    });
+  }
+
+  writeMesgData(data, LOCAL_EVENT, FIELDS_EVENT, {
+    253: fitTime(recording.endTS),
+    0:   EVENT_TIMER,
+    1:   EVENT_TYPE_STOP_ALL,
+  });
+
+  writeMesgDefinition(data, LOCAL_LAP, MESG_LAP, FIELDS_LAP);
+  writeMesgData(data, LOCAL_LAP, FIELDS_LAP, {
+    253: fitTime(recording.endTS),
+    2:   fitTime(recording.startTS),
+    7:   elapsedRaw,
+    8:   elapsedRaw,
+    9:   Math.round(totalDistM * 100),
+    0:   9,
+    1:   1,
+  });
+
+  writeMesgDefinition(data, LOCAL_SESSION, MESG_SESSION, FIELDS_SESSION);
+  writeMesgData(data, LOCAL_SESSION, FIELDS_SESSION, {
+    253: fitTime(recording.endTS),
+    2:   fitTime(recording.startTS),
+    7:   elapsedRaw,
+    8:   elapsedRaw,
+    9:   Math.round(totalDistM * 100),
+    5:   SPORT_CYCLING,
+    6:   SUB_SPORT_GENERIC,
+    0:   8,
+    1:   1,
+  });
+
+  writeMesgDefinition(data, LOCAL_ACTIVITY, MESG_ACTIVITY, FIELDS_ACTIVITY);
+  writeMesgData(data, LOCAL_ACTIVITY, FIELDS_ACTIVITY, {
+    253: fitTime(recording.endTS),
+    0:   elapsedRaw,
+    1:   1,
+    2:   0,
+    3:   26,
+    4:   1,
+  });
+
+  return assembleFitFile(data.result());
+}
+
+function assembleFitFile(dataBytes) {
+  const out = new Uint8Array(HEADER_SIZE + dataBytes.length + 2);
+  const dv  = new DataView(out.buffer);
+  dv.setUint8 (0,  HEADER_SIZE);
+  dv.setUint8 (1,  PROTOCOL_VERSION);
+  dv.setUint16(2,  PROFILE_VERSION, true);
+  dv.setUint32(4,  dataBytes.length, true);
+  dv.setUint8 (8,  0x2E); dv.setUint8 (9,  0x46);   // '.F'
+  dv.setUint8 (10, 0x49); dv.setUint8 (11, 0x54);   // 'IT'
+  dv.setUint16(12, fitCrc(out, 0, 12), true);
+  out.set(dataBytes, HEADER_SIZE);
+  dv.setUint16(HEADER_SIZE + dataBytes.length, fitCrc(out, 0, HEADER_SIZE + dataBytes.length), true);
+  return out;
+}
+
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function computeDistanceMetres(points) {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += haversineM(
+      points[i-1].lat, points[i-1].lon,
+      points[i].lat,   points[i].lon);
+  }
+  return total;
+}
+
+function hashSerial(n) {
+  let x = (n * 2654435761) >>> 0;
+  x ^= x >>> 16;
+  x = (x * 0x85ebca6b) >>> 0;
+  x ^= x >>> 13;
+  return x >>> 0;
+}
+
+// ── Recording export (FIT primary, GPX secondary) ──
+
+function _recDownload(content, filename, mime){
+  const blob = new Blob([content], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+}
+
+function _recExportName(rec){
+  const d = new Date(rec.startTS);
+  const pad = n => String(n).padStart(2, '0');
+  return 'packtimes-ride-' + d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+}
+
+function exportRecordingAsFIT(rec){
+  rec = rec || _recDetailRec;
+  if(!rec || !rec.points || !rec.points.length) return;
+  const bytes = encodeActivityFit({
+    startTS: rec.startTS,
+    endTS:   rec.endTS || _recLastActivityTS(rec),
+    points:  rec.points,
+  });
+  _recDownload(bytes, _recExportName(rec) + '.fit', 'application/octet-stream');
+}
+
+function exportRecordingAsGPX(rec){
+  rec = rec || _recDetailRec;
+  if(!rec || !rec.points || !rec.points.length) return;
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const name = 'PackTimes ride ' + new Date(rec.startTS).toLocaleDateString('en-GB');
+  let g = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    + '<gpx version="1.1" creator="PackTimes" xmlns="http://www.topografix.com/GPX/1/1">\n'
+    + '<trk><name>' + esc(name) + '</name><trkseg>\n';
+  for(const p of rec.points){
+    g += '<trkpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">'
+      + (p.ele != null ? '<ele>' + (Math.round(p.ele * 10) / 10) + '</ele>' : '')
+      + (p.t ? '<time>' + new Date(p.t).toISOString() + '</time>' : '')
+      + '</trkpt>\n';
+  }
+  g += '</trkseg></trk>\n</gpx>\n';
+  _recDownload(g, _recExportName(rec) + '.gpx', 'application/gpx+xml');
+}
 
 // ── Live-tab recording control: tap handlers for the play/pause/stop buttons ──
 //
@@ -12546,7 +12922,7 @@ if('serviceWorker' in navigator && window.self===window.top){
   // is the ephemeral blob URL which dies on page close, so we must capture the
   // real URL here in the page context and embed it in the SW code.
   const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-v168';
+  const CACHE_NAME='packtimes-v169';
   const swCode=`
     const CACHE='${CACHE_NAME}';
     const PAGE_URL='${PAGE_URL}';
