@@ -713,7 +713,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v182';
+window.APP_VERSION='v183';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -9852,6 +9852,28 @@ function openHelpModal(){
   document.getElementById('help-modal').style.display='flex';
 }
 function closeHelpModal(){document.getElementById('help-modal').style.display='none';}
+// Shared "More detail" toggle — used by both the Hello card (delegated via
+// #content-wrap's click handler) and the help modal (which lives outside
+// #content-wrap in the DOM, so it needs its own listener — see below).
+function _toggleHelloDetail(helloTgl){
+  UI.helloDetailOpen=!UI.helloDetailOpen;
+  const wrap=helloTgl.closest('.hello-more-wrap');
+  const arrow=helloTgl.querySelector('span:first-child');
+  if(arrow)arrow.textContent=UI.helloDetailOpen?'▼':'▶';
+  let detail=wrap?wrap.querySelector('.hello-more-detail'):null;
+  if(UI.helloDetailOpen&&wrap&&!detail){
+    detail=document.createElement('div');
+    detail.className='hello-more-detail';
+    detail.innerHTML=_helloDetailHTML();
+    wrap.appendChild(detail);
+  } else if(!UI.helloDetailOpen&&detail){
+    detail.remove();
+  }
+}
+document.getElementById('help-modal').addEventListener('click',e=>{
+  const helloTgl=e.target.closest('.hello-more-toggle');
+  if(helloTgl){_toggleHelloDetail(helloTgl);return;}
+});
 
 function tRoutes(r){
   // Hello box: onboarding card — shown only until the first route exists.
@@ -12782,25 +12804,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#hike-card-hdr')&&!e.target.closest('#btn-add-pace')){UI.hikeExpanded=!UI.hikeExpanded;setTimeout(()=>renderKeepScroll(),50);return;}
   if(e.target.closest('#hello-hdr')){UI.helloExpanded=!(UI.helloExpanded!==null?UI.helloExpanded:!cur());setTimeout(()=>renderKeepScroll(),50);return;}
   const helloTgl=e.target.closest('.hello-more-toggle');
-  if(helloTgl){
-    UI.helloDetailOpen=!UI.helloDetailOpen;
-    // Toggle in-place — avoid render() which resets scroll position. Scoped to
-    // the tapped copy (class-based) so it works in both the Hello card and the
-    // help modal; content comes from the shared _helloDetailHTML().
-    const wrap=helloTgl.closest('.hello-more-wrap');
-    const arrow=helloTgl.querySelector('span:first-child');
-    if(arrow)arrow.textContent=UI.helloDetailOpen?'▼':'▶';
-    let detail=wrap?wrap.querySelector('.hello-more-detail'):null;
-    if(UI.helloDetailOpen&&wrap&&!detail){
-      detail=document.createElement('div');
-      detail.className='hello-more-detail';
-      detail.innerHTML=_helloDetailHTML();
-      wrap.appendChild(detail);
-    } else if(!UI.helloDetailOpen&&detail){
-      detail.remove();
-    }
-    return;
-  }
+  if(helloTgl){_toggleHelloDetail(helloTgl);return;}
   const settingsHdr=e.target.closest('[id^="settings-hdr-"]');
   if(settingsHdr){
     const key=settingsHdr.id.replace('settings-hdr-','');
