@@ -8,25 +8,42 @@ Peter, if anything below goes stale, tell me and I'll update this file rather th
 
 ## What PackTimes is
 
-PackTimes is an ultra-cycling and bikepacking route planner, shipped as an installable PWA. A rider loads a route file (GPX / TCX / KML / FIT), and the app plans the ride — pace by surface type, stops (food, water, sleep, fuel, accommodation), weather and daylight along the way, a printable mission brief, and a Live "Ride" tab with GPS tracking, turn beeps, off-route alerts, and adaptive pace calibration.
+PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder**, shipped as an installable PWA. A rider loads a route file (GPX / TCX / KML / FIT), and the app plans the ride — pace by surface type, stops (food, water, sleep, fuel, accommodation), weather and daylight along the way, a printable mission brief, and a Live "Ride" tab with GPS tracking, turn beeps, off-route alerts, and adaptive pace calibration. Since July 2026 it also **records rides** (movement-based GPS sampling, crash recovery, screen-off gap reconstruction along the route), lists them in a Rides card on the Route tab, exports FIT/GPX, and **auto-uploads finished rides to Strava**.
 
 - Deployed at https://pmac44.github.io/PackTimes (GitHub Pages).
 - Repo: https://github.com/pmac44/PackTimes.
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v177)
+
+**Phase 1a (recording + Strava) is essentially complete and field-tested.** The living
+step-by-step record is in `_planning/phase-1a-build-plan.md` (progress notes at the top);
+the five-phase roadmap is `_planning/architecture-plan.md`. Done and confirmed on real
+rides: recording engine, crash-recovery modal, gap detection + route-based fill,
+saved-rides view + detail modal (zoomable map, dashed gap-filled sections), FIT/GPX
+export, Strava OAuth + auto-upload + retry queue. Strava athlete capacity is raised to
+10 — first beta tester connected 9 July. Deliberately deferred: Step 10 ("want to
+record?" prompt) and Step 11 (storage expiry warning — mostly moot given auto-upload).
+**Next big move: Phase 1b, the Capacitor wrap** for true background GPS; the gate is a
+couple of clean soak-test rides. Peter is wary of wrapping too early (slower iteration) —
+don't push it.
+
 ## Architecture in one sentence
 
-**Everything lives in `index.html`.** HTML, CSS, and JS are all in that one ~11,000-line file. There is no build step, no bundler, no framework — it's vanilla JS with IndexedDB for storage and Canvas for maps and elevation. Edits are made directly to `index.html` and pushed to GitHub; Pages serves it.
+**Everything lives in `index.html`.** HTML, CSS, and JS are all in that one ~13,600-line file. There is no build step, no bundler, no framework — it's vanilla JS with IndexedDB for storage and Canvas for maps and elevation. Edits are made directly to `index.html` and pushed to GitHub; Pages serves it.
 
 ### Files in the repo
 
 | File | What it is |
 |---|---|
-| `index.html` | The entire app. ~11,000 lines. |
+| `index.html` | The entire app. ~13,600 lines. |
 | `manifest.json` | PWA manifest (name, icons, theme colour, standalone display). |
 | `icon-192.png`, `icon-512.png` | PWA icons. |
 | `push.bat` | Peter's Windows one-click deploy: `git add . && git commit -m "Update app" && git push`. |
+| `_planning/` | Architecture plan, Phase 1a build plan (with progress notes), GPS-fixes log, and the `fit-spike/` FIT-encoder test harness (incl. Garmin SDK for round-trip verification via Node). |
+| `PackTimes-style-guide.md` | Styling source of truth — read before UI changes. |
+| `backup/` | Pre-restyle backup of index.html. |
 | `.git/` | Local git history. Remote: `origin` → GitHub. |
 
 ### Deploy flow (Peter's)
@@ -35,75 +52,58 @@ PackTimes is an ultra-cycling and bikepacking route planner, shipped as an insta
 2. Double-click `push.bat` → commits as "Update app" and pushes to `origin/main`.
 3. GitHub Pages picks it up and serves at `pmac44.github.io/PackTimes`.
 
-Commit messages are all "Update app", so `git log` is not a useful context source — don't try to lean on it to understand history. If I need to know why a change was made, I should ask Peter.
+**Versioning (since v176): bump ONLY `window.APP_VERSION` in the STATE section.** The
+service worker's `CACHE_NAME` derives from it, and Settings displays it at the bottom so
+Peter can always see what his phone is running. The SW page fetch uses `cache:'no-cache'`
+(revalidates with GitHub every load), so a push shows up on the phone's next app-open —
+no more 10-minute GitHub-cache lag. Discipline: one step = one version bump = one push.
+
+Commit messages are all "Update app", so `git log` is not a useful context source — don't try to lean on it to understand history. If I need to know why a change was made, I should ask Peter (or check the `_planning/` docs, which since July 2026 double as the change log).
 
 ---
 
 ## Code map: where things live in `index.html`
 
-The file is organised with clear banner comments (`// ═══...`). Section boundaries are stable and line numbers below are accurate as of April 2026 — if they drift, I should grep for the banner comment rather than trust the number.
+The file is organised with clear banner comments (`// ═══...`). Section boundaries are stable and line numbers below are accurate as of 9 July 2026 (v177, ~13,600 lines) — **they WILL drift; grep for the banner comment rather than trusting the number.**
 
 ### Top of file
 
 | Lines | What |
 |---|---|
 | 1–11 | Doc comment & copyright. |
-| 12–483 | `<head>`, CSS (all inline in a `<style>` block), and HTML skeleton (header, tab bar, `content-wrap`). |
-| 484 | `<script>` opens — JavaScript starts here. |
+| ~12–600 | `<head>`, CSS (inline `<style>`), and HTML skeleton: header, tab bar, `content-wrap`, and the static modals — edit-stop, add-stop, **rec-recovery-modal** (crash recovery), **rec-detail-modal** (ride detail: map/elev canvases, fill-gaps/Strava/export/copy/delete buttons), **rec-gap-modal** (gap-fill choices), pace modal, etc. |
+| ~600 | `<script>` opens — JavaScript starts here. |
 
-### JavaScript sections (banner-delimited)
+### JavaScript sections (banner-delimited; grep the banner, e.g. `//  RECORDING`)
 
-| Lines | Banner | What it owns |
+| ~Line | Banner / area | What it owns |
 |---|---|---|
-| 486–509 | `INDEXED DB` | `DB` module: opens `packtimes` IDB (v3), two stores: `routes` (keyPath `id`) and `kv` (keyPath `k`). Exposes `put/get/all/del/setKV/getKV`. |
-| 511–537 | `STATE` | Globals: `ROUTES[]`, `CUR` (current route index), `newRoute(name)`, `cur()`, and the big `UI` object (tab, GPS state, ride-avg accumulators, Dropbox tokens, settings expand state, live pill config, etc.). |
-| 539–672 | `PERSIST` | `packRoute/unpackRoute` (compress points to arrays for storage; unpack rebuilds `cumRiding`, migrates old stop types and IDs, restores `ohRules` Sets). `saveAll()` writes every route + UI prefs. `loadAll()` restores routes, UI prefs, last GPS state, sun cache, weather cache. |
-| 674–760 | `GPX PARSE` + `TCX PARSE` | `parseGPX(txt)`, `parseTCX(txt)`. |
-| 762–810 | `KML PARSE` | `parseKML(txt)`. |
-| 812–898 | `FIT PARSE` | Binary Garmin `.fit` parser. Extracts record messages (lat/lon/alt/timestamp). Custom-written, no library. |
-| 899–1059 | Geometry helpers | `hav` (haversine), `bearing`, `angleDiff`, `autoDetectTurns` (main turn detector with tunables like `MIN_TURN_DEG`, `RECOVERY_TOL`), `elevGain`, `durationFromTS`, `tsSpeedSanity`. |
-| 1060–1208 | Speed/pace model | Calibrated constants: `VAM_BY_SURFACE`, `FLAT_KMH_BY_SURFACE`, `DESC_FACTOR`, `MAX_DESC_KMH`, `RIDER_MULT`, `LOAD_MULT`. Then `surfaceCatAt`, `segTimeH`, `naismith`, `buildCumRiding`, `rebuildPace`, `cumRidingAt`, `getDaySplits`. **This is the heart of the planner — changes here affect every ETA in the app.** |
-| 1207–1262 | `OPENING HOURS PARSER` | `parseOH(oh)` parses OSM-style opening-hours strings into rule objects; `isOpen(rules,dt)`, `fmtOHSummary`. |
-| 1263–1535 | `TIME CALC` | `startDT`, `sleepHoursFor`, `totalSleepHours`, `totalMealHours`, and `etaAt(distKm, r)` — the main function that turns a distance into an ETA including stops, sleep, and meals. |
-| 1536–1565 | Date/time formatters | `fmtT`, `fmtDT`, `fmtDTY`, `fmtHM`, `dayOff`. |
-| 1567–1840 | `STOPS` + surface fetch | `addStop`, `delStop`, `shopSt`, `surfaceCategory`, `snapToWay`, and the Overpass surface-type fetcher (chunked, multi-mirror, `SURF_MIRRORS`). |
-| 1841–2091 | Overpass queries | Town geocode via Nominatim; POI search along route via Overpass (`MIRRORS`); accommodation search via Geoapify Places (needs `UI.geoapifyKey`). `snapTo(r,lat,lon,lastIdx)` — snap a GPS point to the route. |
-| 2092–2288 | `GPS` | `toggleGPS/startGPS/stopGPS`, GPS watch handler, idle-timeout auto-stop, adaptive-calibration hooks, ride-avg accumulators, persistence of `lastGpsState`. |
-| 2289–2410 | `ADAPTIVE SPEED CALIBRATION` | `adaptiveTimings(r)`, `runAdaptiveCalibration()`, `updateGPSPill`. Tunables: `ADAPTIVE_GAP_MS`, `ADAPTIVE_MAX_DRIFT` (±30% cap). |
-| 2411–2584 | `RIDE SIMULATOR` | Plays back a GPX at simulated speed. `simStart/simPause/simStop/_updateSimButtons`, `_simPts/_simIdx/_simTimer`. |
-| 2585–2678 | Audio alerts | `getAudioCtx`, `playTone`, `playBeepSequence`, `playTurnBeep`, `scheduleTurnBeeps`. Uses WebAudio + `navigator.vibrate`. |
-| 2680–2725 | Wake lock | `_wakeLock`, `releaseWakeLock` via `navigator.wakeLock`. |
-| 2729–2970 | Proximity & off-route alerts | `checkAlerts`, `showOffRouteAlert`, `playOffRouteAudio`, `triggerStopAlert`, `clearStopAlert`, `pulseStripCard`, `playStopChime`, `scheduleStopChimes`. Constants `OFF_ROUTE_M=150`, `OFF_ROUTE_SECS=8`. |
-| 2972–3056 | Turn-review overlay event handling | `_handleTrvEvent`. |
-| 3057–4350 | `MAP ENGINE` | Canvas map rendering. Per-canvas state in `_ms`. Tile sources in `TILE_URLS` (off / OSM / ArcGIS sat / CyclOSM / OpenTopoMap); `_tileMode` cycles between them. `getTile`, `drawTiles`, `drawMap`, `cidx`, `zoomMap`, `zoomForKmWidth`, `panTo`, `peekLiveStop`, `redrawMap`, `attachMap` (touch/mouse gestures), `hitTest`, `mapCtrlHTML`, `zoomBtnsHTML`. Also the offline-tile prefetcher (zoom levels 10–14, batched, cached in `packtimes-tiles-v1`). |
-| 4351–4393 | `ELEVATION CANVAS` | `drawElev(cvs, r)` — small inline elevation strip. |
-| 4394–4475 | `MODAL` + date/time picker | `openModal/closeModal` (stop add/edit), `_dtFmt/_dtRefresh/openDTPicker/closeDTPicker/_dtBtn`. |
-| 4476–4588 | `PACE SEGMENT MODAL` | User-defined pace overrides per distance range. |
-| 4589–4886 | Edit modal + helpers | `updateModalFields`, `closeEditModal`. |
-| 4887–4898 | `HIGHLIGHT STATE` | `_highlightStopId`, `_tempRevealTimer` for the Stops map. |
-| 4899–5217 | `DESKTOP LAYOUT` | `IS_DESKTOP()` (breakpoint ≥900px), `initDesktop`, `renderDesktopMap`. Desktop shows a fixed sidebar + map pane; mobile is single-column. |
-| 5218–5443 | `DROPBOX SYNC` | OAuth PKCE flow. Constants: `DBX_APP_KEY='5uh7f72xfyv171g'`, `DBX_REDIRECT='https://pmac44.github.io/PackTimes/'`, `DBX_FILE='/plan.json'`. `dbxAuthURL/dbxSetStatus/dbxScheduleSave/dbxSave/dbxLoad/dbxAutoLoad/dbxShowStaleBanner/_dbxAgoStr`. Debounced save (5s). Export/import plan JSON: `exportPlan/importPlan`. |
-| 5573–5622 | `TABS` + scroll helpers | The six tabs defined in the `TABS` array: `routes`, `stops`, `food` (labelled "Supplies"), `plan` (labelled "Mission"), `live` (labelled "Ride"), `settings`. |
-| 5623–6121 | Rendering helpers | `render()` (rAF-gated), icon constants (`STRIP_ICON_*`, `ICON_FOOD`, etc.), live-strip builders, grade colours, elevation-profile drawing (`drawElevProfile`). |
-| 6122–6187 | `RENDER` | **`_render()` — the central dispatcher.** Reads `UI.tab` and calls the appropriate `t*` template function. This is the function to start from when debugging anything visual. |
-| 6188–6405 | Route + Stops tab templates | `tRoutes` (at 6961), `tStopsShell(r)`, stops-scroll/stops-map helpers. |
-| 6406–6562 | Live shell + turn review | Power zones (`powerZone`, `hrZone` — Wahoo 7-zone model). `enterTurnReview/exitTurnReview/allReviewTurns/goToTurnReviewIdx/renderTurnReview`. |
-| 6563–6959 | Live tab | `tLiveShell(r)` (live-map section + stats + next-stop strip + elevation), `LIVE_STATS` config, `STAT_ORDER`, `PILL_CYCLE`, `initLiveMap`. |
-| 6961–7267 | `tRoutes` | Routes list + route detail combined. Route management, turn-detection settings per route. |
-| 7268–7474 | `tSettings` | Settings tab: Dropbox, alerts, FTP/MaxHR, zoom/weather spacing, OSM defaults, offline tile download, simulator, Geoapify key, danger zone. |
-| 7475–7596 | Plan tab helpers + stops | `clusteredStopRows`, `stopRow`, `clusterStops` (clusters stops within `CLUSTER_KM=3.0`), `makeCluster`, `typeIcons`, `stopChip`. |
-| 7597–7951 | Weather | `RADAR_URLS` per country, `geoCountry`, `wmoIcon/windArrow`, `isSignificantWeatherChange`, `_weatherCache`, `ensureWeatherCache` (fetches from Open-Meteo — free, no key), `weatherAtEta`, `weatherPillHTML`, `weatherBarHTML`, `drawWeatherDot`. |
-| 7952–8091 | Sunrise/sunset | `ensureSunCache`, `_sunApprox` (local calculation, no API), `bgIsLight`, `dayNightBg`, `dayNightLabel`. |
-| 8092–8514 | `tPlan` | Mission tab template — the main planner view. |
-| 8515–8637 | Gear | `DEFAULT_GEAR`, `getGearChecklist`, `_updateGearSummary`. |
-| 8559–8795 | `tGear`, `tFood` | Gear and Supplies tab templates. |
-| 8797–8855 | `printMission` | Opens a print-friendly window. |
-| 8856–8935 | Speed-factor patching | `patchSpeedFactor`, `factorDesc` — live adjustment of the global `timeFactor` multiplier. |
-| 8936–9232 | `TARGETED LIVE UPDATE` | `updateLive()` — surgical DOM updates on the Live tab to avoid full re-render during ride (prevents flashing). |
-| 9233–9241 | `patchGPSInfo` | Updates Settings GPS panel without full re-render. |
-| 9242+ | `EVENT DELEGATION` | Big `document.getElementById('tabs').addEventListener` and document-level click delegator. Most user interaction routes through here. |
-| 10925–10937 | `INIT` | `loadAll().finally(() => { reset sim/GPS state; initDesktop(); render(); if(UI.dbxToken) dbxAutoLoad(); })`. |
-| 10940+ | Service worker | Registered from a Blob. Cache name is bumped per release — current: `packtimes-v133` at line 10948. **Bumping this cache name is what forces a PWA update for existing users.** Tile cache: `packtimes-tiles-v1`. |
+| 605 | `INDEXED DB` | `DB` module: `packtimes` IDB **v4**, three stores: `routes`, `kv`, `recordings`. Exposes `put/get/all/del/setKV/getKV` + `putRecording/getRecording/allRecordings/delRecording`. |
+| 638 | `STATE` | `window.APP_VERSION` (single source of release version), `ROUTES[]`, `CUR`, `newRoute`, `cur()`, and the big `UI` object (incl. Dropbox + Strava auth state, `settingsExp` — **new Settings sections must be added to this key list or their header won't toggle**). |
+| 675 | `PERSIST` | `packRoute/unpackRoute`, `saveAll()` (routes + kv incl. `stravaAuth` blob + `uiPrefs`), `loadAll()`. |
+| 827–1420 | Parsers + maths | `GPX/TCX/KML/FIT PARSE`, then (unbannered) geometry helpers (`hav`, `bearing`, `autoDetectTurns`) and the **speed/pace model** (`VAM_BY_SURFACE`, `segTimeH`, `naismith`, `buildCumRiding`, `rebuildPace`) — **the heart of the planner; changes here affect every ETA**. |
+| 1421 | `OPENING HOURS PARSER` | `parseOH`, `isOpen`, `fmtOHSummary`. |
+| 1475 | `TIME CALC` | `startDT`, sleep/meal totals, `etaAt(distKm, r)` — distance → ETA. Then date/time formatters (`fmtT/fmtDT/fmtDTY/fmtHM`). |
+| 1750 | `STOPS` | `addStop/delStop`, surface categories. |
+| 1780 | `OVERPASS` | POI search, Nominatim geocode, Geoapify accommodation, surface fetcher, and `snapTo(r,lat,lon,lastIdx)` → `{idx, dist, off}` (off = km from route). |
+| 2406 | `GPS` | `toggleGPS/startGPS/stopGPS`, the watch callback (feeds recording via `_appendPoint`), idle auto-pause, **dead-watch recovery**: `_gpsRestartWatch()` + 30 s watchdog (`GPS_WATCHDOG_MS`) — rebuilds the geolocation watch on wake and whenever fixes stop arriving (the OS silently kills watches during suspension). |
+| 2655 | `ADAPTIVE SPEED CALIBRATION` | `runAdaptiveCalibration`, `updateGPSPill`, drift caps. |
+| 2779 | `RECORDING` | The whole Phase 1a recording pipeline: movement-based sampler (`_appendPoint`, active/stationary state machine), **gap detection** (>15 s no-fix + ≥100 m moved; ≤2 min auto-fills silently), **gap fill engine** (`_recFillGap`, route/Naismith via `cumRiding` weighting, straight-line fallback, `_synthetic:true` points, `_recRecomputeTotals`), **crash recovery** (`_recRehydrate`, recovery modal, typed-delete), **saved rides** (`RECS` in-memory cache, `_ridesCardHTML`, detail modal incl. `_recAsRoute` route-shaped projection + dashed synthetic overlay), **end-of-ride gap prompt** (`_recGapArm/_recGapMaybeShow`, never mid-ride), export helpers (`exportRecordingAsFIT/GPX`, `_recToast`), stop/undo tap handlers. |
+| 3571 | `FIT WRITER` | Hand-rolled Activity FIT encoder (`encodeActivityFit`), proven against Strava + Garmin SDK (spike harness in `_planning/fit-spike/`). |
+| 3968 | `STRAVA` | OAuth (authorization-code; secret embedded — accepted trade-off), `stravaFreshToken` silent refresh, `stravaUpload` (FIT multipart + status polling, `external_id packtimes-<recId>` dedupe), `stravaQueue`/`stravaProcessQueue` retry queue (backoff 30s→daily + online/visibility/GPS-return triggers). Auto-upload fires only AFTER gap decisions. |
+| 4280 | `RIDE SIMULATOR` | GPX playback. Gap detection + watchdog + Strava GPS-trigger all skip when sim is running. |
+| 4984 | `MAP ENGINE` | Canvas maps: `_ms` per-canvas state, `getTile/drawTiles/drawMap` (stores projection on canvas: `cvs._px/_py`), `redrawMap` (special-cases `rec-detail-map` → `_recDetailRedraw`), `attachMap` (gestures), offline-tile prefetcher. |
+| 6363 | `ELEVATION CANVAS` | `drawElev(cvs, r)`. |
+| 6406 | `MODAL` / `PACE SEGMENT MODAL` | Stop add/edit + date-time picker; pace overrides. |
+| 7218 | `RENDER` + `DESKTOP LAYOUT` | `_render()` central dispatcher (start here for anything visual); `IS_DESKTOP()`, `initDesktop`, `renderDesktopMap`. |
+| 7595 | `DROPBOX SYNC` | OAuth PKCE, debounced plan sync. The page-load `?code=` dispatcher (just after this section) routes by `state` prefix: `strava_` → Strava, else Dropbox. |
+| 7964 | `SHARE WHOLE RIDE` | Route+plan share file, QR. |
+| ~8300–9800 | Tab templates | `tRoutes` (incl. Rides card), `tStopsShell`, `tLiveShell`, `tPlan`, `tGear`, `tFood`, `tSettings` (Strava panel, Dropbox, …, danger zone, version footer), plus weather (Open-Meteo) and sunrise/sunset helpers. No banners here — grep function names. |
+| 11478 | `TARGETED LIVE UPDATE` | `updateLive()` — surgical DOM patches on the Live tab; never collapse into `render()` mid-ride. |
+| 11826 | `EVENT DELEGATION` | Document-level click delegator — most interaction routes through here (settings headers, ride rows, Strava buttons, route list, …). |
+| 13045+ | `BLANK PLAN` / `APPLY GPX` / `DEMO ROUTE` / `POWER METER` | Route creation from files/geocode; BLE sensors. |
+| 13545 | `INIT` | `loadAll().finally(...)`: reset sim/GPS, `initDesktop`, `render`, `_recRecoveryShow()` (crash-recovery prompt), `dbxAutoLoad`. |
+| 13560+ | Service worker (2nd `<script>`) | Registered from a Blob. `CACHE_NAME='packtimes-'+window.APP_VERSION` — **never edit here; bump `APP_VERSION` in STATE instead.** Page fetch is network-first with `cache:'no-cache'` revalidation; tile cache `packtimes-tiles-v1` survives updates. |
 
 ---
 
@@ -157,14 +157,41 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
 
 Old stop types `rest` and standalone `sleep` are migrated on load to `stop` with `sleepAt:true` — see `unpackRoute`.
 
+### `recording` object (stored raw in the `recordings` store — NOT packed)
+
+```js
+{
+  id: string,                    // base36 timestamp + random
+  routeId: string|null,          // route loaded when recording started (drives gap fill + Rides grouping)
+  status: 'active'|'paused'|'finalised',
+  startTS, endTS: ms,            // endTS null until finalised
+  points: [{lat, lon, ele, t, accuracy,
+            _stop?: true,        // sampler entered stationary mode here
+            _resume?: true,      // movement resumed here
+            _synthetic?: true}], // gap-fill point (drawn dashed; flagged in GPX)
+  gaps: [{startT, endT, startLat, startLon, endLat, endLon,
+          fillStrategy: 'none'|'route-naismith'|'route-constant'|'line',
+          queued: bool}],        // queued=true → awaiting user's fill decision
+  totalDist: km,                 // incremental; recomputed from scratch after any fill
+  totalDur: ms,
+  stravaUploadedAt: null|ms,
+  stravaActivityUrl: null|string,
+  stravaUploadStatus: null|'queued',   // 'queued' = in the retry queue
+  stravaUploadAttempts: [{at, ok, error?, note?}],
+}
+```
+
+`_recMigrate` handles old-shape rows (e.g. early recordings stored `totalDist` in metres). Finalised recordings are mirrored in the in-memory `RECS[]` cache (loaded in `_recRehydrate`, kept in sync on finalise/undo/delete/recovery) so templates can render synchronously.
+
 ### Storage
 
-- **IndexedDB `packtimes` v3**
-  - `routes` store, keyed by route id
-  - `kv` store for: `cur` (current route id), `dbxToken`, `dbxRefreshToken`, `dbxSavedAt`, `uiPrefs` (big blob of UI settings), `lastGpsState`, `sunCache`, `weatherCache`.
+- **IndexedDB `packtimes` v4**
+  - `routes` store, keyed by route id (packed via `packRoute`)
+  - `recordings` store, keyed by recording id (raw objects)
+  - `kv` store for: `cur`, `dbxToken`, `dbxRefreshToken`, `dbxSavedAt`, **`stravaAuth`** (token/refresh/expiresAt/athlete/autoUpload blob), `uiPrefs` (big blob, incl. `recId` for mid-ride reload recovery), `lastGpsState`, `sunCache`, `weatherCache`.
 - **Cache API**
-  - `packtimes-v{N}` — app shell (bumped per release; currently v133).
-  - `packtimes-tiles-v1` — prefetched map tiles.
+  - `packtimes-v{N}` — app shell; name derives from `APP_VERSION` (v177 as of 9 July 2026).
+  - `packtimes-tiles-v1` — prefetched map tiles (survives app updates).
 
 ---
 
@@ -180,6 +207,7 @@ Everything the app talks to:
 | OSM tile servers, ArcGIS World Imagery, CyclOSM, OpenTopoMap | Map tiles | No |
 | Geoapify Places | Accommodation search | **Yes** — user supplies `UI.geoapifyKey` in Settings |
 | Dropbox API | Plan sync | OAuth PKCE, no secret needed |
+| Strava API | Ride upload (OAuth + FIT upload + status polling) | **Yes** — client ID 230638; secret embedded in `index.html` (accepted trade-off, no backend). Athlete capacity raised to 10 (Jul 2026) for beta testers; beyond 10 needs Strava's app review. |
 | Weather radar sites per country | External link in Live tab | No |
 
 No analytics, no user accounts, no backend.
@@ -195,7 +223,11 @@ No analytics, no user accounts, no backend.
 - **Australian spelling** throughout user-facing strings ("kilometres", "metre"). Match that when writing new copy.
 - **Units are metric.** km / metres / °C / km/h / hours.
 - **`console.log` is used sparingly**, `catch(()=>{})` silent-swallow is common on IDB writes. Don't add noisy logging unless debugging.
-- **Service worker cache name must be bumped** when shipping a change you want to force onto existing users. See line ~10948: `CACHE_NAME='packtimes-v133'`. The SW skip-waits and activates immediately, so users get the new version on next load.
+- **Ship a release by bumping `window.APP_VERSION` in STATE — nothing else.** The SW cache name derives from it and Settings displays it. Never hand-edit `CACHE_NAME`.
+- **Recording is sacred.** Never delete a recording without typed confirmation; every recording state change persists via `DB.putRecording`; the `RECS[]` cache must be kept in sync with any mutation. Gap fill never invents a path — route-snapped or straight line only, always flagged `_synthetic`.
+- **Auto-upload ordering matters:** Strava upload fires only after gap-fill decisions (`_recGapFinish` / the post-undo timeout), so uploaded FITs include the fills. Recovery-saves and manual re-fills don't auto-upload.
+- **The simulator must stay excluded** from gap detection, the GPS watchdog, and the Strava GPS-return trigger (`UI.simRunning||UI.simPaused` guards) — sim fixes have artificial timing.
+- **Dropbox sandbox sync lag (Claude-specific):** the bash sandbox sees a stale, sometimes truncated replica of this folder. Verify `index.html` via the Read tool, never repair from the bash view; syntax-check new code as extracted fragments.
 - **Copyright notice** at the top of `index.html` must stay intact.
 
 ---

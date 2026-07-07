@@ -640,7 +640,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v176';
+window.APP_VERSION='v177';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3364,7 +3364,8 @@ function _recAsRoute(rec){
   const pts = (rec.points || []).map(p => {
     if(prev) d += hav(prev, p);
     prev = p;
-    return {lat: p.lat, lon: p.lon, ele: p.ele == null ? 0 : p.ele, dist: d, time: p.t ? new Date(p.t) : null};
+    return {lat: p.lat, lon: p.lon, ele: p.ele == null ? 0 : p.ele, dist: d,
+            time: p.t ? new Date(p.t) : null, _synthetic: p._synthetic || undefined};
   });
   return {id: 'rec-' + rec.id, name: 'Ride', points: pts, stops: [], turns: [],
           paceSegs: [], totalDist: d || rec.totalDist || 0, timeFactor: 1};
@@ -3420,7 +3421,7 @@ function _recDetailOpen(recId){
     (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(durH) + '<br>' +
     (rt ? 'Route: ' + (rt.label || rt.name) : 'No linked route') + '<br>' +
     (rec.points ? rec.points.length : 0) + ' points' + (stopsN ? ' · ' + stopsN + ' stop' + (stopsN !== 1 ? 's' : '') : '') + '<br>' +
-    (gapsAll.length ? gapsAll.length + ' GPS gap' + (gapsAll.length !== 1 ? 's' : '') + (gapsFilled ? ' · ' + gapsFilled + ' filled' : '') + (gapsOpen ? ' · ' + gapsOpen + ' left open' : '') + '<br>' : '') +
+    (gapsAll.length ? gapsAll.length + ' GPS gap' + (gapsAll.length !== 1 ? 's' : '') + (gapsFilled ? ' · ' + gapsFilled + ' filled <span style="color:#f97316;">(dashed on map)</span>' : '') + (gapsOpen ? ' · ' + gapsOpen + ' left open' : '') + '<br>' : '') +
     (rec.stravaUploadedAt
       ? '<a href="' + rec.stravaActivityUrl + '" target="_blank" rel="noopener" style="color:var(--accent);">On Strava ✓ — view activity</a>'
       : rec.stravaUploadStatus === 'queued'
@@ -3450,8 +3451,38 @@ function _recDetailRedraw(){
   if(!_recDetailRoute) return;
   const m = document.getElementById('rec-detail-map');
   const e = document.getElementById('rec-detail-elev');
-  if(m) drawMap(m, _recDetailRoute, {anchor: 0.5});
+  if(m){
+    attachMap(m, null);                        // pinch-zoom / drag / wheel; display-only (no tap)
+    drawMap(m, _recDetailRoute, {anchor: 0.5});
+    _recDetailDrawSynthetic(m);                // dashed overlay on gap-filled sections
+  }
   if(e && _recDetailRoute.points.length) drawElev(e, _recDetailRoute);
+}
+
+// Overlay dashed orange on sections built from gap fill, so reconstructed track
+// is visually distinct from genuinely recorded track. Uses the projection drawMap
+// stores on the canvas, so it stays aligned through pan/zoom and tile redraws.
+function _recDetailDrawSynthetic(cvs){
+  const pts = _recDetailRoute ? _recDetailRoute.points : null;
+  if(!pts || !pts.length || !cvs._px) return;
+  if(!pts.some(p => p._synthetic)) return;
+  const ctx = cvs.getContext('2d');
+  ctx.save();
+  ctx.setLineDash([6, 5]);
+  ctx.strokeStyle = '#f97316';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let run = false;
+  for(let i = 1; i < pts.length; i++){
+    if(pts[i]._synthetic || pts[i-1]._synthetic){
+      if(!run){ ctx.moveTo(cvs._px(pts[i-1].lon), cvs._py(pts[i-1].lat)); run = true; }
+      ctx.lineTo(cvs._px(pts[i].lon), cvs._py(pts[i].lat));
+    } else {
+      run = false;
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
 }
 
 function _recDetailClose(){
@@ -5848,8 +5879,10 @@ function peekLiveStop(s,r){
 
 function redrawMap(id){
   const cvs=document.getElementById(id);if(!cvs)return;
-  // Recording detail map draws its own (non-route) track — handle before cur()
-  if(id==='rec-detail-map'){if(_recDetailRoute)drawMap(cvs,_recDetailRoute,{anchor:0.5});return;}
+  // Recording detail map draws its own (non-route) track — handle before cur().
+  // Route through _recDetailRedraw so the dashed synthetic overlay reapplies on
+  // every tile load and pan/zoom gesture.
+  if(id==='rec-detail-map'){if(_recDetailRoute)_recDetailRedraw();return;}
   const r=cur();if(!r)return;
   const isLive=id==='live-map';
   const isReview=id==='turn-review-map';
