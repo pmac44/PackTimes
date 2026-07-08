@@ -737,7 +737,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v191';
+window.APP_VERSION='v192';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1917,9 +1917,14 @@ function shopSt(s,r){
 // ─── Surface type fetch ──────────────────────────────────────────────────────
 const SURFACE_COLS={
   road:'#4a6080',road_minor:'#6f8cad',grade1:'#b8925a',grade2:'#a07840',
-  grade3:'#886030',grade4:'#704820',grade5:'#583010',path:'#95a5a6',
+  grade3:'#886030',grade4:'#704820',grade5:'#583010',path:'#6b7280',
   single:'#8e44ad',single_tech:'#c0392b',
 };
+// "Unknown" = a stretch with no usable OSM surface tag. Deliberately distinct
+// from every real-surface colour (esp. the grey path) and from the orange of
+// manual sections, so a data gap is unmistakable and reads as "act on me"
+// (hit Refresh). Drawn dashed on the map to signal "provisional / no data".
+const SURF_UNKNOWN='#e6398a';
 
 function surfaceCategory(tags){
   if(!tags)return null;
@@ -1964,6 +1969,48 @@ function surfaceCategory(tags){
     return'grade2';
   }
   return null;
+}
+
+function showSurfHelp(){
+  document.getElementById('surf-help-ov')?.remove();
+  const dot=(col,dashed)=>dashed
+    ?`<span style="display:inline-block;width:14px;height:0;border-top:3px dashed ${col};flex-shrink:0;margin-top:9px;"></span>`
+    :`<span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:${col};flex-shrink:0;margin-top:3px;"></span>`;
+  const row=(col,name,desc,dashed)=>`<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:9px;">${dot(col,dashed)}<div style="min-width:0;"><span style="color:var(--text);font-weight:600;font-size:14px;">${name}</span><div style="color:var(--text3);font-size:13px;line-height:1.45;">${desc}</div></div></div>`;
+  const S=SURFACE_COLS;
+  const hd=t=>`<div style="color:var(--text2);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin:14px 0 8px;">${t}</div>`;
+  const body=
+    hd('Sealed & minor roads')
+    +row(S.road,'Sealed road','Paved main roads — bitumen or concrete.')
+    +row(S.road_minor,'Minor road','Smaller sealed roads, streets and service roads.')
+    +hd('Dirt roads — vehicle-width two-track (OSM tracktype)')
+    +row(S.grade1,'Track G1','Firm, well-made — often compacted or near-sealed.')
+    +row(S.grade2,'Track G2','Solid gravel or dirt road. The default good gravel.')
+    +row(S.grade3,'Track G3','Looser, rougher, mixed surface.')
+    +row(S.grade4,'Track G4','Soft and uneven — sand, grass or mud.')
+    +hd('Singletrack — narrow trails')
+    +row(S.single,'Singletrack','Rideable, non-technical trail (≈ smooth singletrack).')
+    +row(S.single_tech,'Singletrack tech','Rocky or technical trail — flagged from OSM mtb:scale, roughness or a steep/rocky surface. About the limit of a drop-bar bike.')
+    +hd('Other')
+    +row(S.path,'Path / trail','Footways and very soft tracks — treated as slow, walking-pace.')
+    +row(SURF_UNKNOWN,'Unknown','No usable surface data for this stretch — drawn dashed. PackTimes never guesses; hit Refresh to re-query OpenStreetMap.',true);
+  const note=`<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);color:var(--text3);font-size:13px;line-height:1.5;">
+    <b style="color:var(--text2);">How this works.</b> Surface types come from OpenStreetMap tags, so they're only as good as what local mappers have entered. The road / track / singletrack split is reliable almost everywhere. The <i>technical</i> grade (Singletrack tech) only shows where someone tagged trail difficulty — common on popular mountain-bike trails, sparse elsewhere; where it's missing a trail just shows as plain Singletrack. Stretches with no usable tag show as <b style="color:var(--text2);">Unknown</b> rather than a guess. Re-fetch with Refresh after editing a route or when a gap appears.</div>`;
+  const ov=document.createElement('div');
+  ov.id='surf-help-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:16px;-webkit-tap-highlight-color:transparent;';
+  ov.innerHTML=`<div id="surf-help-card" style="background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);max-width:440px;width:100%;max-height:85vh;overflow:auto;padding:18px 18px 16px;box-shadow:0 12px 40px rgba(0,0,0,0.5);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div style="color:var(--text);font-weight:700;font-size:17px;">Surface types</div>
+      <button type="button" id="surf-help-x" style="background:none;border:none;color:var(--text3);font-size:22px;line-height:1;cursor:pointer;padding:2px 6px;">×</button>
+    </div>
+    ${body}${note}
+  </div>`;
+  const close=()=>ov.remove();
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  ov.querySelector('#surf-help-x').addEventListener('click',close);
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
+  document.body.appendChild(ov);
 }
 
 function snapToWay(lat,lon,ways,maxOffM){
@@ -5749,7 +5796,7 @@ function drawMap(cvs,r,opts){
         if(segPts.length<2)continue;
         ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
         for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
-        ctx.strokeStyle='rgba(150,150,150,0.9)';ctx.lineWidth=3;ctx.stroke();
+        ctx.strokeStyle=SURF_UNKNOWN;ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.stroke();ctx.setLineDash([]);
       }
     })();
     for(const seg of r.surfaceSegs){
@@ -7844,7 +7891,7 @@ function renderDesktopMap(){
       }
       if(elevSfSegs){
         const seg=elevSfSegs.find(sg=>d>=sg.fromDist-0.05&&d<=sg.toDist+0.05);
-        return seg&&SURFACE_COLS[seg.cat]?SURFACE_COLS[seg.cat]:'rgba(150,150,150,0.85)';
+        return seg&&SURFACE_COLS[seg.cat]?SURFACE_COLS[seg.cat]:SURF_UNKNOWN;
       }
       if(!startDT(r)||!Object.keys(_sunCache).length)return'rgba(34,211,238,0.85)';
       const eta=etaAt(epts[i].dist,r);
@@ -10167,17 +10214,20 @@ function tRoutes(r){
   <div class="card">
     <div class="secrow">
       <div class="ctitle">Surface Data</div>
+      <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+        <button type="button" title="What do these surface types mean?" onclick="showSurfHelp()" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 8px;color:rgba(255,255,255,0.85);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font);font-size:13px;font-weight:700;line-height:1;-webkit-tap-highlight-color:transparent;">?</button>
       ${r&&r.surfaceSegs&&UI.surfaceStatus!=='loading'
         ?`<button id="btn-fetch-surface" onclick="fetchSurfaceData(true)" title="Refresh surface data" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;color:rgba(255,255,255,0.85);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>`
         :`<button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData(true)" ${UI.surfaceStatus==='loading'?'disabled':''}>
         ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':'⛰ Fetch Surface'}
       </button>`}
+      </div>
     </div>
     ${UI.surfaceStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="surface-status-msg">${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle via the Surface layer in the map legend.</p>`:''}
-    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}${(()=>{const covered=r.surfaceSegs.reduce((a,s)=>a+(s.toDist-s.fromDist),0);const unknown=r.totalDist-covered;return unknown>1?`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:#969696;color:#fff;white-space:nowrap;">Unknown ${unknown.toFixed(0)}km — try Refresh</span>`:'';})()}</div>`:''}
+    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail',single:'Singletrack',single_tech:'Singletrack tech'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}${(()=>{const covered=r.surfaceSegs.reduce((a,s)=>a+(s.toDist-s.fromDist),0);const unknown=r.totalDist-covered;return unknown>1?`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${SURF_UNKNOWN};color:#fff;white-space:nowrap;">Unknown ${unknown.toFixed(0)}km — try Refresh</span>`:'';})()}</div>`:''}
   </div>
   <div class="card">
     <div id="hike-card-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${UI.hikeExpanded?'margin-bottom:10px;':''}">
