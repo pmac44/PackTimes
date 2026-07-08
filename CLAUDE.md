@@ -15,7 +15,7 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (9 July 2026, v177)
+## Current status (9 July 2026, v188)
 
 **Phase 1a (recording + Strava) is essentially complete and field-tested.** The living
 step-by-step record is in `_planning/phase-1a-build-plan.md` (progress notes at the top);
@@ -70,7 +70,7 @@ Commit messages are all "Update app", so `git log` is not a useful context sourc
 
 ## Code map: where things live in `index.html`
 
-The file is organised with clear banner comments (`// ═══...`). Section boundaries are stable and line numbers below are accurate as of 9 July 2026 (v177, ~13,600 lines) — **they WILL drift; grep for the banner comment rather than trusting the number.**
+The file is organised with clear banner comments (`// ═══...`). Section boundaries are stable and line numbers below are accurate as of 9 July 2026 (v188, ~13,600 lines) — **they WILL drift; grep for the banner comment rather than trusting the number.**
 
 ### Top of file
 
@@ -197,7 +197,7 @@ Old stop types `rest` and standalone `sleep` are migrated on load to `stop` with
   - `recordings` store, keyed by recording id (raw objects)
   - `kv` store for: `cur`, `dbxToken`, `dbxRefreshToken`, `dbxSavedAt`, **`stravaAuth`** (token/refresh/expiresAt/athlete/autoUpload blob), `uiPrefs` (big blob, incl. `recId` for mid-ride reload recovery), `lastGpsState`, `sunCache`, `weatherCache`.
 - **Cache API**
-  - `packtimes-v{N}` — app shell; name derives from `APP_VERSION` (v177 as of 9 July 2026).
+  - `packtimes-v{N}` — app shell; name derives from `APP_VERSION` (v188 as of 9 July 2026).
   - `packtimes-tiles-v1` — prefetched map tiles (survives app updates).
 
 ---

@@ -737,7 +737,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v188';
+window.APP_VERSION='v189';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1573,8 +1573,16 @@ function fmtOHSummary(rules,ohRaw){
 // ═══════════════════════════════════════════
 function startDT(r){
   if(!r)return null;
-  // Use actual recorded start time if GPS captured it — overrides planned start
-  if(r.actualStartTime)return new Date(r.actualStartTime);
+  // Use actual recorded start time if GPS captured it — overrides planned start.
+  // BUT ignore a recorded start that falls BEFORE the planned start: you can't have
+  // already started a ride you're still planning for a later date, so it's a stale
+  // leftover from an earlier GPS fix and must not pollute the plan's finish/ETAs.
+  // A recorded start at or after the planned start (e.g. you rolled out late) is kept.
+  if(r.actualStartTime){
+    const planned=(r.startDate&&r.startTime)?new Date(`${r.startDate}T${r.startTime}:00`):null;
+    if(!planned||r.actualStartTime>=planned.getTime())return new Date(r.actualStartTime);
+    return planned;
+  }
   if(!r.startDate||!r.startTime)return null;
   return new Date(`${r.startDate}T${r.startTime}:00`);
 }
