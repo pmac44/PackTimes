@@ -736,7 +736,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v186';
+window.APP_VERSION='v187';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7170,8 +7170,8 @@ function _speedControlsHTML(r){
       const hh=Math.floor(s.hours),mm=Math.round((s.hours-hh)*60);
       return `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);padding:2px 0;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.name?s.name+' · ':''}${surfLabels[s.surface]||s.surface} · ${(+s.distKm).toFixed(0)} km · ${hh}h ${mm}m · ${(+s.elevM||0).toFixed(0)} m ↑${s.profile==='climb'?' · climb':''}</span><span style="color:var(--text2);flex-shrink:0;margin-left:6px;">${rf.toFixed(2)} ×</span></div>`;
     }).join('');
-    riderBody=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
-        <span style="font-size:24px;font-weight:700;color:var(--accent);font-family:var(--font);">${f.toFixed(2)} ×</span>
+    riderBody=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap;">
+        <span style="font-size:24px;font-weight:700;color:var(--accent);font-family:var(--font);white-space:nowrap;flex-shrink:0;">${f.toFixed(2)} ×</span>
         <span style="font-size:13px;color:var(--text3);">${desc}</span>
       </div>
       ${rows}
