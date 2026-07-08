@@ -35,6 +35,24 @@ strict Strava moving time, deliberately). Live-ride test pending.
 couple of clean soak-test rides. Peter is wary of wrapping too early (slower iteration) —
 don't push it.
 
+**v189 (8 Jul 2026) — actuals no longer pollute a future-dated plan.** Bug: on a
+route planned for the future (Grenfell, start Sat 8 Aug), the Finish time and per-stop
+ETAs were anchoring to ~now instead of the planned start. Root cause: `actualStartTime`
+(route) and `actualArrival` (per stop) are stamped whenever GPS *tracking* is on near
+the loaded route — this is NOT tied to the Record button (recording is the separate
+`_rec`/`startRecording` path). A stray fix while planning left a stale stamp, and
+`startDT`/`etaAt` then let it override the plan. Agreed principle with Peter: the line
+that matters is "riding this now" vs "planning a future run", and the signal is the
+**plan's start date** — not record-vs-track. Actuals stay useful mid-trip (e.g. GPS off
+in the tent, ETAs projected from the last real arrival), we just stop a *future-dated*
+plan from capturing or using them. Fix (all `index.html`): `startDT` ignores an
+`actualStartTime` that predates the planned start; new helpers `planStartInFuture(r)` +
+`clearRouteActuals(r)`; `etaAt` skips both the `actualArrival` anchor and the
+saved-GPS-position anchor when `planStartInFuture`; the GPS watch callback won't stamp
+when `planStartInFuture`; and setting a NEW start **date** (date-time picker OK +
+`inp-date`, not time-only tweaks) auto-clears the old stamps. `clearRouteActuals` only
+touches the plan's anchors — the separate `recordings` store is never affected.
+
 ## Architecture in one sentence
 
 **Everything lives in `index.html`.** HTML, CSS, and JS are all in that one ~13,600-line file. There is no build step, no bundler, no framework — it's vanilla JS with IndexedDB for storage and Canvas for maps and elevation. Edits are made directly to `index.html` and pushed to GitHub; Pages serves it.
@@ -89,7 +107,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
 | 675 | `PERSIST` | `packRoute/unpackRoute`, `saveAll()` (routes + kv incl. `stravaAuth` blob + `uiPrefs`), `loadAll()`. |
 | 827–1420 | Parsers + maths | `GPX/TCX/KML/FIT PARSE`, then (unbannered) geometry helpers (`hav`, `bearing`, `autoDetectTurns`) and the **speed/pace model** (`VAM_BY_SURFACE`, `segTimeH`, `naismith`, `buildCumRiding`, `rebuildPace`) — **the heart of the planner; changes here affect every ETA**. |
 | 1421 | `OPENING HOURS PARSER` | `parseOH`, `isOpen`, `fmtOHSummary`. |
-| 1475 | `TIME CALC` | `startDT`, sleep/meal totals, `etaAt(distKm, r)` — distance → ETA. Then date/time formatters (`fmtT/fmtDT/fmtDTY/fmtHM`). |
+| 1475 | `TIME CALC` | `startDT` (prefers `actualStartTime`, but ignores one that predates the planned start), `planStartInFuture(r)` + `clearRouteActuals(r)` (v189 plan-vs-actual guards), sleep/meal totals, `etaAt(distKm, r)` — distance → ETA (skips actual/saved-position anchors when the plan start is in the future). Then date/time formatters (`fmtT/fmtDT/fmtDTY/fmtHM`). |
 | 1750 | `STOPS` | `addStop/delStop`, surface categories. |
 | 1780 | `OVERPASS` | POI search, Nominatim geocode, Geoapify accommodation, surface fetcher, and `snapTo(r,lat,lon,lastIdx)` → `{idx, dist, off}` (off = km from route). |
 | 2406 | `GPS` | `toggleGPS/startGPS/stopGPS`, the watch callback (feeds recording via `_appendPoint`), idle auto-pause, **dead-watch recovery**: `_gpsRestartWatch()` + 30 s watchdog (`GPS_WATCHDOG_MS`) — rebuilds the geolocation watch on wake and whenever fixes stop arriving (the OS silently kills watches during suspension). |
@@ -232,6 +250,7 @@ No analytics, no user accounts, no backend.
 - **`console.log` is used sparingly**, `catch(()=>{})` silent-swallow is common on IDB writes. Don't add noisy logging unless debugging.
 - **Ship a release by bumping `window.APP_VERSION` in STATE — nothing else.** The SW cache name derives from it and Settings displays it. Never hand-edit `CACHE_NAME`.
 - **Recording is sacred.** Never delete a recording without typed confirmation; every recording state change persists via `DB.putRecording`; the `RECS[]` cache must be kept in sync with any mutation. Gap fill never invents a path — route-snapped or straight line only, always flagged `_synthetic`.
+- **Actuals follow the plan's start date (v189).** `actualStartTime` / `actualArrival` are "what really happened on the ride" stamps. They must only ever apply while the route is being ridden — i.e. its start date is today or past. A **future-dated plan** must never capture or use them (`planStartInFuture(r)` gates both the GPS-callback capture and the `etaAt` anchoring). Setting a new start **date** clears old stamps via `clearRouteActuals(r)`. These stamps live on the route/stops, NOT in the `recordings` store — clearing them never affects a saved ride. Note the capture is driven by GPS *tracking* being on, not by the Record button.
 - **Auto-upload ordering matters:** Strava upload fires only after gap-fill decisions (`_recGapFinish` / the post-undo timeout), so uploaded FITs include the fills. Recovery-saves and manual re-fills don't auto-upload.
 - **The simulator must stay excluded** from gap detection, the GPS watchdog, and the Strava GPS-return trigger (`UI.simRunning||UI.simPaused` guards) — sim fixes have artificial timing.
 - **Dropbox sandbox sync lag (Claude-specific):** the bash sandbox sees a stale, sometimes truncated replica of this folder. Verify `index.html` via the Read tool, never repair from the bash view; syntax-check new code as extracted fragments.

@@ -737,7 +737,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v189';
+window.APP_VERSION='v190';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -6069,9 +6069,12 @@ function drawMap(cvs,r,opts){
     // A hard default of 0 was what made the arrow appear "stuck pointing north".
     if(travelDeg==null)travelDeg=(UI._lastArrowDeg!=null?UI._lastArrowDeg:0);
     UI._lastArrowDeg=travelDeg;
-    // If map is rotated, subtract the map rotation so arrow still points in travel direction
+    // The arrow is drawn INSIDE the already-rotated map frame (the map is turned by
+    // -heading above; that rotation isn't restored until after this block). So the map
+    // frame already accounts for heading — the arrow must NOT subtract it again, or it
+    // double-rotates to (travelDeg - 2*heading) and points into "no man's land".
+    // Just point it in the travel bearing; on a heading-up map that lands it up = forward.
     let arrowDeg=travelDeg;
-    if(heading!==null)arrowDeg=travelDeg-heading;
     const ar=arrowDeg*Math.PI/180;
     ctx.save();
     ctx.translate(gx,gy);
