@@ -691,6 +691,7 @@ select option{background:var(--bg3);}
       <span style="font-size:18px;font-weight:600;color:var(--text);">Speed Estimation</span>
       <button class="btn btn-sm" onclick="closeSpeedModal()">✕</button>
     </div>
+    <div id="speed-live-pin" style="flex-shrink:0;"></div>
     <div id="speed-modal-body" style="overflow-y:auto;flex:1;min-height:0;"></div>
     <button class="btn btn-p btn-full" onclick="closeSpeedModal()" style="flex-shrink:0;margin-top:4px;margin-bottom:env(safe-area-inset-bottom,0px);">Done</button>
   </div>
@@ -736,7 +737,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v187';
+window.APP_VERSION='v188';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7177,8 +7178,7 @@ function _speedControlsHTML(r){
       ${rows}
       <button class="btn btn-sm" onclick="openCalibModal()" style="width:100%;justify-content:center;margin-top:8px;">Edit sample rides</button>`;
   }
-  return `${_speedLiveHTML(r)}
-    <div style="margin-bottom:12px;">
+  return `<div style="margin-bottom:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Rider</div>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
         ${tabBtn('simple','Basic Estimation',!adv)}
@@ -7214,6 +7214,7 @@ function _speedControlsHTML(r){
 }
 function openSpeedModal(){
   const r=cur();if(!r)return;
+  document.getElementById('speed-live-pin').innerHTML=_speedLiveHTML(r);
   document.getElementById('speed-modal-body').innerHTML=_speedControlsHTML(r);
   document.getElementById('speed-modal').style.display='flex';
 }
@@ -7224,7 +7225,10 @@ function closeSpeedModal(){
 function _speedRefresh(){
   const r=cur();if(!r)return;
   const body=document.getElementById('speed-modal-body');
-  if(body&&document.getElementById('speed-modal').style.display==='flex')body.innerHTML=_speedControlsHTML(r);
+  if(body&&document.getElementById('speed-modal').style.display==='flex'){
+    document.getElementById('speed-live-pin').innerHTML=_speedLiveHTML(r);
+    body.innerHTML=_speedControlsHTML(r);
+  }
   const sum=document.getElementById('speed-summary');
   if(sum)sum.innerHTML=_speedSummaryHTML(r);
   patchSpeedFactor(r); // keeps finish time + stats block on the Routes tab current
