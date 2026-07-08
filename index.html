@@ -736,7 +736,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v185';
+window.APP_VERSION='v186';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3451,7 +3451,7 @@ async function _recRecoveryDelete(){
 // kept in sync whenever a recording is finalised, deleted, or resumed. Templates
 // render from it synchronously (IDB is async, render() is not).
 let RECS = [];
-let _ridesExpanded = false;       // Rides card expander state (session-only)
+let _ridesModalOpen = false;      // Recorded Rides full-screen popup visibility (session-only, mirrors _routePickerOpen)
 
 async function _recReloadCache(){
   try{
@@ -3475,7 +3475,10 @@ function _recAsRoute(rec){
           paceSegs: [], totalDist: d || rec.totalDist || 0, timeFactor: 1};
 }
 
-// The "Rides" card on the Routes tab — collapsed to a one-line header by default.
+// The "Recorded Rides" entry on the Routes tab — a compact trigger row (rides are
+// global across every route, so they don't belong nested in one route's data) that
+// opens a full-screen popup listing every finalised ride. Popup follows the same
+// modal-sheet-full + overlay-flag pattern as the route-picker popup.
 function _ridesCardHTML(){
   if(!RECS.length) return '';
   const rows = RECS.map(rec => {
@@ -3493,16 +3496,25 @@ function _ridesCardHTML(){
           : '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);white-space:nowrap;flex-shrink:0;">Local only</span>')
       + '</div>';
   }).join('');
-  return `<div class="card">
-    <div id="rides-card-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${_ridesExpanded?'margin-bottom:10px;':''}">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:16px;color:var(--text3);">${_ridesExpanded?'▼':'▶'}</span>
-        <span class="ctitle" style="margin-bottom:0;">Recorded Rides</span>
-        <span style="font-size:13px;color:var(--text3);">(${RECS.length})</span>
-      </div>
+  const trigger=`<div class="card" id="btn-open-rides" style="margin-top:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="ctitle" style="margin-bottom:0;">Recorded Rides</span>
+      <span style="font-size:13px;color:var(--text3);">(${RECS.length})</span>
     </div>
-    ${_ridesExpanded?`<p style="font-size:13px;color:var(--text3);margin-bottom:8px;">Recorded rides stored on this device. Tap a ride for map and details.</p>${rows}`:''}
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text3);"><polyline points="9 6 15 12 9 18"/></svg>
   </div>`;
+  const popup=_ridesModalOpen?`
+  <div id="rides-modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:997;display:flex;align-items:flex-end;justify-content:center;">
+    <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
+        <span class="ctitle" style="margin-bottom:0;">Recorded Rides <span style="color:var(--text3);font-weight:500;">(${RECS.length})</span></span>
+        <button class="btn btn-sm" id="btn-close-rides">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--text3);margin-bottom:8px;flex-shrink:0;">Recorded on this device, across every route. Tap a ride for map and details.</p>
+      <div style="overflow-y:auto;flex:1;min-height:0;padding-bottom:env(safe-area-inset-bottom,0px);">${rows}</div>
+    </div>
+  </div>`:'';
+  return trigger+popup;
 }
 
 // ── Recording detail view ──
@@ -10127,6 +10139,7 @@ function tRoutes(r){
         </div>`;
       }).join('')}
     `:''}  </div>
+  <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);"></div>
   <div class="card">
     <div class="secrow">
       <div class="ctitle">Speed Estimation</div>
@@ -12351,8 +12364,10 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(shBtn){const i=+shBtn.dataset.ridx;shareRideFile(ROUTES[i]);return;}
   const rlBtn=e.target.closest('.reload-route');
   if(rlBtn){const i=+rlBtn.dataset.ridx;_reloadRouteIdx=i;document.getElementById('gpx-reload-input').click();return;}
-  // Saved rides card (Routes tab): expander header + ride rows
-  if(e.target.closest('#rides-card-hdr')){_ridesExpanded=!_ridesExpanded;renderKeepScroll();return;}
+  // Recorded Rides (Routes tab): trigger opens full-screen popup; ride rows open detail
+  if(e.target.closest('#btn-open-rides')){_ridesModalOpen=true;render();return;}
+  if(e.target.closest('#btn-close-rides')){_ridesModalOpen=false;render();return;}
+  if(e.target.id==='rides-modal-overlay'){_ridesModalOpen=false;render();return;}
   const recRow=e.target.closest('.rec-row');
   if(recRow){_recDetailOpen(recRow.dataset.recid);return;}
   // Delete route
