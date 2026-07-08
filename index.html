@@ -737,7 +737,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v193';
+window.APP_VERSION='v194';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1310,23 +1310,23 @@ function tsSpeedSanity(pts){
 const VAM_BY_SURFACE={
   road:520,road_minor:500,
   grade1:390,grade2:350,grade3:260,grade4:175,grade5:175,path:175,
-  single:175,single_tech:150,
+  single:360,single_tech:150,
   _default:350
 };
 const FLAT_KMH_BY_SURFACE={
   road:17.0,road_minor:14.5,
   grade1:11,grade2:11,grade3:9,grade4:4,grade5:4,path:4,
-  single:4,single_tech:3,
+  single:12,single_tech:3,
   _default:11
 };
 const DESC_FACTOR={
   road:0.28,road_minor:0.22,grade1:0.18,grade2:0.14,grade3:0.08,grade4:0.04,grade5:0.03,path:0.04,
-  single:0.04,single_tech:0.03,
+  single:0.11,single_tech:0.03,
   _default:0.12
 };
 const MAX_DESC_KMH={
   road:52,road_minor:38,grade1:34,grade2:26,grade3:20,grade4:11,grade5:7,path:8,
-  single:8,single_tech:6,
+  single:24,single_tech:6,
   _default:20
 };
 const RIDER_MULT={
