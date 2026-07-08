@@ -15,7 +15,7 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (9 July 2026, v188)
+## Current status (9 July 2026, v189)
 
 **Phase 1a (recording + Strava) is essentially complete and field-tested.** The living
 step-by-step record is in `_planning/phase-1a-build-plan.md` (progress notes at the top);

@@ -1586,6 +1586,26 @@ function startDT(r){
   if(!r.startDate||!r.startTime)return null;
   return new Date(`${r.startDate}T${r.startTime}:00`);
 }
+// True when the route's planned start is still in the future — i.e. we're PLANNING,
+// not riding. Used to (a) stop GPS from stamping "actual" times onto a plan you
+// haven't ridden yet, and (b) ignore any leftover actual stamps when showing ETAs.
+function planStartInFuture(r){
+  if(!r||!r.startDate||!r.startTime)return false;
+  const t=new Date(`${r.startDate}T${r.startTime}:00`).getTime();
+  return isFinite(t)&&t>Date.now();
+}
+// Clear the "actual" ride stamps from a route: the recorded start time and every
+// stop's recorded arrival. Called when the user sets a NEW start date/time (planning
+// a fresh run), so times from a previous ride don't anchor the new plan. Does NOT
+// touch saved recordings — those live in a separate store; this only clears the
+// plan's own ETA anchors. Returns true if anything was actually cleared.
+function clearRouteActuals(r){
+  if(!r)return false;
+  let changed=!!r.actualStartTime;
+  r.actualStartTime=null;
+  (r.stops||[]).forEach(s=>{if(s.actualArrival){delete s.actualArrival;changed=true;}});
+  return changed;
+}
 // Get effective sleep hours for a stop — handles fixed departure time
 function sleepHoursFor(s,arrivalEta){
   if(!s.departTime)return s.sleepH||(s.sleepAt||s.type==='sleep'?10:0);
@@ -1683,10 +1703,16 @@ function etaAt(distKm,r){
   // No GPS active — use planned start or last actual recorded time as anchor
   const now=Date.now();
 
+  // If the plan's start is still in the future, we're planning a ride we haven't done
+  // yet — ignore any leftover "actual" stamps and the last saved GPS position, and
+  // compute purely from the planned start. Stops a stale stamp from a past GPS fix
+  // (or a previous run of this route) polluting a future plan's finish/ETAs.
+  const planningFuture=planStartInFuture(r);
+
   // Find the last stop before distKm that has a recorded actualArrival — this is our
   // most recent known-good time anchor. Everything before it is fact; everything after
   // is estimated forward from that real time.
-  const recordedStops=r.stops.filter(s=>s.actualArrival&&s.dist<=distKm)
+  const recordedStops=planningFuture?[]:r.stops.filter(s=>s.actualArrival&&s.dist<=distKm)
     .sort((a,b)=>b.dist-a.dist); // most recent first
   const lastRecorded=recordedStops[0]||null;
 
@@ -1753,7 +1779,7 @@ function etaAt(distKm,r){
   // No recorded stops — use saved GPS position as implicit anchor if available,
   // otherwise fall back to pure planning mode from planned start time.
   const savedDist=UI.gpsDistKm; // may be restored from DB even when GPS is off
-  if(savedDist!==null){
+  if(savedDist!==null&&!planningFuture){
     // We know where the rider is (or was). Anchor future ETAs from now,
     // skipping all sleep offsets for stops already behind the saved position.
     // For the last sleep stop at or just behind savedDist, check if it's done
@@ -2638,7 +2664,10 @@ function _doStartGPS(){
     // Phase 1a Step 3: feed every real GPS fix into the recording sampler.
     // _appendPoint guards on _rec internally — safe to call when no recording is active.
     _appendPoint(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude, pos.timestamp, pos.coords.accuracy);
-    if(r&&UI.gpsDistKm!==null){
+    // Only capture "actual" times when we're actually riding this plan — i.e. its
+    // start date is today or past. A future-dated plan means we're testing/planning
+    // near the route, so a stray GPS fix must not stamp (and permanently anchor) it.
+    if(r&&UI.gpsDistKm!==null&&!planStartInFuture(r)){
       const alertKm=UI.alertKm||0.5;
       const nowTs=Date.now();
       let needsSave=false;
@@ -6817,7 +6846,11 @@ document.getElementById('dt-picker-modal')?.addEventListener('click',e=>{if(e.ta
 document.getElementById('dt-picker-ok')?.addEventListener('click',()=>{
   const r=cur();if(!r)return;
   const{dateStr,timeStr}=_dtFmt();
+  const dateChanged=r.startDate!==dateStr;
   r.startDate=dateStr;r.startTime=timeStr;
+  // Setting a new start date = planning a fresh run — drop any "actual" stamps from
+  // a previous ride so they don't anchor the new plan (saved recordings untouched).
+  if(dateChanged)clearRouteActuals(r);
   closeDTPicker();saveAll();render();
 });
 
@@ -13167,7 +13200,7 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     return;
   }
 
-  if(e.target.id==='inp-date'){r.startDate=e.target.value;saveAll();setTimeout(()=>render(),50);}
+  if(e.target.id==='inp-date'){const ch=r.startDate!==e.target.value;r.startDate=e.target.value;if(ch)clearRouteActuals(r);saveAll();setTimeout(()=>render(),50);}
   if(e.target.id==='inp-time'){r.startTime=e.target.value;saveAll();setTimeout(()=>render(),50);}
   if(e.target.id==='toggle-turn-audio'){
     UI.turnAudio=e.target.checked;
