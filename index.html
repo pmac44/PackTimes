@@ -737,7 +737,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v192';
+window.APP_VERSION='v193';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1998,17 +1998,19 @@ function showSurfHelp(){
     <b style="color:var(--text2);">How this works.</b> Surface types come from OpenStreetMap tags, so they're only as good as what local mappers have entered. The road / track / singletrack split is reliable almost everywhere. The <i>technical</i> grade (Singletrack tech) only shows where someone tagged trail difficulty — common on popular mountain-bike trails, sparse elsewhere; where it's missing a trail just shows as plain Singletrack. Stretches with no usable tag show as <b style="color:var(--text2);">Unknown</b> rather than a guess. Re-fetch with Refresh after editing a route or when a gap appears.</div>`;
   const ov=document.createElement('div');
   ov.id='surf-help-ov';
-  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:16px;-webkit-tap-highlight-color:transparent;';
-  ov.innerHTML=`<div id="surf-help-card" style="background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);max-width:440px;width:100%;max-height:85vh;overflow:auto;padding:18px 18px 16px;box-shadow:0 12px 40px rgba(0,0,0,0.5);">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-      <div style="color:var(--text);font-weight:700;font-size:17px;">Surface types</div>
-      <button type="button" id="surf-help-x" style="background:none;border:none;color:var(--text3);font-size:22px;line-height:1;cursor:pointer;padding:2px 6px;">×</button>
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.innerHTML=`<div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
+      <span style="font-size:18px;font-weight:600;color:var(--text);">Surface types</span>
+      <button class="btn btn-sm" id="surf-help-x">✕</button>
     </div>
-    ${body}${note}
+    <div style="overflow-y:auto;flex:1;min-height:0;">${body}${note}</div>
+    <button class="btn btn-p btn-full" id="surf-help-done" style="flex-shrink:0;margin-top:10px;margin-bottom:env(safe-area-inset-bottom,0px);">Done</button>
   </div>`;
   const close=()=>ov.remove();
   ov.addEventListener('click',e=>{if(e.target===ov)close();});
   ov.querySelector('#surf-help-x').addEventListener('click',close);
+  ov.querySelector('#surf-help-done').addEventListener('click',close);
   document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
   document.body.appendChild(ov);
 }
