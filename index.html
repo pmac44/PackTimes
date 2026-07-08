@@ -737,7 +737,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v190';
+window.APP_VERSION='v191';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1310,19 +1310,23 @@ function tsSpeedSanity(pts){
 const VAM_BY_SURFACE={
   road:520,road_minor:500,
   grade1:390,grade2:350,grade3:260,grade4:175,grade5:175,path:175,
+  single:175,single_tech:150,
   _default:350
 };
 const FLAT_KMH_BY_SURFACE={
   road:17.0,road_minor:14.5,
   grade1:11,grade2:11,grade3:9,grade4:4,grade5:4,path:4,
+  single:4,single_tech:3,
   _default:11
 };
 const DESC_FACTOR={
   road:0.28,road_minor:0.22,grade1:0.18,grade2:0.14,grade3:0.08,grade4:0.04,grade5:0.03,path:0.04,
+  single:0.04,single_tech:0.03,
   _default:0.12
 };
 const MAX_DESC_KMH={
   road:52,road_minor:38,grade1:34,grade2:26,grade3:20,grade4:11,grade5:7,path:8,
+  single:8,single_tech:6,
   _default:20
 };
 const RIDER_MULT={
@@ -1355,7 +1359,7 @@ function calibPredictH(distKm,elevM,surface,load,profile){
   const lm=LOAD_MULT[load]||LOAD_MULT.moderate;
   const rm=RIDER_MULT.regular;
   if(profile==='climb')return segTimeH(distKm,elevM,surface,rm,lm);
-  const TYP_GRADE={road:0.05,road_minor:0.05,grade1:0.06,grade2:0.06,grade3:0.07,grade4:0.10,grade5:0.10,path:0.10};
+  const TYP_GRADE={road:0.05,road_minor:0.05,grade1:0.06,grade2:0.06,grade3:0.07,grade4:0.10,grade5:0.10,path:0.10,single:0.08,single_tech:0.10};
   const g=TYP_GRADE[surface]||0.06;
   const climbKm=Math.min(elevM/1000/g,distKm/2);
   const descKm=climbKm;
@@ -1913,11 +1917,14 @@ function shopSt(s,r){
 // ─── Surface type fetch ──────────────────────────────────────────────────────
 const SURFACE_COLS={
   road:'#4a6080',road_minor:'#6f8cad',grade1:'#b8925a',grade2:'#a07840',
-  grade3:'#886030',grade4:'#704820',grade5:'#583010',path:'#c0392b',
+  grade3:'#886030',grade4:'#704820',grade5:'#583010',path:'#95a5a6',
+  single:'#8e44ad',single_tech:'#c0392b',
 };
 
-function surfaceCategory(highway,tracktype,surface){
-  if(!highway)return null;
+function surfaceCategory(tags){
+  if(!tags)return null;
+  const highway=tags.highway;if(!highway)return null;
+  const tracktype=tags.tracktype,surface=tags.surface;
   // Respect the OSM surface tag on roads — an unclassified road can be dirt,
   // and pacing/colour should reflect the actual surface, not the road class.
   const unsealed=surface==='gravel'||surface==='compacted'||surface==='fine_gravel'||surface==='unpaved'||surface==='dirt'||surface==='earth'||surface==='ground'||surface==='sand'||surface==='grass'||surface==='mud';
@@ -1926,11 +1933,24 @@ function surfaceCategory(highway,tracktype,surface){
     if(surface==='dirt'||surface==='earth'||surface==='ground')return'grade3';
     return'grade4'; // sand / grass / mud
   };
+  // Singletrack technicality from OSM: mtb:scale (0 easy … 6 extreme) is the
+  // real signal; smoothness and sac_scale back it up. A trail that trips ANY of
+  // these reads as technical/rocky (≈ Slipstream RSR 6), otherwise smooth
+  // rideable singletrack (≈ RSR 4). Paved footways (urban paths) are NOT
+  // singletrack — they stay in the slow 'path' bucket.
+  let mtb=null;
+  if(tags['mtb:scale']!=null){const m=String(tags['mtb:scale']).match(/\d/);if(m)mtb=+m[0];}
+  const sm=tags.smoothness,sac=tags.sac_scale;
+  const roughSmooth=sm==='very_bad'||sm==='horrible'||sm==='very_horrible'||sm==='impassable';
+  const hardSac=sac&&sac!=='hiking'&&sac!=='mountain_hiking';
+  const technical=(mtb!=null&&mtb>=3)||roughSmooth||hardSac||surface==='rock'||surface==='pebblestone';
+  const paved=surface==='paved'||surface==='asphalt'||surface==='concrete'||surface==='paving_stones';
   if(highway==='primary'||highway==='secondary'||highway==='trunk'||highway==='motorway')return unsealed?unsealedCat():'road';
   if(highway==='tertiary'||highway==='unclassified')return unsealed?unsealedCat():'road_minor';
   if(highway==='residential'||highway==='service'||highway==='living_street')return unsealed?unsealedCat():'road_minor';
   if(highway==='cycleway')return unsealed?'grade2':'grade1';
-  if(highway==='path'||highway==='footway'||highway==='bridleway')return'path';
+  if(highway==='path'||highway==='bridleway')return technical?'single_tech':'single';
+  if(highway==='footway')return paved?'path':(technical?'single_tech':'single');
   if(highway==='track'){
     if(tracktype==='grade1')return'grade1';
     if(tracktype==='grade2')return'grade2';
@@ -2080,7 +2100,7 @@ async function fetchSurfaceData(force){
         // value leaves whole stretches permanently "unknown" — treat as failure.
         if(json.remark&&/tim(ed)?\s*out|out of memory|exceeded|runtime error/i.test(json.remark))throw new Error('overpass: '+String(json.remark).slice(0,80));
         const ways=json.elements.filter(el=>el.type==='way'&&el.geometry&&el.geometry.length>1).map(el=>{
-          const cat=surfaceCategory(el.tags?.highway,el.tags?.tracktype,el.tags?.surface);
+          const cat=surfaceCategory(el.tags);
           // guess = minor road with no surface tag — "sealed" is only an assumption,
           // eligible for neighbour-based inference below
           return{
@@ -3794,7 +3814,8 @@ function _recCalibAuto(rec){
   let surface = null;
   if(r.surfaceSegs && r.surfaceSegs.length){
     const MAP = {road: 'road', road_minor: 'road', grade1: 'grade2', grade2: 'grade2',
-                 grade3: 'grade2', grade4: 'grade4', grade5: 'grade4', path: 'grade4'};
+                 grade3: 'grade2', grade4: 'grade4', grade5: 'grade4', path: 'grade4',
+                 single: 'grade4', single_tech: 'grade4'};
     const w = {road: 0, grade2: 0, grade4: 0};
     for(const sg of r.surfaceSegs){
       const overlap = Math.min(hi, sg.toDist) - Math.max(lo, sg.fromDist);
