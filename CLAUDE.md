@@ -15,6 +15,18 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v206)
+
+**v206 (9 Jul 2026) — fatigue skipped on short plans.** Peter's 1.9km test ride
+showed a phantom ~6% slowdown when fatigue was toggled: it was the circadian dip
+keyed off the route's *planned* start time (default 06:00), not the actual ride
+time (13:25) — working as designed but confusing on a trivial ride. Fix in
+`buildCumRiding`: refactored the fatigue forward-pass into an inner `accumulate(fp)`
+and, if fatigue is on but the total ride is under `FATIGUE_MIN_RIDE_H` (2h),
+recompute with fp=null. Recompute only ever hits short routes (cheap); long plans
+are byte-identical to before. Verified: 1.9km ride on==off; 100km ride on≠off.
+Circadian kept (it's real + well-evidenced even when rested — ~7–11% daily swing).
+
 ## Current status (9 July 2026, v205)
 
 **v205 (9 Jul 2026) — Strava rename/upload reliability (field-test fixes).**

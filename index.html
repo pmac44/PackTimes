@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v205';
+window.APP_VERSION='v206';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1369,6 +1369,10 @@ const FATIGUE_MODES={
 // window = effectively fresh, so well-slept plans are ~unchanged; only short sleeps
 // read slower/more honest. See _planning/sleep-fatigue-research.md.
 const FATIGUE_SLEEP_TAU_H=4.2;
+// Don't model fatigue on short plans — under ~2h of riding the only effect is the
+// time-of-day dip, which is just noise (and confusing) on a quick ride: a fresh
+// 5-min test ride shouldn't show a phantom slowdown. Threshold in riding hours.
+const FATIGUE_MIN_RIDE_H=2;
 function fatigueParams(){return FATIGUE_MODES[UI.fatigueMode]||null;}
 // Circadian shape 0..1: 0 in daytime (09:00–20:00), full through the deep night.
 function _circShape(h){
@@ -1518,52 +1522,61 @@ function buildCumRiding(pts,paceSegs,r){
     let sv=0;for(let k=lo;k<hi;k++)sv+=(pts[k].ele||0);
     sEle[i]=sv/(hi-lo);
   }
-  // Optional, opt-in fatigue model. When off (default) fp is null and this leaves
-  // cumRiding byte-identical. When on, moving pace is slowed by clock time
-  // (circadian) and hours-since-last-sleep (sleep-debt), tracked self-consistently
-  // forward; sleep stops reset the debt. Only organic riding is slowed — manual
-  // pace sections stay exactly as the user set them.
-  const fp=(r&&UI.fatigueMode&&UI.fatigueMode!=='off')?fatigueParams():null;
-  let fClock=null,fSince=0,fStops=null,fSi=0;
-  if(fp){
-    const sd=startDT(r);fClock=sd?sd.getTime():null;
-    fStops=(r.stops||[]).filter(s=>s.type==='sleep'||s.sleepAt||s.sleepH||(s.meals&&s.meals.length)).slice().sort((a,b)=>a.dist-b.dist);
-  }
-  const out=[0];
-  for(let i=1;i<pts.length;i++){
-    const dx=hav(pts[i-1],pts[i]);
-    const midDist=(pts[i-1].dist+pts[i].dist)/2;
-    const seg=paceSegs.find(s=>midDist>=s.from&&midDist<=s.to);
-    let timeH;
-    if(seg){
-      const segSpeedKmh=(seg.to-seg.from)/seg.hours;
-      timeH=dx/Math.max(segSpeedKmh,0.1);
-    } else {
-      const dz=sEle[i]-sEle[i-1];
-      const cat=surfaceCatAt(midDist,r)||'grade2';
-      timeH=segTimeH(dx,dz,cat,rm,lm);
+  // Optional, opt-in fatigue model. When off (fpBase null) this leaves cumRiding
+  // byte-identical. When on, moving pace is slowed by clock time (circadian) and
+  // hours-since-last-sleep (sleep-debt), tracked self-consistently forward; sleep
+  // stops recover the debt. Only organic riding is slowed — manual pace sections
+  // stay exactly as the user set them.
+  const fpBase=(r&&UI.fatigueMode&&UI.fatigueMode!=='off')?fatigueParams():null;
+  const fSd=fpBase?startDT(r):null;
+  const fClock0=fSd?fSd.getTime():null;
+  const fStops0=fpBase?(r.stops||[]).filter(s=>s.type==='sleep'||s.sleepAt||s.sleepH||(s.meals&&s.meals.length)).slice().sort((a,b)=>a.dist-b.dist):null;
+  // One forward pass. Pass fp=null to skip fatigue entirely (identical to Off).
+  const accumulate=(fp)=>{
+    let fClock=fClock0,fSince=0,fSi=0;const fStops=fStops0;
+    const out=[0];
+    for(let i=1;i<pts.length;i++){
+      const dx=hav(pts[i-1],pts[i]);
+      const midDist=(pts[i-1].dist+pts[i].dist)/2;
+      const seg=paceSegs.find(s=>midDist>=s.from&&midDist<=s.to);
+      let timeH;
+      if(seg){
+        const segSpeedKmh=(seg.to-seg.from)/seg.hours;
+        timeH=dx/Math.max(segSpeedKmh,0.1);
+      } else {
+        const dz=sEle[i]-sEle[i-1];
+        const cat=surfaceCatAt(midDist,r)||'grade2';
+        timeH=segTimeH(dx,dz,cat,rm,lm);
+        if(fp){
+          const hr=fClock!=null?(new Date(fClock).getHours()+new Date(fClock).getMinutes()/60):null;
+          timeH*=fatigueMult(fp,hr,fSince);
+        }
+      }
+      out.push(out[i-1]+timeH);
       if(fp){
-        const hr=fClock!=null?(new Date(fClock).getHours()+new Date(fClock).getMinutes()/60):null;
-        timeH*=fatigueMult(fp,hr,fSince);
+        fSince+=timeH;
+        if(fClock!=null)fClock+=timeH*3600000;
+        while(fStops&&fSi<fStops.length&&fStops[fSi].dist<=pts[i].dist){
+          const s=fStops[fSi++];
+          const mealH=(s.meals||[]).filter(m=>m.source!=='here-carry').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+          const hasSleep=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&s.sleepH);
+          const sleepH=hasSleep?sleepHoursFor(s,fClock!=null?new Date(fClock):null):0;
+          if(fClock!=null)fClock+=(mealH+sleepH)*3600000;
+          // Partial, diminishing-returns recovery (τ=4.2h): a short nap barely
+          // dents the debt, ~4h clears most of it, a full night resets you. (A flat
+          // reset would wrongly treat a 15-min catnap like a night's sleep.)
+          if(hasSleep)fSince*=Math.exp(-sleepH/FATIGUE_SLEEP_TAU_H);
+        }
       }
     }
-    out.push(out[i-1]+timeH);
-    if(fp){
-      fSince+=timeH;
-      if(fClock!=null)fClock+=timeH*3600000;
-      while(fStops&&fSi<fStops.length&&fStops[fSi].dist<=pts[i].dist){
-        const s=fStops[fSi++];
-        const mealH=(s.meals||[]).filter(m=>m.source!=='here-carry').reduce((a,m)=>a+(m.durationMin||20)/60,0);
-        const hasSleep=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&s.sleepH);
-        const sleepH=hasSleep?sleepHoursFor(s,fClock!=null?new Date(fClock):null):0;
-        if(fClock!=null)fClock+=(mealH+sleepH)*3600000;
-        // Partial, diminishing-returns recovery (τ=4.2h): a short nap barely
-        // dents the debt, ~4h clears most of it, a full night resets you. (A flat
-        // reset would wrongly treat a 15-min catnap like a night's sleep.)
-        if(hasSleep)fSince*=Math.exp(-sleepH/FATIGUE_SLEEP_TAU_H);
-      }
-    }
-  }
+    return out;
+  };
+  let out=accumulate(fpBase);
+  // Skip fatigue on short plans: under ~2h the only effect is the time-of-day dip
+  // — noise on a quick ride. If even the slowed total is under the threshold, the
+  // real ride is shorter still, so recompute clean. (Recompute only hits short
+  // routes, so it's cheap; long routes never pay for it.)
+  if(fpBase && out[out.length-1] < FATIGUE_MIN_RIDE_H) out=accumulate(null);
   return out;
 }
 // Rebuild cumRiding after pace segment changes
