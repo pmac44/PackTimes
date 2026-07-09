@@ -15,6 +15,25 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v210)
+
+**v210 (9 Jul 2026) — "Your route file" detailed help rewritten (Peter's format
+knowledge).** Fixed the wrong "a plain GPX is ideal" claim (GPX is a fallback —
+no turns). New `_helloDetailHTML` copy leads with "export a TCX Course", warns
+about the Course-vs-History / route-vs-recorded-ride trap (RWGPS "TCX History" or
+a GPX of a finished Strava activity = every logged GPS point = huge file), covers
+relative file size (FIT most compact/binary; GPX/TCX/KML text; only balloons on a
+recording), notes turns come only from TCX in PackTimes, and keeps the
+ride-time-from-distance/elevation rationale. Peter-tunable copy.
+
+## Current status (9 July 2026, v209)
+
+**v209 (9 Jul 2026) — TCX benefit spelled out in the main "How PackTimes works"
+help.** Rewrote the `_helloContentHTML` 'Route' line: TCX is best for turn alerts
+(real cues from RideWithGPS/Komoot), GPX has none (estimate in Turn Review), and —
+Peter's key point — "already loaded a GPX? You're not stuck, just re-import the
+TCX version any time." Complements the v208 Turn Review "?" explainer.
+
 ## Current status (9 July 2026, v208)
 
 **v208 (9 Jul 2026) — turns no longer auto-guessed on import; turn-data explainer.**

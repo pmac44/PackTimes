@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v208';
+window.APP_VERSION='v210';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -10259,9 +10259,10 @@ function _helloDetailHTML(){
   return`<div style="display:flex;flex-direction:column;gap:14px;">
     <div>
       <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
-      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RWGPS, Komoot, Strava, or Garmin Connect. GPX, TCX, KML and FIT files are all supported.</p>
-      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">A plain GPX file of GPS coordinates is ideal. PackTimes calculates your ride time from distance and elevation using a formula calibrated against real bikepacking ride data — this is more reliable than timestamps embedded in exported files, which often encode unrealistic speeds.</p>
-      <p style="font-size:15px;color:var(--text2);line-height:1.6;">Apps like RWGPS and Strava can be very accurate at predicting your personal ride time, but that accuracy is tied to your ride history on their servers and is not in the exported file. For turn-by-turn navigation, <strong>TCX format is strongly recommended</strong> — RWGPS and Komoot embed accurate turn cues derived from the road network into TCX exports, which PackTimes uses directly for audio turn alerts on the ride screen.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RideWithGPS, Komoot, Strava or Garmin Connect — GPX, TCX, KML and FIT are all supported. For the best experience, export a <strong>TCX Course</strong>: RideWithGPS and Komoot bake real turn cues (from the road network) into it, and PackTimes uses them directly for audio turn alerts on the ride.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">One thing to watch: export the planned <em>route</em>, not a recorded <em>ride</em>. RideWithGPS, for example, offers both a "TCX Course" (the route you want) and a "TCX History" (a recording of an actual ride). A recording — or a GPX saved from a finished Strava activity — stores every GPS point you logged, so it's a far bigger file, packed with the wobble of a real trace rather than clean route points and turns.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">On size, a planned-route file is small whatever the format — FIT is the most compact (it's binary), while GPX, TCX and KML are text and a little larger. A file only balloons if you export a recording instead of a route. Turn cues, though, come only from TCX — a GPX, FIT or KML arrives with none (you can estimate them in Turn Review, but that's guesswork), which is why a plain GPX is really a fallback rather than the ideal.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;">PackTimes works out your ride time from distance and elevation, using a formula calibrated against real bikepacking data — more reliable than the timestamps inside exported files, which often encode unrealistic speeds. Apps like RideWithGPS and Strava can predict your personal time well, but that accuracy lives on their servers and isn't in the file, so PackTimes doesn't lean on it.</p>
     </div>
     <div style="border-top:1px solid var(--border);"></div>
     <div>
@@ -10287,7 +10288,7 @@ function _helloContentHTML(){
     <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
     <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;">
       ${[
-        ['Route','Load a route file (GPX, TCX, KML or FIT). For turn-by-turn navigation export as TCX from RWGPS or Komoot — PackTimes uses the embedded turn cues for audio alerts while riding'],
+        ['Route','Load a route file (GPX, TCX, KML or FIT). For turn alerts a TCX is best — exported from RideWithGPS or Komoot it carries real turn cues PackTimes can beep you on. A GPX has no turns (you can estimate them in Turn Review). Already loaded a GPX? You\'re not stuck — just re-import the TCX version any time'],
         ['Plan','Search OpenStreetMap for stops along the route, or add your own — star the ones you want on your Mission, add sleep and food to build your supply plan'],
         ['Night','The route line turns black where you\'ll be riding in the dark — add a sleep stop to make it blue again, or turn on your lights!'],
         ['Ride','Live GPS map with upcoming stops, arrival times, and turn alerts. A TCX brings real turn cues; a GPX has none, but you can generate estimated turns in Turn Review (tap the turns button on the route) before riding'],
