@@ -15,19 +15,23 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (10 July 2026, v223)
+## Current status (10 July 2026, v224)
 
-**v223 (10 Jul 2026) — water-button scroll fix + cluster-node water droplet.**
-Two field bugs from Peter: (1) tapping the v222 water button scrolled the stop list
-to the top — the handler used `render()`; swapped to `renderKeepScroll()` (matches
-the food picker). (2) The mission-plan cluster node (a whole town as one tile)
-showed no water state. Added a 💧 to the node's chip row (`tPlan`, by
-`chips`/`chipsDiv` ~line 11681): full/blue `#60a5fa` when any stop in the cluster
-offers water (same rule as the strip's `hasWater` — water stop / food outlet /
-confirmed town or servo / `waterHere` tick), dim (opacity 0.3) when none. Matches
-the existing `💧`+opacity pattern. Note: stops-tab cluster members already get the
-per-stop water button via `stopRow`; this adds the aggregate indicator to the
-mission tile. Node-verified.
+**v224 (10 Jul 2026) — water toggle button in the mission-plan node action row.**
+v223 put a small 💧 indicator in the node's chip row, but Peter expected an actual
+water BUTTON up in the action row next to sleep/food/edit (like the stop tile has).
+Fixed: added a `.water-at-stop` droplet button to the non-sleep mission-node button
+row in `tPlan` (~line 11764, before `cluster-edit-btn`), data-sid = the cluster's
+town stop; filled blue `#60a5fa` when any stop in the town has water (same rule as
+the strip's `hasWater`), outline when none. Reuses the existing `.water-at-stop`
+handler (toggles `s.waterHere`, `renderKeepScroll`). Removed the redundant v223
+chip-row droplet. Note: only on NON-sleep nodes so far — sleep nodes (e.g. a motel
+bivi) don't have the water button yet; add if Peter wants. Node-verified.
+
+**v223 (10 Jul 2026) — water-button scroll fix.** Tapping the v222 water button
+scrolled the stop list to the top — the handler used `render()`; swapped to
+`renderKeepScroll()` (matches the food picker). (The v223 chip-row droplet it also
+added was superseded by the v224 action-row button.)
 
 **v222 (10 Jul 2026) — per-stop water toggle button on the stop tile.** Peter: a
 buried food-picker checkbox is inconsistent; make water a first-class one-tap
