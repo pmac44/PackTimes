@@ -15,7 +15,30 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (9 July 2026, v203)
+## Current status (9 July 2026, v205)
+
+**v205 (9 Jul 2026) — Strava rename/upload reliability (field-test fixes).**
+Peter's test ride: renaming gave no feedback so he re-uploaded to force it, which
+then jammed on "queued". Root cause = everything was silent. Fixes (STRAVA
+section): (1) `stravaSyncName(rec, announce)` + `stravaMarkRename` now toast the
+outcome ("Name updated on Strava ✓" / "…will keep trying" / "will sync after the
+upload") so a rename never needs a manual re-upload; (2) broadened the duplicate
+matcher in `stravaProcessQueue` to `duplicate of (?:activity )?(\d+)` plus a bare
+"duplicate" fallback, so a re-upload re-links + resyncs the pending name instead
+of sticking forever; (3) the detail-modal status line now appends the last
+attempt's error after "Queued for Strava upload" instead of hiding it. This also
+unjams Peter's currently-stuck ride on next retry. Written + fragment-tested, not
+yet re-ridden.
+
+## Current status (9 July 2026, v204)
+
+**v204 (9 Jul 2026) — fatigue popup wording pass (Peter's edits).** Honesty
+fixes only, no logic change: dropped the "four hours clears the day's tiredness"
+overclaim (now "rough minimum to keep going… you'll still be tired… varies, no
+hard cut-off"); removed the overstated "nod-off danger flagged separately" (there
+is no such feature — only the >20h amber note), catnap line now ends on Peter's
+safety-signal point; reworded the awkward "gentler thing than a bad night feels
+like".
 
 **v203 (9 Jul 2026) — fatigue recovery set to the textbook curve (τ=4.2h) +
 transparent popup.** Changed `FATIGUE_SLEEP_TAU_H` 2 → 4.2 (published two-process

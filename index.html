@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v203';
+window.APP_VERSION='v205';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3743,7 +3743,7 @@ function _recDetailOpen(recId){
     (rec.stravaUploadedAt
       ? '<a href="' + rec.stravaActivityUrl + '" target="_blank" rel="noopener" style="color:var(--accent);">On Strava ✓ — view activity</a>'
       : rec.stravaUploadStatus === 'queued'
-      ? '<span style="color:#f97316;">Queued for Strava upload</span>'
+      ? '<span style="color:#f97316;">Queued for Strava upload' + (()=>{const a=rec.stravaUploadAttempts||[];const l=a[a.length-1];return (l&&!l.ok&&l.error)?' — last try: '+l.error:'';})() + '</span>'
       : '<span style="color:var(--text3);">Local only — not uploaded</span>');
   // Strava button: hidden unless connected; label reflects upload state
   const sBtn = document.getElementById('rdm-strava');
@@ -4609,13 +4609,15 @@ function stravaQueue(rec){
 // on Strava yet, we leave the pending flag set and the queue's rename pass
 // (or the fresh upload, which carries rec.name) sorts it out later. A failed
 // PUT just stays pending and gets retried by the same triggers as uploads.
-async function stravaSyncName(rec){
+// announce=true → user-initiated rename, so toast the outcome (they should never
+// have to guess whether it worked). Quiet when the retry queue calls it.
+async function stravaSyncName(rec, announce){
   if(!rec || !rec.stravaNamePending || !UI.stravaToken) return;
   const m = (rec.stravaActivityUrl || '').match(/activities\/(\d+)/);
   if(!m) return;   // not uploaded yet — nothing to rename over there
   try{
     const token = await stravaFreshToken();
-    if(!token) return;
+    if(!token) throw new Error('not connected');
     const res = await fetch('https://www.strava.com/api/v3/activities/' + m[1], {
       method: 'PUT',
       headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
@@ -4626,17 +4628,26 @@ async function stravaSyncName(rec){
     await DB.putRecording(rec).catch(()=>{});
     const i = RECS.findIndex(x => x.id === rec.id);
     if(i >= 0) RECS[i] = rec;
-  }catch(e){ /* stays pending; retried by the queue triggers */ }
+    if(announce) _recToast('Name updated on Strava ✓');
+  }catch(e){
+    // stays pending; retried by the queue triggers
+    if(announce) _recToast('Strava name not updated yet — will keep trying');
+  }
 }
 
 // Called from either rename path. Marks the name for syncing (only if this
-// ride is bound for Strava) and tries immediately; the queue covers retries.
+// ride is bound for Strava), tells the rider what's happening, and tries now;
+// the retry queue covers anything that doesn't go through immediately.
 function stravaMarkRename(rec){
   if(!rec || !UI.stravaToken) return;
   if(!rec.stravaUploadedAt && rec.stravaUploadStatus !== 'queued') return; // not going to Strava
   rec.stravaNamePending = true;
   DB.putRecording(rec).catch(()=>{});
-  stravaSyncName(rec);
+  if(rec.stravaUploadedAt){
+    stravaSyncName(rec, true);   // already on Strava — push the name now + toast
+  } else {
+    _recToast('New name saved — it’ll sync to Strava after the upload');
+  }
 }
 
 // Upload one recording as FIT. Returns the Strava activity id, or throws.
@@ -4702,15 +4713,24 @@ async function stravaProcessQueue(force){
         (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: true});
         _recToast('Ride uploaded to Strava ✓');
       }catch(e){
-        // A "duplicate" rejection means the ride IS on Strava — link it and move on
-        const m = String(e.message || '').match(/duplicate of activity (\d+)/i);
+        // A "duplicate" rejection means the ride IS on Strava — link it and move on.
+        // Match a few wordings ("duplicate of activity 123", "duplicate of 123").
+        const msg = String(e.message || e);
+        const m = msg.match(/duplicate of (?:activity )?(\d+)/i);
         if(m){
           rec.stravaUploadedAt = Date.now();
           rec.stravaActivityUrl = 'https://www.strava.com/activities/' + m[1];
           rec.stravaUploadStatus = null;
           (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: true, note: 'duplicate'});
+          if(rec.stravaNamePending) stravaSyncName(rec);   // now we have the id back, push the name
+          _recToast('Already on Strava ✓ — re-linked');
+        } else if(/duplicate/i.test(msg)){
+          // Duplicate but no id in the message — at least stop it jamming the queue.
+          rec.stravaUploadedAt = Date.now();
+          rec.stravaUploadStatus = null;
+          (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: true, note: 'duplicate (no id)'});
         } else {
-          (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: false, error: String(e.message || e)});
+          (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: false, error: msg});
         }
       }
       await DB.putRecording(rec).catch(()=>{});
@@ -7532,10 +7552,10 @@ function showFatigueHelp(){
   const body=
     p('When on, PackTimes gently slows your predicted pace two ways: through the pre-dawn hours, and as the hours since your last proper sleep build up — winding back each time you sleep. It barely touches short rides; it only really matters on long, multi-day plans. Leave it off unless you want it.')
     +hd('How the sleep side works')
-    +p('Sleep clears tiredness with diminishing returns — fastest in the first few hours, then levelling off. PackTimes follows the recognised sleep-science curve for this. In practice about four hours is the sleep where you clear enough to keep riding day after day — which lines up with what seasoned multi-day riders aim for. On much less, a bit of tiredness carries into the next day and stacks up.')
-    +p('A short catnap barely shifts the estimate. Out on the road a catnap is mostly a way to fight off falling asleep rather than to truly restore your speed, so PackTimes credits it only a little for pace. The "am I about to nod off" danger is flagged separately, not baked into the time.')
+    +p('Sleep clears tiredness with diminishing returns — fastest in the first few hours, then levelling off. PackTimes follows the recognised sleep-science curve for this. In practice, around four hours is the rough minimum experienced multi-day riders lean on to keep going day after day — enough to carry on, though you\'ll still be tired, and it varies a lot from person to person with no hard cut-off. On much less, tiredness carries into the next day and stacks up.')
+    +p('A short catnap barely shifts the estimate — out on the road it\'s mostly about fighting off sleep rather than restoring your speed, so it changes the pace very little. And if you\'re fighting off sleep, that\'s the real signal that proper rest is needed — for your own safety and that of others.')
     +hd('How reliable is this?')
-    +p('PackTimes only ever slows your pace by up to about 20%, and that\'s on purpose — pure sleep loss is a gentler thing than a bad night <i>feels</i> like.')
+    +p('PackTimes only ever slows your pace by up to about 20%, and that\'s on purpose: a bad night feels far worse than it actually costs you in pace.')
     +li('One night without sleep:','usually under about 10% slower. Your legs still work — your brain just paces you down.')
     +li('Two nights:','the slowdown grows and turns erratic. Staying awake safely becomes the real limit, so treat the estimate as optimistic.')
     +li('Three-plus nights:','beyond what PackTimes — or most people — can handle. Don\'t trust any number here, and think hard about whether it\'s safe.')
