@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v218';
+window.APP_VERSION='v220';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -8952,8 +8952,15 @@ function liveStripIcons(s,reason){
     hall:'HALL',police:'POLICE',fire:'FIRE STN',stockwater:'STOCK H2O'
   };
   const type=s.sleepAt&&s.type!=='sleep'?'sleep':s.type;
-  // If stop is shown because of food assignment (not its type), label as FOOD
-  const effectiveType=(reason==='food'&&s.type!=='food'&&s.type!=='shop')?'meal':type;
+  // A PLANNED MEAL outranks the stop's own type: if you've planned to eat here, show
+  // EAT rather than TOWN/ACCOM/etc — you know there's food, and that's what matters.
+  // Sleep still wins (an overnight stop reads SLEEP even if you also eat there); a
+  // café/shop already reads FOOD so it's left alone. Also covers a stop surfaced for
+  // the food reason (planned meal or nearby food source).
+  const hasMeal=s.meals&&s.meals.length>0;
+  const effectiveType=(type==='sleep')?'sleep'
+    :((hasMeal||reason==='food')&&s.type!=='food'&&s.type!=='shop')?'meal'
+    :type;
   const col=typeColor[effectiveType]||'#9db89d';
   const lbl=typeLabel[effectiveType]||(effectiveType?effectiveType.toUpperCase():'STOP');
   return`<span style="display:inline-block;font-size:11px;font-weight:600;font-family:var(--font);letter-spacing:.5px;color:${col};background:${col}1a;border:1px solid ${col}55;border-radius:4px;padding:2px 5px;line-height:1.4;">${lbl}</span>`;
@@ -8982,6 +8989,11 @@ function buildLiveStrip(r,liveDist,sdt){
   // where a meal is planned, or a town/fuel with confirmed opening hours (a tagged
   // shop or a servo). This stops a foodless town from masquerading as a meal.
   const hasFood=s=>(s.meals&&s.meals.length>0)||s.type==='food'||s.type==='shop'||s.type==='pub'||((s.type==='town'||s.type==='fuel')&&!!s.ohRaw);
+  // Helper: can you get WATER here? Food outlets (café/shop/pub), a confirmed
+  // town/servo, and dedicated water stops all have it. A planned MEAL alone does
+  // NOT — a self-catered eat at a bare spot has no water unless you've ticked
+  // "water here" on the eat event (s.waterHere). Safe by default.
+  const hasWater=s=>s.type==='water'||s.type==='food'||s.type==='shop'||s.type==='pub'||((s.type==='town'||s.type==='fuel')&&!!s.ohRaw)||!!s.waterHere;
 
   // Slot 1: always the next stop
   add(ahead[0],'type');
@@ -9009,9 +9021,11 @@ function buildLiveStrip(r,liveDist,sdt){
     }
   }
 
-  // Next water — only if closer than the nearest food source
-  const firstFoodDist=ahead.find(s=>hasFood(s))?.dist||Infinity;
-  const nextWater=ahead.find(s=>!seen.has(s.id)&&s.type==='water'&&s.dist<firstFoodDist);
+  // Next water — a DEDICATED water stop, always surfaced (never gated behind food)
+  // so you can always see where the next top-up is; it keeps its own WATER badge.
+  // Food outlets that also have water are flagged with a droplet on their own row
+  // (below), so a separate water row is only needed for an actual water stop.
+  const nextWater=ahead.find(s=>!seen.has(s.id)&&s.type==='water');
   if(nextWater)candidates.push({s:nextWater,reason:'type',displayName:null});
 
   // Sort candidates by distance and add up to 3 (giving max 4 rows total with slot 1)
@@ -9045,8 +9059,12 @@ function buildLiveStrip(r,liveDist,sdt){
     const needsHours=reason==='type'&&hoursTypes.has(s.type);
     const openBadge=needsHours?(st==='open'?'<span style="font-size:11px;color:var(--accent);margin-left:4px;">✓</span>':st==='closed'?'<span style="font-size:11px;color:var(--red);margin-left:4px;">✗</span>':'<span style="font-size:11px;color:var(--amber);margin-left:4px;">? hrs</span>'):'';
     const displayName=rowDisplayName[s.id]||s.name;
+    // Water droplet on any row where you can get water, EXCEPT a dedicated water
+    // stop (it already shows the WATER badge). So a café reads "EAT 💧", a
+    // self-catered eat with no water reads "EAT" (no droplet).
+    const waterTick=(hasWater(s)&&s.type!=='water')?' <span title="Water available here" style="color:#60a5fa;font-size:13px;vertical-align:-1px;">💧</span>':'';
     return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
-      <div class="live-next-icons">${icons}</div>
+      <div class="live-next-icons">${icons}${waterTick}</div>
       <div class="live-next-name">${displayName}${popBadge(s)}${openBadge}</div>
       <div class="live-next-in" style="flex-shrink:0;">${dt}km/${inStr||timeStr}</div>
     </div>`;
@@ -13111,6 +13129,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
             <div style="font-size:13px;color:#fbbf24;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ICON_FOOD} Food · ${s.name||'stop'}</div>
             <button class="btn btn-sm food-close" title="Close" style="flex-shrink:0;">✕</button>
           </div>
+          ${(()=>{const waterImplied=s.type==='water'||s.type==='food'||s.type==='shop'||s.type==='pub'||((s.type==='town'||s.type==='fuel')&&!!s.ohRaw);return waterImplied?'':`<label style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text2);cursor:pointer;padding:2px 2px 6px;"><input type="checkbox" class="food-water-here"${s.waterHere?' checked':''} style="width:16px;height:16px;accent-color:#60a5fa;cursor:pointer;">💧 Water available here (tick if you can refill)</label>`;})()}
           ${entries.map((en,i)=>{
             const m=en.m;
             return `<div class="food-item" style="display:flex;flex-direction:column;gap:4px;padding:6px 8px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:6px;">
@@ -13164,6 +13183,8 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         picker.querySelectorAll('.food-dur').forEach(inp=>inp.addEventListener('input',ev=>{
           const en=entries[+inp.dataset.i];en.st.meals[en.mi].durationMin=+inp.value||20;
         }));
+        const waterCb=picker.querySelector('.food-water-here');
+        if(waterCb)waterCb.addEventListener('change',ev=>{ if(waterCb.checked)s.waterHere=true; else delete s.waterHere; });
         picker.querySelector('.food-add-meal').addEventListener('click',ev=>{
           ev.stopPropagation();
           s.meals.push({type:'meal',name:'',source:'start',durationMin:20});

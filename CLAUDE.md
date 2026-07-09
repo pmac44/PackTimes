@@ -15,6 +15,33 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v220)
+
+**v220 (10 Jul 2026) — always-visible next water + "water here?" for self-catered
+eats.** Peter's point: a food outlet has water, EXCEPT a self-catered eat at a bare
+spot (bring-your-own lunch) — food but maybe no water; default to safety. Built in
+`buildLiveStrip`: new `hasWater(s)` = water stop / food outlet (food/shop/pub) /
+confirmed town or servo (ohRaw) / `s.waterHere` — a planned MEAL alone does NOT
+imply water. Next-water row now always shows the next dedicated water stop (removed
+the "closer than food" gate); it keeps its own WATER badge. Every other row that
+has water gets a small 💧 droplet after its badge (café reads "EAT 💧"; self-catered
+eat reads "EAT" with no droplet) — keeps Peter's coloured badges, adds the water
+info he wanted. New stop flag `s.waterHere` (bool, default off) set by a "💧 Water
+available here" checkbox in the food picker, shown ONLY when water isn't already
+implied (i.e. for manual/bare-town eat spots). Verified via node truth-table.
+
+## Current status (10 July 2026, v219)
+
+**v219 (10 Jul 2026) — planned meals outrank the stop's type on the Ride strip.**
+Peter (from a sim): a town where he'd planned to eat showed "EAT" while it was the
+food candidate, but flipped to "TOWN" the moment it became the next stop — the meal
+vanished exactly on arrival. Fix in `liveStripIcons`: `effectiveType` now =
+sleep (if a sleep stop) → else meal (if the stop has planned `meals`, or is surfaced
+for the food reason, and isn't itself food/shop) → else the raw type. So a planned
+meal reads EAT everywhere; sleep still wins for overnighters; cafés stay FOOD; a
+bare town stays TOWN. Still open with Peter: always-visible next-water hierarchy,
+and whether to split OSM place=village/hamlet from town (pop is already shown).
+
 ## Current status (10 July 2026, v218)
 
 **v218 (10 Jul 2026) — route-format order standardised to FIT · TCX · GPX · KML.**
@@ -441,6 +468,8 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
   ohRaw: string,           // OSM opening-hours source
   ohRules: [{days:Set, ...}],   // parsed; Sets are restored on load
   starred: bool,
+  waterHere: bool,         // v220: user-confirmed water at an otherwise water-uncertain eat spot (self-catered). Default off (safe). Drives the strip's hasWater + 💧 droplet.
+  meals: [{type:'meal'|'snack', name, source, when:'before'|'after', durationMin}],  // planned eat events
 }
 ```
 
