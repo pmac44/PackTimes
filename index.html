@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v210';
+window.APP_VERSION='v211';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1075,6 +1075,7 @@ function parseFIT(buf){
   const localMsgDefs={};
   let i=headerSize; // skip file header
   const raw=[];
+  const rawCP=[];   // course_point (turn cue) messages — RWGPS/Komoot FIT Courses carry these
   let hasTS=false;
   const FIT_EPOCH=631065600; // seconds between Unix epoch and FIT epoch (Dec 31 1989)
 
@@ -1111,30 +1112,48 @@ function parseFIT(buf){
       i++; // header
       const def=localMsgDefs[localNum];
       if(!def){break;} // malformed
-      let lat=null,lon=null,ele=null,ts=null;
+      const g=def.globalMsgNum;
+      let lat=null,lon=null,ele=null,ts=null;              // record (g=20) fields
+      let cpLat=null,cpLon=null,cpType=null,cpName=null;   // course_point (g=32) fields
       let offset=i;
       def.fields.forEach(f=>{
         const be=f.bigEndian;
-        if(f.fieldDef===0&&f.size===4){ // position_lat
-          const v=be?view.getInt32(offset,false):view.getInt32(offset,true);
-          if(v!==0x7FFFFFFF)lat=v*SEMICIRCLES;
-        } else if(f.fieldDef===1&&f.size===4){ // position_long
-          const v=be?view.getInt32(offset,false):view.getInt32(offset,true);
-          if(v!==0x7FFFFFFF)lon=v*SEMICIRCLES;
-        } else if(f.fieldDef===2&&f.size===2){ // altitude (units: 5m, offset 500)
-          const v=be?view.getUint16(offset,false):view.getUint16(offset,true);
-          if(v!==0xFFFF)ele=(v/5)-500;
-        } else if(f.fieldDef===253&&f.size===4){ // timestamp
-          const v=be?view.getUint32(offset,false):view.getUint32(offset,true);
-          if(v!==0xFFFFFFFF)ts=new Date((v+FIT_EPOCH)*1000);
+        if(g===20){
+          if(f.fieldDef===0&&f.size===4){ // position_lat
+            const v=be?view.getInt32(offset,false):view.getInt32(offset,true);
+            if(v!==0x7FFFFFFF)lat=v*SEMICIRCLES;
+          } else if(f.fieldDef===1&&f.size===4){ // position_long
+            const v=be?view.getInt32(offset,false):view.getInt32(offset,true);
+            if(v!==0x7FFFFFFF)lon=v*SEMICIRCLES;
+          } else if(f.fieldDef===2&&f.size===2){ // altitude (units: 5m, offset 500)
+            const v=be?view.getUint16(offset,false):view.getUint16(offset,true);
+            if(v!==0xFFFF)ele=(v/5)-500;
+          } else if(f.fieldDef===253&&f.size===4){ // timestamp
+            const v=be?view.getUint32(offset,false):view.getUint32(offset,true);
+            if(v!==0xFFFFFFFF)ts=new Date((v+FIT_EPOCH)*1000);
+          }
+        } else if(g===32){ // course_point: 2=lat, 3=lon, 5=type(enum), 6=name(string)
+          if(f.fieldDef===2&&f.size===4){
+            const v=be?view.getInt32(offset,false):view.getInt32(offset,true);
+            if(v!==0x7FFFFFFF)cpLat=v*SEMICIRCLES;
+          } else if(f.fieldDef===3&&f.size===4){
+            const v=be?view.getInt32(offset,false):view.getInt32(offset,true);
+            if(v!==0x7FFFFFFF)cpLon=v*SEMICIRCLES;
+          } else if(f.fieldDef===5&&f.size===1){
+            const v=bytes[offset];if(v!==0xFF)cpType=v;
+          } else if(f.fieldDef===6){ // name string (null-terminated within the field)
+            let s='';for(let k=0;k<f.size;k++){const c=bytes[offset+k];if(c===0||c===0xFF)break;s+=String.fromCharCode(c);}
+            cpName=s.trim();
+          }
         }
         offset+=f.size;
       });
       i=offset;
-      // Only record messages (globalMsgNum=20) with position data
-      if(def.globalMsgNum===20&&lat!==null&&lon!==null){
+      if(g===20&&lat!==null&&lon!==null){ // record message with position
         if(ts)hasTS=true;
         raw.push({lat,lon,ele:ele||0,time:ts});
+      } else if(g===32&&cpLat!==null&&cpLon!==null&&cpType!==null){ // turn cue
+        rawCP.push({lat:cpLat,lon:cpLon,type:cpType,name:cpName||''});
       }
     }
   }
@@ -1146,7 +1165,22 @@ function parseFIT(buf){
   }
   let dist=0;
   const pts=deduped.map((p,j)=>{if(j>0)dist+=hav(deduped[j-1],p);return{...p,dist};});
-  return{pts,hasTS,name:null,turns:[]};
+  // Turn cues from course_point messages (RWGPS/Komoot FIT Courses). Map FIT's
+  // turn-type enum to PackTimes' base types (Left/Right/Straight/U turn) so the
+  // existing map/arrow/beep code works, keeping the slight/sharp/fork detail in
+  // notes. Non-navigation course points (start/end markers, POIs) are skipped.
+  const CP_TURN={6:['Left',''],7:['Right',''],8:['Straight',''],16:['Left','Left fork'],17:['Right','Right fork'],18:['Straight','Middle fork'],19:['Left','Slight left'],20:['Left','Sharp left'],21:['Right','Slight right'],22:['Right','Sharp right'],23:['U turn','']};
+  const turns=[];
+  rawCP.forEach(cp=>{
+    const m=CP_TURN[cp.type];
+    if(!m)return;
+    // Snap to nearest route point for a route-aligned distance (as the TCX parser does)
+    let best={d:Infinity,dist:0};
+    for(const p of pts){const d=(p.lat-cp.lat)**2+(p.lon-cp.lon)**2;if(d<best.d){best={d,dist:p.dist};}}
+    turns.push({lat:cp.lat,lon:cp.lon,dist:best.dist,type:m[0],name:cp.name,notes:m[1],auto:false});
+  });
+  turns.sort((a,b)=>a.dist-b.dist);
+  return{pts,hasTS,name:null,turns};
 }
 function hav(a,b){
   const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLon=(b.lon-a.lon)*Math.PI/180;
@@ -9741,14 +9775,14 @@ function showTurnHelp(){
   const p=t=>`<p style="color:var(--text3);font-size:13px;line-height:1.5;margin:0 0 10px;">${t}</p>`;
   const body=
     p('Turn cues are what let your phone wake and beep just before a turn, so you\'re not forever switching the screen on to check. How good they are comes down entirely to your route file.')
-    +hd('TCX — real turn cues')
-    +p('A TCX file (export one from RideWithGPS or Komoot) carries proper turn instructions: each knows its spot, its direction — left or right — and often the street name, straight from the router that planned the route. These are reliable, and PackTimes uses them as they are.')
-    +hd('GPX — no turns')
-    +p('A GPX is just the line on the map — it holds no turn instructions at all. PackTimes can estimate turns from the shape of the track, but it\'s guesswork: it can miss a turn, invent one on a bend, or get left/right muddled. Useful in a pinch, not something to rely on for navigation.')
+    +hd('FIT or TCX — real turn cues')
+    +p('A FIT Course or TCX Course (export one from RideWithGPS or Komoot) carries proper turn instructions: each knows its spot, its direction — left or right — and often the street name, straight from the router that planned the route. PackTimes reads them directly. FIT is the pick: it holds the same turns (a touch finer — it tells slight from sharp) in a much smaller file.')
+    +hd('GPX or KML — no turns')
+    +p('A GPX or KML is just the line on the map — no turn instructions at all. PackTimes can estimate turns from the shape of the track, but it\'s guesswork: it can miss a turn, invent one on a bend, or get left/right muddled. Useful in a pinch, not something to rely on for navigation.')
     +p('That\'s why guessed turns aren\'t created automatically — you generate them yourself here when you want them, then review and tidy them before a ride.')
     +hd('What about file size?')
-    +p('A TCX is bigger than the same route as a GPX — roughly two to three times — but that\'s just the format being wordier, not the turns (the cues themselves are tiny). Even a 2,000 km route is only a couple of megabytes, so there\'s no real cost to choosing TCX.')
-    +p('Bottom line: if you want your phone to wake you on turns, export your route as a TCX.');
+    +p('FIT is by far the smallest (it\'s a binary format) — often around ten times smaller than the same route as a TCX, which is wordy text. So FIT gives you the best of both: real turn cues in the smallest file. Either way, even a 2,000 km route is only a couple of megabytes at most.')
+    +p('Bottom line: for turn alerts, export a FIT Course (or a TCX Course) from RideWithGPS or Komoot.');
   const ov=document.createElement('div');
   ov.id='turn-help-ov';
   ov.style.cssText='position:fixed;inset:0;z-index:10010;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
@@ -10259,9 +10293,9 @@ function _helloDetailHTML(){
   return`<div style="display:flex;flex-direction:column;gap:14px;">
     <div>
       <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
-      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RideWithGPS, Komoot, Strava or Garmin Connect — GPX, TCX, KML and FIT are all supported. For the best experience, export a <strong>TCX Course</strong>: RideWithGPS and Komoot bake real turn cues (from the road network) into it, and PackTimes uses them directly for audio turn alerts on the ride.</p>
-      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">One thing to watch: export the planned <em>route</em>, not a recorded <em>ride</em>. RideWithGPS, for example, offers both a "TCX Course" (the route you want) and a "TCX History" (a recording of an actual ride). A recording — or a GPX saved from a finished Strava activity — stores every GPS point you logged, so it's a far bigger file, packed with the wobble of a real trace rather than clean route points and turns.</p>
-      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">On size, a planned-route file is small whatever the format — FIT is the most compact (it's binary), while GPX, TCX and KML are text and a little larger. A file only balloons if you export a recording instead of a route. Turn cues, though, come only from TCX — a GPX, FIT or KML arrives with none (you can estimate them in Turn Review, but that's guesswork), which is why a plain GPX is really a fallback rather than the ideal.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RideWithGPS, Komoot, Strava or Garmin Connect — GPX, TCX, KML and FIT are all supported. For the best experience, export a <strong>FIT Course</strong>: it carries the full turn-by-turn cues (from the road network) that PackTimes beeps you on, and it's by far the smallest file. A <strong>TCX Course</strong> is just as good for turns — it's simply a much larger file.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">One thing to watch: export the planned <em>route</em>, not a recorded <em>ride</em>. RideWithGPS, for example, offers both a "Course" export (the route you want) and a "History" export (a recording of an actual ride). A recording — or a GPX saved from a finished Strava activity — stores every GPS point you logged, so it's a far bigger file, packed with the wobble of a real trace rather than clean route points and turns.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">On size, FIT is by far the most compact (it's binary) — in testing, over ten times smaller than the same route as a TCX, which is wordy text. GPX and KML sit in between but carry no turns at all, so they're a fallback (you can estimate turns from the track in Turn Review, but that's guesswork). A file only truly balloons if you export a recording instead of a route.</p>
       <p style="font-size:15px;color:var(--text2);line-height:1.6;">PackTimes works out your ride time from distance and elevation, using a formula calibrated against real bikepacking data — more reliable than the timestamps inside exported files, which often encode unrealistic speeds. Apps like RideWithGPS and Strava can predict your personal time well, but that accuracy lives on their servers and isn't in the file, so PackTimes doesn't lean on it.</p>
     </div>
     <div style="border-top:1px solid var(--border);"></div>
@@ -10288,10 +10322,10 @@ function _helloContentHTML(){
     <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
     <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;">
       ${[
-        ['Route','Load a route file (GPX, TCX, KML or FIT). For turn alerts a TCX is best — exported from RideWithGPS or Komoot it carries real turn cues PackTimes can beep you on. A GPX has no turns (you can estimate them in Turn Review). Already loaded a GPX? You\'re not stuck — just re-import the TCX version any time'],
+        ['Route','Load a route file (GPX, TCX, KML or FIT). For turn alerts, export a FIT or TCX Course from RideWithGPS or Komoot — it carries real turn cues PackTimes beeps you on (FIT is smallest). A GPX has no turns (you can estimate them in Turn Review). Already loaded a GPX? You\'re not stuck — just re-import the FIT or TCX version any time'],
         ['Plan','Search OpenStreetMap for stops along the route, or add your own — star the ones you want on your Mission, add sleep and food to build your supply plan'],
         ['Night','The route line turns black where you\'ll be riding in the dark — add a sleep stop to make it blue again, or turn on your lights!'],
-        ['Ride','Live GPS map with upcoming stops, arrival times, and turn alerts. A TCX brings real turn cues; a GPX has none, but you can generate estimated turns in Turn Review (tap the turns button on the route) before riding'],
+        ['Ride','Live GPS map with upcoming stops, arrival times, and turn alerts. A FIT or TCX Course brings real turn cues; a GPX has none, but you can generate estimated turns in Turn Review (tap the turns button on the route) before riding'],
         ['Data','Weather updates and data from connected sensors such as power and heart rate are visible as you ride'],
       ].map(([label,text])=>`
         <div style="display:flex;gap:8px;align-items:baseline;">

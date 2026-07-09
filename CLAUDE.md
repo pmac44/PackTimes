@@ -15,6 +15,20 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v211)
+
+**v211 (9 Jul 2026) — FIT Course turn import (FIT is now the recommended format).**
+`parseFIT` now reads `course_point` messages (global msg 32: fields 2=lat, 3=lon,
+5=type enum, 6=name) alongside records (msg 20), maps FIT's turn-type enum to
+PackTimes base types (6→Left, 7→Right, 8→Straight, 19/20→Left +slight/sharp note,
+21/22→Right, 16/17→fork, 23→U turn; non-nav points like start/end skipped), snaps
+each to the nearest route point for a route-aligned dist (as the TCX parser does).
+Verified end-to-end against Peter's real RWGPS export (Grenfell 302 km): 124 turns,
+correct L/R/slight/sharp breakdown, and the FIT is ~15× smaller than the TCX (103 KB
+vs 1.5 MB) with even finer turn typing. All turn help copy (hello Route/Ride lines,
+`_helloDetailHTML`, `showTurnHelp`) rewritten to lead with FIT Course as best
+(smallest + full turns); TCX still fine, GPX/KML are the no-turns fallback.
+
 ## Current status (9 July 2026, v210)
 
 **v210 (9 Jul 2026) — "Your route file" detailed help rewritten (Peter's format
