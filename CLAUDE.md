@@ -15,7 +15,47 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (9 July 2026, v214)
+## Current status (10 July 2026, v216)
+
+**v216 (10 Jul 2026) — before/after-sleep is decided by the LABEL, not pin geometry.**
+Follow-up to v215. Peter's Grenfell case has a food pin that sits just *before* the
+motel on the route; v215's finish engine (`etaAt`) still inferred before/after from
+distance order, so a breakfast marked "after" on that pin was wrongly cancelled into
+the open-ended sleep instead of adding after wake. Fix: new `_clusterMealInfo(r)` +
+`_mealSplit(s,hasSleep,info)` (by `sleepHoursFor`/`totalMealHours`). For a town cluster
+with exactly ONE sleep, every meal in it is folded onto the sleep stop by its
+before/after LABEL and the other pins are skipped (no double count); towns with no
+sleep, or >1 sleep, keep per-stop behaviour. Wired into the **pure-planning branch**
+of `etaAt` only (the branch every plan — incl. future-dated + the simulator — uses).
+The three live-GPS/recorded branches are deliberately untouched: they anchor to real
+arrival times mid-ride, and folding passed-but-not-yet-eaten meals onto a sleep there
+would double-count. Verified via node: dinner-before + breakfast-after gives the same
+finish whether the cafe pin is before OR after the motel (20.99h), matches all-on-one-
+pin, and a no-sleep town just adds both meals (1.5h). Rule now holds: before-sleep meal
+comes out of an open (wake-time) sleep = no change to finish; after-sleep meal adds
+after wake = pushes the finish later. Not yet phone-tested by Peter.
+
+## Current status (10 July 2026, v215)
+
+**v215 (10 Jul 2026) — town is the cluster "bucket" + before/after-sleep food works
+across the whole town.** Peter's overnighter case: dinner at the town, sleep at the
+motel, breakfast at a cafe — three separate pins. Two problems fixed. (1) The mission
+sleep tile was titled after the *sleep pin* ("Bivi at Grenfell Motel") with the town
+as a mere chip; now a sleep cluster builds ONE node titled after the **town**, with
+the motel + food inside it (`tPlan` node-building ~`clusters.forEach`: `townStop`,
+`nodeName`, `clusterAll`, town dropped from chips, `node.dist`=cluster entry so arrival
+isn't double-counted; pop badge reads `node.clusterAll`). (2) The food picker's
+Before/After-sleep toggle was gated on the *same pin* having sleep, so breakfast at a
+cafe couldn't be marked "after". New `clusterHasSleep(r,stop)` (+ shared `isSleepStop`)
+makes the toggle appear for food on ANY pin in a town that contains a sleep. The sleep
+tile's display + `departEta` now aggregate before/after meals across the whole cluster
+(`node.clusterAll.stops.flatMap`), and the sleep-tile edit list shows every pin in town
+with its own food button. Finish time is untouched (etaAt unchanged — every meal was
+already counted once); only the intermediate wake/depart split and titling change.
+Verified via node against the Grenfell numbers (arrive 16:16 → sleep 13.7h → wake 07:00
+→ breakfast 60min → depart 08:00, dinner & breakfast on separate pins). Known minor
+limit: two sleep pins in one town shows the first as primary, the rest as chips. Not
+yet phone-tested by Peter.
 
 **v214 (9 Jul 2026) — "next food" on the Ride strip fixed (bare towns no longer
 masquerade as food).** Peter: on the sim, "next food" vanished — a town coming up

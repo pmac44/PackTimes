@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v214';
+window.APP_VERSION='v216';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1780,6 +1780,37 @@ function totalMealHours(r){
   return r.stops.filter(s=>s.meals&&s.meals.length)
     .reduce((a,s)=>a+s.meals.filter(m=>m.source!=='here-carry').reduce((b,m)=>b+(m.durationMin||20)/60,0),0);
 }
+// Sleep-cluster meal accounting (v216): inside a town that has exactly ONE sleep, a
+// meal's before/after-sleep LABEL is the boss — NOT where its pin sits on the route.
+// So breakfast at a cafe pinned just *before* the motel still lands AFTER the night,
+// and dinner in town (before) comes out of an open-ended (wake-time) sleep. We fold
+// every meal in such a cluster onto its sleep stop and skip the other pins so nothing
+// is counted twice. Towns with no sleep, or with >1 sleep, keep per-stop behaviour.
+function _clusterMealInfo(r){
+  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||(s.type==='stop')||(s.sleepAt));
+  const clusters=clusterStops(planStops);
+  const agg={},skip={};
+  const sum=(st,before)=>(st.meals||[]).filter(before?(m=>m.when==='before'||!m.when):(m=>m.when==='after')).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+  clusters.forEach(cl=>{
+    const sleeps=cl.stops.filter(isSleepStop);
+    if(sleeps.length!==1)return;
+    const sleep=sleeps[0];
+    let beforeH=0,afterH=0;
+    cl.stops.forEach(st=>{beforeH+=sum(st,true);afterH+=sum(st,false);if(st!==sleep&&st.meals&&st.meals.length)skip[st.id]=1;});
+    agg[sleep.id]={beforeH,afterH};
+  });
+  return{agg,skip};
+}
+// Meal hours contributed AT this stop, honouring the cluster model above.
+function _mealSplit(s,hasSleep,info){
+  if(info){
+    if(hasSleep&&info.agg[s.id])return{before:info.agg[s.id].beforeH,after:info.agg[s.id].afterH};
+    if(!hasSleep&&info.skip[s.id])return{before:0,after:0};
+  }
+  const before=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+  const after=hasSleep?(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0):0;
+  return{before,after};
+}
 
 function etaAt(distKm,r){
   if(!r||!r.points.length)return null;
@@ -1994,12 +2025,15 @@ function etaAt(distKm,r){
     hrs=targetTotal*(distKm/r.totalDist);
   }
   let sleepOffset=0;
+  // Fold each single-sleep town's meals onto its sleep stop by LABEL, so before/after
+  // no longer depends on where the cafe/motel pins fall along the route (v216).
+  const _cmi=_clusterMealInfo(r);
   const sortedStops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist<distKm)
     .sort((a,b)=>a.dist-b.dist);
   sortedStops.forEach(s=>{
     const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
-    const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
-    sleepOffset+=beforeMealH;
+    const _ms=_mealSplit(s,hasSleep,_cmi);
+    sleepOffset+=_ms.before;
     if(hasSleep){
       if(s.departTime){
         let rideHrsToStop;
@@ -2012,8 +2046,7 @@ function etaAt(distKm,r){
         sleepOffset+=s.sleepH||(s.type==='stop'?0.25:10);
       }
     }
-    const afterMealH=hasSleep?(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0):0;
-    sleepOffset+=afterMealH;
+    sleepOffset+=_ms.after;
   });
   hrs+=sleepOffset;
   return new Date(base.getTime()+hrs*3600000);
@@ -10970,6 +11003,17 @@ function typeIcons(types){
   return types.map(t=>m[t]||'📍').join('');
 }
 
+// Does the town cluster that this stop belongs to contain a sleep anywhere?
+// Used so food on ANY pin in a sleeping town (e.g. breakfast at a cafe) can be
+// marked before/after that night's sleep, not just food on the sleep pin itself.
+function isSleepStop(s){return s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;}
+function clusterHasSleep(r,stop){
+  if(isSleepStop(stop))return true;
+  const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||(s.type==='stop')||(s.sleepAt));
+  const cl=clusterStops(planStops).find(c=>c.stops.some(s=>String(s.id)===String(stop.id)));
+  return !!(cl&&cl.stops.some(isSleepStop));
+}
+
 // Build a stop chip for the cluster detail (avoids nested template literals)
 function stopChip(s,r){
   const stOpen=s.ohRules?shopSt(s,r):'';
@@ -11495,18 +11539,25 @@ function tPlan(r){
     const sleepStops=cl.stops.filter(s=>s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt);
     const nonSleepStops=cl.stops.filter(s=>s.type!=='sleep'&&!(s.type==='stop'&&(s.sleepAt||s.sleepH))&&!s.sleepAt);
     if(sleepStops.length){
-      const chipStops=nonSleepStops;
+      // Town-bucket model: the cluster (town) IS the tile; the sleep pin and any
+      // food sit inside it. Title = the town name when the cluster has one, else
+      // the bivi/motel stop. The town pin itself becomes the title, so it's dropped
+      // from the chips to avoid showing "Grenfell" twice.
+      const townStop=cl.stops.find(s=>s.type==='town');
+      const head=sleepStops[0]; // primary sleep (the motel / bivi)
+      const extraSleep=sleepStops.slice(1); // rare: a second sleep pin in the same town
+      const chipStops=nonSleepStops.filter(s=>s!==townStop).concat(extraSleep);
       const chipCluster=chipStops.length?{...cl,stops:chipStops}:null;
       const clHasWater=cl.stops.some(isWaterSrc);
-      sleepStops.forEach((head,i)=>{
-        nodeList.push({
-          name:head.sleepAt?'Bivi at '+head.name:head.name,
-          dist:head.dist,distEnd:head.dist,
-          cluster:i===0?chipCluster:null, // chips only on first sleep node
-          isStart:false,isSleep:true,sleepStop:head,
-          hasFood:head.meals&&head.meals.length>0,
-          hasWater:clHasWater
-        });
+      const nodeName=townStop?townStop.name:(head.sleepAt?'Bivi at '+head.name:head.name);
+      nodeList.push({
+        name:nodeName,
+        dist:cl.stops[0].dist,distEnd:cl.stops[cl.stops.length-1].dist,
+        cluster:chipCluster,
+        clusterAll:cl, // full cluster (incl. sleep) — used for meal aggregation
+        isStart:false,isSleep:true,sleepStop:head,
+        hasFood:cl.stops.some(s=>s.meals&&s.meals.length>0),
+        hasWater:clHasWater
       });
     } else if(nonSleepStops.length){
       const cl2={...cl,stops:nonSleepStops};
@@ -11610,8 +11661,12 @@ function tPlan(r){
     let sleepDiv='';
     if(isSleep&&node.sleepStop){
       const s=node.sleepStop;
-      const beforeMeals=(s.meals||[]).filter(m=>m.when==='before'||!m.when);
-      const afterMeals=(s.meals||[]).filter(m=>m.when==='after');
+      // Meals are gathered from the WHOLE town cluster, not just the sleep pin, so a
+      // dinner pinned to the town and a breakfast pinned to a cafe both sit around
+      // this night's sleep (before / after) correctly.
+      const clMeals=(node.clusterAll?node.clusterAll.stops:[s]).flatMap(st=>st.meals||[]);
+      const beforeMeals=clMeals.filter(m=>m.when==='before'||!m.when);
+      const afterMeals=clMeals.filter(m=>m.when==='after');
       const beforeMealH=beforeMeals.reduce((a,m)=>a+(m.durationMin||20)/60,0);
       const afterMealH=afterMeals.reduce((a,m)=>a+(m.durationMin||20)/60,0);
       const arrivalWithMeals=eta&&beforeMealH>0?new Date(eta.getTime()+beforeMealH*3600000):eta;
@@ -11657,7 +11712,7 @@ function tPlan(r){
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
         +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
-            +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+(node.cluster?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.cluster)):'')+'</div>'
+            +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+((node.clusterAll||node.cluster)?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.clusterAll||node.cluster)):'')+'</div>'
             +'<div style="font-size:18px;font-weight:500;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km</div>'
             +(node.isStart?
               '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">'
@@ -11705,23 +11760,31 @@ function tPlan(r){
           +'</div>';
         })():'')
         +(isSleep?sleepDiv
-          // Edit mode for sleep tile
+          // Edit mode for sleep tile — list every pin in the town so food can be
+          // assigned to the town, a cafe, etc. (each gets the before/after-sleep toggle).
           +(node.sleepStop&&UI.planEditCluster===node.sleepStop.id?(()=>{
-            const s=node.sleepStop;
-            const warnings=[];
-            if(s.meals&&s.meals.length)warnings.push(s.meals.length+' food item'+(s.meals.length>1?'s':''));
-            return'<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">'
-              +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:5px;">'
-                +'<div style="flex:1;min-width:0;">'
-                  +'<div style="font-size:15px;font-weight:600;color:var(--text);">'+s.name+'</div>'
-                  +(warnings.length?'<div style="font-size:12px;color:var(--text3);">has: '+warnings.join(', ')+'</div>':'')
-                +'</div>'
-                +'<div style="display:flex;gap:4px;flex-shrink:0;">'
-                  +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85);" title="Edit stop">'+ICON_EDIT+'</button>'
-                  +'<button class="no-cluster-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 8px;display:flex;align-items:center;justify-content:center;border:1px solid '+(s.noCluster?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.22)')+';color:'+(s.noCluster?'#fbbf24':'rgba(255,255,255,0.85)')+';font-size:12px;font-family:var(--font);" title="'+(s.noCluster?'Re-join cluster':'Split from cluster')+'">'+(s.noCluster?'⊞ rejoin':'⊟ split')+'</button>'
-                  +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
-                +'</div>'
-              +'</div>'
+            const editStops=node.clusterAll?node.clusterAll.stops:[node.sleepStop];
+            const foodSvg='<svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>';
+            return'<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px;">'
+              +editStops.map(s=>{
+                const warnings=[];
+                if(s.meals&&s.meals.length)warnings.push(s.meals.length+' food item'+(s.meals.length>1?'s':''));
+                if(isSleepStop(s))warnings.push('sleep');
+                const foodBorder=s.meals&&s.meals.length?'rgba(251,191,36,0.6)':'rgba(255,255,255,0.22)';
+                const foodCol=s.meals&&s.meals.length?'#fbbf24':'rgba(255,255,255,0.85)';
+                return'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:5px;">'
+                  +'<div style="flex:1;min-width:0;">'
+                    +'<div style="font-size:15px;font-weight:600;color:var(--text);">'+s.name+'</div>'
+                    +(warnings.length?'<div style="font-size:12px;color:var(--text3);">has: '+warnings.join(', ')+'</div>':'')
+                  +'</div>'
+                  +'<div style="display:flex;gap:4px;flex-shrink:0;">'
+                    +'<button class="food-at-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid '+foodBorder+';border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:'+foodCol+';" title="Add food">'+foodSvg+'</button>'
+                    +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.85);" title="Edit stop">'+ICON_EDIT+'</button>'
+                    +'<button class="no-cluster-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 8px;display:flex;align-items:center;justify-content:center;border:1px solid '+(s.noCluster?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.22)')+';color:'+(s.noCluster?'#fbbf24':'rgba(255,255,255,0.85)')+';font-size:12px;font-family:var(--font);" title="'+(s.noCluster?'Re-join cluster':'Split from cluster')+'">'+(s.noCluster?'⊞ rejoin':'⊟ split')+'</button>'
+                    +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:rgba(10,15,10,0.85);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
+                  +'</div>'
+                +'</div>';
+              }).join('')
             +'</div>';
           })():'')
           +chipsDiv:chipsDiv+(()=>{
@@ -11747,8 +11810,11 @@ function tPlan(r){
       let departEta;
       if(isSleep&&node.sleepStop&&eta){
         const s=node.sleepStop;
-        const beforeMealH=(s.meals||[]).filter(m=>m.when==='before'||!m.when).reduce((a,m)=>a+(m.durationMin||20)/60,0);
-        const afterMealH=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+        // Aggregate meals across the whole town cluster (matches the sleep display),
+        // so the next leg's ride time isn't padded by in-town eating.
+        const clMeals=(node.clusterAll?node.clusterAll.stops:[s]).flatMap(st=>st.meals||[]);
+        const beforeMealH=clMeals.filter(m=>m.when==='before'||!m.when).reduce((a,m)=>a+(m.durationMin||20)/60,0);
+        const afterMealH=clMeals.filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
         const arrivalWithMeals=beforeMealH>0?new Date(eta.getTime()+beforeMealH*3600000):eta;
         const hrs=sleepHoursFor(s,arrivalWithMeals);
         const wake=new Date(arrivalWithMeals.getTime()+hrs*3600000);
@@ -13024,7 +13090,9 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         else s.starred=true; // auto-star if food assigned
         overlay.remove();saveAll();renderKeepScroll();
       };
-      const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+      // Cluster-aware: show Before/After sleep on any pin in a town that has a sleep,
+      // so breakfast at a cafe (a different pin from the motel) can sit after the night.
+      const hasSleep=clusterHasSleep(r,s);
       const renderPicker=()=>{
         picker.innerHTML=`
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px;">
