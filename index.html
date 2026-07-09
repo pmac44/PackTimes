@@ -566,6 +566,7 @@ select option{background:var(--bg3);}
         <select id="rsm-surface">
           <option value="road">Sealed road</option>
           <option value="grade2">Gravel / dirt road</option>
+          <option value="single">Singletrack</option>
           <option value="grade4">Rough track / hike-a-bike</option>
         </select>
       </div>
@@ -737,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v194';
+window.APP_VERSION='v195';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -750,6 +751,7 @@ const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
   calibRides:[],   // Advanced Calibration sample rides — global (rider property, not route)
   estModeAdv:false, // Basic vs Advanced estimation — global (rider property, not route); syncs via plan.json
+  fatigueMode:'off', // Optional fatigue model: off|mild|moderate|strong — global rider setting
   ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
@@ -830,7 +832,7 @@ async function saveAll(){
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -874,6 +876,7 @@ async function loadAll(){
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
       if(Array.isArray(prefs.calibRides))UI.calibRides=prefs.calibRides;
       if(prefs.estModeAdv!==undefined)UI.estModeAdv=prefs.estModeAdv;
+      if(prefs.fatigueMode)UI.fatigueMode=prefs.fatigueMode;
     }
     // Estimation mode is global (v166). Older versions stored it per-route as
     // riderPreset='custom' — if the pref was never saved, infer it from the routes
@@ -1340,6 +1343,40 @@ const LOAD_MULT={
   heavy:   {vam:0.85,spd:0.92}
 };
 
+// ─── Fatigue model (optional, opt-in) ───────────────────────────────────────
+// Two independent slowdowns layered on MOVING pace, off by default:
+//  • circadian — pace dips through the early-morning trough (~23:00–05:00) even
+//    when well rested (research: night pace is slower regardless of sleep);
+//  • sleep-debt — pace decays once hours-since-last-sleep pass a fresh window,
+//    up to a capped slowdown, resetting at each sleep stop.
+// Both are multipliers ≥1 on segment time and compound. Grounded in
+// _planning/sleep-fatigue-research.md. Deliberately gentle — the huge real-world
+// slowdowns are sleep + heat + over-cooking stacked, not sleep alone.
+const FATIGUE_MODES={
+  off:      null,
+  mild:     {circ:0.05, cap:0.12, freshH:10, rampH:12},
+  moderate: {circ:0.08, cap:0.20, freshH:8,  rampH:12},
+  strong:   {circ:0.12, cap:0.30, freshH:6,  rampH:10},
+};
+function fatigueParams(){return FATIGUE_MODES[UI.fatigueMode]||null;}
+// Circadian shape 0..1: 0 in daytime (09:00–20:00), full through the deep night.
+function _circShape(h){
+  if(h>=23||h<5)return 1;
+  if(h>=20)return (h-20)/3;   // 20:00→23:00 : 0→1
+  if(h<9)return (9-h)/4;      // 05:00→09:00 : 1→0
+  return 0;                    // 09:00–20:00
+}
+// Combined moving-time multiplier (≥1) for a segment ridden at clock `hour`
+// (null → skip circadian if start time unknown) after `sinceSleepH` riding hours
+// since the last real sleep.
+function fatigueMult(p,hour,sinceSleepH){
+  if(!p)return 1;
+  let m=1;
+  if(hour!=null)m+=p.circ*_circShape(hour);
+  m+=p.cap*Math.min(1,Math.max(0,sinceSleepH-p.freshH)/p.rampH);
+  return m;
+}
+
 // ─── Advanced Calibration (sample rides → rider factor) ─────────────────────
 // UI.calibRides holds up to 3 real rides the user has done:
 //   {surface:'road'|'grade2'|'grade4', distKm, hours, elevM, load:'light'|'moderate'|'heavy'}
@@ -1455,6 +1492,17 @@ function buildCumRiding(pts,paceSegs,r){
     let sv=0;for(let k=lo;k<hi;k++)sv+=(pts[k].ele||0);
     sEle[i]=sv/(hi-lo);
   }
+  // Optional, opt-in fatigue model. When off (default) fp is null and this leaves
+  // cumRiding byte-identical. When on, moving pace is slowed by clock time
+  // (circadian) and hours-since-last-sleep (sleep-debt), tracked self-consistently
+  // forward; sleep stops reset the debt. Only organic riding is slowed — manual
+  // pace sections stay exactly as the user set them.
+  const fp=(r&&UI.fatigueMode&&UI.fatigueMode!=='off')?fatigueParams():null;
+  let fClock=null,fSince=0,fStops=null,fSi=0;
+  if(fp){
+    const sd=startDT(r);fClock=sd?sd.getTime():null;
+    fStops=(r.stops||[]).filter(s=>s.type==='sleep'||s.sleepAt||s.sleepH||(s.meals&&s.meals.length)).slice().sort((a,b)=>a.dist-b.dist);
+  }
   const out=[0];
   for(let i=1;i<pts.length;i++){
     const dx=hav(pts[i-1],pts[i]);
@@ -1468,8 +1516,24 @@ function buildCumRiding(pts,paceSegs,r){
       const dz=sEle[i]-sEle[i-1];
       const cat=surfaceCatAt(midDist,r)||'grade2';
       timeH=segTimeH(dx,dz,cat,rm,lm);
+      if(fp){
+        const hr=fClock!=null?(new Date(fClock).getHours()+new Date(fClock).getMinutes()/60):null;
+        timeH*=fatigueMult(fp,hr,fSince);
+      }
     }
     out.push(out[i-1]+timeH);
+    if(fp){
+      fSince+=timeH;
+      if(fClock!=null)fClock+=timeH*3600000;
+      while(fStops&&fSi<fStops.length&&fStops[fSi].dist<=pts[i].dist){
+        const s=fStops[fSi++];
+        const mealH=(s.meals||[]).filter(m=>m.source!=='here-carry').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+        const hasSleep=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&s.sleepH);
+        const sleepH=hasSleep?sleepHoursFor(s,fClock!=null?new Date(fClock):null):0;
+        if(fClock!=null)fClock+=(mealH+sleepH)*3600000;
+        if(hasSleep)fSince=0;
+      }
+    }
   }
   return out;
 }
@@ -3864,13 +3928,13 @@ function _recCalibAuto(rec){
   if(r.surfaceSegs && r.surfaceSegs.length){
     const MAP = {road: 'road', road_minor: 'road', grade1: 'grade2', grade2: 'grade2',
                  grade3: 'grade2', grade4: 'grade4', grade5: 'grade4', path: 'grade4',
-                 single: 'grade4', single_tech: 'grade4'};
-    const w = {road: 0, grade2: 0, grade4: 0};
+                 single: 'single', single_tech: 'grade4'};
+    const w = {road: 0, grade2: 0, grade4: 0, single: 0};
     for(const sg of r.surfaceSegs){
       const overlap = Math.min(hi, sg.toDist) - Math.max(lo, sg.fromDist);
       if(overlap > 0 && MAP[sg.cat]) w[MAP[sg.cat]] += overlap;
     }
-    const tagged = w.road + w.grade2 + w.grade4;
+    const tagged = w.road + w.grade2 + w.grade4 + w.single;
     if(tagged >= (hi - lo) * 0.5)
       surface = Object.keys(w).reduce((a, b) => w[a] >= w[b] ? a : b);
   }
@@ -3890,7 +3954,7 @@ function _recSaveShow(rec){
     (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(movH) + ' ride time (breaks over 15 min excluded)';
   document.getElementById('rsm-name').value = rec.name || _recDefaultName(rec);
   document.getElementById('rsm-calib').checked = true;
-  const surfLabels = {road: 'sealed road', grade2: 'gravel / dirt', grade4: 'rough track'};
+  const surfLabels = {road: 'sealed road', grade2: 'gravel / dirt', single: 'singletrack', grade4: 'rough track'};
   const autoEl = document.getElementById('rsm-auto');
   if(auto){
     autoEl.style.display = 'block';
@@ -7142,7 +7206,7 @@ function _calibUpdateFactors(){
 }
 function _calibRenderModal(){
   const wrap=document.getElementById('calib-rides-wrap');
-  const surfShort={road:'Sealed',grade2:'Gravel',grade4:'Rough'};
+  const surfShort={road:'Sealed',grade2:'Gravel',single:'Singletrack',grade4:'Rough'};
   const loadShort={light:'Light',moderate:'Moderate',heavy:'Heavy'};
   wrap.innerHTML=_calibDraft.map((d,i)=>{
     if(i!==_calibOpenIdx){
@@ -7173,6 +7237,7 @@ function _calibRenderModal(){
         <select onchange="_calibField(${i},'surface',this.value)">
           <option value="road" ${d.surface==='road'?'selected':''}>Sealed road</option>
           <option value="grade2" ${d.surface==='grade2'?'selected':''}>Gravel / dirt road</option>
+          <option value="single" ${d.surface==='single'?'selected':''}>Singletrack</option>
           <option value="grade4" ${d.surface==='grade4'?'selected':''}>Rough track / hike-a-bike</option>
         </select>
       </div>
@@ -7247,6 +7312,7 @@ function _speedSummaryHTML(r){
       <span>${riderLbl}</span><span style="color:var(--text3);">·</span>
       <span>${loadLbl} load</span><span style="color:var(--text3);">·</span>
       <span>Fine-tune ${r.timeFactor.toFixed(2)} ×</span>
+      ${UI.fatigueMode&&UI.fatigueMode!=='off'?`<span style="color:var(--text3);">·</span><span>Fatigue: ${UI.fatigueMode}</span>`:''}
     </div>
     ${r.adaptiveSpeed?'<div style="font-size:12px;color:var(--text3);margin-top:4px;">Adaptive Speed on — self-corrects during the ride</div>':''}`;
 }
@@ -7279,7 +7345,7 @@ function _speedControlsHTML(r){
   } else {
     const pct=Math.round(Math.abs(1-f)*100);
     const desc=f<0.98?`about ${pct}% faster than the Regular baseline`:(f>1.02?`about ${pct}% slower than the Regular baseline`:'right on the Regular baseline');
-    const surfLabels={road:'Sealed',grade2:'Gravel/dirt',grade4:'Rough'};
+    const surfLabels={road:'Sealed',grade2:'Gravel/dirt',single:'Singletrack',grade4:'Rough'};
     const rows=(UI.calibRides||[]).map(s=>{
       const rf=calibRideFactor(s);if(rf===null)return'';
       const hh=Math.floor(s.hours),mm=Math.round((s.hours-hh)*60);
@@ -7310,6 +7376,14 @@ function _speedControlsHTML(r){
             <span style="font-size:10px;color:var(--text3);white-space:normal;line-height:1.3;">${sub}</span>
           </button>`).join('')}
       </div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Fatigue</div>
+      <div style="display:flex;gap:6px;">
+        ${[['off','Off'],['mild','Mild'],['moderate','Moderate'],['strong','Strong']].map(([val,label])=>`
+          <button class="btn btn-sm" onclick="speedSetFatigue('${val}')" style="flex:1;justify-content:center;padding:6px 4px;font-size:13px;${(UI.fatigueMode||'off')===val?'border-color:var(--accent);color:var(--accent);':''}">${label}</button>`).join('')}
+      </div>
+      <p style="font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5;">Slows pace through the pre-dawn hours and as time piles up since your last proper sleep — resets when you sleep. Barely touches short rides; matters on long and multi-day plans. Leave Off unless you want it.</p>
     </div>
     <div style="margin-bottom:10px;">
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Manual Fine-Tune</div>
@@ -7367,6 +7441,13 @@ function speedSetLoad(val){
   const r=cur();if(!r)return;
   r.loadPreset=val;
   rebuildPace(r);saveAll();_speedRefresh();
+}
+function speedSetFatigue(mode){
+  if((UI.fatigueMode||'off')===mode)return;
+  UI.fatigueMode=mode;
+  // Global rider setting — every route's ETAs move with it
+  for(const rt of ROUTES)rebuildPace(rt);
+  saveAll();_speedRefresh();
 }
 function speedNudge(faster){
   const r=cur();if(!r||!r.estDuration)return;
