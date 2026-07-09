@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v211';
+window.APP_VERSION='v212';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -10397,6 +10397,12 @@ function tRoutes(r){
     <div style="display:flex;gap:6px;">
       <button class="btn btn-sm btn-p" id="btn-upload-route" style="flex:1;">↑ Upload GPX / TCX / KML / FIT</button>
       <button class="btn btn-sm" id="btn-new-plan" style="white-space:nowrap;" title="Start a plan with no route loaded — search an area and drop stops to scout a ride before you have a GPX">+ New Empty Plan</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);line-height:1.55;margin-top:6px;background:rgba(10,15,10,0.4);border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+      <div style="margin-bottom:2px;color:var(--text2);">Best file for turn alerts:</div>
+      <div><span style="color:var(--accent);font-weight:600;">1. FIT Course</span> — smallest file, with turns</div>
+      <div><span style="color:var(--text2);font-weight:600;">2. TCX Course</span> — also has turns, much bigger file</div>
+      <div>3. GPX / KML — no turns (you can estimate them in Turn Review)</div>
     </div>
     <button class="btn btn-sm btn-full" id="btn-open-ride-route" style="margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:7px;" title="Open a PackTimes ride file someone shared with you"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Open a shared ride file</button>
     <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">

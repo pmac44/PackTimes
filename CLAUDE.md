@@ -15,6 +15,14 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v212)
+
+**v212 (9 Jul 2026) — format-preference hint at the upload point.** Added a small
+ranked list in the route picker (`pickerBody`, under the upload button): 1. FIT
+Course (smallest + turns), 2. TCX Course (turns, bigger), 3. GPX/KML (no turns,
+estimate in Turn Review). Puts the recommendation at the moment of choosing an
+export, not just buried in the help.
+
 ## Current status (9 July 2026, v211)
 
 **v211 (9 Jul 2026) — FIT Course turn import (FIT is now the recommended format).**
