@@ -15,7 +15,38 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (9 July 2026, v200)
+## Current status (9 July 2026, v203)
+
+**v203 (9 Jul 2026) — fatigue recovery set to the textbook curve (τ=4.2h) +
+transparent popup.** Changed `FATIGUE_SLEEP_TAU_H` 2 → 4.2 (published two-process
+sleep-decay constant, Daan/Beersma/Borbély 1984): 1h nap recovers ~21%, 4h ~61%,
+8h ~85%. Peter's call after we worked through it — ~4h reads as the sustainable
+nightly minimum (matches multi-day-rider lore) and catnaps stay modest for PACE
+(their real job is fighting microsleep — safety, already covered by the >20h-awake
+warning, not pace restoration). A full night still lands inside the fresh window
+= effectively fresh, so well-slept plans are ~unchanged (verified: 8h sleep after
+16–24h awake → back under the 8h window). Popup rewritten to explain the method
+honestly (sleep-science curve, 4h floor, catnaps-for-safety, "guide not a
+precise promise"). Grounded in `_planning/sleep-fatigue-research.md`.
+
+**v202 (9 Jul 2026) — sleep recovery now scales with sleep length (diminishing
+returns).** Replaced the binary `if(hasSleep)fSince=0` with
+`fSince*=Math.exp(-sleepH/FATIGUE_SLEEP_TAU_H)` (τ=2h, new const by
+`FATIGUE_MODES`). Front-loaded recovery: 1h nap clears ~39%, 4h sleep ~86%
+(lands back inside the fresh window = effectively full, so realistic sleep plans
+behave as before — only short catnaps change, and now read slower/more honest).
+Grounded in the Borbély two-process homeostat. Popup copy updated to describe
+diminishing returns (the v201 "counts the same" caveat is gone). Existing routes
+pick it up automatically — `buildCumRiding` reruns on load.
+
+**v201 (9 Jul 2026) — fatigue popup notes the binary sleep reset (superseded by
+v202, which actually fixed it).** Documented a
+real limitation: in `buildCumRiding`, `if(hasSleep)fSince=0` resets the
+sleep-debt fully at ANY sleep stop regardless of length — a 15-min nap == a
+4-hour sleep for fatigue recovery (sleep length still shifts the clock/circadian
+timing, just not the debt reset). Added a line to `showFatigueHelp` warning that
+catnap-heavy plans read optimistic. Not fixed in code (partial nap recovery was
+in the research design but never built) — documented only, per Peter.
 
 **v200 (9 Jul 2026) — plain-English wording in the fatigue popup.** Replaced
 "the model" with "PackTimes" (Peter: "model"/"algorithm" read as jargon to a

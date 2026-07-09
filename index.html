@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v200';
+window.APP_VERSION='v203';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1358,6 +1358,17 @@ const FATIGUE_MODES={
   moderate: {circ:0.08, cap:0.20, freshH:8,  rampH:12},
   strong:   {circ:0.12, cap:0.30, freshH:6,  rampH:10},
 };
+// Sleep recovery is front-loaded — diminishing returns. The retained sleep-debt
+// after a sleep = exp(-sleepHours / τ), so the first hours clear the most and
+// more sleep past that adds less. τ=4.2h is the published two-process sleep-decay
+// constant (Daan/Beersma/Borbély 1984): a 1h nap recovers ~21%, 4h ~61%, 8h ~85%.
+// Chosen over a faster value so ~4h reads as the sustainable nightly minimum
+// (matches multi-day-rider lore) and catnaps stay modest for PACE — their real job
+// is fighting off microsleep, a safety thing flagged separately by the >20h-awake
+// warning, not a pace restorer. A full night still lands back inside the fresh
+// window = effectively fresh, so well-slept plans are ~unchanged; only short sleeps
+// read slower/more honest. See _planning/sleep-fatigue-research.md.
+const FATIGUE_SLEEP_TAU_H=4.2;
 function fatigueParams(){return FATIGUE_MODES[UI.fatigueMode]||null;}
 // Circadian shape 0..1: 0 in daytime (09:00–20:00), full through the deep night.
 function _circShape(h){
@@ -1546,7 +1557,10 @@ function buildCumRiding(pts,paceSegs,r){
         const hasSleep=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&s.sleepH);
         const sleepH=hasSleep?sleepHoursFor(s,fClock!=null?new Date(fClock):null):0;
         if(fClock!=null)fClock+=(mealH+sleepH)*3600000;
-        if(hasSleep)fSince=0;
+        // Partial, diminishing-returns recovery (τ=4.2h): a short nap barely
+        // dents the debt, ~4h clears most of it, a full night resets you. (A flat
+        // reset would wrongly treat a 15-min catnap like a night's sleep.)
+        if(hasSleep)fSince*=Math.exp(-sleepH/FATIGUE_SLEEP_TAU_H);
       }
     }
   }
@@ -7516,13 +7530,17 @@ function showFatigueHelp(){
   const p=t=>`<p style="color:var(--text3);font-size:13px;line-height:1.5;margin:0 0 10px;">${t}</p>`;
   const li=(a,b)=>`<div style="color:var(--text3);font-size:13px;line-height:1.5;margin:0 0 8px;"><b style="color:var(--text2);">${a}</b> ${b}</div>`;
   const body=
-    p('When on, PackTimes gently slows your predicted pace two ways: through the pre-dawn hours, and as the hours since your last proper sleep build up — resetting each time you sleep. It barely touches short rides; it only really matters on long, multi-day plans. Leave it off unless you want it.')
+    p('When on, PackTimes gently slows your predicted pace two ways: through the pre-dawn hours, and as the hours since your last proper sleep build up — winding back each time you sleep. It barely touches short rides; it only really matters on long, multi-day plans. Leave it off unless you want it.')
+    +hd('How the sleep side works')
+    +p('Sleep clears tiredness with diminishing returns — fastest in the first few hours, then levelling off. PackTimes follows the recognised sleep-science curve for this. In practice about four hours is the sleep where you clear enough to keep riding day after day — which lines up with what seasoned multi-day riders aim for. On much less, a bit of tiredness carries into the next day and stacks up.')
+    +p('A short catnap barely shifts the estimate. Out on the road a catnap is mostly a way to fight off falling asleep rather than to truly restore your speed, so PackTimes credits it only a little for pace. The "am I about to nod off" danger is flagged separately, not baked into the time.')
     +hd('How reliable is this?')
     +p('PackTimes only ever slows your pace by up to about 20%, and that\'s on purpose — pure sleep loss is a gentler thing than a bad night <i>feels</i> like.')
     +li('One night without sleep:','usually under about 10% slower. Your legs still work — your brain just paces you down.')
     +li('Two nights:','the slowdown grows and turns erratic. Staying awake safely becomes the real limit, so treat the estimate as optimistic.')
     +li('Three-plus nights:','beyond what PackTimes — or most people — can handle. Don\'t trust any number here, and think hard about whether it\'s safe.')
-    +p('It also can\'t see heat, or how cooked your legs already are. The really big slowdowns come from those stacked on top of sleep loss — not sleep alone.');
+    +p('It also can\'t see heat, or how cooked your legs already are. The really big slowdowns come from those stacked on top of sleep loss — not sleep alone.')
+    +p('Fatigue is deeply personal and the science is broad-brush, so take all of this as a sensible guide rather than a precise promise.');
   const ov=document.createElement('div');
   ov.id='fatigue-help-ov';
   ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
