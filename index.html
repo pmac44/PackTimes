@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v213';
+window.APP_VERSION='v214';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -8944,8 +8944,11 @@ function buildLiveStrip(r,liveDist,sdt){
     return r.stops.find(t=>t.type==='town'&&Math.abs(t.dist-s.dist)<=CLUSTER_KM);
   };
 
-  // Helper: does a stop have food?
-  const hasFood=s=>s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='town'||(s.meals&&s.meals.length>0);
+  // Helper: does a stop actually offer food? A bare town does NOT — many towns are
+  // just a name on the map with nothing open. Real food = a café/shop/pub, a stop
+  // where a meal is planned, or a town/fuel with confirmed opening hours (a tagged
+  // shop or a servo). This stops a foodless town from masquerading as a meal.
+  const hasFood=s=>(s.meals&&s.meals.length>0)||s.type==='food'||s.type==='shop'||s.type==='pub'||((s.type==='town'||s.type==='fuel')&&!!s.ohRaw);
 
   // Slot 1: always the next stop
   add(ahead[0],'type');
@@ -8960,13 +8963,13 @@ function buildLiveStrip(r,liveDist,sdt){
     if(nextSleep)candidates.push({s:nextSleep,reason:'type',displayName:null});
   }
 
-  // Next food — stop with planned meals or food-type; skip if first stop already has food
-  if(!(ahead[0]&&hasFood(ahead[0]))){
-    const nextPlannedMeal=ahead.find(s=>!seen.has(s.id)&&s.meals&&s.meals.length>0);
-    const nextFoodType=ahead.find(s=>!seen.has(s.id)&&(s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='town'));
-    const foodStop=nextPlannedMeal&&nextFoodType
-      ?(nextPlannedMeal.dist<=nextFoodType.dist?nextPlannedMeal:nextFoodType)
-      :(nextPlannedMeal||nextFoodType);
+  // Next food — ALWAYS surfaced, never suppressed by whatever the next stop is.
+  // hasFood() already excludes bare towns, so this finds the next REAL food source
+  // (café/shop/pub, a planned meal, or a confirmed-hours town/servo). If the next
+  // stop is itself food it's shown as slot 1 and the dedup below drops the repeat;
+  // otherwise this surfaces the next real food beyond it.
+  {
+    const foodStop=ahead.find(s=>hasFood(s));
     if(foodStop){
       const town=nearbyTown(foodStop);
       candidates.push({s:foodStop,reason:'food',displayName:town?town.name:null});

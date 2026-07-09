@@ -15,6 +15,22 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v214)
+
+**v214 (9 Jul 2026) — "next food" on the Ride strip fixed (bare towns no longer
+masquerade as food).** Peter: on the sim, "next food" vanished — a town coming up
+had knocked it out. Root cause in `buildLiveStrip`: (1) `hasFood()` counted EVERY
+`type==='town'` as food, and (2) the food candidate was skipped entirely when the
+next stop already "had food" — so a foodless town as the next stop suppressed the
+food row. Fix (Peter chose "real food sources, not bare towns"): `hasFood` now =
+planned meals OR food/shop/pub OR (town/fuel WITH `ohRaw` confirmed hours) — a bare
+town no longer qualifies; and the food candidate is ALWAYS computed (no suppression
+gate), finding the next real food (dedup drops it if it's already the next stop).
+Also improves the water row (uses the same `hasFood`, so a bare town no longer
+hides water either). `updateLive`'s `nextFood` was dead code (patchCard is a no-op;
+strip rebuilds via `buildLiveStrip`), so the one fix covers live updates too.
+Verified via node scenarios. Not the bigger turn-alert redesign (still parked).
+
 ## Current status (9 July 2026, v213)
 
 **v213 (9 Jul 2026) — future-plan ETAs no longer pinned to "now" by the simulator
