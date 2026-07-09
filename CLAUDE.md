@@ -15,7 +15,27 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (10 July 2026, v220)
+## Current status (10 July 2026, v222)
+
+**v222 (10 Jul 2026) — per-stop water toggle button on the stop tile.** Peter: a
+buried food-picker checkbox is inconsistent; make water a first-class one-tap
+button in the tile action row alongside star/sleep/food/edit/delete. Added a
+`.water-at-stop` droplet button in the main stop tile (`tRoutes`/stops list, the
+button row ~line 10969), shown ONLY where water isn't already implied
+(café/shop/pub/water/confirmed town) — so it's always a real yes/no, appearing on
+plain towns and bring-your-own spots, not on cafés. Outline when off, filled blue
+when on; toggles `s.waterHere`; handler in the delegator before the star toggle.
+The v220 food-picker checkbox is KEPT for now as a harmless fallback (also covers
+the cluster-edit sub-view path); consolidate later. Not yet added to the cluster
+sub-view tile or desktop. Node-verified.
+
+**v221 (10 Jul 2026) — dedicated water row only when it's the NEAREST water.**
+Peter: on the Grenfell FIT plan the strip showed a WATER row for Monteagle Hall
+228 km away on day 2, even though Foodary (next food, 32 km) already has water (💧).
+Fixed the v220 over-reach in `buildLiveStrip`: the water candidate now shows only
+if `nextWater.dist <= firstWaterDist` (nearest stop with any water). So a nearer
+food-with-water suppresses a far dedicated water stop; a tap before food, or the
+only water for a long stretch, still shows. Node-verified.
 
 **v220 (10 Jul 2026) — always-visible next water + "water here?" for self-catered
 eats.** Peter's point: a food outlet has water, EXCEPT a self-catered eat at a bare
