@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v195';
+window.APP_VERSION='v196';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1375,6 +1375,21 @@ function fatigueMult(p,hour,sinceSleepH){
   if(hour!=null)m+=p.circ*_circShape(hour);
   m+=p.cap*Math.min(1,Math.max(0,sinceSleepH-p.freshH)/p.rampH);
   return m;
+}
+// Longest continuous riding stretch (hours, fine-tune-adjusted) with no sleep
+// stop in between. Used to warn when a plan pushes past where the fatigue model
+// stays realistic (roughly one day of riding without sleep).
+function maxAwakeRidingH(r){
+  if(!r||!r.cumRiding||!r.cumRiding.length)return 0;
+  const tf=r.timeFactor||1;
+  const total=r.cumRiding[r.cumRiding.length-1]*tf;
+  const sleeps=(r.stops||[]).filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&s.sleepH)).map(s=>s.dist).sort((a,b)=>a-b);
+  let prevH=0,maxGap=0;
+  for(const d of sleeps){
+    const c=cumRidingAt(d,r);if(c==null)continue;
+    const h=c*tf;maxGap=Math.max(maxGap,h-prevH);prevH=h;
+  }
+  return Math.max(maxGap,total-prevH);
 }
 
 // ─── Advanced Calibration (sample rides → rider factor) ─────────────────────
@@ -7312,7 +7327,7 @@ function _speedSummaryHTML(r){
       <span>${riderLbl}</span><span style="color:var(--text3);">·</span>
       <span>${loadLbl} load</span><span style="color:var(--text3);">·</span>
       <span>Fine-tune ${r.timeFactor.toFixed(2)} ×</span>
-      ${UI.fatigueMode&&UI.fatigueMode!=='off'?`<span style="color:var(--text3);">·</span><span>Fatigue: ${UI.fatigueMode}</span>`:''}
+      ${UI.fatigueMode&&UI.fatigueMode!=='off'?`<span style="color:var(--text3);">·</span><span>Fatigue on</span>`:''}
     </div>
     ${r.adaptiveSpeed?'<div style="font-size:12px;color:var(--text3);margin-top:4px;">Adaptive Speed on — self-corrects during the ride</div>':''}`;
 }
@@ -7380,10 +7395,11 @@ function _speedControlsHTML(r){
     <div style="margin-bottom:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Fatigue</div>
       <div style="display:flex;gap:6px;">
-        ${[['off','Off'],['mild','Mild'],['moderate','Moderate'],['strong','Strong']].map(([val,label])=>`
-          <button class="btn btn-sm" onclick="speedSetFatigue('${val}')" style="flex:1;justify-content:center;padding:6px 4px;font-size:13px;${(UI.fatigueMode||'off')===val?'border-color:var(--accent);color:var(--accent);':''}">${label}</button>`).join('')}
+        ${[['off','Off'],['moderate','On']].map(([val,label])=>`
+          <button class="btn btn-sm" onclick="speedSetFatigue('${val}')" style="flex:1;justify-content:center;padding:6px 4px;font-size:13px;${((UI.fatigueMode||'off')==='off'?'off':'moderate')===val?'border-color:var(--accent);color:var(--accent);':''}">${label}</button>`).join('')}
       </div>
-      <p style="font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5;">Slows pace through the pre-dawn hours and as time piles up since your last proper sleep — resets when you sleep. Barely touches short rides; matters on long and multi-day plans. Leave Off unless you want it.</p>
+      <p style="font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5;">Slows pace through the pre-dawn hours and as the time since your last proper sleep builds up — resets when you sleep. Barely touches short rides; matters on long, multi-day plans. Leave Off unless you want it.</p>
+      ${(()=>{const aw=maxAwakeRidingH(r);return aw>20?`<div style="margin-top:8px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:7px;padding:7px 10px;font-size:13px;color:#f97316;line-height:1.45;">Heads-up: this plan rides about ${Math.round(aw)}h without a sleep stop. Beyond roughly a day of riding without sleep, fatigue becomes unpredictable — treat this estimate as optimistic.</div>`:'';})()}
     </div>
     <div style="margin-bottom:10px;">
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Manual Fine-Tune</div>
