@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v196';
+window.APP_VERSION='v197';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4017,6 +4017,7 @@ async function _recSaveConfirm(){
   await DB.putRecording(rec).catch(()=>{});
   const i = RECS.findIndex(x => x.id === rec.id);
   if(i >= 0) RECS[i] = rec;
+  if(name) stravaMarkRename(rec);   // keep Strava's title in step with ours
   _recSaveClose();
   render();
 }
@@ -4071,6 +4072,7 @@ function _recCalibAdd(entry){
     if(name){
       rec.name = name;
       await DB.putRecording(rec).catch(()=>{});
+      stravaMarkRename(rec);   // keep Strava's title in step with ours
       $('rdm-title').textContent = name;
       render();   // refresh the Recorded Rides list behind the modal
     }
@@ -4587,6 +4589,42 @@ function stravaQueue(rec){
   stravaProcessQueue(true);
 }
 
+// Push a renamed ride's title up to Strava. This is the ONE-field update
+// endpoint — it changes only the name, never re-sends the ride/route/FIT.
+// Best-effort and cosmetic: it never blocks the upload. If the ride isn't
+// on Strava yet, we leave the pending flag set and the queue's rename pass
+// (or the fresh upload, which carries rec.name) sorts it out later. A failed
+// PUT just stays pending and gets retried by the same triggers as uploads.
+async function stravaSyncName(rec){
+  if(!rec || !rec.stravaNamePending || !UI.stravaToken) return;
+  const m = (rec.stravaActivityUrl || '').match(/activities\/(\d+)/);
+  if(!m) return;   // not uploaded yet — nothing to rename over there
+  try{
+    const token = await stravaFreshToken();
+    if(!token) return;
+    const res = await fetch('https://www.strava.com/api/v3/activities/' + m[1], {
+      method: 'PUT',
+      headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
+      body: JSON.stringify({name: rec.name}),
+    });
+    if(!res.ok) throw new Error('rename failed, HTTP ' + res.status);
+    rec.stravaNamePending = false;
+    await DB.putRecording(rec).catch(()=>{});
+    const i = RECS.findIndex(x => x.id === rec.id);
+    if(i >= 0) RECS[i] = rec;
+  }catch(e){ /* stays pending; retried by the queue triggers */ }
+}
+
+// Called from either rename path. Marks the name for syncing (only if this
+// ride is bound for Strava) and tries immediately; the queue covers retries.
+function stravaMarkRename(rec){
+  if(!rec || !UI.stravaToken) return;
+  if(!rec.stravaUploadedAt && rec.stravaUploadStatus !== 'queued') return; // not going to Strava
+  rec.stravaNamePending = true;
+  DB.putRecording(rec).catch(()=>{});
+  stravaSyncName(rec);
+}
+
 // Upload one recording as FIT. Returns the Strava activity id, or throws.
 async function stravaUpload(rec){
   const token = await stravaFreshToken();
@@ -4599,7 +4637,7 @@ async function stravaUpload(rec){
   const fd = new FormData();
   fd.append('file', new Blob([bytes], {type: 'application/octet-stream'}), _recExportName(rec) + '.fit');
   fd.append('data_type', 'fit');
-  fd.append('name', 'PackTimes ride ' + new Date(rec.startTS).toLocaleDateString('en-GB'));
+  fd.append('name', rec.name || ('PackTimes ride ' + new Date(rec.startTS).toLocaleDateString('en-GB')));
   fd.append('external_id', 'packtimes-' + rec.id);   // lets Strava dedupe re-sends
   const res = await fetch('https://www.strava.com/api/v3/uploads', {
     method: 'POST',
@@ -4631,7 +4669,8 @@ async function stravaProcessQueue(force){
     _stravaLastForce = Date.now();
   }
   const queued = RECS.filter(r => r.stravaUploadStatus === 'queued' && !r.stravaUploadedAt);
-  if(!queued.length) return;
+  const needsRename = () => RECS.filter(r => r.stravaNamePending && r.stravaUploadedAt);
+  if(!queued.length && !needsRename().length) return;
   _stravaBusy = true;
   try{
     for(const rec of queued){
@@ -4662,6 +4701,8 @@ async function stravaProcessQueue(force){
       }
       await DB.putRecording(rec).catch(()=>{});
     }
+    // Best-effort pass: sync any renamed-after-upload titles to Strava.
+    for(const rec of needsRename()) await stravaSyncName(rec);
   } finally {
     _stravaBusy = false;
     if(UI.tab === 'routes' || UI.tab === 'settings') render();
