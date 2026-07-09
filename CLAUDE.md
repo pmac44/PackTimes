@@ -15,6 +15,21 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v225)
+
+**v225 (10 Jul 2026) — water button on sleep nodes + real scroll fix + water
+filter honesty.** Three from Peter: (1) tapping a water button STILL scrolled the
+list (v223's `renderKeepScroll` didn't hold on desktop) — rewrote the `.water-at-stop`
+handler to update the tapped button IN PLACE (no re-render at all), recomputing the
+town's water for node buttons via `clusterStops`. Node buttons now carry
+`data-node="1"` so the handler knows to check the cluster vs the single stop. (2)
+Sleep nodes (motel/bivi, e.g. Grenfell) had no water button — added it to BOTH
+sleep-node variants in `tPlan` (before `cluster-edit-btn`), so a remote retreat gets
+it too; consistency. (3) The Plan water filter did nothing because `isWaterSrc`
+(node build ~11560) counted every town + any meal as water — aligned it to the
+shared rule (water/food/shop/pub / town-or-fuel+ohRaw / waterHere), so the filter
+now actually hides dry nodes. All fragments node-verified.
+
 ## Current status (10 July 2026, v224)
 
 **v224 (10 Jul 2026) — water toggle button in the mission-plan node action row.**
