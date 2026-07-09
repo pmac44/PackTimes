@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v216';
+window.APP_VERSION='v218';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -10332,7 +10332,7 @@ function _helloDetailHTML(){
   return`<div style="display:flex;flex-direction:column;gap:14px;">
     <div>
       <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Your route file</div>
-      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RideWithGPS, Komoot, Strava or Garmin Connect — GPX, TCX, KML and FIT are all supported. For the best experience, export a <strong>FIT Course</strong>: it carries the full turn-by-turn cues (from the road network) that PackTimes beeps you on, and it's by far the smallest file. A <strong>TCX Course</strong> is just as good for turns — it's simply a much larger file.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Upload from RideWithGPS, Komoot, Strava or Garmin Connect — FIT, TCX, GPX and KML are all supported. For the best experience, export a <strong>FIT Course</strong>: it carries the full turn-by-turn cues (from the road network) that PackTimes beeps you on, and it's by far the smallest file. A <strong>TCX Course</strong> is just as good for turns — it's simply a much larger file.</p>
       <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">One thing to watch: export the planned <em>route</em>, not a recorded <em>ride</em>. RideWithGPS, for example, offers both a "Course" export (the route you want) and a "History" export (a recording of an actual ride). A recording — or a GPX saved from a finished Strava activity — stores every GPS point you logged, so it's a far bigger file, packed with the wobble of a real trace rather than clean route points and turns.</p>
       <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">On size, FIT is by far the most compact (it's binary) — in testing, over ten times smaller than the same route as a TCX, which is wordy text. GPX and KML sit in between but carry no turns at all, so they're a fallback (you can estimate turns from the track in Turn Review, but that's guesswork). A file only truly balloons if you export a recording instead of a route.</p>
       <p style="font-size:15px;color:var(--text2);line-height:1.6;">PackTimes works out your ride time from distance and elevation, using a formula calibrated against real bikepacking data — more reliable than the timestamps inside exported files, which often encode unrealistic speeds. Apps like RideWithGPS and Strava can predict your personal time well, but that accuracy lives on their servers and isn't in the file, so PackTimes doesn't lean on it.</p>
@@ -10361,7 +10361,7 @@ function _helloContentHTML(){
     <div style="border-top:1px solid var(--border);margin-bottom:10px;"></div>
     <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;">
       ${[
-        ['Route','Load a route file (GPX, TCX, KML or FIT). For turn alerts, export a FIT or TCX Course from RideWithGPS or Komoot — it carries real turn cues PackTimes beeps you on (FIT is smallest). A GPX has no turns (you can estimate them in Turn Review). Already loaded a GPX? You\'re not stuck — just re-import the FIT or TCX version any time'],
+        ['Route','Load a route file (FIT, TCX, GPX or KML). For turn alerts, export a FIT or TCX Course from RideWithGPS or Komoot — it carries real turn cues PackTimes beeps you on (FIT is smallest). A GPX has no turns (you can estimate them in Turn Review). Already loaded a GPX? You\'re not stuck — just re-import the FIT or TCX version any time'],
         ['Plan','Search OpenStreetMap for stops along the route, or add your own — star the ones you want on your Mission, add sleep and food to build your supply plan'],
         ['Night','The route line turns black where you\'ll be riding in the dark — add a sleep stop to make it blue again, or turn on your lights!'],
         ['Ride','Live GPS map with upcoming stops, arrival times, and turn alerts. A FIT or TCX Course brings real turn cues; a GPX has none, but you can generate estimated turns in Turn Review (tap the turns button on the route) before riding'],
@@ -10434,14 +10434,15 @@ function tRoutes(r){
   const pickerBody=`
     <div style="font-size:13px;color:var(--text3);line-height:1.4;margin-bottom:8px;">Upload a route file to plan stops along it, or create a blank plan to search an area.</div>
     <div style="display:flex;gap:6px;">
-      <button class="btn btn-sm btn-p" id="btn-upload-route" style="flex:1;">↑ Upload GPX / TCX / KML / FIT</button>
-      <button class="btn btn-sm" id="btn-new-plan" style="white-space:nowrap;" title="Start a plan with no route loaded — search an area and drop stops to scout a ride before you have a GPX">+ New Empty Plan</button>
+      <button class="btn btn-sm btn-p" id="btn-upload-route" style="flex:1;">↑ Upload FIT / TCX / GPX / KML</button>
+      <button class="btn btn-sm" id="btn-new-plan" style="white-space:nowrap;" title="Start a plan with no route loaded — search an area and drop stops to scout a ride before you have a route file">+ New Empty Plan</button>
     </div>
     <div style="font-size:12px;color:var(--text3);line-height:1.55;margin-top:6px;background:rgba(10,15,10,0.4);border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
       <div style="margin-bottom:2px;color:var(--text2);">Best file for turn alerts:</div>
       <div><span style="color:var(--accent);font-weight:600;">1. FIT Course</span> — smallest file, with turns</div>
       <div><span style="color:var(--text2);font-weight:600;">2. TCX Course</span> — also has turns, much bigger file</div>
-      <div>3. GPX / KML — no turns (you can estimate them in Turn Review)</div>
+      <div>3. GPX — no turns, but the universal standard (estimate turns in Turn Review)</div>
+      <div>4. KML — no turns; a fallback for routes out of Google Earth / My Maps</div>
     </div>
     <button class="btn btn-sm btn-full" id="btn-open-ride-route" style="margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:7px;" title="Open a PackTimes ride file someone shared with you"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Open a shared ride file</button>
     <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
@@ -10475,12 +10476,12 @@ function tRoutes(r){
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='error'?'<div style="font-size:12px;color:#ef4444;">✗ '+(UI.tileDownloadMsg||'Failed')+'</div>':'')
         +(rt.offlineTiles&&!(UI.tileDownloadIdx===i&&(UI.tileDownloadStatus==='loading'||UI.tileDownloadStatus==='done'))?(()=>{const ot=rt.offlineTiles;const d=new Date(ot.at);const ago=Math.floor((Date.now()-d.getTime())/86400000);const when=ago<1?'today':ago===1?'yesterday':ago+'d ago';return'<div style="font-size:11px;color:var(--text3);font-family:var(--font);display:flex;align-items:center;gap:5px;">'+'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="'+(ago>14?'#f97316':'var(--accent)')+'" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'+'<span style="color:'+(ago>14?'#f97316':'var(--text3)')+';">'+ot.mode+' · '+ot.count+' tiles · '+when+(ago>14?' — may be stale':'')+'</span>'+'</div>';})():'')
         +'</div>';
-    }).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload GPX / TCX / KML / FIT above to get started.</p>`}
+    }).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload FIT / TCX / GPX / KML above to get started.</p>`}
     </div>
     <button class="btn btn-sm btn-full" style="margin-top:8px;" id="btn-demo">▶ Load demo route</button>`;
   const fileInputs=`
-  <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-input" style="display:none;">
-  <input type="file" accept=".gpx,.tcx,.kml,.kmz,.fit" id="gpx-reload-input" style="display:none;">
+  <input type="file" accept=".fit,.tcx,.gpx,.kml,.kmz" id="gpx-input" style="display:none;">
+  <input type="file" accept=".fit,.tcx,.gpx,.kml,.kmz" id="gpx-reload-input" style="display:none;">
   <input type="file" id="ride-file-input" accept=".packtimes,.json,.txt" style="display:none;">`;
   // Inline card — only shown when no route is loaded yet
   const pickerCard=`
@@ -13079,6 +13080,11 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       if(!s.meals)s.meals=[];
       // Build list of valid buy-earlier stops (towns, food, shop before this stop)
       const buyStops=r.stops.filter(bs=>bs.dist<s.dist&&(bs.type==='town'||bs.type==='food'||bs.type==='shop'));
+      // Cluster-aware: this picker manages EVERY meal in the town cluster (across all
+      // its pins) from one place — edit, delete, or add. New meals attach to this pin.
+      const _fPlan=r.stops.filter(x=>x.starred!==false||x.type==='sleep'||(x.type==='stop')||(x.sleepAt));
+      const _fCl=clusterStops(_fPlan).find(c=>c.stops.some(x=>String(x.id)===String(s.id)));
+      const clusterList=_fCl?_fCl.stops:[s];
       const overlay=document.createElement('div');
       overlay.id='food-modal-overlay';
       overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-end;justify-content:center;';
@@ -13086,39 +13092,46 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       picker.className='food-picker';
       picker.style.cssText='display:flex;flex-direction:column;gap:8px;padding:16px 16px 24px;background:var(--card);border:1px solid rgba(251,191,36,0.5);border-radius:12px 12px 0 0;width:100%;max-width:420px;max-height:85dvh;overflow-y:auto;';
       const closeAndSave=()=>{
-        if(!s.meals.length)delete s.meals;
-        else s.starred=true; // auto-star if food assigned
+        clusterList.forEach(st=>{
+          if(st.meals&&!st.meals.length)delete st.meals;
+          else if(st.meals&&st.meals.length)st.starred=true; // auto-star if food assigned
+        });
         overlay.remove();saveAll();renderKeepScroll();
       };
       // Cluster-aware: show Before/After sleep on any pin in a town that has a sleep,
       // so breakfast at a cafe (a different pin from the motel) can sit after the night.
       const hasSleep=clusterHasSleep(r,s);
       const renderPicker=()=>{
+        // Flatten every meal across the town's pins; each row remembers its owning stop.
+        const entries=[];
+        clusterList.forEach(st=>(st.meals||[]).forEach((m,mi)=>entries.push({st,m,mi})));
+        const multi=clusterList.length>1;
         picker.innerHTML=`
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px;">
             <div style="font-size:13px;color:#fbbf24;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ICON_FOOD} Food · ${s.name||'stop'}</div>
             <button class="btn btn-sm food-close" title="Close" style="flex-shrink:0;">✕</button>
           </div>
-          ${s.meals.map((m,i)=>{
-            const isCarryOnly=false;
+          ${entries.map((en,i)=>{
+            const m=en.m;
             return `<div class="food-item" style="display:flex;flex-direction:column;gap:4px;padding:6px 8px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);border-radius:6px;">
               <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
                 <button class="btn btn-sm food-type-toggle${m.type==='meal'?' btn-p':''}" data-i="${i}" data-val="meal" style="font-size:13px;padding:2px 6px;display:inline-flex;align-items:center;gap:4px;">${ICON_MEAL} Meal</button>
                 <button class="btn btn-sm food-type-toggle${m.type==='snack'?' btn-p':''}" data-i="${i}" data-val="snack" style="font-size:13px;padding:2px 6px;display:inline-flex;align-items:center;gap:4px;">${ICON_SNACK} Snack</button>
-                ${hasSleep&&!isCarryOnly?`<button class="btn btn-sm food-when-toggle${(m.when||'before')==='before'?' btn-p':''}" data-i="${i}" data-val="before" style="font-size:11px;padding:2px 4px;">Before sleep</button><button class="btn btn-sm food-when-toggle${m.when==='after'?' btn-p':''}" data-i="${i}" data-val="after" style="font-size:11px;padding:2px 4px;">After sleep</button>`:''}
+                ${hasSleep?`<button class="btn btn-sm food-when-toggle${(m.when||'before')==='before'?' btn-p':''}" data-i="${i}" data-val="before" style="font-size:11px;padding:2px 4px;">Before sleep</button><button class="btn btn-sm food-when-toggle${m.when==='after'?' btn-p':''}" data-i="${i}" data-val="after" style="font-size:11px;padding:2px 4px;">After sleep</button>`:''}
                 <button class="btn btn-sm btn-r food-remove" data-i="${i}" style="padding:2px 6px;font-size:13px;margin-left:auto;">✕</button>
               </div>
+              ${multi?`<div style="font-size:11px;color:var(--text3);font-family:var(--font);">at ${en.st.name||'stop'}</div>`:''}
               <input type="text" class="food-name" data-i="${i}" placeholder="Name (optional)" value="${m.name||''}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;padding:3px 6px;font-family:var(--font);">
               <select class="food-source" data-i="${i}" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;padding:3px 6px;font-family:var(--font);">
                 <option value="start"${m.source==='start'?' selected':''}>🎒 Carried from start</option>
                 <option value="here"${m.source==='here'?' selected':''}>🛒 Buy &amp; eat here</option>
                 ${buyStops.map(bs=>`<option value="${bs.id}"${String(m.source)===String(bs.id)?' selected':''}>📍 Bought at ${bs.name}</option>`).join('')}
               </select>
-              ${!isCarryOnly?`<div style="display:flex;align-items:center;gap:6px;">
+              <div style="display:flex;align-items:center;gap:6px;">
                 <span style="font-size:13px;color:var(--text3);">Eat time:</span>
                 <input type="number" class="food-dur" data-i="${i}" min="5" max="120" step="5" value="${m.durationMin||20}" style="width:52px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;padding:2px 4px;font-family:var(--font);">
                 <span style="font-size:13px;color:var(--text3);">min</span>
-              </div>`:'<div style="font-size:12px;color:var(--text3);padding:2px 0;">Carried forward — no stop time</div>'}
+              </div>
             </div>`;
           }).join('')}
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -13126,30 +13139,30 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
             <button class="btn btn-sm food-add-snack" style="flex:1;font-size:13px;">+ Snack</button>
             <button class="btn btn-sm food-done btn-p" style="padding:2px 10px;">✓ Done</button>
           </div>`;
-        // Events
+        // Events — resolve each row back to its owning stop + meal index
         picker.querySelectorAll('.food-type-toggle').forEach(btn=>btn.addEventListener('click',ev=>{
           ev.stopPropagation();
-          s.meals[+btn.dataset.i].type=btn.dataset.val;
+          const en=entries[+btn.dataset.i];en.st.meals[en.mi].type=btn.dataset.val;
           renderPicker();
         }));
         picker.querySelectorAll('.food-when-toggle').forEach(btn=>btn.addEventListener('click',ev=>{
           ev.stopPropagation();
-          s.meals[+btn.dataset.i].when=btn.dataset.val;
+          const en=entries[+btn.dataset.i];en.st.meals[en.mi].when=btn.dataset.val;
           renderPicker();
         }));
         picker.querySelectorAll('.food-remove').forEach(btn=>btn.addEventListener('click',ev=>{
           ev.stopPropagation();
-          s.meals.splice(+btn.dataset.i,1);
+          const en=entries[+btn.dataset.i];en.st.meals.splice(en.mi,1);
           renderPicker();
         }));
         picker.querySelectorAll('.food-name').forEach(inp=>inp.addEventListener('input',ev=>{
-          s.meals[+inp.dataset.i].name=inp.value;
+          const en=entries[+inp.dataset.i];en.st.meals[en.mi].name=inp.value;
         }));
         picker.querySelectorAll('.food-source').forEach(sel=>sel.addEventListener('change',ev=>{
-          s.meals[+sel.dataset.i].source=sel.value;
+          const en=entries[+sel.dataset.i];en.st.meals[en.mi].source=sel.value;
         }));
         picker.querySelectorAll('.food-dur').forEach(inp=>inp.addEventListener('input',ev=>{
-          s.meals[+inp.dataset.i].durationMin=+inp.value||20;
+          const en=entries[+inp.dataset.i];en.st.meals[en.mi].durationMin=+inp.value||20;
         }));
         picker.querySelector('.food-add-meal').addEventListener('click',ev=>{
           ev.stopPropagation();

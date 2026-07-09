@@ -15,6 +15,33 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v218)
+
+**v218 (10 Jul 2026) — route-format order standardised to FIT · TCX · GPX · KML.**
+Peter's preferred natural mapping (best-to-worst for PackTimes): FIT (turns + smallest),
+TCX (turns, big), GPX (no turns, universal standard), KML (no turns, Google Earth
+fallback). Reordered everywhere user-facing: the upload button + empty-state ("Upload
+FIT / TCX / GPX / KML"), the "all supported" help line, the Route help blurb, the file
+`accept` attributes, and the "Best file for turn alerts" box — which now splits GPX (3)
+and KML (4) onto their own lines so all four ranks are explicit and KML's role (a
+fallback for Google Earth / My Maps exports; offers nothing over GPX here) is stated.
+Copy-only, no logic change.
+
+## Current status (10 July 2026, v217)
+
+**v217 (10 Jul 2026) — food button = one place to manage the whole town's meals.**
+Peter: the food button on the cluster tile only let you ADD meals, while the pencil
+(edit) button was the only place you could edit/delete existing ones — so the same
+job lived in two spots. Fix: the food picker (`.food-at-stop` handler) is now
+cluster-aware. It flattens EVERY meal across all pins in the town cluster into one
+list (`clusterList` via `clusterStops`; each row remembers its owning `{st,mi}`), so
+you can edit/delete any of them and add more from the single food popup. Rows on a
+different pin than the one tapped get a small "at <pin>" label. New meals attach to
+the tapped pin; `closeAndSave` now tidies empty `meals` arrays + auto-stars across the
+whole cluster. Since v216 makes timing label-driven, it doesn't matter which pin a
+meal lives on. Verified via node (dinner-on-town + breakfast-on-cafe both show in one
+picker with the owning-pin label). Not yet phone-tested by Peter.
+
 ## Current status (10 July 2026, v216)
 
 **v216 (10 Jul 2026) — before/after-sleep is decided by the LABEL, not pin geometry.**
