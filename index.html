@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v207';
+window.APP_VERSION='v208';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5527,6 +5527,18 @@ function _handleTrvEvent(e){
     });
     return;
   }
+  if(e.target.id==='trv-help'){ showTurnHelp(); return; }
+  if(e.target.id==='trv-generate'&&r){
+    // Conscious opt-in: guess turns from the track shape, then re-open the overlay
+    // fresh so the empty-state prompt is replaced by the generated turns.
+    const det=autoDetectTurns(r.points,r.turnDetectOpts||undefined);
+    r.turns=det.turns;r.nearMissTurns=det.nearMiss;
+    UI.turnReviewIdx=0;
+    saveAll();
+    const ov=document.getElementById('turn-review-overlay');if(ov)ov.remove();
+    enterTurnReview();
+    return;
+  }
   if(e.target.id==='trv-redetect'&&r){
     const d=+(document.getElementById('trv-deg')?.value||45);
     const rv=+(document.getElementById('trv-rec')?.value||30);
@@ -9721,6 +9733,41 @@ function goToTurnReviewIdx(idx){
   if(ctr)ctr.textContent=`${idx+1} / ${all.length}`;
 }
 
+// Turn-data "?" explainer — mirrors showSurfHelp/showFatigueHelp. Explains why a
+// TCX beats a GPX for turns; opened from the "?" in the Turn Review header.
+function showTurnHelp(){
+  document.getElementById('turn-help-ov')?.remove();
+  const hd=t=>`<div style="color:var(--text2);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin:14px 0 8px;">${t}</div>`;
+  const p=t=>`<p style="color:var(--text3);font-size:13px;line-height:1.5;margin:0 0 10px;">${t}</p>`;
+  const body=
+    p('Turn cues are what let your phone wake and beep just before a turn, so you\'re not forever switching the screen on to check. How good they are comes down entirely to your route file.')
+    +hd('TCX — real turn cues')
+    +p('A TCX file (export one from RideWithGPS or Komoot) carries proper turn instructions: each knows its spot, its direction — left or right — and often the street name, straight from the router that planned the route. These are reliable, and PackTimes uses them as they are.')
+    +hd('GPX — no turns')
+    +p('A GPX is just the line on the map — it holds no turn instructions at all. PackTimes can estimate turns from the shape of the track, but it\'s guesswork: it can miss a turn, invent one on a bend, or get left/right muddled. Useful in a pinch, not something to rely on for navigation.')
+    +p('That\'s why guessed turns aren\'t created automatically — you generate them yourself here when you want them, then review and tidy them before a ride.')
+    +hd('What about file size?')
+    +p('A TCX is bigger than the same route as a GPX — roughly two to three times — but that\'s just the format being wordier, not the turns (the cues themselves are tiny). Even a 2,000 km route is only a couple of megabytes, so there\'s no real cost to choosing TCX.')
+    +p('Bottom line: if you want your phone to wake you on turns, export your route as a TCX.');
+  const ov=document.createElement('div');
+  ov.id='turn-help-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:10010;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.innerHTML=`<div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
+      <span style="font-size:18px;font-weight:600;color:var(--text);">Turn data</span>
+      <button class="btn btn-sm" id="turn-help-x">✕</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">${body}</div>
+    <button class="btn btn-p btn-full" id="turn-help-done" style="flex-shrink:0;margin-top:10px;margin-bottom:env(safe-area-inset-bottom,0px);">Done</button>
+  </div>`;
+  const close=()=>ov.remove();
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  ov.querySelector('#turn-help-x').addEventListener('click',close);
+  ov.querySelector('#turn-help-done').addEventListener('click',close);
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
+  document.body.appendChild(ov);
+}
+
 function renderTurnReview(){
   const r=cur();if(!r)return'';
   const all=allReviewTurns(r);
@@ -9731,10 +9778,18 @@ function renderTurnReview(){
       <button id="trv-exit" style="width:48px;height:48px;background:rgba(248,113,113,0.15);border:2px solid rgba(248,113,113,0.6);border-radius:50%;color:#f87171;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>
     </div>
     <div style="position:absolute;top:12px;left:12px;z-index:10001;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;">
-      <div style="font-size:13px;color:var(--text3);font-family:var(--font);">TURN REVIEW</div>
-      <div id="trv-counter" style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">1 / ${all.length}</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="font-size:13px;color:var(--text3);font-family:var(--font);">TURN REVIEW</div>
+        <button id="trv-help" title="How turn data works — GPX vs TCX" style="background:transparent;border:1px solid var(--border2);border-radius:6px;cursor:pointer;padding:0 6px;color:var(--text3);font-family:var(--font);font-size:12px;font-weight:700;line-height:1.5;-webkit-tap-highlight-color:transparent;">?</button>
+      </div>
+      <div id="trv-counter" style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">${all.length?'1':'0'} / ${all.length}</div>
       <div class="trv-src-lbl" style="font-size:12px;color:var(--text3);margin-top:2px;">${confirmed.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}</div>
     </div>
+    ${all.length===0?`<div style="position:absolute;top:50%;left:16px;right:16px;transform:translateY(-50%);z-index:10001;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:12px;padding:18px 16px;text-align:center;max-width:420px;margin:0 auto;">
+      <div style="font-size:15px;color:var(--text);font-weight:600;margin-bottom:6px;">No turn cues on this route</div>
+      <div style="font-size:13px;color:var(--text3);line-height:1.5;margin-bottom:14px;">That's normal for a GPX — it has no turn instructions. PackTimes can estimate turns from the shape of the track, but it's guesswork, not as reliable as a TCX with real cues. Tap <b>?</b> above to learn more.</div>
+      <button id="trv-generate" class="btn btn-p" style="width:100%;justify-content:center;">Generate turns from the track</button>
+    </div>`:''}
     <div id="trv-settings-panel" style="display:none;position:absolute;top:12px;left:12px;right:12px;z-index:10002;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:10px;padding:14px 14px 10px;touch-action:auto;pointer-events:all;">
       <div style="font-size:13px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Detection Settings</div>
       <div style="display:flex;gap:6px;margin-bottom:10px;">
@@ -10235,7 +10290,7 @@ function _helloContentHTML(){
         ['Route','Load a route file (GPX, TCX, KML or FIT). For turn-by-turn navigation export as TCX from RWGPS or Komoot — PackTimes uses the embedded turn cues for audio alerts while riding'],
         ['Plan','Search OpenStreetMap for stops along the route, or add your own — star the ones you want on your Mission, add sleep and food to build your supply plan'],
         ['Night','The route line turns black where you\'ll be riding in the dark — add a sleep stop to make it blue again, or turn on your lights!'],
-        ['Ride','Live GPS map with upcoming stops, arrival times, and turn alerts. If your route has no turn data, PackTimes can auto-detect turns from the GPS line — review them before riding'],
+        ['Ride','Live GPS map with upcoming stops, arrival times, and turn alerts. A TCX brings real turn cues; a GPX has none, but you can generate estimated turns in Turn Review (tap the turns button on the route) before riding'],
         ['Data','Weather updates and data from connected sensors such as power and heart rate are visible as you ride'],
       ].map(([label,text])=>`
         <div style="display:flex;gap:8px;align-items:baseline;">
@@ -13812,10 +13867,7 @@ function reloadRouteFile(f,routeIdx){
     const _cr=rt.cumRiding;rt.estDuration=_cr?_cr[_cr.length-1]:naismith(newPts,newTotalDist,rt);
     rt.stops=kept;
     rt.turns=result.turns||[];
-    if(rt.turns.length===0){
-      const det=autoDetectTurns(rt.points);
-      rt.turns=det.turns;rt.nearMissTurns=det.nearMiss;
-    }
+    rt.nearMissTurns=[];   // GPX/KML/FIT no longer auto-guess turns — the rider generates them consciously in Turn Review
     delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
     CUR=routeIdx;UI.tab='routes';saveAll();render();
     // Report results
@@ -13966,13 +14018,11 @@ function _applyGPXRoute(result,name,sourceId,existingIdx,stops){
   const _cr1=r.cumRiding;r.estDuration=_cr1?_cr1[_cr1.length-1]:naismith(result.pts,r.totalDist,r);
   r.stops=stops;
   r.turns=result.turns||[];
-  // For files with no embedded turns (GPX/KML/FIT), run auto-detection.
-  // For TCX with embedded turns, trust the file — it has road-network-derived cues.
-  if(r.turns.length===0){
-    const det=autoDetectTurns(r.points);
-    r.turns=det.turns;
-    r.nearMissTurns=det.nearMiss;
-  }
+  // Only TCX carries real turn cues; GPX/KML/FIT carry none. We deliberately do
+  // NOT auto-guess turns from the track shape on import — guessed turns are
+  // unreliable and shouldn't look official. The rider generates them consciously
+  // in Turn Review ("Generate turns from the track").
+  r.nearMissTurns=[];
   UI.tab='routes';UI.opStatus='idle';
   delete _ms['map-cvs'];delete _ms['stops-map'];delete _ms['live-map'];
   saveAll();render();

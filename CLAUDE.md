@@ -15,6 +15,21 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v208)
+
+**v208 (9 Jul 2026) — turns no longer auto-guessed on import; turn-data explainer.**
+Peter's call: guessed turns shouldn't appear automatically (they look official but
+aren't reliable). Removed the `autoDetectTurns` fallback from BOTH import paths
+(main file import + apply-GPX-to-existing-route); now GPX/KML/FIT import with NO
+turns, TCX still brings its real cues. Generating GPX turns is now a conscious act
+in Turn Review: when a route has 0 turns the overlay shows a "Generate turns from
+the track" prompt (`#trv-generate` → `autoDetectTurns` + re-open overlay). Added a
+"?" in the Turn Review header (`#trv-help` → new `showTurnHelp()`, mirrors
+showSurfHelp/showFatigueHelp) explaining TCX-vs-GPX turns + file size (~2–3× but
+trivial) + how to export a TCX. Updated the Ride help blurb to match. Existing
+saved routes keep their turns (change only affects new imports). NOT the bigger
+turn-ALERT redesign (popup/sounds) — that's still parked pending Peter's TCX tests.
+
 ## Current status (9 July 2026, v207)
 
 **v207 (9 Jul 2026) — ride compass/triangle reworked (field-test fix).** Peter:
