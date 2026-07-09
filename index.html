@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v212';
+window.APP_VERSION='v213';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1789,10 +1789,13 @@ function etaAt(distKm,r){
   const targetTotal=estTotal*r.timeFactor;
   const crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
 
-  // When GPS is active: anchor entirely from current real-world time + position.
-  // Ignore planned start time — it's aspirational. Just calculate riding time
-  // remaining from here to destination and add it to now.
-  if(UI.gpsActive&&UI.gpsDistKm!==null){
+  // When GPS is active AND we're actually riding this plan (start not in the
+  // future): anchor entirely from current real-world time + position. Ignore the
+  // planned start — it's aspirational — and just add remaining riding time to now.
+  // A FUTURE-dated plan is still only a plan, so never anchor it to now even if
+  // GPS or the simulator is active (this branch was the one v189 missed — running
+  // the sim on a future plan was pinning every ETA to the current clock time).
+  if(UI.gpsActive&&UI.gpsDistKm!==null&&!planStartInFuture(r)){
     const nowDist=UI.gpsDistKm;
     const nowTime=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
     // Riding time remaining from current position to destination

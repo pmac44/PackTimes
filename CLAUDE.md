@@ -15,6 +15,21 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v213)
+
+**v213 (9 Jul 2026) — future-plan ETAs no longer pinned to "now" by the simulator
+(v189 follow-up).** Peter ran the ride sim on the future-dated Grenfell plan (start
+Sat 8 Aug) and every ETA collapsed to today's clock (~16:48). Root cause: `etaAt`'s
+GPS-active branch (`if(UI.gpsActive&&UI.gpsDistKm!==null)`) anchors everything to
+now + remaining distance and — unlike the no-GPS branch that v189 guarded — never
+checked `planStartInFuture`. The sim sets `gpsActive` and leaves `gpsDistKm` at its
+stop point (~250 km), so stops behind it showed "now" and the two ahead projected
+forward. Fix: added `&&!planStartInFuture(r)` to that branch, so a future-dated plan
+always computes from its planned start even while GPS/sim is active. Real rides
+(start today/past) unchanged. Verified via node truth-table. (Note: `simStop` does
+clean up via `stopGPS`, but `simPause` — and exporting mid-sim — leaves the state,
+which is why it persisted; the guard fixes all cases.)
+
 ## Current status (9 July 2026, v212)
 
 **v212 (9 Jul 2026) — format-preference hint at the upload point.** Added a small
