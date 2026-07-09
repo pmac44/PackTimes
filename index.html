@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v222';
+window.APP_VERSION='v223';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -11679,7 +11679,13 @@ function tPlan(r){
     const daydiv=dayStr?'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);">'+dayStr+'</div>':'';
     const metaCount=node.cluster&&node.cluster.stops.length>1?' · '+node.cluster.stops.length+' stops':'';
     const chips=node.cluster?node.cluster.stops.map(s=>stopChip(s,r)).join(''):'';
-    const chipsDiv=chips?'<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">'+chips+'</div>':'';
+    // Cluster water indicator: a droplet that's full/blue when any stop in the town
+    // offers water (food outlet, confirmed town/servo, water stop, or a "water here"
+    // tick), dim when there's no known water. Same water rule as the Ride strip.
+    const _clStops=node.cluster?node.cluster.stops:(node.clusterAll?node.clusterAll.stops:[]);
+    const _clWater=_clStops.some(s=>s.type==='water'||s.type==='food'||s.type==='shop'||s.type==='pub'||((s.type==='town'||s.type==='fuel')&&!!s.ohRaw)||!!s.waterHere);
+    const waterChip=_clStops.length?'<span title="'+(_clWater?'Water available in this town':'No known water here — tap a stop\'s 💧 to confirm')+'" style="font-size:13px;display:inline-flex;align-items:center;'+(_clWater?'color:#60a5fa;':'opacity:0.3;')+'">💧</span>':'';
+    const chipsDiv=(chips||waterChip)?'<div style="margin-top:5px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">'+waterChip+chips+'</div>':'';
     // Sleep node: show arrive + depart times prominently
     let sleepDiv='';
     if(isSleep&&node.sleepStop){
@@ -13215,7 +13221,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   const wat=e.target.closest('.water-at-stop');
   if(wat&&r){
     const s=r.stops.find(x=>String(x.id)===String(wat.dataset.sid));
-    if(s){ if(s.waterHere)delete s.waterHere; else s.waterHere=true; saveAll(); render(); }
+    if(s){ if(s.waterHere)delete s.waterHere; else s.waterHere=true; saveAll(); renderKeepScroll(); }
     return;
   }
   // Star toggle
