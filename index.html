@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v197';
+window.APP_VERSION='v200';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7434,12 +7434,14 @@ function _speedControlsHTML(r){
       </div>
     </div>
     <div style="margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Fatigue</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;">Fatigue</div>
+        <button type="button" title="How the fatigue setting works, and where it's unreliable" onclick="showFatigueHelp()" style="background:transparent;border:1px solid var(--border2);border-radius:6px;cursor:pointer;padding:1px 7px;color:var(--text3);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font);font-size:12px;font-weight:700;line-height:1.4;-webkit-tap-highlight-color:transparent;">?</button>
+      </div>
       <div style="display:flex;gap:6px;">
         ${[['off','Off'],['moderate','On']].map(([val,label])=>`
           <button class="btn btn-sm" onclick="speedSetFatigue('${val}')" style="flex:1;justify-content:center;padding:6px 4px;font-size:13px;${((UI.fatigueMode||'off')==='off'?'off':'moderate')===val?'border-color:var(--accent);color:var(--accent);':''}">${label}</button>`).join('')}
       </div>
-      <p style="font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5;">Slows pace through the pre-dawn hours and as the time since your last proper sleep builds up — resets when you sleep. Barely touches short rides; matters on long, multi-day plans. Leave Off unless you want it.</p>
       ${(()=>{const aw=maxAwakeRidingH(r);return aw>20?`<div style="margin-top:8px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:7px;padding:7px 10px;font-size:13px;color:#f97316;line-height:1.45;">Heads-up: this plan rides about ${Math.round(aw)}h without a sleep stop. Beyond roughly a day of riding without sleep, fatigue becomes unpredictable — treat this estimate as optimistic.</div>`:'';})()}
     </div>
     <div style="margin-bottom:10px;">
@@ -7505,6 +7507,39 @@ function speedSetFatigue(mode){
   // Global rider setting — every route's ETAs move with it
   for(const rt of ROUTES)rebuildPace(rt);
   saveAll();_speedRefresh();
+}
+// Fatigue "?" help sheet — mirrors showSurfHelp so it reads as the same control.
+// Keeps the Speed modal panel uncluttered; the detail lives here for whoever digs in.
+function showFatigueHelp(){
+  document.getElementById('fatigue-help-ov')?.remove();
+  const hd=t=>`<div style="color:var(--text2);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin:14px 0 8px;">${t}</div>`;
+  const p=t=>`<p style="color:var(--text3);font-size:13px;line-height:1.5;margin:0 0 10px;">${t}</p>`;
+  const li=(a,b)=>`<div style="color:var(--text3);font-size:13px;line-height:1.5;margin:0 0 8px;"><b style="color:var(--text2);">${a}</b> ${b}</div>`;
+  const body=
+    p('When on, PackTimes gently slows your predicted pace two ways: through the pre-dawn hours, and as the hours since your last proper sleep build up — resetting each time you sleep. It barely touches short rides; it only really matters on long, multi-day plans. Leave it off unless you want it.')
+    +hd('How reliable is this?')
+    +p('PackTimes only ever slows your pace by up to about 20%, and that\'s on purpose — pure sleep loss is a gentler thing than a bad night <i>feels</i> like.')
+    +li('One night without sleep:','usually under about 10% slower. Your legs still work — your brain just paces you down.')
+    +li('Two nights:','the slowdown grows and turns erratic. Staying awake safely becomes the real limit, so treat the estimate as optimistic.')
+    +li('Three-plus nights:','beyond what PackTimes — or most people — can handle. Don\'t trust any number here, and think hard about whether it\'s safe.')
+    +p('It also can\'t see heat, or how cooked your legs already are. The really big slowdowns come from those stacked on top of sleep loss — not sleep alone.');
+  const ov=document.createElement('div');
+  ov.id='fatigue-help-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.innerHTML=`<div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
+      <span style="font-size:18px;font-weight:600;color:var(--text);">Fatigue</span>
+      <button class="btn btn-sm" id="fatigue-help-x">✕</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">${body}</div>
+    <button class="btn btn-p btn-full" id="fatigue-help-done" style="flex-shrink:0;margin-top:10px;margin-bottom:env(safe-area-inset-bottom,0px);">Done</button>
+  </div>`;
+  const close=()=>ov.remove();
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  ov.querySelector('#fatigue-help-x').addEventListener('click',close);
+  ov.querySelector('#fatigue-help-done').addEventListener('click',close);
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
+  document.body.appendChild(ov);
 }
 function speedNudge(faster){
   const r=cur();if(!r||!r.estDuration)return;

@@ -15,7 +15,34 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (9 July 2026, v189)
+## Current status (9 July 2026, v200)
+
+**v200 (9 Jul 2026) — plain-English wording in the fatigue popup.** Replaced
+"the model" with "PackTimes" (Peter: "model"/"algorithm" read as jargon to a
+non-technical rider) and softened "trims pace" → "slows your pace"; tooltip now
+"How the fatigue setting works".
+
+**v199 (9 Jul 2026) — fatigue help moved into a "?" popup.** Stripped all inline
+explanatory text from beside the Fatigue setting and put it behind a "?" button
+next to the heading (matching the surface-types help pattern). New
+`showFatigueHelp()` mirrors `showSurfHelp` (bottom-sheet, z-index 9999 over the
+z-998 speed-modal). Popup covers what it does + the one/two/three-night
+reliability guide + heat/cooked-legs caveat. The situational amber ">20h without
+a sleep stop" warning stays inline. Panel is now just: Fatigue [?] · Off | On.
+
+**v198 (9 Jul 2026) — fatigue limitations explainer.** Added a collapsed "How
+reliable is this?" `<details>` under the Fatigue On/Off (superseded by v199's
+popup). Figures grounded in `_planning/sleep-fatigue-research.md`.
+
+
+**v197 (9 Jul 2026) — Strava ride-name sync.** Renaming a recorded ride (save
+prompt or detail-modal Rename) now pushes the new title to Strava without
+delaying or re-doing the upload. Upload stays immediate and top-priority; the
+sync is a name-only PUT to `/activities/{id}` (never re-sends the FIT/route),
+marked `stravaNamePending` and retried by the queue if it fails. See the STRAVA
+row in the code map and the "Ride name stays in sync" behaviour note below.
+Written + syntax-checked, not yet ride-tested.
+
 
 **Phase 1a (recording + Strava) is essentially complete and field-tested.** The living
 step-by-step record is in `_planning/phase-1a-build-plan.md` (progress notes at the top);
@@ -114,7 +141,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
 | 2655 | `ADAPTIVE SPEED CALIBRATION` | `runAdaptiveCalibration`, `updateGPSPill`, drift caps. |
 | 2779 | `RECORDING` | The whole Phase 1a recording pipeline: movement-based sampler (`_appendPoint`, active/stationary state machine), **gap detection** (>15 s no-fix + ≥100 m moved; ≤2 min auto-fills silently), **gap fill engine** (`_recFillGap`, route/Naismith via `cumRiding` weighting, straight-line fallback, `_synthetic:true` points, `_recRecomputeTotals`), **crash recovery** (`_recRehydrate`, recovery modal, typed-delete), **saved rides** (`RECS` in-memory cache, `_ridesCardHTML`, detail modal incl. `_recAsRoute` route-shaped projection + dashed synthetic overlay), **end-of-ride gap prompt** (`_recGapArm/_recGapMaybeShow`, never mid-ride), export helpers (`exportRecordingAsFIT/GPX`, `_recToast`), stop/undo tap handlers, and the **ride save prompt + calibration feed** (v178–179: `_recDefaultName`, `_recMovingH` ride time via the faff rule (<15 min stops count, longer breaks excluded), `_recCalibAuto` route-derived surface/climb/load, `_recSaveShow` modal, `_recCalibAdd` → `UI.calibRides` entries carrying `src:'rec'`/`recId`/`name`, oldest-recorded eviction when full). |
 | 3571 | `FIT WRITER` | Hand-rolled Activity FIT encoder (`encodeActivityFit`), proven against Strava + Garmin SDK (spike harness in `_planning/fit-spike/`). |
-| 3968 | `STRAVA` | OAuth (authorization-code; secret embedded — accepted trade-off), `stravaFreshToken` silent refresh, `stravaUpload` (FIT multipart + status polling, `external_id packtimes-<recId>` dedupe), `stravaQueue`/`stravaProcessQueue` retry queue (backoff 30s→daily + online/visibility/GPS-return triggers). Auto-upload fires only AFTER gap decisions. |
+| 3968 | `STRAVA` | OAuth (authorization-code; secret embedded — accepted trade-off), `stravaFreshToken` silent refresh, `stravaUpload` (FIT multipart + status polling, `external_id packtimes-<recId>` dedupe), `stravaQueue`/`stravaProcessQueue` retry queue (backoff 30s→daily + online/visibility/GPS-return triggers). Auto-upload fires only AFTER gap decisions. **v197:** `stravaSyncName`/`stravaMarkRename` push a renamed ride's title to Strava via PUT `/activities/{id}` (name only, no re-upload); the queue has a best-effort rename pass so failures retry on the same triggers. Upload FormData `name` now uses `rec.name`. |
 | 4280 | `RIDE SIMULATOR` | GPX playback. Gap detection + watchdog + Strava GPS-trigger all skip when sim is running. |
 | 4984 | `MAP ENGINE` | Canvas maps: `_ms` per-canvas state, `getTile/drawTiles/drawMap` (stores projection on canvas: `cvs._px/_py`), `redrawMap` (special-cases `rec-detail-map` → `_recDetailRedraw`), `attachMap` (gestures), offline-tile prefetcher. |
 | 6363 | `ELEVATION CANVAS` | `drawElev(cvs, r)`. |
@@ -203,6 +230,7 @@ Old stop types `rest` and standalone `sleep` are migrated on load to `stop` with
   stravaActivityUrl: null|string,
   stravaUploadStatus: null|'queued',   // 'queued' = in the retry queue
   stravaUploadAttempts: [{at, ok, error?, note?}],
+  stravaNamePending: bool,             // v197: a rename needs syncing up to Strava (best-effort, retried by the queue)
 }
 ```
 
@@ -252,6 +280,7 @@ No analytics, no user accounts, no backend.
 - **Recording is sacred.** Never delete a recording without typed confirmation; every recording state change persists via `DB.putRecording`; the `RECS[]` cache must be kept in sync with any mutation. Gap fill never invents a path — route-snapped or straight line only, always flagged `_synthetic`.
 - **Actuals follow the plan's start date (v189).** `actualStartTime` / `actualArrival` are "what really happened on the ride" stamps. They must only ever apply while the route is being ridden — i.e. its start date is today or past. A **future-dated plan** must never capture or use them (`planStartInFuture(r)` gates both the GPS-callback capture and the `etaAt` anchoring). Setting a new start **date** clears old stamps via `clearRouteActuals(r)`. These stamps live on the route/stops, NOT in the `recordings` store — clearing them never affects a saved ride. Note the capture is driven by GPS *tracking* being on, not by the Record button.
 - **Auto-upload ordering matters:** Strava upload fires only after gap-fill decisions (`_recGapFinish` / the post-undo timeout), so uploaded FITs include the fills. Recovery-saves and manual re-fills don't auto-upload.
+- **Ride name stays in sync with Strava (v197), without blocking the upload.** Upload is unchanged/immediate; renaming a ride (save prompt or detail-modal Rename) calls `stravaMarkRename` → sets `stravaNamePending` (only if the ride is uploaded or queued for Strava) → `stravaSyncName` PUTs just the name to `/activities/{id}`. It never re-sends the FIT/route and never delays the upload; a failed sync stays pending and is retried by the queue's rename pass on the normal triggers. Scope already includes `activity:write`, so no re-auth. If a ride is named *before* upload, the upload just carries `rec.name` up directly.
 - **The simulator must stay excluded** from gap detection, the GPS watchdog, and the Strava GPS-return trigger (`UI.simRunning||UI.simPaused` guards) — sim fixes have artificial timing.
 - **Dropbox sandbox sync lag (Claude-specific):** the bash sandbox sees a stale, sometimes truncated replica of this folder. Verify `index.html` via the Read tool, never repair from the bash view; syntax-check new code as extracted fragments.
 - **Copyright notice** at the top of `index.html` must stay intact.
