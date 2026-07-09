@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v206';
+window.APP_VERSION='v207';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2835,7 +2835,7 @@ function _doStartGPS(){
       if(step/dt<0.2)UI.gpsTravelledKm+=step;
     }
     const r=cur();
-    if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;}}
+    if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;UI._snapOffKm=snap.off;}}
     // Phase 1a Step 3: feed every real GPS fix into the recording sampler.
     // _appendPoint guards on _rec internally — safe to call when no recording is active.
     _appendPoint(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude, pos.timestamp, pos.coords.accuracy);
@@ -4977,7 +4977,7 @@ function simStart(){
     }
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
     const r=cur();
-    if(r){const snap=snapTo(r,p.lat,p.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;}}
+    if(r){const snap=snapTo(r,p.lat,p.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;UI._snapOffKm=snap.off;}}
     // Phase 1a Step 3: feed simulated fixes into the recording sampler too,
     // so the simulator is a real test bed for the recording engine.
     _appendPoint(p.lat, p.lon, p.ele==null?null:p.ele, Date.now(), 5);
@@ -6306,12 +6306,12 @@ function drawMap(cvs,r,opts){
     // A hard default of 0 was what made the arrow appear "stuck pointing north".
     if(travelDeg==null)travelDeg=(UI._lastArrowDeg!=null?UI._lastArrowDeg:0);
     UI._lastArrowDeg=travelDeg;
-    // The arrow is drawn INSIDE the already-rotated map frame (the map is turned by
-    // -heading above; that rotation isn't restored until after this block). So the map
-    // frame already accounts for heading — the arrow must NOT subtract it again, or it
-    // double-rotates to (travelDeg - 2*heading) and points into "no man's land".
-    // Just point it in the travel bearing; on a heading-up map that lands it up = forward.
-    let arrowDeg=travelDeg;
+    // The arrow is drawn INSIDE the already-rotated map frame (rotated by -heading
+    // above, not restored until after this block). On an oriented map (heading set)
+    // the map is already turned to our direction, so "you" is simply fixed pointing
+    // UP — set arrowDeg=heading to cancel the frame rotation (net 0 = up). On a
+    // north-up map (no heading) there's nothing to cancel, so point it along travel.
+    let arrowDeg=(heading!==null)?heading:travelDeg;
     const ar=arrowDeg*Math.PI/180;
     ctx.save();
     ctx.translate(gx,gy);
@@ -6485,6 +6485,32 @@ function peekLiveStop(s,r){
   },50);
 }
 
+// Which way should the ride map face? ONE reliable number, not two jittery ones.
+// Prefer the ROUTE's direction at our snapped position (smooth, from the route
+// geometry) while we're on the route; fall back to the GPS travel heading only
+// when we've strayed off it. Eased along the shortest angular path so the map
+// turns smoothly. The "you" triangle is always drawn pointing up, so this is the
+// single source of truth for orientation. Returns null very early (→ north-up).
+function _rideHeadingDeg(pts){
+  let deg=null;
+  const onRoute = UI._snapOffKm!=null && UI._snapOffKm < 0.06;   // within ~60 m of the line
+  if(onRoute && UI._lastSnapIdx!=null && UI._lastSnapIdx>=0 && pts && pts.length>1){
+    const si=Math.max(0,Math.min(pts.length-1,UI._lastSnapIdx));
+    const dir=_snapDir>=0?1:-1;                                   // forward or reversed along route
+    const ni=Math.max(0,Math.min(pts.length-1,si+dir*15));       // look ~15 points along
+    if(ni!==si){
+      const dLon=(pts[ni].lon-pts[si].lon)*Math.cos(pts[si].lat*Math.PI/180);
+      const dLat=pts[ni].lat-pts[si].lat;
+      deg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
+    }
+  }
+  if(deg==null && UI.gpsHeading!=null) deg=UI.gpsHeading;         // off-route → best-effort GPS heading
+  if(deg==null) return UI._mapOrient!=null?UI._mapOrient:null;    // nothing yet → hold last (or north-up)
+  if(UI._mapOrient==null){ UI._mapOrient=deg; }
+  else { const d=((deg-UI._mapOrient+540)%360)-180; UI._mapOrient=(UI._mapOrient+d*0.35+360)%360; }
+  return UI._mapOrient;
+}
+
 function redrawMap(id){
   const cvs=document.getElementById(id);if(!cvs)return;
   // Recording detail map draws its own (non-route) track — handle before cur().
@@ -6517,7 +6543,7 @@ function redrawMap(id){
       const peekHeading=bearing({lat:gLat,lon:gLon},{lat:sLat,lon:sLon});
       drawMap(cvs,r,{showGPS:true,followGPS:false,anchor,rotate:false,forceHeading:peekHeading,highlightId:_peekStopId});
     } else {
-      drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:state._peekAnchor||0.65,rotate:true,highlightId:_highlightStopId});
+      drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:state._peekAnchor||0.65,rotate:false,forceHeading:_rideHeadingDeg(r.points),highlightId:_highlightStopId});
     }
     return;
   }
@@ -6529,8 +6555,10 @@ function redrawMap(id){
     const st=ms('live-map');
     const gpsOn=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
     if(gpsOn&&!st._fitted){
-      // Match GPS handler exactly so tile loads / redraws don't cause a jump
-      drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true,highlightId:_highlightStopId});
+      // Match GPS handler exactly so tile loads / redraws don't cause a jump.
+      // forceHeading = route-aligned (or GPS-heading off-route) orientation; the
+      // triangle is drawn fixed pointing up, so the map turns and "you" stays put.
+      drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:false,forceHeading:_rideHeadingDeg(r.points),highlightId:_highlightStopId});
     } else {
       const liveAnchor=(st.cx===null||st.cy===null)?0.5:0.65;
       drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:liveAnchor,highlightId:_highlightStopId});

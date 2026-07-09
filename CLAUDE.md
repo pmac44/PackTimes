@@ -15,6 +15,24 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (9 July 2026, v207)
+
+**v207 (9 Jul 2026) — ride compass/triangle reworked (field-test fix).** Peter:
+the blue position triangle wandered, "not connected to anything". Root cause: the
+live map was heading-up off the phone's GPS heading (unreliable on a bike at low
+speed), AND the triangle's screen angle was `travelDeg − heading` — two jittery
+numbers subtracted. Agreed design (Peter reasoned it out): triangle is FIXED
+pointing up ("you, going forward"); the MAP orients to one reliable number. New
+`_rideHeadingDeg(pts)` (before `redrawMap`): uses the ROUTE bearing at the snapped
+position when on-route (`UI._snapOffKm < 60 m`, stored now at both snap sites),
+falls back to GPS heading only when off-route/lost, eased 35%/frame along the
+shortest angular path. The two rotating live `drawMap` calls now pass
+`forceHeading:_rideHeadingDeg(r.points)` instead of `rotate:true`; the arrow block
+uses `arrowDeg = heading!=null ? heading : travelDeg` so "you" points up on an
+oriented map (net 0) and along-travel on a north-up map. Verified via node
+(on-route→route bearing, off-route→GPS, 350→10 eases short way, triangle net 0).
+Not yet ride-tested.
+
 ## Current status (9 July 2026, v206)
 
 **v206 (9 Jul 2026) — fatigue skipped on short plans.** Peter's 1.9km test ride
