@@ -15,6 +15,33 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v240)
+
+**v240 (10 Jul 2026) — turn-cue rework after Peter's first WALK test of v239 (v239 was
+bad).** Peter walked a loop with v239 and it failed on four counts, all real: (1) the
+arrow was far too big + thick and looked "bitmap clunky" — cause: fat strokes (11–26 px)
++ a separate mismatched polygon arrowhead that didn't join the shaft; (2) the distance
+jumped in ~50 m steps — cause: it used the along-route position (`nt.dist-liveDist`), and
+`snapTo` snaps to route points spaced ~50 m; (3) it ignored the turn-alert-distance
+setting (he set 50 m, it still showed at 250–300 m) — cause: v239 was deliberately
+"always visible"; (4) it kept jumping to the turn-AFTER-next and so pointed the wrong way
+(left turn ahead, arrow already showing the right after it) — cause: always-on + a far
+look-ahead on a tight self-crossing loop. Rework (all `renderTurnCue`/`turnCueGeom` in
+`index.html`): now **gated on `turnAlertM`** (sim ×20) so ONLY the imminent turn shows —
+respects the setting, kills the jump-ahead; distance is now **straight-line from
+`UI.gpsPos` to the turn's lat/lon** (`hav`), so it counts down smoothly (10 m steps via
+`fmtTurnDist`) instead of 50 m snaps, and a far/mis-snapped wrong turn falls outside the
+window and is simply hidden (better than pointing wrong); geometry is **much smaller +
+crisp** — reach 42→110 px, line 4→7 px (was up to 250/26), drawn as a thin white line
+with a thin dark border and an **open chevron arrowhead** (two strokes, joins the shaft
+cleanly — no more polygon blob); proximity `p` now ramps across the alert window (small +
+straight on appearance → grows/bends to the turn); font switched to system sans, smaller.
+Node-verified across 50 m/150 m/sim windows + slight/sharp/u-turn. STILL residual + known:
+self-crossing-loop mis-snap can still pick a wrong "next" turn (now hidden not wrong); the
+bend is screen-left/right on the heading-up map (not true bearing yet); dot still sits over
+the canvas blue triangle; colour held (white/black only), proper colour+font pass later.
+Not yet re-tested on foot.
+
 ## Current status (10 July 2026, v239)
 
 **v239 (10 Jul 2026) — turn POP-UP BANNER replaced by a bending-arrow overlay (new turn
