@@ -15,6 +15,45 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v236)
+
+**v236 (10 Jul 2026) — turn cues made audible again (v235 was too gentle).** Peter
+tested v235 in the sim: could hear the old 3-tone but NOT the new cue. Diagnosis (his
+own clue confirmed it): the on-map turn markers appear then disappear as you pass each
+turn, so the detection pipeline IS firing — the problem was pure audibility. v235 used a
+soft SINE at vol 0.22 (single short heads-up beep); sine carries far less punch than the
+old square triple-beep, so it fired but was easy to miss. Fix keeps the good part
+(minimal, non-repeating, two-stage, direction on-screen) but makes it clearly heard:
+`playCueTone` now uses a **triangle** wave (cuts through better than sine, softer than
+square); `playTurnCue` reworked into two distinct, louder signals — heads-up = two quick
+680 Hz beeps (vol 0.42) "turn coming"; 'now' = one longer higher 900 Hz beep (vol 0.5)
+"turn now". Still no repeating, still far less than the old melody. Logic unchanged from
+v235 (same `_turnCuesFired` two-stage loop). Not yet ride-tested.
+
+## Current status (10 July 2026, v235)
+
+**v235 (10 Jul 2026) — turn cues made minimal + two-stage (Garmin/Wahoo model).**
+Peter: the old 3-tone descending/ascending "melody" (to encode L/R without the screen)
+was too loud and beeped far too constantly — the real culprit was `scheduleTurnBeeps`
+RE-firing the pattern every 0.5–2.5s the whole way in. We checked the proven devices:
+Garmin cycling default is a fixed ~0.1 mile (~160 m) heads-up + a "turn now" at the
+corner (speed-scaling only kicks in in *car* mode); RWGPS warns ~0.5 km out then again
+at the turn. So distance-based (not time) and TWO cues is the norm — our 150 m heads-up
+was already right; we were just missing the confirm and drowning it in repeats. Rewrote:
+removed `playBeepSequence`/`playTurnBeep`/`scheduleTurnBeeps` (+ the repeating
+`_turnBeepTimer` loop and `_lastTurnBeepDist`); new `playCueTone` (sine, vol 0.22 vs old
+0.45) + `playTurnCue(stage)` — heads-up = ONE soft 660 Hz beep + short vibrate; 'now' =
+a 760 Hz double-beep at ≤25 m + double vibrate. Live loop (`updateLive`) now fires each
+stage once per turn via a `_turnCuesFired` Set (keyed `dist:h`/`dist:n`, cleared at the
+same 4 GPS reset points), gated on distance only. Deliberate call with Peter: direction
+is NO LONGER in the sound (accepted limit) — it shows on the on-screen turn popup; a PWA
+can't fire the screen or beep reliably in the background anyway. When we go native the
+same cue list (already parsed into `r.turns` from FIT/TCX) can trigger with the screen
+off + add spoken L/R cues — nothing about this logic changes. Settings test-beep now
+plays the heads-up cue. Node-verified (one heads-up + one confirm per turn, once each,
+consecutive turns independent). `_turnBeepTimer` decl + its no-op clears left in place
+(harmless). Not yet ride-tested.
+
 ## Current status (10 July 2026, v234)
 
 **v234 (10 Jul 2026) — Ride strip now ends on a FINISH anchor row.** Peter: while
