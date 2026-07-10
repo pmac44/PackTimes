@@ -15,6 +15,24 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v230)
+
+**v230 (10 Jul 2026) — water unified into one rule + a real on/off override.**
+Peter on v229: the Caltex water icon was blue but he couldn't DESELECT it (water
+implied by fuel+ohRaw always overrode the flag), and it wasn't consistent on the
+mission tab. Root cause: ~6 places each re-decided "has water" with `implied ||
+!!waterHere`, so an explicit "no" was impossible and they could disagree. Fix:
+new shared `stopWaterImplied(s)` + `stopHasWater(s)` (implied by type UNLESS
+`s.waterHere` is set: true=yes, false=no, undefined=default). Replaced every inline
+copy — buildLiveStrip `hasWater`, the stop-tile button, the mission-node buttons
+(sleep + non-sleep), `isWaterSrc` (filter), the leg water icon, the handler's
+in-place `hasW` — with `stopHasWater`. The toggle now sets an EXPLICIT override
+(`s.waterHere=!stopHasWater(s)`), so you can turn a servo's water OFF (dry/closed)
+or a bare spot's ON, and every view agrees. Food-picker checkbox writes explicit
+true/false too. Node-verified: servo/café/toilet/manual all toggle both ways;
+`waterHere=false` beats an implied source. `s.waterHere` is now tri-state (was
+bool) — no migration needed (undefined = default).
+
 ## Current status (10 July 2026, v229)
 
 **v229 (10 Jul 2026) — stop-tile water icon now always shows (consistency with the
@@ -567,7 +585,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
   ohRaw: string,           // OSM opening-hours source
   ohRules: [{days:Set, ...}],   // parsed; Sets are restored on load
   starred: bool,
-  waterHere: bool,         // v220: user-confirmed water at an otherwise water-uncertain eat spot (self-catered). Default off (safe). Drives the strip's hasWater + 💧 droplet.
+  waterHere: bool|undefined, // v230: EXPLICIT water override — true=yes, false=no, undefined=use the implied default (stopWaterImplied). Set by the tile/node 💧 toggle. All water logic goes through stopHasWater(s).
   meals: [{type:'meal'|'snack', name, source, when:'before'|'after', durationMin}],  // planned eat events
 }
 ```
