@@ -15,6 +15,23 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v242)
+
+**v242 (10 Jul 2026) — IBM Plex fonts embedded (Claude design pass, folded in by me).**
+Peter had "Claude design" do the font pass and handed back `PackTimes.html`. I verified it
+was built on v241 (kept `TURN_GLYPHS` + `renderTurnCue` intact), switched the tokens to
+`--sans:'IBM Plex Sans'` (UI/prose) + `--font:'IBM Plex Mono'` (numbers/metrics), and —
+crucially for the offline PWA — **embedded all 5 woff2 as base64 `@font-face`** (Plex Sans
+400/500/600 + Plex Mono 400/500), zero external font refs, so no service-worker font
+caching needed and it works offline self-contained. Checked: file ends clean, both inline
+`<script>` blocks pass `node --check`, fonts present. Backed up the old file to
+`backup/index-v241-pre-plex.html`, renamed `PackTimes.html` → `index.html`, bumped
+`APP_VERSION` v241 → v242. NOTE: the standalone `fonts/` woff2 folder I created earlier is
+now redundant (fonts are inlined) — left in place, Peter can delete. STILL OPEN: the turn
+cue's number/road label are still the **system-sans placeholder** (set inline in
+`renderTurnCue`, so the CSS font pass didn't touch them) — point them at Plex Mono/Sans
+when Peter's ready. Not yet ride-tested.
+
 ## Current status (10 July 2026, v241)
 
 **v241 (10 Jul 2026) — turn cue now uses professionally-drawn glyphs (Peter's "vector
