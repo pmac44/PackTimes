@@ -15,6 +15,39 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v228)
+
+**v228 (10 Jul 2026) — Ride strip merges co-located stops (amenities model).**
+Peter's edge case: a manual "Touts Lookout" stop + an OSM toilet a few metres apart;
+on the Ride strip the toilet (a hair closer) stole slot 1 and the lookout vanished.
+Fix in `buildLiveStrip`: slot 1 now takes the most NOTABLE stop within a tight
+`MERGE_KM` (0.15 km) of the next stop, via a `rank()` (sleep/meal 6 > food/town/
+accom/fuel 5 > manual stop 4 > camp/hut/peak 3 > water 2 > wc 1). Co-located minor
+stops are marked `seen` (no duplicate row) and surface as amenity add-on icons on
+the row: a 💧 where you can refill (co-location-aware now) and a 🚻 toilet marker.
+Peter's framing: a toilet (like water) is an amenity OF a place — shown as an add-on
+unless standalone. Verified via node: toilet+lookout → "Touts Lookout 🚻"; a
+standalone toilet still shows as its own WC. Sits on top of v227 (built in a parallel
+session; my edits matched the current code cleanly). NOTE: v226/v227 changelog entries
+are from other sessions — QR retirement (v226) etc.
+
+## Current status (10 July 2026, v226)
+
+**v226 (10 Jul 2026) — retired the QR "Transfer plan to phone" path; Offline Storage
+copy rewritten.** Peter never used QR, and his real plans exceed a QR's capacity (a
+300 km / 194-stop plan is 8 KB compressed vs the ~2.3 KB byte-mode ceiling — and the
+old `>7000` guard in `showQRModal` was set well above what a QR can actually hold, so
+mid-size plans would pass the guard then silently fail to draw). Removed the
+`#btn-qr-export` button from `offlineBody` and its click handler in the delegator.
+Rewrote the panel into two clear jobs: "get your plan onto your phone" → Dropbox
+(export/import file as the fallback), and "send a whole ride to someone else" → the
+route-tile share button. **Left dormant (not ripped out, to keep the change low-risk):**
+the `qr-modal` HTML block, `showQRModal`/`loadQRLib`, and the qr-modal listeners — all
+now unreachable from the UI but harmless; `decodePlanStr` is KEPT (shared with the
+ride-import path). Strip the dead QR code later if wanted. Bigger picture: Peter wants
+proper file hosting eventually to replace flaky Dropbox sync (regular reconnects,
+unclear which end is newer) — parked, not today's job.
+
 ## Current status (10 July 2026, v225)
 
 **v225 (10 Jul 2026) — water button on sleep nodes + real scroll fix + water

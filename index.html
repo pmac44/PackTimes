@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v225';
+window.APP_VERSION='v228';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -8995,14 +8995,28 @@ function buildLiveStrip(r,liveDist,sdt){
   // "water here" on the eat event (s.waterHere). Safe by default.
   const hasWater=s=>s.type==='water'||s.type==='food'||s.type==='shop'||s.type==='pub'||((s.type==='town'||s.type==='fuel')&&!!s.ohRaw)||!!s.waterHere;
 
-  // Slot 1: always the next stop
-  add(ahead[0],'type');
+  // Slot 1: the next stop — but if several stops share the same pull-off (within
+  // MERGE_KM), show the most NOTABLE one (a lookout you added), not an incidental
+  // toilet a few metres earlier. The co-located minor stops become amenity add-ons
+  // (toilet/water icons) and are marked seen so they don't reappear as their own row.
+  const MERGE_KM=0.15;
+  const rank=s=>(s.type==='sleep'||s.sleepAt||(s.meals&&s.meals.length))?6
+    :(s.type==='food'||s.type==='shop'||s.type==='pub'||s.type==='town'||s.type==='accom'||s.type==='fuel')?5
+    :(s.type==='stop')?4
+    :(s.type==='camp'||s.type==='hut'||s.type==='caravan'||s.type==='peak')?3
+    :(s.type==='water')?2
+    :(s.type==='wc')?1:0;
+  const coLocated=s=>ahead.filter(x=>Math.abs(x.dist-s.dist)<=MERGE_KM);
+  const slot1Group=coLocated(ahead[0]);
+  const slot1=slot1Group.reduce((a,b)=>rank(b)>rank(a)?b:a,ahead[0]);
+  slot1Group.forEach(x=>{if(x.id!==slot1.id)seen.add(x.id);});
+  add(slot1,'type');
 
   // Collect candidates: next sleep, next food, next water — then pick up to 3 closest unseen
   const candidates=[];
 
   // Next sleep (only if slot 1 isn't already a sleep)
-  const slot1IsSleep=ahead[0]&&(ahead[0].type==='sleep'||ahead[0].sleepAt);
+  const slot1IsSleep=slot1&&(slot1.type==='sleep'||slot1.sleepAt);
   if(!slot1IsSleep){
     const nextSleep=ahead.find(s=>!seen.has(s.id)&&(s.type==='sleep'||s.sleepAt));
     if(nextSleep)candidates.push({s:nextSleep,reason:'type',displayName:null});
@@ -9062,12 +9076,14 @@ function buildLiveStrip(r,liveDist,sdt){
     const needsHours=reason==='type'&&hoursTypes.has(s.type);
     const openBadge=needsHours?(st==='open'?'<span style="font-size:11px;color:var(--accent);margin-left:4px;">✓</span>':st==='closed'?'<span style="font-size:11px;color:var(--red);margin-left:4px;">✗</span>':'<span style="font-size:11px;color:var(--amber);margin-left:4px;">? hrs</span>'):'';
     const displayName=rowDisplayName[s.id]||s.name;
-    // Water droplet on any row where you can get water, EXCEPT a dedicated water
-    // stop (it already shows the WATER badge). So a café reads "EAT 💧", a
-    // self-catered eat with no water reads "EAT" (no droplet).
-    const waterTick=(hasWater(s)&&s.type!=='water')?' <span title="Water available here" style="color:#60a5fa;font-size:13px;vertical-align:-1px;">💧</span>':'';
+    // Amenity add-ons for this place (the row's stop + anything co-located): a water
+    // droplet where you can refill, and a toilet marker if there's a loo here. A
+    // dedicated water/toilet stop already carries its own badge, so it's not doubled.
+    const _co=coLocated(s);
+    const waterTick=(s.type!=='water'&&_co.some(hasWater))?' <span title="Water available here" style="color:#60a5fa;font-size:13px;vertical-align:-1px;">💧</span>':'';
+    const toiletTick=(s.type!=='wc'&&_co.some(x=>x.type==='wc'))?' <span title="Toilet here" style="font-size:12px;vertical-align:-1px;">🚻</span>':'';
     return`<div class="live-next-row live-summary-card" data-sid="${s.id}">
-      <div class="live-next-icons">${icons}${waterTick}</div>
+      <div class="live-next-icons">${icons}${waterTick}${toiletTick}</div>
       <div class="live-next-name">${displayName}${popBadge(s)}${openBadge}</div>
       <div class="live-next-in" style="flex-shrink:0;">${dt}km/${inStr||timeStr}</div>
     </div>`;
@@ -10526,7 +10542,7 @@ function tRoutes(r){
   <div class="card" style="padding:14px;">
     <div id="btn-switch-route" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;cursor:pointer;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r-ctrl);padding:8px 10px;" title="Switch route">
       <div class="ctitle" style="margin-bottom:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Plan: ${r.label||r.name}</div>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text3);"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text3);"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>
     </div>
     <p style="font-size:15px;color:var(--text3);line-height:1.5;">This is a blank plan with no route geometry. Use the Stops tab to search for locations by town name, or use the Switch route button to import a GPX route.</p>
     <div style="margin-top:8px;font-size:13px;color:var(--text3);font-family:var(--font);">${r.stops.length} stop${r.stops.length!==1?'s':''}</div>
@@ -10542,7 +10558,7 @@ function tRoutes(r){
   <div class="card" style="padding:14px;">
     <div id="btn-switch-route" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;cursor:pointer;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r-ctrl);padding:8px 10px;" title="Switch route">
       <div class="ctitle" style="margin-bottom:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.label||r.name}</div>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text3);"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text3);"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>
     </div>
     ${(()=>{
       const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
@@ -10772,12 +10788,12 @@ function tSettings(r){
 
   const offlineBody=`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;">Routes saved in IndexedDB — persists offline between sessions.</p>
+    <div style="font-size:16px;color:var(--text2);margin-top:12px;line-height:1.55;"><strong>Get your plan onto your phone.</strong> Easiest is Dropbox sync (Settings → Dropbox) — it copies plans across your devices automatically. If Dropbox is playing up, export the plan here and import it on the other device.</div>
     <button class="btn btn-sm btn-full" id="btn-export" style="margin-top:9px;display:inline-flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Export routes (JSON)</button>
-    <button class="btn btn-sm btn-p btn-full" id="btn-qr-export" style="margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="17"/><line x1="17" y1="14" x2="21" y2="14"/><line x1="21" y1="17" x2="21" y2="21"/><line x1="14" y1="21" x2="17" y2="21"/><line x1="17" y1="17" x2="17" y2="18"/></svg>Transfer plan to phone (QR)</button>
-    <div style="font-size:16px;color:var(--text3);margin-top:5px;line-height:1.5;">Import a plan: load the same route file on your phone, then use Import Plan below.</div>
+    <div style="font-size:16px;color:var(--text3);margin-top:5px;line-height:1.5;">To import a plan, load the same route file on the other device first, then use the button below.</div>
     <button class="btn btn-sm btn-full" id="btn-import-plan" style="margin-top:6px;display:inline-flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Import plan from file</button>
     <input type="file" id="plan-file-input" accept=".json" style="display:none;">
-    <div style="font-size:13px;color:var(--text3);margin-top:9px;line-height:1.5;">Sharing a whole ride? Use the share button on a route's tile, and "Open a shared ride file" on the Route tab.</div>`;
+    <div style="font-size:13px;color:var(--text3);margin-top:12px;line-height:1.5;"><strong>Sending a whole ride to someone else?</strong> Use the share button on a route's tile — it bundles the route and plan into one file they can open cold. They open it with "Open a shared ride file" on the Route tab.</div>`;
 
   const offlineMapsBody=`
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">PackTimes caches map tiles as you view them. Before heading into remote areas <strong>without internet</strong>, open the map on the Route or Stops tab and pan/zoom along your route — tiles you've viewed will be available offline.</p>
@@ -13711,7 +13727,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-recstop-cancel')){_recStopCancel();return;}
   if(e.target.closest('#btn-recstop-confirm')){_recStopConfirm();return;}
   if(e.target.closest('#btn-recstop-undo')){_recStopUndo();return;}
-  if(e.target.closest('#btn-qr-export')){const r=cur();if(r)showQRModal(r);return;}
   if(e.target.closest('#btn-import-plan')){document.getElementById('plan-file-input').click();return;}
   if(e.target.closest('#btn-clearall')){
     if(!confirm('Delete ALL routes, stops and settings? This cannot be undone.'))return;
