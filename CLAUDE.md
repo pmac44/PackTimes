@@ -15,6 +15,21 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v229)
+
+**v229 (10 Jul 2026) — stop-tile water icon now always shows (consistency with the
+mission node).** Peter: a Caltex servo (fuel + OSM hours = water implied) had NO
+water icon on its stop tile, while toilets did — inconsistent, and you want to SEE
+that the servo has water. v222 hid the tile's water button whenever water was
+implied; that clashed with the mission-node button (always shown, blue when
+watered). Fixed: the stop-tile `.water-at-stop` button now shows on every stop
+EXCEPT a dedicated water stop (which already has the WATER badge), blue `#60a5fa`
+when water is available (food/shop/pub, town/servo with ohRaw, or `waterHere`),
+outline when uncertain; tapping still toggles `waterHere` (a no-op on implied
+stops — the fill stays, honest). Handler's in-place recolour switched from
+`!!s.waterHere` to the full `hasW(s)`. Now the stop tile and mission node behave
+the same. Node-verified (servo=blue, toilet=outline until ticked, water stop=none).
+
 ## Current status (10 July 2026, v228)
 
 **v228 (10 Jul 2026) — Ride strip merges co-located stops (amenities model).**
