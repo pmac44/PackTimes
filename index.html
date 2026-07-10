@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v236';
+window.APP_VERSION='v237';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -12697,8 +12697,10 @@ function updateLive(){
       if(distM<=0){tp.remove();}
     }
   } else if(UI.gpsActive&&r.turns&&r.turns.length){
-    // Only render if a turn is actually within alert distance — not on every GPS tick
-    const alertDistKm2=(UI.turnAlertM||150)/1000;
+    // Only render if a turn is actually within alert distance — not on every GPS tick.
+    // Match the sim ×20 window used by the popup template + audio, else the fast sim
+    // skips past the 150 m zone between ticks and the popup never appears.
+    const alertDistKm2=UI.simRunning?(UI.turnAlertM||150)*20/1000:(UI.turnAlertM||150)/1000;
     const needsTurn=r.turns.some(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm2&&!t._dismissed);
     if(needsTurn)render();
   }

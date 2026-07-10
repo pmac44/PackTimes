@@ -15,6 +15,23 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v237)
+
+**v237 (10 Jul 2026) — turn popup now shows during a sim (window bug).** Peter tested
+v236 on the desktop sim: heard the (now quiet-but-OK) beep, but the on-screen turn popup
+never appeared. Root cause in `updateLive`: the popup is CREATED by an `else if` that
+calls `render()` only when a turn is within `alertDistKm2` — and that gate used the plain
+150 m window WITHOUT the sim ×20 multiplier that the popup's own template and the audio
+loop both use. At 20× the rider skips past the 150 m zone between ticks, so `render()`
+never fired and the popup was never built (audio was fine — it lives in `checkAlerts`,
+which does use ×20). Fix: `alertDistKm2` now applies the same `UI.simRunning?…*20` widen.
+Popup appears once per turn (render fires once to build it, then updateLive patches the
+distance and removes it when passed). Also confirmed: the **simulator is desktop-only** —
+its Play/Pause/Stop live in `desktop-sim-ctrl` on the big-map overlay (rendered inside
+`renderDesktopMap`, which early-returns on mobile), so there is no way to launch the sim
+on the phone. Real-device audio can still be checked via the Settings turn-audio toggle
+(plays the heads-up cue). Not yet ride-tested.
+
 ## Current status (10 July 2026, v236)
 
 **v236 (10 Jul 2026) — turn cues made audible again (v235 was too gentle).** Peter
