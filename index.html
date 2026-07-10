@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v233';
+window.APP_VERSION='v234';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -8982,7 +8982,41 @@ function waterAssigned(s){return s.waterHere===true;}
 function buildLiveStrip(r,liveDist,sdt){
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
   const ahead=r.stops.filter(s=>s.dist>liveDist&&starred(s));
-  if(!ahead.length)return'<div class="live-next-strip" id="live-next-strip"><div class="live-next-row" style="justify-content:center;color:var(--accent);font-size:14px;padding:8px 0;">🏁 All stops passed</div></div>';
+  // When nothing else would be surfaced (all marked stops passed), show the FINISH
+  // as the anchor row: 🏁 + destination name + distance-to-go + ETA, plus any amenity
+  // icons CONFIRMED at a town sitting on the finish. This never fires while real stops
+  // are ahead (they take the rows), so it only appears on the run-in to the line — no
+  // clutter far out. The top bar already carries the finish ETA; this fills the strip's
+  // tail instead of the old bland "All stops passed".
+  if(!ahead.length){
+    const finDist=r.totalDist;
+    const eta=etaAt(finDist,r);
+    const now=etaAt(liveDist,r)||sdt||new Date();
+    const dto=Math.max(0,finDist-liveDist).toFixed(1);
+    const day=sdt&&eta?dayOff(eta,sdt):'';
+    const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
+    const remH=eta&&now?(eta-now)/3600000:null;
+    const inStr=remH!==null&&remH>0
+      ?(remH<1?(Math.round(remH*60)+'min')
+        :(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':'')))
+      :null;
+    // Destination name: a town/stop sitting on the finish (within CLUSTER_KM), else "Finish".
+    const finStop=r.stops.reduce((b,s)=>(b===null||Math.abs(s.dist-finDist)<Math.abs(b.dist-finDist))?s:b,null);
+    const destName=(finStop&&Math.abs(finStop.dist-finDist)<=CLUSTER_KM)?finStop.name:'Finish';
+    // Amenity icons CONFIRMED at the finish town (any stop within CLUSTER_KM) — same
+    // explicit-only rule as the rows: never implied from a stop's type.
+    const near=r.stops.filter(s=>Math.abs(s.dist-finDist)<=CLUSTER_KM);
+    const amen=(cond,title,glyph,col)=>cond?' <span title="'+title+'" style="font-size:13px;vertical-align:-1px;'+(col?'color:'+col+';':'')+'">'+glyph+'</span>':'';
+    const wTick=amen(near.some(s=>s.type==='water'||s.waterHere===true),'Water confirmed here','💧','#60a5fa');
+    const fTick=amen(near.some(s=>s.meals&&s.meals.length>0),'Meal planned here','🍴',null);
+    const slTick=amen(near.some(s=>s.type==='sleep'||s.sleepAt),'Sleep here','😴',null);
+    const tTick=amen(near.some(s=>s.type==='wc'),'Toilet here','🚻',null);
+    return`<div class="live-next-strip" id="live-next-strip"><div class="live-next-row live-summary-card">`
+      +`<div class="live-next-icons">🏁${wTick}${fTick}${slTick}${tTick}</div>`
+      +`<div class="live-next-name">${destName}</div>`
+      +`<div class="live-next-in" style="flex-shrink:0;">${dto}km/${inStr||timeStr}</div>`
+      +`</div></div>`;
+  }
 
   const seen=new Set();
   const rows=[];

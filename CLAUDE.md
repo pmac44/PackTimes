@@ -15,6 +15,24 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v234)
+
+**v234 (10 Jul 2026) — Ride strip now ends on a FINISH anchor row.** Peter: while
+approaching the end, a bare destination town (Harden = the finish) didn't show on the
+strip, and the old empty state was a bland "🏁 All stops passed" with no distance/time.
+Agreed rule (kept deliberately simple): show the finish ONLY when the strip would
+otherwise have no rows — i.e. all marked stops passed. It never fires while real stops
+are ahead (they take the rows), so it can't clutter a multi-day route far from the end;
+the distance-gating falls out for free. Replaced the empty-state early-return in
+`buildLiveStrip` with a proper row: 🏁 + destination name + distance-to-go + ETA, plus
+amenity icons CONFIRMED at a town sitting on the finish (💧/🍴/😴/🚻, same explicit-only
+rule as the other rows). Destination name = the nearest stop within `CLUSTER_KM` of
+`r.totalDist`, else "Finish". Node-verified both cases (finish-on-a-watered-town →
+"🏁 Harden 💧"; bare finish 30 km past last stop → "🏁 Finish 30.0km/…"). Note: the top
+ride bar already carries the finish ETA, so this is a tail-filler, not a duplicate — an
+earlier stop/town on the strip still takes priority (Peter's "earlier town knocks off
+the finish"). Not yet ride-tested.
+
 ## Current status (10 July 2026, v233)
 
 **v233 (10 Jul 2026) — Ride strip is now EXPLICIT-only (safety) + amenity icons.**
