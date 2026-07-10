@@ -15,6 +15,53 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v233)
+
+**v233 (10 Jul 2026) — Ride strip is now EXPLICIT-only (safety) + amenity icons.**
+Peter's safety point: assuming a place has water is dangerous — unmanned servos
+(e.g. Jugiong) may have no food/water; on a remote leg a missing water stop can be
+life-critical. So the strip must NOT imply food/water from type. Changed
+`buildLiveStrip` `hasFood=s=>!!(s.meals&&s.meals.length)` (planned meals only) and
+`hasWater=s=>s.type==='water'||s.waterHere===true` (real water stop or a "water here"
+mark) — a starred servo shows NOTHING unless you confirmed it. Added per-row amenity
+icons for what's CONFIRMED at the place (row stop + co-located): 💧 water, 🍴 meal,
+😴 sleep, 🚻 toilet — each skipped when it's already the row's primary badge. All
+three assignments already auto-star (sleep 13106, food 13153, water 13271), so
+marking water/food/sleep on a servo stars it AND shows its icon. Node-verified.
+NOTE: the mission-node/tile/filter still use `stopHasWater` (implied) for the water
+FILTER + node buttons via `waterAssigned` — strip is the safety-critical view. Next
+up (Peter's request): a one-tap mechanism to pull a nearer stop onto the plan mid-ride.
+
+## Current status (10 July 2026, v232)
+
+**v232 (10 Jul 2026) — water now mirrors FOOD exactly (manual on tiles, implied on
+strip).** Peter: food outlets showed a blue water droplet on their stop tiles even
+though he hadn't assigned water — "obviously food outlets, but you wouldn't auto-mark
+food at every venue." Right model = water works like food: the TILE/NODE icon lights
+only for a MANUAL assignment (`waterAssigned(s)=s.waterHere===true`), just as the food
+icon lights only for an assigned meal; but the RIDE STRIP + water filter still treat
+a café/servo as a water source (`stopHasWater(s)=stopWaterImplied(s)||waterHere`),
+just as the strip treats a café as food. Two helpers now: `waterAssigned` (tiles,
+nodes, auto-star) vs `stopHasWater` (strip, filter). Tapping the droplet assigns/
+un-assigns (`waterHere` true/delete — dropped the tri-state false override); assigning
+auto-stars the stop like assigning food does (removed the old `!stopWaterImplied`
+guard — any manual assign stars, even a café). Node water buttons + handler switched
+to `waterAssigned`. Node-verified: café/servo tile empty but strip=water; tap → blue
++ star; un-assign clears.
+
+## Current status (10 July 2026, v231)
+
+**v231 (10 Jul 2026) — manually adding water auto-stars the stop (like food).**
+Peter's insight: the star discriminator is HOW the water droplet got there —
+auto-implied (servo/café) = just info, don't star (you pass 100 of them); manually
+MARKED (a tap at a bare spot you plan to refill at) = a deliberate "stop here"
+decision = star it, same as assigning food auto-stars. Implemented in the
+`.water-at-stop` handler: after the toggle, `if(!node && s.waterHere===true &&
+!stopWaterImplied(s) && s.starred===false){ s.starred=true; ... }` and updates the
+sibling `.star-stop` button in place (no re-render → no scroll jump). So an implied
+servo NEVER auto-stars (even toggled off then on), but ticking water on a bare
+manual stop / spring stars it. Node-verified truth-table.
+
 ## Current status (10 July 2026, v230)
 
 **v230 (10 Jul 2026) — water unified into one rule + a real on/off override.**
@@ -585,7 +632,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
   ohRaw: string,           // OSM opening-hours source
   ohRules: [{days:Set, ...}],   // parsed; Sets are restored on load
   starred: bool,
-  waterHere: bool|undefined, // v230: EXPLICIT water override — true=yes, false=no, undefined=use the implied default (stopWaterImplied). Set by the tile/node 💧 toggle. All water logic goes through stopHasWater(s).
+  waterHere: true|undefined, // v232: MANUAL water assignment (like meals). true=assigned (tile/node 💧 blue, auto-stars); undefined=not assigned. waterAssigned(s)=water===true drives the icons+star; stopHasWater(s)=implied||assigned drives the Ride strip + water filter.
   meals: [{type:'meal'|'snack', name, source, when:'before'|'after', durationMin}],  // planned eat events
 }
 ```
