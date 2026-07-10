@@ -15,6 +15,25 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v238)
+
+**v238 (10 Jul 2026) — turn popup now really shows on the desktop sim + tone re-fires
+after a slider scrub.** Two bugs from Peter's desktop-sim test of v237. (1) No turn
+graphic: v237's "widen the window" fix was pointless on desktop because the popup was
+only ever created by rebuilding the live shell via `render()` — and on desktop during a
+sim/GPS, `render()` deliberately short-circuits to `updateLive()` and returns WITHOUT
+rebuilding (anti-flash guard at the top of `_render`), so the popup was never built. Fix:
+`updateLive` now BUILDS the `#turn-popup` element directly (createElement + appendChild
+into `#live-map-section`, which is `position:relative`) instead of calling `render()`;
+still sim-aware window, still one popup (patched in place after, removed when passed).
+Works on mobile too (updateLive runs there as well; no duplicate — it only builds when
+`getElementById('turn-popup')` is null). (2) Tone fired only once: `_turnCuesFired` keys
+persist, and the sim slider handlers (`#sim-sl`, both the map-overlay one ~7705 and the
+delegated one ~13931) set `UI.gpsDistKm` + `updateLive()` but never cleared the fired
+set, so replaying through the same turn stayed silent. Fix: both slider handlers now
+`_turnCuesFired.clear()` on scrub, so upcoming turns re-fire fresh. Node-verified the
+popup HTML builder. Not yet ride-tested.
+
 ## Current status (10 July 2026, v237)
 
 **v237 (10 Jul 2026) — turn popup now shows during a sim (window bug).** Peter tested

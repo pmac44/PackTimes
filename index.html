@@ -738,7 +738,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v237';
+window.APP_VERSION='v238';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7706,6 +7706,7 @@ document.addEventListener('input',e=>{
     const dist=+e.target.value;
     const r=cur();
     UI.gpsDistKm=dist;
+    _turnCuesFired.clear(); // scrubbing repositions — let upcoming turn cues fire fresh
     if(r&&r.points.length){
       const pt=r.points[cidx(r,dist)];
       UI.gpsPos={lat:pt.lat,lon:pt.lon,acc:5,ts:Date.now()};
@@ -12697,12 +12698,26 @@ function updateLive(){
       if(distM<=0){tp.remove();}
     }
   } else if(UI.gpsActive&&r.turns&&r.turns.length){
-    // Only render if a turn is actually within alert distance — not on every GPS tick.
-    // Match the sim ×20 window used by the popup template + audio, else the fast sim
-    // skips past the 150 m zone between ticks and the popup never appears.
+    // Build the turn popup directly here — don't rely on a full render(). On desktop
+    // during a sim, render() short-circuits straight back to updateLive and never
+    // rebuilds the live shell, so a render()-based popup would never appear. Sim-aware
+    // window, matching the audio loop and the shell template.
     const alertDistKm2=UI.simRunning?(UI.turnAlertM||150)*20/1000:(UI.turnAlertM||150)/1000;
-    const needsTurn=r.turns.some(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm2&&!t._dismissed);
-    if(needsTurn)render();
+    const nt=r.turns.find(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm2&&!t._dismissed);
+    const sec=document.getElementById('live-map-section');
+    if(nt&&sec){
+      const distM=Math.round((nt.dist-liveDist)*1000);
+      const arrow=nt.type==='Left'?'↰':nt.type==='Right'?'↱':'↑';
+      const label=nt.notes||nt.name||(nt.type+' turn');
+      const el=document.createElement('div');
+      el.className='turn-popup';el.id='turn-popup';el.dataset.turnDist=nt.dist;
+      el.innerHTML=`<div class="turn-arrow">${arrow}</div><div class="turn-info">`
+        +`<div class="turn-dist">${distM<1000?distM+'m':(distM/1000).toFixed(1)+'km'}</div>`
+        +`<div class="turn-label">${label}</div>`
+        +(nt.auto?'<div class="turn-auto">⚠️ Auto-detected — verify on map</div>':'')
+        +`</div>`;
+      sec.appendChild(el);
+    }
   }
   // Re-apply alerting class after strip rebuild (strip innerHTML replacement removes it)
   if(_stopAlertId){
@@ -13932,6 +13947,7 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     const dist=+e.target.value;
     const r=cur();
     UI.gpsDistKm=dist;
+    _turnCuesFired.clear(); // scrubbing repositions — let upcoming turn cues fire fresh
     if(r&&r.points.length){
       const pt=r.points[cidx(r,dist)];
       UI.gpsPos={lat:pt.lat,lon:pt.lon,acc:5,ts:Date.now()};
