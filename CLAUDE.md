@@ -15,6 +15,29 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v241)
+
+**v241 (10 Jul 2026) — turn cue now uses professionally-drawn glyphs (Peter's "vector
+graphics" push).** After a long visual iteration (all previewed as composites on Peter's
+real Ride screenshot + an arrow-set HTML, in `_planning/`), replaced the procedurally-bent
+arrow (which looked "bitmap clunky" / heads didn't align) with a set of eight **designed
+manoeuvre glyphs**: straight, slight/normal/sharp × left+right, u-turn. Key method change
+Peter steered: each glyph is a SINGLE outline shape (shaft + arrowhead + the rider dot all
+**unioned** into one polygon, computed offline with shapely) that is then just **filled
+white + one dark stroke** — like drawing a shape and adding a border in a graphics program.
+No more separate shaft-stroke + separate triangle (that join was the misalignment); white
+is inherently continuous, border only on the outside, dot merged in (no interrupting line),
+dot sized down to match a thinner body. Baked into `index.html` as the `TURN_GLYPHS` const
+(130×150 space, dot at 65,132 — DO NOT hand-edit; regenerate via the shapely script in
+`_planning/`). `turnGlyphKey(type,notes)` picks the glyph; `renderTurnCue` scales it (dot
+pinned to the rider, on-screen height = H·(0.16+0.20·p), grows as you approach) instead of
+bending. Kept from v240: only the imminent turn shown (gated on `turnAlertM`, sim ×20),
+smooth straight-line countdown, distance + road below. Node-verified glyph selection +
+scale math. **Font is deliberately still the placeholder** (system sans) — Peter is
+reviewing how the bike computers handle type; proper type pass + the style-guide DM Mono
+question come next. Also (Peter's request) reaffirmed: **read `PackTimes-style-guide.md`
+before every UI change** (noted in memory). Not yet ride-tested.
+
 ## Current status (10 July 2026, v240)
 
 **v240 (10 Jul 2026) — turn-cue rework after Peter's first WALK test of v239 (v239 was

@@ -733,7 +733,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v240';
+window.APP_VERSION='v241';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -12426,22 +12426,37 @@ function factorDesc(f){
 }
 
 // ─── Turn cue arrow overlay ───
-// Replaces the old top pop-up banner. A crisp thin arrow rising from the rider dot,
-// bending toward the next turn. Shows ONLY the imminent turn (within the turn-alert
-// distance), small+straight as it appears then growing/bending as you close in.
-// Distance counts down smoothly via straight-line to the turn (the along-route dist
-// snaps to route points ~ every 50 m). Audio cues (checkAlerts) are separate/unchanged.
+// Replaces the old top pop-up banner. A crisp designed manoeuvre glyph (see TURN_GLYPHS)
+// rising from the rider dot, picked by turn type and SCALED UP as you approach. Shows ONLY
+// the imminent turn (within the turn-alert distance). Distance counts down smoothly via
+// straight-line to the turn (the along-route dist snaps to route points ~ every 50 m).
+// Font is a placeholder pending a proper type pass. Audio cues (checkAlerts) unchanged.
 function fmtTurnDist(m){
   if(m>=1000)return (m/1000).toFixed(m<10000?1:0)+' km';
   return Math.max(0,Math.round(m/10)*10)+' m';
 }
-function turnCueGeom(remM,type,notes,showM){
-  const p=Math.max(0,Math.min(1,(showM-remM)/showM));   // 0 at the far edge of the window, 1 at the turn
+// Manoeuvre glyphs — fixed, professionally-drawn single-outline arrows (shaft+head+dot
+// unioned into ONE shape, filled white + one dark stroke). Generated offline; coords in a
+// 130x150 space with the rider dot at (65,132). renderTurnCue picks one by turn type and
+// scales it. Do NOT hand-edit the path data — regenerate from _planning/gen (shapely).
+const TURN_GLYPHS={
+  straight:'M 79.5 32.0 65.0 13.0 50.5 32.0 59.5 32.0 59.5 124.3 56.6 127.5 55.5 132.0 56.2 135.6 58.3 138.7 60.5 140.4 64.1 141.5 67.8 141.1 71.0 139.3 73.4 136.5 74.5 132.9 73.8 128.4 72.3 126.0 70.5 124.3 70.5 32.0 79.5 32.0 Z',
+  slightLeft:'M 55.5 29.9 31.8 26.8 34.9 50.5 41.3 44.1 53.2 56.2 56.3 60.7 58.3 65.7 59.5 74.1 59.5 124.3 57.7 126.0 56.2 128.4 55.5 132.9 56.6 136.5 59.0 139.3 62.2 141.1 65.9 141.5 69.5 140.4 71.7 138.7 73.4 136.5 74.5 132.9 73.8 128.4 72.3 126.0 70.5 124.3 70.3 69.8 69.0 62.8 67.7 59.2 64.1 52.4 59.2 46.4 49.1 36.3 55.5 29.9 Z',
+  left:'M 37.0 45.5 18.0 60.0 37.0 74.5 37.0 65.5 53.5 65.7 56.7 66.7 58.3 68.3 59.3 71.5 59.5 74.2 59.5 124.3 57.7 126.0 56.2 128.4 55.5 132.9 56.6 136.5 59.7 139.9 64.1 141.5 67.8 141.1 70.3 139.9 72.3 138.0 73.8 135.6 74.5 132.0 73.4 127.5 70.5 124.3 70.5 74.0 69.3 66.1 67.7 62.6 65.2 59.5 62.4 57.3 58.9 55.7 51.4 54.5 37.0 54.5 37.0 45.5 Z',
+  sharpLeft:'M 33.7 64.2 26.5 87.0 50.4 87.9 45.2 80.6 59.2 71.1 59.5 124.3 57.7 126.0 56.2 128.4 55.5 132.9 56.6 136.5 59.7 139.9 64.1 141.5 68.6 140.8 71.0 139.3 72.9 137.3 74.1 134.8 74.5 132.0 73.4 127.5 70.5 124.3 70.5 74.0 70.3 70.1 69.2 65.9 67.7 63.2 64.9 60.8 61.3 59.7 57.8 59.9 53.3 61.7 38.9 71.6 33.7 64.2 Z',
+  slightRight:'M 95.1 50.5 98.2 26.8 74.5 29.9 80.9 36.3 70.8 46.4 65.9 52.4 62.3 59.2 61.0 62.8 59.7 69.8 59.5 124.3 56.6 127.5 55.5 132.0 55.9 134.8 57.1 137.3 59.0 139.3 61.4 140.8 65.9 141.5 70.3 139.9 73.4 136.5 74.5 132.9 73.8 128.4 72.3 126.0 70.5 124.3 70.5 74.1 71.0 68.3 72.6 63.1 76.8 56.2 88.7 44.1 95.1 50.5 Z',
+  right:'M 93.0 74.5 112.0 60.0 93.0 45.5 93.0 54.5 78.6 54.5 71.6 55.5 67.6 57.3 65.1 59.2 62.0 63.2 60.5 66.6 59.5 73.6 59.5 124.3 56.6 127.5 55.5 132.0 56.6 136.5 58.3 138.7 60.5 140.4 65.0 141.5 69.5 140.4 72.3 138.0 74.3 133.9 74.5 131.1 73.8 128.4 72.3 126.0 70.5 124.3 70.5 74.2 70.7 71.5 71.7 68.3 73.3 66.7 76.5 65.7 93.0 65.5 93.0 74.5 Z',
+  sharpRight:'M 79.6 87.9 103.5 87.0 96.3 64.2 91.1 71.6 79.4 63.4 73.6 60.3 69.2 59.6 65.1 60.8 62.0 63.7 60.5 66.8 59.7 70.1 59.5 124.3 56.6 127.5 55.5 132.0 56.2 135.6 57.7 138.0 59.7 139.9 62.2 141.1 65.9 141.5 70.3 139.9 73.4 136.5 74.5 132.9 73.8 128.4 72.3 126.0 70.5 124.3 70.8 71.1 84.8 80.6 79.6 87.9 Z',
+  uturn:'M 70.8 55.4 72.8 50.5 76.5 46.8 81.4 44.8 84.0 44.5 86.6 44.8 91.5 46.8 95.2 50.5 96.4 52.8 97.5 58.3 97.5 104.0 88.5 104.0 103.0 123.0 117.5 104.0 108.5 104.0 108.5 57.5 108.0 53.2 106.8 49.1 104.4 44.4 101.3 40.7 97.6 37.6 93.4 35.4 88.8 34.0 84.0 33.5 79.2 34.0 74.6 35.4 70.4 37.6 66.7 40.7 63.4 44.9 61.4 48.6 60.1 52.7 59.5 57.5 59.5 124.3 57.7 126.0 56.2 128.4 55.5 132.9 56.6 136.5 58.3 138.7 60.5 140.4 64.1 141.5 67.8 141.1 71.0 139.3 73.4 136.5 74.5 132.9 73.8 128.4 72.3 126.0 70.5 124.3 70.8 55.4 Z',
+};
+// Pick the manoeuvre glyph from the turn's type + note (slight / sharp / u-turn).
+function turnGlyphKey(type,notes){
   const n=(notes||'').toLowerCase();
-  let mag=75; if(n.includes('slight'))mag=38; else if(n.includes('sharp'))mag=115;
-  let dir=0; if(type==='Right')dir=1; else if(type==='Left')dir=-1;
-  if(n.includes('u turn')||n.includes('u-turn')||type==='Uturn'){mag=150;if(dir===0)dir=-1;}
-  return {p,angle:dir*mag*p,R:42+68*p,w:4+3*p};   // crisp: reach 42->110 px, line 4->7 px
+  if(n.includes('u turn')||n.includes('u-turn')||type==='Uturn')return 'uturn';
+  const sl=n.includes('slight'),sh=n.includes('sharp');
+  if(type==='Left')return sl?'slightLeft':sh?'sharpLeft':'left';
+  if(type==='Right')return sl?'slightRight':sh?'sharpRight':'right';
+  return 'straight';
 }
 function renderTurnCue(r,liveDist){
   const sec=document.getElementById('live-map-section');
@@ -12459,29 +12474,18 @@ function renderTurnCue(r,liveDist){
   if(remM>showM){if(cue)cue.remove();return;}              // only the imminent turn is shown
   const W=sec.clientWidth,H=sec.clientHeight; if(!W||!H)return;
   if(!cue){cue=document.createElement('div');cue.id='turn-cue';cue.className='turn-cue';sec.appendChild(cue);}
-  const g=turnCueGeom(remM,nt.type,nt.notes,showM);
-  const bx=Math.round(W/2),by=Math.round(H*0.66);
-  const straight=g.R*0.45,a=g.angle*Math.PI/180;
-  const dx=Math.sin(a),dy=-Math.cos(a),rem=g.R-straight;
-  const p1x=bx,p1y=by-straight,tx=p1x+dx*rem,ty0=p1y+dy*rem,cxp=p1x,cyp=p1y-rem*0.5;
-  const shaft=`M ${bx} ${by} L ${p1x.toFixed(1)} ${p1y.toFixed(1)} Q ${cxp.toFixed(1)} ${cyp.toFixed(1)} ${tx.toFixed(1)} ${ty0.toFixed(1)}`;
-  // open chevron arrowhead, angled to the travel direction
-  const hl=9+6*g.p, ang=Math.atan2(dy,dx), W1=ang+2.618, W2=ang-2.618;
-  const w1x=tx+Math.cos(W1)*hl,w1y=ty0+Math.sin(W1)*hl,w2x=tx+Math.cos(W2)*hl,w2y=ty0+Math.sin(W2)*hl;
-  const head=`M ${w1x.toFixed(1)} ${w1y.toFixed(1)} L ${tx.toFixed(1)} ${ty0.toFixed(1)} L ${w2x.toFixed(1)} ${w2y.toFixed(1)}`;
-  const lw=g.w,ow=lw+4;
-  const fd=Math.round(19+11*g.p),fr=Math.round(12+2*g.p),dotR=Math.round(6+2*g.p);
-  const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const p=Math.max(0,Math.min(1,(showM-remM)/showM));   // 0 at the far edge of the window, 1 at the turn
+  const bx=Math.round(W/2),by=Math.round(H*0.66);       // rider anchor on the live map
+  const glyph=TURN_GLYPHS[turnGlyphKey(nt.type,nt.notes)]||TURN_GLYPHS.straight;
+  const s=(H*(0.16+0.20*p))/120;                        // scale glyph so its on-screen height grows as you approach
+  const tx=bx-65*s,ty=by-132*s;                         // place the glyph's dot (65,132) at the rider
+  const fd=Math.round(19+11*p),fr=Math.round(12+2*p);
+  const esc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const road=(nt.notes||nt.name||'').trim();
-  const tyT=by+dotR+fd+5,ryT=tyT+fr+7;
-  const F="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+  const tyT=by+Math.round(9.5*s)+fd+6,ryT=tyT+fr+7;     // text below the dot, clear of the arrow
+  const F="system-ui,-apple-system,'Segoe UI',Roboto,sans-serif"; // FONT PLACEHOLDER — proper type pass pending
   cue.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;overflow:visible;">`
-    +`<path d="${shaft}" fill="none" stroke="#0a120c" stroke-width="${ow}" stroke-linecap="round" stroke-linejoin="round"/>`
-    +`<path d="${head}" fill="none" stroke="#0a120c" stroke-width="${ow}" stroke-linecap="round" stroke-linejoin="round"/>`
-    +`<path d="${shaft}" fill="none" stroke="#ffffff" stroke-width="${lw.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`
-    +`<path d="${head}" fill="none" stroke="#ffffff" stroke-width="${lw.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`
-    +`<circle cx="${bx}" cy="${by}" r="${dotR+2}" fill="#ffffff"/>`
-    +`<circle cx="${bx}" cy="${by}" r="${dotR}" fill="#0a120c"/>`
+    +`<g transform="translate(${tx.toFixed(1)} ${ty.toFixed(1)}) scale(${s.toFixed(3)})"><path d="${glyph}" fill="#ffffff" stroke="#0a120c" stroke-width="3.5" stroke-linejoin="round"/></g>`
     +`<text x="${bx}" y="${tyT}" text-anchor="middle" font-size="${fd}" fill="#ffffff" style="font-family:${F};font-weight:700;paint-order:stroke;stroke:#0a120c;stroke-width:3px;">${esc(fmtTurnDist(remM))}</text>`
     +(road?`<text x="${bx}" y="${ryT}" text-anchor="middle" font-size="${fr}" fill="#eef3ee" style="font-family:${F};font-weight:600;paint-order:stroke;stroke:#0a120c;stroke-width:2px;">${esc(road)}</text>`:'')
     +`</svg>`;
