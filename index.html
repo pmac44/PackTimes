@@ -103,12 +103,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-next-km{font-size:15px;font-weight:500;color:var(--accent);font-family:var(--font);}
 .live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font);}
 .live-next-in{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);}
-.turn-popup{position:absolute;top:64px;left:8px;right:8px;z-index:20;background:rgba(10,15,10,0.92);border:1px solid rgba(74,222,128,0.4);border-radius:7px;padding:8px 12px;display:flex;align-items:center;gap:12px;cursor:pointer;}
-.turn-arrow{font-size:42px;line-height:1;flex-shrink:0;color:var(--accent);}
-.turn-info{flex:1;min-width:0;}
-.turn-dist{font-size:22px;font-weight:700;color:var(--accent);font-family:var(--font);}
-.turn-label{font-size:16px;color:var(--text2);margin-top:2px;}
-.turn-auto{font-size:12px;color:var(--text3);margin-top:2px;}
+.turn-cue{position:absolute;inset:0;z-index:20;pointer-events:none;}
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
 .live-dist-bar{position:absolute;top:6px;left:6px;right:6px;height:34px;background:rgba(10,15,10,0.88);border-radius:6px;overflow:hidden;z-index:10;}
 .live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:var(--accent3);}
@@ -738,7 +733,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v238';
+window.APP_VERSION='v239';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -10269,26 +10264,9 @@ function tLiveShell(r){
           </div>`;
         })()}
         </div>
+        <!-- turn cue is drawn as an SVG arrow overlay by renderTurnCue() (called from updateLive) -->
         <!-- stop alert overlay removed — replaced by next-strip pulse + audio chime -->
-        ${(()=>{
-          if(!UI.gpsActive)return '';
-          const alertDistKm=UI.simRunning?(UI.turnAlertM||150)*20/1000:(UI.turnAlertM||150)/1000;
-          const turns=r.turns||[];
-          turns.forEach(t=>{if(t.dist<=liveDist)t._dismissed=false;});
-          const nextTurn=turns.find(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm&&!t._dismissed);
-          if(!nextTurn)return '';
-          const distM=Math.round((nextTurn.dist-liveDist)*1000);
-          const arrow=nextTurn.type==='Left'?'↰':nextTurn.type==='Right'?'↱':'↑';
-          const label=nextTurn.notes||nextTurn.name||(nextTurn.type+' turn');
-          return`<div class="turn-popup" id="turn-popup" data-turn-dist="${nextTurn.dist}">
-            <div class="turn-arrow">${arrow}</div>
-            <div class="turn-info">
-              <div class="turn-dist">${distM<1000?distM+'m':(distM/1000).toFixed(1)+'km'}</div>
-              <div class="turn-label">${label}</div>
-              ${nextTurn.auto?'<div class="turn-auto">⚠️ Auto-detected — verify on map</div>':''}
-            </div>
-          </div>`;
-        })()}
+
       </div>
       ${buildLiveStrip(r,liveDist,sdt)}
       <div class="live-stop-list" id="live-stop-list">
@@ -12447,6 +12425,61 @@ function factorDesc(f){
   return'Extreme conditions';
 }
 
+// ─── Turn cue arrow overlay ───
+// Replaces the old top pop-up banner. One arrow anchored at the rider dot: small and
+// straight-ahead when the next turn is far, growing and bending toward the turn as you
+// close in. Distance + road sit below it, clear of the elevation strip. Always visible
+// while a turn is ahead (screen on). Audio cues (checkAlerts) are separate + unchanged.
+function fmtTurnDist(m){
+  if(m>=1000)return (m/1000).toFixed(m<10000?1:0)+' km';
+  return Math.max(0,Math.round(m/10)*10)+' m';
+}
+function turnCueGeom(remM,type,notes,simMult){
+  const P0=500*simMult,P1=60*simMult;              // start bending/growing at 500 m, full by 60 m
+  const p=Math.max(0,Math.min(1,(P0-remM)/(P0-P1)));
+  const n=(notes||'').toLowerCase();
+  let mag=80; if(n.includes('slight'))mag=42; else if(n.includes('sharp'))mag=120;
+  let dir=0; if(type==='Right')dir=1; else if(type==='Left')dir=-1;
+  if(n.includes('u turn')||n.includes('u-turn')||type==='Uturn'){mag=155;if(dir===0)dir=-1;}
+  return {p,angle:dir*mag*p,R:60+190*p,w:11+15*p};
+}
+function renderTurnCue(r,liveDist){
+  const sec=document.getElementById('live-map-section');
+  let cue=document.getElementById('turn-cue');
+  if(!sec||!UI.gpsActive||!r.turns||!r.turns.length){if(cue)cue.remove();return;}
+  const nt=r.turns.find(t=>t.dist>liveDist&&!t._dismissed);
+  if(!nt){if(cue)cue.remove();return;}
+  const W=sec.clientWidth,H=sec.clientHeight; if(!W||!H)return;
+  if(!cue){cue=document.createElement('div');cue.id='turn-cue';cue.className='turn-cue';sec.appendChild(cue);}
+  const remM=(nt.dist-liveDist)*1000;
+  const g=turnCueGeom(remM,nt.type,nt.notes,UI.simRunning?20:1);
+  const bx=Math.round(W/2),by=Math.round(H*0.66);
+  const straight=g.R*0.5,a=g.angle*Math.PI/180;
+  const dx=Math.sin(a),dy=-Math.cos(a),rem=g.R-straight;
+  const p1x=bx,p1y=by-straight,p2x=p1x+dx*rem,p2y=p1y+dy*rem,cxp=p1x,cyp=p1y-rem*0.55;
+  const d=`M ${bx} ${by} L ${p1x} ${p1y} Q ${cxp} ${cyp} ${p2x} ${p2y}`;
+  const hh=g.w*1.9,ex=-dy,ey=dx;
+  const tipx=p2x+dx*hh*0.5,tipy=p2y+dy*hh*0.5,b1x=p2x-dx*hh*0.7,b1y=p2y-dy*hh*0.7;
+  const heo=hh+g.w*0.5;
+  const headWhite=`${tipx},${tipy} ${b1x+ex*hh},${b1y+ey*hh} ${b1x-ex*hh},${b1y-ey*hh}`;
+  const headDark=`${tipx+dx*4},${tipy+dy*4} ${b1x+ex*heo},${b1y+ey*heo} ${b1x-ex*heo},${b1y-ey*heo}`;
+  const wO=g.w+Math.round(g.w*0.7)+6;
+  const fd=Math.round(24+18*g.p),fr=Math.round(14+4*g.p),dotR=Math.round(13+4*g.p);
+  const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const road=(nt.notes||nt.name||'').trim();
+  const ty=by+dotR+fd+2,ry=ty+fr+8;
+  cue.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;overflow:visible;">`
+    +`<path d="${d}" fill="none" stroke="#0a120c" stroke-width="${wO}" stroke-linecap="round" stroke-linejoin="round"/>`
+    +`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${g.w.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`
+    +`<polygon points="${headDark}" fill="#0a120c"/>`
+    +`<polygon points="${headWhite}" fill="#ffffff"/>`
+    +`<circle cx="${bx}" cy="${by}" r="${dotR+4}" fill="#ffffff"/>`
+    +`<circle cx="${bx}" cy="${by}" r="${dotR}" fill="#0a120c"/>`
+    +`<text x="${bx}" y="${ty}" text-anchor="middle" font-size="${fd}" fill="#ffffff" style="font-family:var(--font),sans-serif;font-weight:800;paint-order:stroke;stroke:#0a120c;stroke-width:${Math.max(3,Math.round(fd*0.13))}px;">${esc(fmtTurnDist(remM))}</text>`
+    +(road?`<text x="${bx}" y="${ry}" text-anchor="middle" font-size="${fr}" fill="#e6ece7" style="font-family:var(--font),sans-serif;font-weight:700;paint-order:stroke;stroke:#0a120c;stroke-width:${Math.max(2,Math.round(fr*0.13))}px;">${esc(road)}</text>`:'')
+    +`</svg>`;
+}
+
 // ═══════════════════════════════════════════
 //  TARGETED LIVE UPDATE (no DOM rebuild)
 // ═══════════════════════════════════════════
@@ -12686,39 +12719,8 @@ function updateLive(){
     setText('eta-'+s.id,(day?day.trim()+' ':'')+fmtT(eta));
   });
 
-  // Update turn popup distance live
-  const tp=document.getElementById('turn-popup');
-  if(tp){
-    const turnDist=tp.dataset.turnDist?parseFloat(tp.dataset.turnDist):null;
-    if(turnDist!==null){
-      const distM=Math.round((turnDist-liveDist)*1000);
-      const distEl=tp.querySelector('.turn-dist');
-      if(distEl)distEl.textContent=distM<1000?distM+'m':(distM/1000).toFixed(1)+'km';
-      // Remove popup if passed the turn
-      if(distM<=0){tp.remove();}
-    }
-  } else if(UI.gpsActive&&r.turns&&r.turns.length){
-    // Build the turn popup directly here — don't rely on a full render(). On desktop
-    // during a sim, render() short-circuits straight back to updateLive and never
-    // rebuilds the live shell, so a render()-based popup would never appear. Sim-aware
-    // window, matching the audio loop and the shell template.
-    const alertDistKm2=UI.simRunning?(UI.turnAlertM||150)*20/1000:(UI.turnAlertM||150)/1000;
-    const nt=r.turns.find(t=>t.dist>liveDist&&t.dist-liveDist<=alertDistKm2&&!t._dismissed);
-    const sec=document.getElementById('live-map-section');
-    if(nt&&sec){
-      const distM=Math.round((nt.dist-liveDist)*1000);
-      const arrow=nt.type==='Left'?'↰':nt.type==='Right'?'↱':'↑';
-      const label=nt.notes||nt.name||(nt.type+' turn');
-      const el=document.createElement('div');
-      el.className='turn-popup';el.id='turn-popup';el.dataset.turnDist=nt.dist;
-      el.innerHTML=`<div class="turn-arrow">${arrow}</div><div class="turn-info">`
-        +`<div class="turn-dist">${distM<1000?distM+'m':(distM/1000).toFixed(1)+'km'}</div>`
-        +`<div class="turn-label">${label}</div>`
-        +(nt.auto?'<div class="turn-auto">⚠️ Auto-detected — verify on map</div>':'')
-        +`</div>`;
-      sec.appendChild(el);
-    }
-  }
+  // Turn cue — SVG arrow overlay that grows/bends toward the next turn.
+  renderTurnCue(r,liveDist);
   // Re-apply alerting class after strip rebuild (strip innerHTML replacement removes it)
   if(_stopAlertId){
     pulseStripCard(_stopAlertId);

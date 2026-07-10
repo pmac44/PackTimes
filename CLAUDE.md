@@ -15,6 +15,33 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (10 July 2026, v239)
+
+**v239 (10 Jul 2026) — turn POP-UP BANNER replaced by a bending-arrow overlay (new turn
+UI, first testable cut).** Long design thread with Peter (competitor review of Garmin/
+Wahoo/Karoo/Coros + mockups composited onto his real Ride screenshot, all in
+`_planning/`). Agreed model: retire the top pop-up banner; draw ONE arrow on the map that
+emanates from a black "you" dot (replacing the reliance on the blue position triangle),
+**small and straight-ahead when the next turn is far, growing + bending toward the turn as
+you approach**, with distance + road name below it, sitting above the elevation strip.
+Always visible while a turn is ahead (screen-on / bike-computer-alternative case); on a
+future native build it stays hidden with the screen off and appears at full size when the
+screen wakes. Colour held for now (white + black outline; the size change carries "turn
+coming" — Peter didn't want it garish); fonts/colours to be a later pass. Implementation
+(all `index.html`): removed `.turn-popup`/`.turn-arrow`/`.turn-*` CSS → one `.turn-cue`
+(absolute, `pointer-events:none` so map gestures pass through); removed the pop-up builder
+from `tLiveShell` and the build/patch block in `updateLive`; new `fmtTurnDist`,
+`turnCueGeom(remM,type,notes,simMult)` (pure — proximity `p` ramps 500 m→60 m, sets bend
+angle by type/notes incl. slight/sharp/u-turn, reach R and stroke width), and
+`renderTurnCue(r,liveDist)` which builds/updates an SVG `#turn-cue` inside
+`#live-map-section` anchored at the rider (W/2, H·0.66). `updateLive` now just calls
+`renderTurnCue`. Sim-aware (×20 thresholds) so it grows/bends visibly in the desktop sim.
+Audio cues (`checkAlerts` two-stage) untouched. Node-verified the geometry across
+far/near/slight/sharp/straight/u-turn/sim. Dead `#turn-popup` tap handler left in place
+(harmless, never matches). NOT yet done: removing the canvas blue triangle (dot currently
+sits over it), angling the bend to the true route bearing (currently screen-left/right on
+the heading-up map), elevation-hidden drop, colour/font pass. Not yet ride-tested.
+
 ## Current status (10 July 2026, v238)
 
 **v238 (10 Jul 2026) — turn popup now really shows on the desktop sim + tone re-fires
