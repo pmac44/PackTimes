@@ -12604,22 +12604,24 @@ function _tcAngDiff(h1,h2){let d=Math.abs(h1-h2);if(d>Math.PI)d=2*Math.PI-d;retu
 // we measure marker→sharpest-bend distance; if they CORRELATE tightly we trust the median. Poor
 // correlation or too few clear turns → null (fall back to the manual slider). ~25° minimum bend.
 function detectMarkerOffset(r){
-  const P=r&&r.points,turns=((r&&r.turns)||[]).filter(t=>t&&t.dist!=null);
+  const P=r&&r.points,turns=((r&&r.turns)||[]).filter(t=>t&&t.dist!=null).sort((a,b)=>a.dist-b.dist);
   if(r)r._moffDiag='';
   if(!P||P.length<5||turns.length<2){if(r)r._moffDiag='pts '+(P?P.length:0)+', turns '+turns.length;return null;}
   const total=r.totalDist||0;
+  const nextDist=md=>{for(const t of turns){if(t.dist>md+0.005)return t.dist;}return Infinity;};
   const measure=t=>{
-    // FIRST significant bend past the marker = this turn's corner. (Taking the sharpest in the whole
-    // window grabbed the NEXT turn on dense/urban routes — offsets came out 60–140 m and scattered.)
-    const md=t.dist;let peak=-1,peakD=md,started=false;
-    for(let d=md;d<=Math.min(total,md+0.15);d+=0.004){
+    // STRONGEST bend from the marker up to (but not past) the NEXT turn's marker — that's this
+    // turn's own corner. Capping at the next marker stops it wandering onto the following junction;
+    // taking the max (not the first bend) ignores little kinks on the approach.
+    const md=t.dist,lim=Math.min(total,md+0.12,nextDist(md));
+    let best=-1,bestD=md;
+    for(let d=md;d<=lim;d+=0.004){
       const a=_ptAtDist(r,Math.max(0,d-0.02)),b=_ptAtDist(r,d),c=_ptAtDist(r,Math.min(total,d+0.02));
       if(!a||!b||!c)continue;
       const ang=_tcAngDiff(_tcHdg(a,b),_tcHdg(b,c))*180/Math.PI;
-      if(ang>peak){peak=ang;peakD=d;started=true;}
-      else if(started&&peak>=25&&ang<peak*0.5&&d-peakD>0.008){break;}  // past this corner's peak — stop before the next turn
+      if(ang>best){best=ang;bestD=d;}
     }
-    return {off:(peakD-md)*1000,deg:peak};
+    return {off:(bestD-md)*1000,deg:best};
   };
   const pref=turns.filter(t=>/^(Left|Right)$/.test(t.type||'')||/left|right/i.test(t.notes||''));
   const src=pref.length>=4?pref:turns;
@@ -12693,7 +12695,11 @@ function _activeTurn(r,liveDist){
   const cd=cornerOf(ot),past=liveDist>cd,alongM=(cd-liveDist)*1000;
   let remM=alongM;                               // straight-line to the CORNER for a smooth countdown
   if(!past&&UI.gpsPos){const cpt=_ptAtDist(r,cd);if(cpt){const sl=hav(UI.gpsPos,cpt)*1000;if(isFinite(sl))remM=sl;}}
-  return {nt:ot,cornerDist:cd,mode:past?'linger':'approach',remM,alertM,
+  // ✓ is EARNED, not given at the corner: only once we're clearly PAST it (>20 m) AND still ON the
+  // route (i.e. we demonstrably took the right road). At/just past the turn we show no ✓ (Peter).
+  const onRoute=UI._snapOffKm!=null&&UI._snapOffKm<0.03;
+  const confirmed=past&&alongM<-20&&onRoute;
+  return {nt:ot,cornerDist:cd,mode:past?'linger':'approach',remM,alertM,confirmed,
     showOrange:alongM<=showM,                    // on from the alert range → lingers till the corner-end
     blink:!past&&alongM<=blinkM};                // blink only on approach; stops at the corner
 }
@@ -12709,7 +12715,7 @@ function renderTurnCue(r,liveDist){
   if(!sec||!UI.gpsActive||!r.turns||!r.turns.length){kill();return;}
   const at=_activeTurn(r,liveDist);
   if(!at){const had=UI._tcOrangeOn;kill();if(had&&document.getElementById('live-map'))redrawMap('live-map');return;}
-  const {nt,mode,remM,showOrange,blink}=at;
+  const {nt,mode,remM,showOrange,blink,confirmed}=at;
   if(!cue){
     cue=document.createElement('div');cue.id='turn-cue';cue.className='turn-cue';
     cue.innerHTML='<div id="tc-box" class="tc-box"><span id="tc-glyph" class="tc-glyph"></span>'
@@ -12741,7 +12747,8 @@ function renderTurnCue(r,liveDist){
   if(mode==='approach'&&isFinite(remM)){
     const s=fmtTurnDist(remM),mm=s.match(/^([\d.]+)\s*(\S+)$/);
     distEl.innerHTML=mm?`${mm[1]}<span class="tc-unit">${mm[2]}</span>`:s;
-  }else{distEl.textContent='✓';}
+  }else if(confirmed){distEl.textContent='✓';   // clearly past + on-route
+  }else{distEl.textContent='';}                  // at/just past the turn — no premature ✓
   const road=(nt.notes||nt.name||'').trim();
   roadEl.textContent=road;roadEl.style.display=road?'':'none';
 }
