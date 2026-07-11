@@ -15,6 +15,86 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (11 July 2026, v243)
+
+**v243 (11 Jul 2026) — turn cue reworked: HIGHLIGHT THE ROUTE, don't cover it (long design
+thread with Peter, all mocked as composites on his real Ride screenshot in `_planning/GPS
+Screens/`).** Peter's insight: PackTimes always shows the map + route line, so the exact turn
+shape is already on screen — a big always-on arrow just blocks it. New model, agreed after
+iterating mockups: retire the grow-on-approach glyph overlay; instead **highlight the route
+itself** through the turn in ORANGE (`--turn:#f2740c`, new token). Two styles, switchable in
+Settings (evaluation toggle `UI.turnIndicator` = `'single'` bold line | `'rails'` two lines
+either side that keep the underlying route colour visible between them — Peter wants to ride
+both and pick; delete the loser later). The orange segment spans from the alert distance,
+through the turn, to ~30 m past. Steady until the final ≤50 m, then a **car-indicator-rate
+width-BLINK** (~0.35 s each, thin↔thick, never fully off — so you can't miss it in an "off"
+phase; via the `.blink` CSS class + `@keyframes tcLine/tcCase`). Blink stops at the corner; the
+orange then **stays lit until you've ridden past the END of the drawn segment** (`marker + after`,
+along-route in `_activeTurn` via `showOrange`), THEN advances to the next turn — UNLESS the next
+turn's window has already opened while you're still on this one, in which case it hands straight
+over (the demote guard). **The distance+direction BOX is ALWAYS visible** for the next turn
+(counts down from any distance; `showOrange` only gates the on-map orange, not the box). SIM: at
+low speed / sparse points the desktop sim jumped every few seconds — `simStart` now **tweens**
+(`_simTweenTo`) the marker + map across gaps >180 ms so motion is smooth; per-point logic (alerts,
+recording) still runs on arrival. Historical note: the older model cleared the cue via the
+straight-line alert distance (turned off ≈ at the corner) — UNLESS the next turn's window had
+already opened, in which case it jumped
+straight there (guards the common quick-one-after-another case). A compact box (manoeuvre
+glyph + distance + street) sits **above the elevation strip**, low enough that the rider dot
+stays visible above it. Number uses **Plex Sans** (`var(--sans)`, proportional) not Plex Mono
+— Peter disliked the mono figures at small size; DM Sans was his ideal but isn't embedded, so
+Plex Sans is the zero-cost middle ground (embed DM Sans later if he still wants it).
+Implementation (all `index.html`). **The highlight is drawn ON THE MAP CANVAS, inside
+`drawMap`'s already-rotated frame** (the turn-highlight block just before the GPS-arrow block),
+using the SAME `px`/`py` as the route line — so it rides the route exactly and the map's own
+heading-up rotation (v207) carries it, with NO separate rotation maths. (Two earlier attempts
+drew a separate SVG overlay and re-computed the rotation by hand — both misplaced the line; the
+lesson, per Peter: draw it on the map and let the existing rotation do the work.) `_activeTurn(r,
+liveDist)` (shared by the map draw + the box) picks the turn; `_turnSegPts` builds the highlight
+from real route points spanning `nt.dist` (reliable/monotonic; NOT lat/lon which mis-snaps) — from
+backKm before to fwdKm past, interpolated endpoints (`_ptAtDist` is binary-search). KEY (Peter,
+confirmed by exporting the same route at 30 m vs 100 m turns): the imported RWGPS turn point is a
+HEADS-UP trigger placed a VARIABLE distance (RWGPS setting, **5–100 m**) BEFORE the corner, never on
+it. So there's no fixed forward distance that both stays tidy and always reaches the corner — a
+short forward misses far corners, a long one over-runs near ones. **SAFETY MODEL (Peter, corner-relative — the important bit):** using the marker for distance/‌"done"
+fired the ✓ ~30 m BEFORE the rider had actually turned (dangerous at night/fatigued — you could
+still take the wrong road) and the countdown lied about the real corner. Fixed via **Option A**: a
+`turnMarkerOffsetM` setting (default 30 m, matches the RWGPS export; slider `turn-off-sl`). The real
+corner = `marker.dist + offset` along the route (ground truth — RWGPS places the marker exactly that
+far before the maneuver, same for every turn in an export). `_activeTurn` computes `cornerOf(t)` and
+keys EVERYTHING off it: distance-to-turn (straight-line to the corner), the past/✓ state
+(`liveDist>corner`), blink (stops at the corner), linger (until `corner+after`). The orange's APPROACH side = the alert
+distance (`turnAlertM`, where it appears); its EXIT side = a FIXED 40 m past the corner (linger +
+exit leg). (`turnHlBeforeM` and `turnHlAfterM` were both removed as sliders — scope-creep cleanup —
+merged into the alert distance / hard-coded 40 m respectively.) The marker-offset slider is now
+**hidden when auto-detect succeeds** (shows just the detected value; slider only appears as a
+fallback). Audio toggle moved to a sub-option under Alert distance. The Alerts settings section was
+reorganised into **Turns / Stops / Off-route / Screen** groups; `turnAlertM` = the turn "wake-up"
+distance (beep + orange appears + approach start + future screen-wake). Twin-rails now use a proper MITRE (`_tcRailsPts`, offset
+g/cos(half-angle)) so the outer rail no longer cuts the corner. Chose A (deterministic ground truth) as the base over B (geometry scan) because the cue is
+safety-critical and geometry can mis-fire. **Option B now built on top (Peter's design):**
+`detectMarkerOffset(r)` scans a spread of up to 8 turns, measures each marker→sharpest-bend distance
+(`_tcHdg`/`_tcAngDiff`, ~25°+ bend within 150 m fwd), and if they CORRELATE (≥60% within ±15 m of
+the median) returns the rounded median — else null. `_markerOffKm(r)` caches it on `r._moffM`
+(undefined=not scanned, null=no reliable result, number=m) and is used by `_activeTurn` + the audio;
+falls back to the manual `turnMarkerOffsetM` slider when detection can't tell. Settings shows the
+auto-detected value per route. Edge case: two turns closer than the offset — RWGPS clamps the marker,
+so a fixed offset slightly over-shoots the corner (still far better than marker-based). `_ptAtDist`
+is binary-search. `_tcRailsPts` offsets the twin rails. Width blinks
+via a `Date.now()` phase in `drawMap`; `renderTurnCue` now only manages the **box** (glyph +
+distance + street, HTML, above the elevation strip) and drives the blink by calling
+`redrawMap('live-map')` on a ~130 ms timer while in the blink window (cleared when the turn
+passes). **Settings:** turn-alert range widened 50–500 → **20–250 m, default 50**
+(RWGPS exports default ~30 m, so 30 m + city-tight values must be options; 500 m retired);
+new "Turn indicator style" radio (single/rails). Persisted in `uiPrefs` (`turnIndicator`);
+`UI.turnAlertM` default 50, `turnIndicator:'single'`. Audio cues (checkAlerts two-stage
+heads-up + "now") were later made CORNER-relative too (add `offKm`), so the "turn now" beep sounds
+at the real corner not ~30 m early at the marker. Node-verified all
+three edited fragments (renderTurnCue+helpers, the alertsBody template, the change-listener).
+NOT yet ride-tested. OPEN / next: off-route alert needs a proper dismiss (till next turn /
+entirely) — Peter flagged it's annoying, parked for a later pass; may want to tune blink rate,
+segment length, rail gap, and the exact orange after a real ride.
+
 ## Current status (10 July 2026, v242)
 
 **v242 (10 Jul 2026) — IBM Plex fonts embedded (Claude design pass, folded in by me).**
@@ -887,6 +967,15 @@ No analytics, no user accounts, no backend.
 
 ## Important behaviours & conventions
 
+- **Anything drawn on the map goes ON THE MAP CANVAS inside `drawMap`, NOT as a separate overlay
+  (Peter's rule, validated on the v243 turn highlight).** The live map is heading-up (rotated,
+  v207). If you draw route-anchored graphics (turn highlights, route emphasis, markers that must
+  sit on the line) as an SVG/HTML overlay on top, you have to re-derive the projection AND re-apply
+  the rotation by hand — which is fragile and repeatedly misplaced the turn line. Instead draw
+  inside `drawMap`, in the already-rotated frame, using the same `px`/`py` as the route: the map's
+  own rotation carries your graphic and it can never drift off the line. Let the existing rotation
+  do the work; don't compute it yourself. (Blink/animation that needs a faster cadence than natural
+  redraws: nudge `redrawMap('live-map')` on a short timer — see the turn-cue block.)
 - **Vanilla everything.** No React, no framework, no bundler. Don't suggest adding one — it would break the "one file, one push" deploy model Peter relies on.
 - **`render()` vs `updateLive()`.** `render()` rebuilds the current tab's HTML. `updateLive()` patches DOM in place on the Live tab so it doesn't flash during a ride. When editing anything that affects the Ride tab mid-ride, preserve the `updateLive()` path — don't collapse it into a `render()` call.
 - **`_render()` uses `requestAnimationFrame`.** Wrapped by `render()` which sets `_rf` to coalesce calls. If something doesn't update, check that the calling code goes through `render()` and not raw DOM writes.
