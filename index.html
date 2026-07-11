@@ -5676,6 +5676,27 @@ document.addEventListener('keydown',e=>{
   if(!UI.turnReview)return;
   if(e.key==='ArrowRight'||e.key==='ArrowDown'){e.preventDefault();goToTurnReviewIdx((UI.turnReviewIdx||0)+1);}
   else if(e.key==='ArrowLeft'||e.key==='ArrowUp'){e.preventDefault();goToTurnReviewIdx((UI.turnReviewIdx||0)-1);}
+  else if(e.key===' '||e.key==='Spacebar'){
+    // Space toggles the turn at the current point — same as tapping it (promote a yellow suggestion
+    // to confirmed, or delete a confirmed one). Fast keyboard review: arrow to move, space to toggle.
+    const ae=document.activeElement;
+    if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))return;   // let space work normally in fields
+    e.preventDefault();e.stopPropagation();
+    if(ae&&ae.blur)ae.blur();   // a focused ◀/▶ button would otherwise be 'clicked' by space — drop it
+    const r=cur();if(!r)return;
+    const t=allReviewTurns(r)[UI.turnReviewIdx||0];if(!t)return;
+    const same=(a,b)=>Math.abs(a.lat-b.lat)<0.00001&&Math.abs(a.lon-b.lon)<0.00001;
+    if((r.nearMissTurns||[]).some(x=>same(x,t))){
+      r.turns.push({...t,nearMiss:false});r.turns.sort((a,b)=>a.dist-b.dist);
+      r.nearMissTurns=(r.nearMissTurns||[]).filter(x=>!same(x,t));
+    }else{
+      r.turns=r.turns.filter(x=>!same(x,t));
+    }
+    saveAll();
+    const lbl=document.querySelector('.trv-src-lbl');
+    if(lbl)lbl.textContent=`${r.turns.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}`;
+    goToTurnReviewIdx(UI.turnReviewIdx||0);   // clamps, recentres, redraws, updates counter
+  }
   else if(e.key==='Escape'){exitTurnReview();}
 });
 
@@ -9982,6 +10003,7 @@ function renderTurnReview(){
       </div>
       <div id="trv-counter" style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">${all.length?'1':'0'} / ${all.length}</div>
       <div class="trv-src-lbl" style="font-size:12px;color:var(--text3);margin-top:2px;">${confirmed.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}</div>
+      ${IS_DESKTOP()?`<div style="font-size:11px;color:var(--text3);margin-top:4px;opacity:.8;font-family:var(--font);">← → step · Space toggle</div>`:''}
     </div>
     ${all.length===0?`<div style="position:absolute;top:50%;left:16px;right:16px;transform:translateY(-50%);z-index:10001;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:12px;padding:18px 16px;text-align:center;max-width:420px;margin:0 auto;">
       <div style="font-size:15px;color:var(--text);font-weight:600;margin-bottom:6px;">No turn cues on this route</div>
@@ -10824,8 +10846,7 @@ function tSettings(r){
         <label class="lbl">Marker offset — <span id="turn-off-val" class="unit">${UI.turnMarkerOffsetM!=null?UI.turnMarkerOffsetM:30}m</span></label>
         <input type="range" id="turn-off-sl" min="0" max="100" step="5" value="${UI.turnMarkerOffsetM!=null?UI.turnMarkerOffsetM:30}" style="width:100%;accent-color:var(--accent);">
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>0m</span><span>50m</span><span>100m</span></div>
-        <p style="font-size:12px;color:var(--text3);margin-top:4px;line-height:1.5;">Couldn't auto-detect for this route, so set it to match your RideWithGPS export (<strong>default 30 m</strong>). RWGPS puts each turn marker this far <em>before</em> the corner; getting it right makes the distance-to-turn and "done ✓" land at the <em>actual corner</em> — safety-critical when you can't see the junction.</p>
-        <p style="font-size:11px;color:var(--text3);margin-top:4px;font-family:var(--font);opacity:.75;">Scan: ${r._moffDiag||'—'}</p>
+        <p style="font-size:12px;color:var(--text3);margin-top:4px;line-height:1.5;">Couldn't auto-detect a consistent offset for this route, so set it to match your RideWithGPS export (<strong>default 30 m</strong>). RWGPS puts each turn marker this far <em>before</em> the corner; getting it right makes the distance-to-turn and "done ✓" land at the <em>actual corner</em> — safety-critical when you can't see the junction.</p>
       </div>`;
     })()}
     <div class="field" style="margin-top:10px;">
@@ -12607,7 +12628,7 @@ function detectMarkerOffset(r){
   const P=r&&r.points,turns=((r&&r.turns)||[]).filter(t=>t&&t.dist!=null).sort((a,b)=>a.dist-b.dist);
   if(r)r._moffDiag='';
   if(!P||P.length<5||turns.length<2){if(r)r._moffDiag='pts '+(P?P.length:0)+', turns '+turns.length;return null;}
-  const total=r.totalDist||0;
+  const total=r.totalDist||0,SEG=0.012;   // ±12 m heading arms — sharp enough for a 30 m offset
   const nextDist=md=>{for(const t of turns){if(t.dist>md+0.005)return t.dist;}return Infinity;};
   const measure=t=>{
     // STRONGEST bend from the marker up to (but not past) the NEXT turn's marker — that's this
@@ -12615,8 +12636,8 @@ function detectMarkerOffset(r){
     // taking the max (not the first bend) ignores little kinks on the approach.
     const md=t.dist,lim=Math.min(total,md+0.12,nextDist(md));
     let best=-1,bestD=md;
-    for(let d=md;d<=lim;d+=0.004){
-      const a=_ptAtDist(r,Math.max(0,d-0.02)),b=_ptAtDist(r,d),c=_ptAtDist(r,Math.min(total,d+0.02));
+    for(let d=md;d<=lim;d+=0.003){
+      const a=_ptAtDist(r,Math.max(0,d-SEG)),b=_ptAtDist(r,d),c=_ptAtDist(r,Math.min(total,d+SEG));
       if(!a||!b||!c)continue;
       const ang=_tcAngDiff(_tcHdg(a,b),_tcHdg(b,c))*180/Math.PI;
       if(ang>best){best=ang;bestD=d;}
@@ -12625,18 +12646,21 @@ function detectMarkerOffset(r){
   };
   const pref=turns.filter(t=>/^(Left|Right)$/.test(t.type||'')||/left|right/i.test(t.notes||''));
   const src=pref.length>=4?pref:turns;
-  const step=Math.max(1,Math.floor(src.length/10)),offs=[],raw=[];
-  for(let i=0;i<src.length&&raw.length<8;i+=step){
-    const m=measure(src[i]);raw.push(Math.round(m.deg)+'°/'+Math.round(m.off)+'m');
-    if(m.deg>25&&m.off>=0&&m.off<=140)offs.push(m.off);
+  const want=Math.min(src.length,20),step=Math.max(1,Math.floor(src.length/want)),offs=[],raw=[];
+  for(let i=0;i<src.length&&offs.length<want;i+=step){
+    const m=measure(src[i]);
+    if(raw.length<8)raw.push(Math.round(m.deg)+'°/'+Math.round(m.off)+'m');
+    if(m.deg>35&&m.off>=0&&m.off<=130)offs.push(m.off);   // only real corners
   }
-  if(r)r._moffDiag=pref.length+' L/R · '+raw.join(', ');
-  if(offs.length<3){if(r)r._moffDiag+=' → <3 clear bends';return null;}
-  offs.sort((a,b)=>a-b);
-  const med=offs[Math.floor(offs.length/2)],good=offs.filter(o=>Math.abs(o-med)<=15);
-  if(good.length<Math.ceil(offs.length*0.6)){if(r)r._moffDiag+=' → spread too wide (med '+Math.round(med)+')';return null;}
-  const val=Math.max(0,Math.min(100,Math.round((good.reduce((a,b)=>a+b,0)/good.length)/5)*5));
-  if(r)r._moffDiag+=' → '+val+'m';
+  if(r)r._moffDiag=pref.length+' L/R, n='+offs.length+' · '+raw.join(', ');
+  if(offs.length<4){if(r)r._moffDiag+=' → <4 clear';return null;}
+  // Densest cluster (mode) within ±10 m — robust to the few close-together turns that give outliers.
+  let bestN=-1,center=0;
+  for(const cc of offs){const inC=offs.filter(o=>Math.abs(o-cc)<=10);if(inC.length>bestN){bestN=inC.length;center=inC.reduce((a,b)=>a+b,0)/inC.length;}}
+  const frac=bestN/offs.length;
+  if(frac<0.5){if(r)r._moffDiag+=' → no cluster (~'+Math.round(center)+'m, '+Math.round(frac*100)+'%)';return null;}
+  const val=Math.max(0,Math.min(100,Math.round(center/5)*5));
+  if(r)r._moffDiag+=' → '+val+'m ('+Math.round(frac*100)+'%)';
   return val;
 }
 // Marker→corner offset (km): auto-detected once (cached on r._moffM), else the manual global slider.

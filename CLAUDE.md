@@ -91,14 +91,24 @@ new "Turn indicator style" radio (single/rails). Persisted in `uiPrefs` (`turnIn
 heads-up + "now") were later made CORNER-relative too (add `offKm`), so the "turn now" beep sounds
 at the real corner not ~30 m early at the marker. Node-verified all
 three edited fragments (renderTurnCue+helpers, the alertsBody template, the change-listener).
-NOT yet ride-tested. OPEN / next: (1) **ROUNDABOUTS** — the cue treats a roundabout as a single
-corner + 40 m, but a roundabout is a sequence (enter → arc → exit N, often 50–150 m), so the orange
-barely reaches the exit. Proper fix = detect roundabout cues (FIT/TCX carry "Exit N"/roundabout
-info) and highlight the whole entry-to-exit arc; parked as its own task. (2) auto-detect marker
-offset can return null on some FIT routes — a temporary "Scan:" diagnostic is shown under the
-fallback slider (Settings→Turns) to see what it measured; tune `detectMarkerOffset` from real output
-then remove the diagnostic. (3) off-route alert needs a proper dismiss (till next turn / entirely) —
-annoying, parked. May want to tune blink rate, segment length, rail gap, exact orange after a ride.
+NOT yet ride-tested. Auto-detect (`detectMarkerOffset`) CONFIRMED working on clean RWGPS exports
+(30 m and 100 m both detect correctly); the visible "Scan:" diagnostic was pulled once confirmed
+(the internal `r._moffDiag` string is still built but unread — harmless, excluded from packRoute).
+Method that worked: strongest bend from marker up to the NEXT marker (cap), ±12 m heading arms,
+densest-cluster (mode) of ~20 sampled turns, ≥50% cluster to accept else fall back to the manual
+slider. Genuinely inconsistent/legacy routes correctly decline → manual 30 m + the on-route ✓ gate.
+OPEN / next: (1) **ROUNDABOUTS** — the cue treats a roundabout as a single corner + 40 m, but a
+roundabout is a sequence (enter → arc → exit N, often 50–150 m), so the orange barely reaches the
+exit. Proper fix = detect roundabout cues (FIT/TCX carry "Exit N"/roundabout info) and highlight the
+whole entry-to-exit arc; parked as its own task. (2) **Generated turns need ROAD CONTEXT** (Peter):
+`autoDetectTurns` (used for track-only GPX like Komoot exports) works from geometry alone, so it
+can't tell a road curve from a junction-turn — a real reliability step-down from authored FIT/TCX
+cues. Proper fix = cross-check each geometric bend against OSM road **junctions** (same Overpass pipe
+we already use for POIs/surface): bend + junction = real turn; bend + no junction = just the road
+curving, drop it. Big step up from pure geometry (not perfect — rural OSM gaps). Parked as its own
+task; for now steer riders to RWGPS FIT. (3) off-route alert needs a proper dismiss (till next turn /
+entirely) — annoying, parked. May want to tune blink rate, segment length, rail gap, exact orange
+after a real ride.
 
 ## Current status (10 July 2026, v242)
 
