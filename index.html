@@ -12609,14 +12609,17 @@ function detectMarkerOffset(r){
   if(!P||P.length<5||turns.length<2){if(r)r._moffDiag='pts '+(P?P.length:0)+', turns '+turns.length;return null;}
   const total=r.totalDist||0;
   const measure=t=>{
-    const md=t.dist;let best=-1,bestD=md;
+    // FIRST significant bend past the marker = this turn's corner. (Taking the sharpest in the whole
+    // window grabbed the NEXT turn on dense/urban routes — offsets came out 60–140 m and scattered.)
+    const md=t.dist;let peak=-1,peakD=md,started=false;
     for(let d=md;d<=Math.min(total,md+0.15);d+=0.004){
       const a=_ptAtDist(r,Math.max(0,d-0.02)),b=_ptAtDist(r,d),c=_ptAtDist(r,Math.min(total,d+0.02));
       if(!a||!b||!c)continue;
-      const ang=_tcAngDiff(_tcHdg(a,b),_tcHdg(b,c));
-      if(ang>best){best=ang;bestD=d;}
+      const ang=_tcAngDiff(_tcHdg(a,b),_tcHdg(b,c))*180/Math.PI;
+      if(ang>peak){peak=ang;peakD=d;started=true;}
+      else if(started&&peak>=25&&ang<peak*0.5&&d-peakD>0.008){break;}  // past this corner's peak — stop before the next turn
     }
-    return {off:(bestD-md)*1000,deg:best*180/Math.PI};
+    return {off:(peakD-md)*1000,deg:peak};
   };
   const pref=turns.filter(t=>/^(Left|Right)$/.test(t.type||'')||/left|right/i.test(t.notes||''));
   const src=pref.length>=4?pref:turns;
