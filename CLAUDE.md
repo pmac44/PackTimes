@@ -15,6 +15,41 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (11 July 2026, v244)
+
+**v244 (11 Jul 2026) — IBM Plex reverted → DM Sans + DM Mono, shipped as REAL FILES (v242
+undone).** Peter never liked the Plex figures and asked for a reason to keep it; there wasn't
+one, so we reverted. Two decisions worth remembering. (1) **Not embedded.** v242's rationale for
+base64 (`@font-face` inline = offline-safe with no SW work) doesn't actually buy anything: the
+SW already caches the shell + tiles, so it can cache six woff2 files just as reliably, and the
+worst failure is a system-font fallback rather than a break. Peter's call: *"unless there is a
+clear advantage… not having to embed fonts is the winner."* So the fonts now live in `fonts/`
+(`dm-sans-latin-{400,500,600,700}`, `dm-mono-latin-{400,500}`, all from `@fontsource`, ~85 KB
+total) and the SW **precaches them on install** (`FONTS` list built from `BASE`, `addAll` wrapped
+in a `.catch` so a missing font can never fail the install) and serves any same-origin `.woff2`
+**cache-first**. Note the SW is a template literal — do NOT put a `\.` regex escape in it (the
+backslash gets eaten before the SW sees it); the font test uses `endsWith('.woff2')` on purpose.
+(2) **DM Mono is still needed for numbers.** I initially told Peter DM Sans had tabular figures —
+**that was wrong**: DM Sans has no `tnum` feature and its digits are genuinely proportional (a "1"
+is 312 units vs a "0" at 684), so live numbers would jiggle and columns wouldn't line up. So we're
+back on the original style-guide system — `--sans:'DM Sans'` for UI/prose, `--font:'DM Mono'` for
+numbers/metrics — no exceptions. The turn-cue distance (`.tc-dist`) was on `var(--sans)` in v243
+because Peter disliked the PLEX mono figures at that size; DM Mono is a different font and the
+countdown (250→240→230 m) is exactly the wobble case, so it's now on `var(--font)` weight 500
+(DM Mono only ships 400/500 — don't ask it for 600). Flip back to `var(--sans)` if he dislikes it.
+DM Mono's zero is also slashed. The canvas code
+(`drawMap`/elevation, ~6315/6347/6379/9438/11401) already asked for `'DM Mono'` by name, so those
+resolve properly again. **Cleanup DONE:** the five dead IBM Plex base64 `@font-face` lines were too
+large to hand-edit and the bash sandbox sees a truncated copy of `index.html`, so Peter ran a
+throwaway `strip-plex-fonts.ps1` on his machine (980 KB → 848 KB; backup at
+`backup/index-v244-pre-plex-strip.html`). The script and its `.bat` wrapper have since been deleted.
+The 19 MB of Plex source (`IBM_Plex_Sans/`, `IBM_Plex_Mono/`, `ibm-plex-mono.zip`,
+`fonts/ibm-plex-*.woff2`) is gone too. **Gotcha if you ever write another `.ps1` for Peter:** keep it
+PURE ASCII and hand him a `.bat` wrapper (`powershell -ExecutionPolicy Bypass -File …`). PowerShell 5
+reads `.ps1` as Windows-1252 without a BOM, so a UTF-8 em-dash decodes to a smart quote — which it
+treats as a string delimiter, giving a baffling "string is missing the terminator" parse error. And
+`.ps1` files don't run on double-click by default. Both bit us. Not yet ride-tested.
+
 ## Current status (11 July 2026, v243)
 
 **v243 (11 Jul 2026) — turn cue reworked: HIGHLIGHT THE ROUTE, don't cover it (long design
@@ -97,6 +132,15 @@ NOT yet ride-tested. Auto-detect (`detectMarkerOffset`) CONFIRMED working on cle
 Method that worked: strongest bend from marker up to the NEXT marker (cap), ±12 m heading arms,
 densest-cluster (mode) of ~20 sampled turns, ≥50% cluster to accept else fall back to the manual
 slider. Genuinely inconsistent/legacy routes correctly decline → manual 30 m + the on-route ✓ gate.
+**First real RIDE TEST done (Peter) — fixes made:** (a) map was rotating to *anticipate* turns —
+`_rideHeadingDeg` looked 15 route-points ahead (300–700 m); now a short ~±20 m window centred on the
+rider so it shows current direction, rotates only *as* you turn; (b) orange exit leg 40 → **60 m**
+past the corner (clearer past the turn); (c) **power L/R balance maths** was wrong (`_parsePowerMeasurement`
+masked bit 7 + skipped the ÷2 → a real 49 % showed as 98) — now `Math.round(byte/2)`; (d) **speed pill**
+relaid out — big number centred with the unit *below* it (was "km/h" off to the right). STILL OPEN from
+that ride: **stop-peek zoom** puts the peeked stop at the top, hidden under the +/speed button and the
+ride-info pill (and the heading rotation swings it out) — reposition + maybe hold rotation during a
+peek; and the **top distance bar** graphic is hard to read (Peter dislikes it) — redesign, secondary.
 OPEN / next: (1) **ROUNDABOUTS** — the cue treats a roundabout as a single corner + 40 m, but a
 roundabout is a sequence (enter → arc → exit N, often 50–150 m), so the orange barely reaches the
 exit. Proper fix = detect roundabout cues (FIT/TCX carry "Exit N"/roundabout info) and highlight the
