@@ -15,6 +15,211 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Session summary — 11 July 2026 (v243 + v244, NOT yet pushed, NOT yet ride-tested)
+
+Everything below in one place, so neither of us has to re-read the long entries. Detail is in the
+v243 / v244 sections that follow.
+
+**The big one — turn cues rebuilt (v243).** Peter's insight: the route line already shows the exact
+shape of the turn, so an always-on arrow just covers the map. So we now **highlight the route
+itself in orange** (`--turn:#f2740c`) through the turn, plus a compact box (glyph + distance +
+street) above the elevation strip. Two styles to ride and choose between (Settings → single bold
+line vs twin rails); the loser gets deleted. Width-blinks at car-indicator rate in the last 50 m,
+stops at the corner, lingers 60 m past.
+
+**Safety model (the part that matters).** RWGPS turn markers sit a *variable* distance BEFORE the
+real corner (an export setting, 5–100 m). So everything — distance shown, the ✓, the blink, the
+"turn now" beep — keys off the **real corner**, not the marker. `detectMarkerOffset` works this out
+per route on import (confirmed correct on real 30 m and 100 m exports); the manual slider only
+appears when it can't tell. The ✓ is now *earned*: it only shows once you're clearly past the
+corner AND still on route — because at the turn you can still take the wrong road.
+
+**Method rule Peter established (now a standing convention):** route-anchored graphics are drawn ON
+the map canvas inside `drawMap`, in the already-rotated frame. Don't hand-compute the rotation in an
+overlay — two attempts did and both misplaced the line.
+
+**Fixes from the first real ride test:** map no longer *anticipates* turns (heading window was
+looking 300–700 m ahead; now a short window centred on the rider, damped); orange exit leg 40 → 60 m;
+power L/R balance maths corrected (a real 49 % was reading as 98); speed pill relaid out with the
+unit below the number.
+
+**Smaller things:** simulator gained 1×/2×/5× and now tweens smoothly between sparse points; ride-end
+strip gained a **Delete** button; recording deletes are a plain yes/no (was type-"delete"); spacebar
+toggles a turn in the Turn Review editor; weather popup now sits in FRONT of the turn box.
+
+**Fonts (v244).** IBM Plex reverted to DM Sans + DM Mono, as real files rather than base64. 19 MB of
+Plex source removed from the repo, 132 KB of dead base64 stripped from `index.html`.
+
+**Still open:** stop-peek zoom hides the peeked stop under the +/speed button; the top distance bar
+is hard to read (Peter dislikes it); roundabouts are treated as a single corner; generated turns
+(geometry-only) need OSM junction context; off-route alert needs a dismiss; and the route colour +
+weather should re-time to NOW when a ride starts (diagnosed, not built — `etaAt`'s GPS re-anchor is
+gated by `planStartInFuture`, so a future-dated plan stays on its planned clock).
+
+---
+
+## Current status (13 July 2026, v245) — ride-test fixes
+
+**v245 (13 Jul 2026) — four fixes from Peter's 12 Jul ride test. NOT yet ride-tested.**
+
+**(1) Slow startup with no reception — ROOT CAUSE FOUND.** The SW served the page
+**network-first with no timeout**. With no signal the radio does NOT fail fast — `fetch`
+sits there 30–60 s before rejecting, and `respondWith` blocks the paint the whole time.
+Peter hit this at a ride start and thought the app had hung. Fixed with a **2-second
+leash**: `navigator.onLine` false → straight to cache; otherwise race the network against
+a 2 s timer, and if the timer wins, serve the cached app NOW and let the fetch finish in
+the background (`e.waitUntil`) to refresh the cache for the next open. Accepted trade-off:
+on a slow-but-working link a new push can land one open later than before; on a good link
+the fetch beats 2 s and nothing changes. Everything ELSE at startup was already local —
+IndexedDB, `font-display:swap` + SW-cached woff2, and `dbxAutoLoad` fires *after* `render()`.
+So this was the only network dependence in the boot path.
+
+**(2) Off-route alert — three real exits (Peter's design).** The old "Got it" felt like it
+only delayed the alarm. It did dismiss the episode, but the **escalation rule re-fires the
+full alarm every 50 m further from the route** — and on a detour you're continuously getting
+further away, so it re-fired almost immediately. New `_offRouteMode` (null | 'ack' | 'detour'
+| 'abandoned') drives three buttons:
+- **Got it — turning around** (`ack`) → alarm stops but STILL escalates if you keep straying.
+  (Peter wanted to keep this; it's the safety net.)
+- **Taking a detour** (`detour`) → fully silent however far you go; **auto-re-arms the moment
+  you rejoin the route**, so a later unintended departure alarms again.
+- **Stop following this route** (`abandoned`) → silent for the rest of the ride. Deliberately
+  does NOT re-arm on rejoining (brushing past the line shouldn't restart the alarms); cleared
+  only when GPS/recording stops, via `_offRouteReset(true)` in `stopGPS`.
+`_offRouteReset(clearMode)` is the single reset. **Idle auto-pause deliberately does NOT clear
+the mode** (parking for a coffee mid-detour must not re-arm the alarm); only `stopGPS` and a
+fresh sim start do. Buttons are full-width and tall — this gets tapped with numb hands in gloves.
+Verified via an 8-scenario node truth-table (ignore/ack/ack-and-keep-straying/detour/detour-
+rejoin-stray-again/abandon/never-off/brief-excursion) — all correct.
+
+**(3) Stops-tab map now shows your position.** It drew with `showGPS:false`, so there was no
+dot. Now `showGPS:true` for `stops-map` + `desktop-map`, and **never `followGPS`** — these maps
+pan and zoom freely and must stay where you left them (the point is working out a detour
+mid-ride). **No battery cost**: drawing the dot is free and we never switch the GPS on
+ourselves. Also surfaced the **GPS toggle + crosshair buttons** on `stops-map` — both were
+already built in `mapCtrlHTML` but only ever *inserted* for `live-map`
+(`${mapId==='live-map'?gpsBtn:''}`, and `recenterBtn` gated on `showGPS` which was passed
+`false`). That's why the desktop crosshair appeared to do nothing: it re-centred on a GPS
+position that was never drawn. The delegator already routed `#btn-gpstoggle` to a plain GPS
+toggle when `UI.tab!=='live'`, so no handler change was needed.
+
+**(4) Record button.** The green play triangle read as "play a video", not "record a ride".
+Now camera-app language: **idle = white button, red record dot + "REC"**; **recording = SOLID
+red, white pause bars**; **paused = SOLID amber**. The washed-out recording red Peter
+complained about was `@keyframes recpulse` animating the background between two *translucent*
+reds (`rgba(...,.10)` → `.22`), which **overrode the button's inline fill** — now it breathes
+between two solid reds (`#f87171` ↔ `#dc2626`).
+
+**Deliberately NOT changed: ride-map pan.** Peter reconsidered — zoom-only is genuinely good
+on a vibrating bar, pan gets confused with zoom and you can shove the map off-screen with numb
+hands. (For the record, the *reason* pan appeared broken: it works, but the next GPS fix yanks
+it back because `redrawMap` passes `followGPS:true` on `live-map` whenever GPS is on. If we ever
+revisit, the fix is a pan-hold flag reusing the existing `_liveFitReturnTimer` snap-back pattern.)
+
+**Known limit, not fixable in a PWA: GPS re-acquire after screen-off.** No signal → no
+assisted-GPS → the chip does a cold fix, several seconds. That's hardware. The real answer is
+the Phase 1b Capacitor wrap. Possible sop: show the last known position greyed with
+"acquiring…" instead of looking frozen.
+
+**(5) Ride-stop / save windows reworked.** Peter's screenshots. (a) FONT: "Stop ride", "Stop
+ride?", "Recording saved" and the ride-name input were all on `var(--font)` = **DM Mono** —
+that's the NUMBERS font, so words rendered as typewriter text. DM Mono is for figures only;
+everything prose is `var(--sans)`. (b) The stop-confirm popup is now a centred panel with the
+three actions stacked FULL-WIDTH in a column (was a cramped row of three small buttons):
+**Stop & save** (green, primary) / **Back to ride** (neutral) / **Delete ride** (SOLID red).
+"Cancel" → "Back to ride" because you can only reach this panel from a PAUSED ride, so it
+returns you to paused — "Continue recording" would be a lie. (c) The **ride save modal** was
+doing three unrelated jobs with equal weight; now three visually separate boxes in the order
+they happen: ✓ Ride saved (a statement — the ride is already on disk AND already queued to
+Strava by then, nothing here can undo it) → Name → Optional "use as a speed sample" (dashed
+card). The old **"Dismiss" button silently THREW AWAY the name you'd just typed** — removed
+entirely; one "Done" button, and the checkbox is the only real choice.
+
+**(6) Button/colour system.** New tokens `--red2:#dc2626` / `--red3:#991b1b`: `--red` (#f87171)
+is a light salmon — fine as text or a thin outline on dark, but as a FILL it reads PINK (that's
+what Peter saw on the recording button). New `.btn-d` = solid destructive red (`.btn-r`'s faint
+outline was so subtle he never registered Delete as dangerous). **`.btn` now defaults to
+`justify-content:center`** — it was left-aligned, invisible on shrink-to-fit buttons but wrong on
+any button forced wider than its label (the Delete/Cancel confirm rows, Duration/Wake-at,
++Meal/+Snack). **Colour discipline, keep it:** red is RESERVED for *recording* (live) and
+*delete* (destroys). "Stop ride" is deliberately neutral — stopping isn't irreversible, it just
+opens the save panel. Resume is GREEN (a button's colour describes its ACTION, not the state;
+amber means caution and there's nothing cautionary about carrying on).
+
+**(7) Recording control — text where you can afford it, icon where you can't (Peter's rule).**
+The state model wasn't legible. Now: **Idle** → wide dark button, red dot + "Start ride".
+**Recording** → small 52px solid-red square, pause bars, blinking (you're RIDING; the map
+matters — this is the only state that can't afford words). **Paused** → green "Resume ride" +
+neutral "Stop ride". The blink is now a DISCRETE `steps(1,end)` flip between two true reds: the
+old smooth ease-in-out crossfade passed through a pink midpoint and a gradual pulse is hard to
+perceive at all. Map controls now sit on the RIGHT on desktop too (mobile always did; desktop
+just fell through to `.map-ctrl`'s `left:8px` default — an unset value, not a decision).
+
+**(8) Fit-route (⛶) + crosshair REMOVED from the ride map while a ride is live.** They're
+coupled: the ride map follows GPS continuously, so the crosshair has nothing to recentre; the
+only way to get off-centre is fit-route, which zooms out to the whole route on a screen where
+panning is deliberately disabled. Kept when GPS is OFF — the map is then a plain pannable map
+and with no fit button you could strand yourself. Both stay on the Stops/desktop maps. Also
+squared the tile button on the ride map (its `width:auto` made it narrower than the 52px
+record button beside it).
+
+**(9) Sample rides — eviction is now redundancy-based, not oldest-first (REAL BUG).** Peter asked
+whether near-identical rides should be blocked. They shouldn't, and the maths says so: each
+sample reduces to `factor = actual ÷ predicted` where the prediction already accounts for that
+ride's surface/elev/load — so the factor is a pure rider-ability number, and `calibFactor` is a
+distance-weighted mean of them. Ten identical rides therefore give the SAME answer as one (no
+distortion), and while there's room they're actively useful — repeated measurements cancel out a
+one-off headwind or bad day. The real bug was eviction: with the list full, `_recCalibAdd` retired
+the **oldest recorded ride**, so riding the same loop weekly would silently flush out your one big
+gravel epic — the most informative sample you own. Now `_calibDiff` / `_calibRedundancy` score how
+much a sample says that another sample doesn't (surface mismatch = fully different evidence; plus
+relative distance, climb rate, and the resulting factor), and the most REDUNDANT recorded ride is
+evicted instead. Verified: full list of 9 commutes + 1 gravel epic + a new commute → old code
+deleted the epic, new code drops a middle commute. Manual samples still never auto-evicted; the
+toast names what was displaced so an eviction is never silent.
+
+**(10) Sample rides — limit 10 → 20, and the Advanced Estimation screen reorganised.** Storage is
+nothing (a sample is ~8 numbers), and with redundancy eviction a longer list keeps MORE variety,
+not more clutter. Screen was upside-down: a wall of instructions first, the one number it exists
+to produce buried at the bottom. Now **headline factor card at the top** (big `0.64 ×` + "You ride
+about 36% faster than an average rider" + sample count), a two-sentence plain-English "what a
+sample ride IS", the long how-to-choose guidance folded into a `<details>`, and the sample list
+**hidden behind an "Edit sample rides (N)" toggle** (auto-opens if there are no valid samples yet,
+or one is half-finished). **AGE IS DISPLAY-ONLY AND MUST STAY THAT WAY (Peter's rule).** Samples now
+carry `ts` and the list shows "2 yrs ago" etc., but the factor maths ignores it and nothing evicts
+or decays by age — because *the rides that matter most are the rare ones*: a 400 km ultra happens
+once every year or two, so it is inherently the OLDEST sample AND the most informative one for
+planning another ultra. Age-decay would delete precisely the evidence you need. Redundancy eviction
+already protects them (a one-off ultra has no near neighbour → never the victim). Verified: list of
+20 (2 old ultras + 18 recent road rides) + a new road ride → old code evicted the 2-year-old Hunt
+1000; new code drops a middle road ride.
+
+**(11) Faff uplift — the "non-stop segment" trap (REAL accuracy bug).** PackTimes does NOT model
+short stops as stops; it bakes them into the rider factor (the v179 "faff rule": stops under
+15 min count as ride time, longer breaks excluded). So a sample taken from a **Strava segment or
+any non-stop effort contains NO faff** — no bottles, layers, gates, snacks — and produces an
+artificially fast factor that makes **every plan optimistic**, by 10–15% (hours, on a 400 km
+ultra). The help text told people to add 10–15% by hand; nobody would. Now a per-sample checkbox
+**"Add 15% faff — this was a short non-stop effort (e.g. a Strava segment)"** (`s.nonstop`, new
+field, undefined/false = old behaviour, so existing samples are untouched) multiplies the sample's
+hours by `CALIB_FAFF_UPLIFT` (1.15) inside `calibRideFactor`. Collapsed rows show `· +15% faff` so
+an uplifted sample never hides it. **Why 15% not 10% (Peter):** the figure is a generalised guess,
+not a measurement — so take the top of the range, because the failure modes aren't equal. Too much
+faff → pessimistic plan → you arrive early with daylight in hand. Too little → optimistic plan →
+you're short of the next stop as the light goes. Erring slow is the safe direction to be wrong in.
+
+**(12) Advanced-estimation copy.** Sample list was rendered in BOTH the Speed Estimation modal and
+the Edit Sample Rides popup — so "Edit sample rides" looked like it re-opened the same thing. The
+summary screen now shows only the factor + "Based on N sample rides you've done"; the list lives
+only on the screen whose job is to edit it (no show/hide toggle there — that popup IS the list;
+header + Save footer fixed, one scroll container, no nested scrollbars). Opening line now covers
+both routes in: *"a ride you've actually done — whether you recorded it in PackTimes or entered it
+by hand"*. The wall of guidance is broken into five headed sections. Note the surface guidance is
+deliberately soft — *"Keep rides to a single surface as much as possible"* — because a pure
+single-surface ride is rare and the old wording implied a standard nobody can meet.
+
+**STILL OPEN:** none of v245 is ride-tested yet.
+
 ## Current status (11 July 2026, v244)
 
 **v244 (11 Jul 2026) — IBM Plex reverted → DM Sans + DM Mono, shipped as REAL FILES (v242

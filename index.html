@@ -59,6 +59,10 @@
   --border:#2a3d2a;--border2:#3a523a;
   --accent:#4ade80;--accent2:#22c55e;--accent3:#16a34a;
   --amber:#fbbf24;--red:#f87171;--blue:#60a5fa;--purple:#c084fc;
+  /* --red is a light salmon — fine for text/outlines on dark, but as a FILL it reads
+     pink. --red2/--red3 are the true reds used for solid destructive buttons and the
+     recording state. */
+  --red2:#dc2626;--red3:#991b1b;
   --turn:#f2740c;  /* turn-cue highlight (orange) */
   --text:#e8f5e8;--text2:#9db89d;--text3:#6a8a6a;
   --font:'DM Mono','Courier New',monospace;   /* numbers / metrics — digits all one width, so they don't jiggle */
@@ -104,9 +108,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .gpsoff{color:var(--text3);border-color:var(--border);}
 .pulse{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.4s infinite;}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.3;transform:scale(.6);}}
-/* Gentle background pulse for the Recording-state map-control button. Subtle on purpose — visible at a glance, never distracting on a long ride. */
-.rec-pulse{animation:recpulse 1.6s ease-in-out infinite;}
-@keyframes recpulse{0%,100%{background:rgba(248,113,113,.10);}50%{background:rgba(248,113,113,.22);}}
+/* Recording-state indicator for the map-control button.
+   History: originally animated between two TRANSLUCENT reds (.10 → .22 alpha), which
+   overrode the button's fill and left it pale. Then a smooth ease-in-out breathe between
+   #f87171 and #dc2626 — but a slow crossfade through a light salmon reads as PINK at the
+   midpoint, and a gradual pulse is hard to perceive at all (Peter: "pulsing buttons are
+   indistinct").
+   Now: a DISCRETE BLINK. steps(1,end) means it snaps between the two states with no
+   in-between frames — so there is no pink midpoint and the change is actually noticeable.
+   Sits mostly on the brighter red and dips briefly to the darker one: reads as a blink,
+   not a throb, and both ends are unambiguously RED. */
+.rec-pulse{animation:recpulse 1.4s steps(1,end) infinite;}
+@keyframes recpulse{0%,72%{background:var(--red2);}73%,100%{background:var(--red3);}}
 .tabs{display:flex;justify-content:space-around;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;padding:0;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:0 1 auto;min-width:0;padding:8px 6px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
@@ -204,12 +217,22 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(74
 input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:18px;}
 select option{background:var(--bg3);}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:visible;}
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r-ctrl);border:1px solid var(--border2);background:var(--card2);color:var(--text);font-family:var(--sans);font-size:var(--fs-base);font-weight:500;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent;user-select:none;}
+/* justify-content:center is the DEFAULT (v245). A .btn that's only as wide as its label
+   is unaffected — centring is a no-op there. It only bites on buttons that are forced
+   WIDER than their content (flex:1 pairs, width:100%, .btn-full), and in every one of
+   those cases a left-hugging label was simply a bug: the Delete/Cancel pair in the
+   recovery modal, the Duration/Wake-at and +Meal/+Snack toggles, etc.
+   (.btn-full still sets it too — harmless, and keeps that class self-describing.) */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border-radius:var(--r-ctrl);border:1px solid var(--border2);background:var(--card2);color:var(--text);font-family:var(--sans);font-size:var(--fs-base);font-weight:500;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent;user-select:none;}
 .btn:hover,.btn:active{border-color:var(--accent);color:var(--accent);}
 .btn-p{background:var(--accent3)!important;border-color:var(--accent2)!important;color:#fff!important;font-weight:600;}
 .btn-p:hover,.btn-p:active{background:var(--accent2)!important;}
 .btn-r{border-color:rgba(248,113,113,.3);}
 .btn-r:hover,.btn-r:active{border-color:var(--red)!important;color:var(--red)!important;}
+/* .btn-d — SOLID destructive. .btn-r's faint outline was so subtle Peter never registered
+   the Delete button as dangerous at all. When an action destroys a ride, it should look it. */
+.btn-d{background:var(--red2)!important;border-color:var(--red2)!important;color:#fff!important;font-weight:600;}
+.btn-d:hover,.btn-d:active{background:var(--red3)!important;border-color:var(--red3)!important;color:#fff!important;}
 .btn-sm{padding:6px 12px;font-size:var(--fs-sm);}
 .btn-full{width:100%;justify-content:center;}
 .si{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:6px;display:flex;align-items:flex-start;gap:9px;cursor:pointer;transition:border-color .15s;}
@@ -507,9 +530,13 @@ select option{background:var(--bg3);}
     </div>
     <div id="rrm-del-confirm" style="display:none;margin-top:12px;flex-shrink:0;">
       <p style="font-size:15px;color:var(--text2);margin-bottom:8px;">Delete this ride? This can't be undone.</p>
+      <!-- justify-content:center — .btn is an inline-flex with default (left) alignment;
+           the three buttons above only look centred because .btn-full sets it. This row
+           didn't, hence the off-centre labels. btn-d = solid red: this is the one action
+           here that actually destroys a ride. -->
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-r" id="rrm-del-go" style="flex:1;">Delete</button>
-        <button class="btn" id="rrm-del-cancel" style="flex:1;">Cancel</button>
+        <button class="btn btn-d" id="rrm-del-go" style="flex:1;justify-content:center;">Delete</button>
+        <button class="btn" id="rrm-del-cancel" style="flex:1;justify-content:center;">Cancel</button>
       </div>
     </div>
   </div>
@@ -548,9 +575,10 @@ select option{background:var(--bg3);}
     </div>
     <div id="rdm-del-confirm" style="display:none;margin-top:12px;">
       <p style="font-size:15px;color:var(--text2);margin-bottom:8px;">Delete this ride? This can't be undone.</p>
+      <!-- Same as rrm-del-confirm: centred labels, solid-red Delete. -->
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-r" id="rdm-del-go" style="flex:1;">Delete</button>
-        <button class="btn" id="rdm-del-cancel" style="flex:1;">Cancel</button>
+        <button class="btn btn-d" id="rdm-del-go" style="flex:1;justify-content:center;">Delete</button>
+        <button class="btn" id="rdm-del-cancel" style="flex:1;justify-content:center;">Cancel</button>
       </div>
     </div>
     </div>
@@ -576,57 +604,79 @@ select option{background:var(--bg3);}
   </div>
 </div>
 
-<!-- Ride save modal — name the ride and optionally feed it into Speed Calibration -->
+<!-- Ride save modal (v245 rebuild). Three jobs, three visually separate boxes, in the
+     order they actually happen (Peter's structure):
+       1. CONFIRM  — the ride is already on disk (and already queued to Strava) by the
+                     time this opens. Nothing here can undo that, so it's a statement,
+                     not a question. Green tick, not a button.
+       2. NAME     — always applied on Done.
+       3. SAMPLE   — genuinely optional; a distinct dashed "optional" card.
+     One button: Done. The old "Save / Dismiss" pair implied a fork that didn't exist —
+     and worse, Dismiss silently THREW AWAY the name you'd just typed. -->
 <div id="rec-save-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90dvh;display:flex;flex-direction:column;">
-    <div style="margin-bottom:13px;flex-shrink:0;">
-      <span style="font-size:19px;font-weight:600;color:var(--text);">Ride saved</span>
-      <p id="rsm-stats" style="font-family:var(--font);font-size:15px;color:var(--text2);margin-top:4px;"></p>
+
+    <!-- ── 1. Confirmation — it's done, nothing to decide ── -->
+    <div style="flex-shrink:0;display:flex;align-items:flex-start;gap:10px;background:color-mix(in srgb,var(--accent) 12%,transparent);border:1px solid var(--accent3);border-radius:var(--r-card);padding:12px 13px;margin-bottom:var(--sp-4);">
+      <svg viewBox="0 0 24 24" width="22" height="22" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="11" fill="var(--accent3)"/><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div style="min-width:0;">
+        <div style="font-size:17px;font-weight:700;color:var(--text);line-height:1.2;">Ride saved</div>
+        <div id="rsm-stats" style="font-size:14px;color:var(--text2);margin-top:3px;line-height:1.4;"></div>
+      </div>
     </div>
+
     <div style="overflow-y:auto;flex:1;min-height:0;">
-    <div class="field">
-      <label class="lbl">Ride name</label>
-      <input type="text" id="rsm-name" autocomplete="off" style="width:100%;">
-    </div>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:15px;color:var(--text2);margin:10px 0 4px;">
-      <input type="checkbox" id="rsm-calib" checked style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
-      <span>Add to Speed Calibration</span>
-    </label>
-    <p style="font-size:13px;color:var(--text3);line-height:1.5;margin-bottom:8px;">Real rides teach PackTimes how fast you actually ride. Sample rides stay visible in Advanced Estimation — you can remove any of them later.</p>
-    <div id="rsm-calib-body">
-      <div id="rsm-auto" style="display:none;font-size:14px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:8px 10px;margin-bottom:10px;line-height:1.5;"></div>
-      <div class="field" id="rsm-surface-field" style="display:none;">
-        <label class="lbl">Surface (mostly)</label>
-        <select id="rsm-surface">
-          <option value="road">Sealed road</option>
-          <option value="grade2">Gravel / dirt road</option>
-          <option value="single">Singletrack</option>
-          <option value="grade4">Rough track / hike-a-bike</option>
-        </select>
+
+      <!-- ── 2. Name it ── -->
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--r-card);padding:12px 13px;margin-bottom:var(--sp-4);">
+        <label class="lbl" for="rsm-name" style="margin-bottom:7px;">Ride name</label>
+        <!-- var(--sans): a ride NAME is prose, not a metric. The global input rule is
+             DM Mono (right for dates/distances/times, wrong for words). -->
+        <input type="text" id="rsm-name" autocomplete="off" style="width:100%;font-family:var(--sans);">
       </div>
-      <div class="field" id="rsm-hill-field" style="display:none;">
-        <label class="lbl">Terrain</label>
-        <select id="rsm-hill">
-          <option value="3">Flat</option>
-          <option value="8" selected>Rolling</option>
-          <option value="15">Hilly</option>
-          <option value="25">Mountainous</option>
-        </select>
+
+      <!-- ── 3. Optional: feed the speed model ── -->
+      <div style="background:var(--card2);border:1px dashed var(--border2);border-radius:var(--r-card);padding:12px 13px;">
+        <div class="lbl" style="margin-bottom:8px;">Optional</div>
+        <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:15px;font-weight:600;color:var(--text);">
+          <input type="checkbox" id="rsm-calib" checked style="width:17px;height:17px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);cursor:pointer;">
+          <span>Use this ride as a speed sample</span>
+        </label>
+        <p style="font-size:13px;color:var(--text3);line-height:1.5;margin:6px 0 0 26px;">Real rides teach PackTimes how fast you actually ride, so its time estimates get better. Samples stay visible under Sample Rides — you can remove any of them later.</p>
+        <div id="rsm-calib-body" style="margin-top:10px;">
+          <div id="rsm-auto" style="display:none;font-size:14px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:8px 10px;margin-bottom:10px;line-height:1.5;"></div>
+          <div class="field" id="rsm-surface-field" style="display:none;">
+            <label class="lbl">Surface (mostly)</label>
+            <select id="rsm-surface" style="font-family:var(--sans);">
+              <option value="road">Sealed road</option>
+              <option value="grade2">Gravel / dirt road</option>
+              <option value="single">Singletrack</option>
+              <option value="grade4">Rough track / hike-a-bike</option>
+            </select>
+          </div>
+          <div class="field" id="rsm-hill-field" style="display:none;">
+            <label class="lbl">Terrain</label>
+            <select id="rsm-hill" style="font-family:var(--sans);">
+              <option value="3">Flat</option>
+              <option value="8" selected>Rolling</option>
+              <option value="15">Hilly</option>
+              <option value="25">Mountainous</option>
+            </select>
+          </div>
+          <div class="field" id="rsm-load-field" style="display:none;">
+            <label class="lbl">Load carried</label>
+            <select id="rsm-load" style="font-family:var(--sans);">
+              <option value="light">Light — minimal kit / day ride</option>
+              <option value="moderate" selected>Moderate — typical bikepacking setup</option>
+              <option value="heavy">Heavy — full expedition or touring load</option>
+            </select>
+          </div>
+        </div>
       </div>
-      <div class="field" id="rsm-load-field" style="display:none;">
-        <label class="lbl">Load carried</label>
-        <select id="rsm-load">
-          <option value="light">Light — minimal kit / day ride</option>
-          <option value="moderate" selected>Moderate — typical bikepacking setup</option>
-          <option value="heavy">Heavy — full expedition or touring load</option>
-        </select>
-      </div>
+
     </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:8px;flex-shrink:0;">
-      <button class="btn btn-p" id="rsm-save" style="flex:1;justify-content:center;">Save</button>
-      <button class="btn" id="rsm-dismiss" style="flex:1;justify-content:center;">Dismiss</button>
-    </div>
+
+    <button class="btn btn-p btn-full" id="rsm-save" style="margin-top:var(--sp-4);flex-shrink:0;padding:14px 16px;font-size:16px;font-weight:700;">Done</button>
   </div>
 </div>
 
@@ -684,25 +734,63 @@ select option{background:var(--bg3);}
 <div id="calib-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
-      <span style="font-size:18px;font-weight:600;color:var(--text);">Advanced Estimation</span>
+      <!-- Titled "Sample Rides", NOT "Advanced Estimation" — that name already belongs to the
+           MODE (the Basic/Advanced toggle in Speed Estimation). This popup doesn't set the mode,
+           it edits the rides the mode feeds on. Two things sharing one name is how people get lost. -->
+      <span style="font-size:18px;font-weight:600;color:var(--text);">Sample Rides</span>
       <button class="btn btn-sm" onclick="closeCalibModal()">✕</button>
     </div>
     <div style="overflow-y:auto;flex:1;min-height:0;">
-    <p style="font-size:13px;color:var(--text3);line-height:1.55;margin:0 0 12px;">
-      Enter rides you've actually done, ridden <b style="color:var(--text2);">the way you'd ride the event you're planning</b> — steady all-day endurance pace, long enough to be honest.
-      Don't use sprints or segment PBs ridden flat out; a short maximum effort will make every plan optimistic.
-      Each sample should be <b style="color:var(--text2);">mostly one surface</b>.
-      A section of a longer ride or a Strava segment works well — shorter sections make a single surface more likely.
-      Set each sample's <b style="color:var(--text2);">section shape</b>: rolling/loop for sections finishing near their start height, or mostly-climbing for climb segments.
-      Avoid mostly-downhill sections — they measure braking, not fitness.
-      For time, use <b style="color:var(--text2);">elapsed time minus deliberate breaks</b> (meals, sleep, long resupply stops) — keep the short stops in.
-      Layers, snacks, bottles, gates: that routine faff is part of real bikepacking, and counting it here is what makes your ETAs match when you actually arrive.
-      Strava's "moving time" hides those stops — if that's all you have, add roughly 10–15% on top for a typical all-day ride, less if you barely stop.
-      Rides you record in PackTimes offer themselves as samples when you save them, with this rule applied automatically: stops under 15 minutes count as ride time, longer breaks are excluded.
+
+    <!-- HEADLINE: the one number this whole screen exists to produce. Was buried at the
+         bottom under a wall of instructions. -->
+    <div id="calib-factor-row" style="background:var(--card2);border:1px solid var(--border2);border-radius:var(--r-card);padding:14px;text-align:center;margin-bottom:var(--sp-4);"></div>
+
+    <!-- WHAT a sample ride is, in two sentences. The long "how to choose one" guidance is
+         real and worth keeping, but it was the first thing you hit and it buried everything. -->
+    <p style="font-size:14px;color:var(--text2);line-height:1.55;margin:0 0 8px;">
+      A <b style="color:var(--text);">sample ride</b> is a ride you've actually done — whether you recorded it in PackTimes or
+      entered it by hand. PackTimes compares it against its baseline and works out whether you're faster or slower than an
+      average rider. That's the number above.
     </p>
+    <p style="font-size:14px;color:var(--text2);line-height:1.55;margin:0 0 12px;">
+      It keeps up to 20 rides, covering different distances, surfaces and loads. As newer rides come in, it drops older ones
+      that are very similar — so you end up with a spread of the different kinds of riding you do, rather than twenty versions
+      of the same one.
+    </p>
+
+    <details style="margin-bottom:var(--sp-4);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:10px 12px;">
+      <summary style="font-size:13px;color:var(--text2);cursor:pointer;font-weight:600;">How to choose a good sample ride</summary>
+
+      <div style="font-size:13px;color:var(--text3);line-height:1.55;">
+        <p style="margin:10px 0 4px;"><b style="color:var(--text2);">Ride it like the event you're planning</b></p>
+        <p style="margin:0 0 10px;">Steady all-day endurance pace, long enough to be honest. Don't use a flat-out effort or a PB — a short maximum effort makes every plan optimistic.</p>
+
+        <p style="margin:0 0 4px;"><b style="color:var(--text2);">Keep rides to a single surface as much as possible</b></p>
+        <p style="margin:0 0 10px;">Sealed, gravel, singletrack or rough track — whichever it mostly was. A pure single-surface ride is rare, so don't agonise: pick a section of a longer ride if you can, since shorter sections make one surface more likely.</p>
+
+        <p style="margin:0 0 4px;"><b style="color:var(--text2);">Say what shape the section was</b></p>
+        <p style="margin:0 0 10px;">Rolling/loop if it finishes near the height it started, or mostly-climbing for a climb. Avoid mostly-downhill sections — they measure your braking, not your fitness.</p>
+
+        <p style="margin:0 0 4px;"><b style="color:var(--text2);">For time, include the faff</b></p>
+        <p style="margin:0 0 10px;">Use elapsed time minus your <i>deliberate</i> breaks (meals, sleep, long resupply stops) — but keep the short stops in. Layers, snacks, bottles, gates: that routine faff is part of real bikepacking, and counting it here is what makes your ETAs match when you actually arrive. Recorded rides do this automatically — stops under 15 minutes count as ride time, longer breaks are excluded.</p>
+
+        <p style="margin:0 0 4px;"><b style="color:var(--text2);">Using a Strava segment or a non-stop effort?</b></p>
+        <p style="margin:0 0 10px;">Segments are usually short — a good climb, a clean stretch of bitumen — and ridden straight through, so there's <i>no faff in them at all</i>. Tick <b style="color:var(--text2);">"Add 15% faff"</b> on that sample. Without it the sample looks faster than you really are on a long day, and every plan you make comes out optimistic. Same goes if all you have is Strava's "moving time", which hides your stops.</p>
+      </div>
+    </details>
+
+    <!-- The rides simply sit under the text. No show/hide toggle: this popup IS the list —
+         hiding it behind a button on the one screen dedicated to editing it was silly. The
+         summary screen (Speed Estimation) shows only the factor, so there's no duplication.
+         Header and Save footer are fixed; everything between them scrolls as one. -->
+    <div id="calib-rides-label" style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;"></div>
     <div id="calib-rides-wrap"></div>
-    <button class="btn btn-sm" id="calib-add" onclick="_calibAdd()" style="width:100%;justify-content:center;margin-bottom:12px;">+ Add another sample ride</button>
-    <div id="calib-factor-row" style="font-size:14px;color:var(--text2);text-align:center;margin-bottom:10px;min-height:20px;"></div>
+    <!-- "Manually" is deliberate (Peter): it implies an automatic route exists — and it does.
+         Recorded rides offer themselves as samples when you save them, so this is the OTHER way
+         in, not the only way in. "+ Add another sample ride" said nothing about either. -->
+    <button class="btn btn-sm" id="calib-add" onclick="_calibAdd()" style="width:100%;justify-content:center;margin-bottom:12px;">+ Manually enter a ride</button>
+
     </div>
     <button class="btn btn-p btn-full" onclick="saveCalibModal()" style="flex-shrink:0;margin-top:8px;margin-bottom:env(safe-area-inset-bottom,0px);">Save Sample Rides</button>
   </div>
@@ -772,7 +860,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v244';
+window.APP_VERSION='v245';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1478,11 +1566,26 @@ function maxAwakeRidingH(r){
 }
 
 // ─── Advanced Calibration (sample rides → rider factor) ─────────────────────
-// UI.calibRides holds up to 3 real rides the user has done:
+// UI.calibRides holds up to CALIB_MAX_RIDES real rides the user has done:
 //   {surface:'road'|'grade2'|'grade4', distKm, hours, elevM, load:'light'|'moderate'|'heavy'}
 // Each sample is corrected for the load carried that day, so the aggregate is a
 // pure rider-ability factor. The route's own Load preset still applies on top.
-const CALIB_MAX_RIDES=10;
+// 20 samples (was 10). Storage is trivial — a sample is ~8 numbers, so 20 is a couple of KB —
+// and with redundancy-based eviction (see _calibRedundancy) a longer list means MORE variety
+// survives, not just more clutter. The list is collapsed behind "Edit sample rides" so a long
+// list costs nothing visually.
+//
+// AGE IS NOT A FILTER, AND MUST NOT BECOME ONE (Peter, and he's right).
+// The obvious worry with a long list is staleness — fitness drifts, so why should a ride from
+// two years ago count like last week's? Because the rides that matter most are the rare ones.
+// A 400 km ultra might happen once every year or two; it is inherently the OLDEST sample you
+// own AND the most informative one for planning another ultra. Decay or evict by age and you
+// delete precisely the evidence you need. So samples carry a `ts` for DISPLAY ONLY — the list
+// shows how old each one is so you can prune deliberately — and the factor maths ignores it
+// entirely. Do not add age-weighting here.
+// (Redundancy eviction already protects the rare rides: a one-off ultra has no near neighbour,
+//  so its redundancy score is high and it is never the one dropped. Commutes evict commutes.)
+const CALIB_MAX_RIDES=20;
 function calibPredictH(distKm,elevM,surface,load,profile){
   // Predict the sample ride with the SAME segment model the planner uses.
   // profile 'rolling' (default): synthetic loop — one climb + matching descent
@@ -1505,9 +1608,26 @@ function calibPredictH(distKm,elevM,surface,load,profile){
         +segTimeH(descKm,-elevM,surface,rm,lm)
         +segTimeH(flatKm,0,surface,rm,lm);
 }
+// Short non-stop efforts (a Strava segment, a climb PB) contain NO faff — no bottles, no
+// layers, no gates, no fishing a snack out of a bag. But PackTimes doesn't model those short
+// stops separately; it bakes them into the rider factor (the "faff rule": stops under 15 min
+// count as ride time). So a non-stop sample produces an artificially fast factor and makes
+// EVERY plan optimistic — on a 400 km ultra, by hours. `nonstop` adds the faff back.
+// The help text already told people to add 10–15% by hand; this just does the arithmetic.
+//
+// WHY 15% AND NOT 10% (Peter's call, and the reasoning matters if anyone retunes it):
+// The figure is a generalised guess from Peter's own rides, not a measurement. Given a range
+// of 10–15%, take the TOP of it — because the two failure modes are not equal. Over-estimate
+// the faff and the plan is pessimistic: you arrive early, with daylight and water in hand.
+// Under-estimate it and the plan is optimistic: you're short of the next stop as the light
+// goes. Erring slow is the safe direction to be wrong in, so 15% it is. Only lower this if
+// real recorded rides show the true overhead is consistently less.
+const CALIB_FAFF_UPLIFT=1.15;
 function calibRideFactor(s){
-  const d=parseFloat(s.distKm),h=parseFloat(s.hours),e=parseFloat(s.elevM)||0;
+  const d=parseFloat(s.distKm),e=parseFloat(s.elevM)||0;
+  let h=parseFloat(s.hours);
   if(!d||!h||d<=0||h<=0)return null;
+  if(s.nonstop)h*=CALIB_FAFF_UPLIFT;   // no stops in the sample → add typical faff back
   const pred=calibPredictH(d,e,s.surface||'road',s.load||'moderate',s.profile||'rolling');
   if(pred<=0)return null;
   return h/pred; // >1 = slower than the Regular baseline, <1 = faster
@@ -3056,7 +3176,9 @@ function stopGPS(){
   UI._rideAvgStoppedTs=Date.now();
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;UI.gpsWatchId=null;UI.gpsHeading=null;
   UI._gpsAutoPaused=false;
-  _offRouteStart=null;_offRouteAlerted=false;_offRouteLastM=0;
+  // Ride over — clear the dismiss mode too, so a "detour"/"stop following" choice
+  // never leaks into the next ride (Peter: it resets when the recording is stopped).
+  _offRouteReset(true);
   const ov=document.getElementById('offroute-overlay');if(ov)ov.remove();
   stopOffRouteAudio();
   UI._adaptiveWindow=[];// clear window on GPS stop
@@ -4081,8 +4203,12 @@ function _recSaveShow(rec){
   const auto = _recCalibAuto(rec);
   _recSaveCtx = {rec, auto};
   const movH = _recMovingH(rec);
-  document.getElementById('rsm-stats').textContent =
-    (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(movH) + ' ride time (breaks over 15 min excluded)';
+  // Figures in DM Mono, words in DM Sans — the whole line used to be mono, which made
+  // the prose read like a typewriter (Peter's screenshot).
+  const mono = s => '<span style="font-family:var(--font);font-weight:500;color:var(--text);">' + s + '</span>';
+  document.getElementById('rsm-stats').innerHTML =
+    mono((rec.totalDist || 0).toFixed(1) + ' km') + ' · ' + mono(fmtHM(movH)) + ' ride time'
+    + '<br><span style="font-size:12px;color:var(--text3);">Breaks over 15 min excluded</span>';
   document.getElementById('rsm-name').value = rec.name || _recDefaultName(rec);
   document.getElementById('rsm-calib').checked = true;
   const surfLabels = {road: 'sealed road', grade2: 'gravel / dirt', single: 'singletrack', grade4: 'rough track'};
@@ -4127,8 +4253,11 @@ async function _recSaveConfirm(){
     const elevM = auto ? Math.round(auto.elevM)
                        : Math.round(distKm * (+document.getElementById('rsm-hill').value));
     const load = auto ? (auto.load || 'moderate') : document.getElementById('rsm-load').value;
+    // ts = when the ride happened. The factor maths ignores it; it's there so the sample list
+    // can show an age and you can spot evidence that's gone stale (fitness drifts).
     _recCalibAdd({surface, distKm, hours: +hours.toFixed(2), elevM, load,
-                  profile: 'rolling', src: 'rec', recId: rec.id, name: rec.name});
+                  profile: 'rolling', src: 'rec', recId: rec.id, name: rec.name,
+                  ts: rec.startTS || Date.now()});
   }
   await DB.putRecording(rec).catch(()=>{});
   const i = RECS.findIndex(x => x.id === rec.id);
@@ -4138,9 +4267,49 @@ async function _recSaveConfirm(){
   render();
 }
 
-// Add one recorded ride to UI.calibRides. Keeps the library within
-// CALIB_MAX_RIDES by retiring the oldest recorded entry first — manually
-// entered sample rides are never evicted automatically.
+// ── Sample-ride redundancy (v245) ───────────────────────────────────────────────
+// How DIFFERENT are two samples, as evidence about the rider? 0 = says the same thing.
+//
+// Why this exists: a sample is reduced to factor = actual ÷ predicted, and the prediction
+// already accounts for that ride's surface, elevation and load — so the factor is a pure
+// rider-ability number, and the final figure is a distance-weighted mean of them. That
+// means near-identical rides do NOT distort the average (ten identical rides give the same
+// answer as one), and they're actively USEFUL while there's room: repeated measurements
+// cancel out a one-off headwind or bad day.
+//
+// The problem was eviction. With the list full, the OLDEST recorded ride was retired — so
+// riding the same loop every week would slowly flush out your one big gravel epic, the most
+// informative sample you own. Now the most REDUNDANT ride goes instead: the one whose
+// information is already covered by another sample still in the list.
+function _calibDiff(a, b){
+  const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+  const da = num(a.distKm), db = num(b.distKm);
+  // Different surface = genuinely different evidence; never treat as redundant.
+  const surf  = (a.surface || 'road')     === (b.surface || 'road')     ? 0 : 1;
+  const load  = (a.load    || 'moderate') === (b.load    || 'moderate') ? 0 : 1;
+  const dist  = Math.abs(da - db) / Math.max(da, db, 1);            // relative length
+  const ca = num(a.elevM) / Math.max(da, 1);                        // climb rate, m/km
+  const cb = num(b.elevM) / Math.max(db, 1);
+  const climb = Math.abs(ca - cb) / Math.max(ca, cb, 1);
+  const fa = calibRideFactor(a), fb = calibRideFactor(b);           // the result itself
+  const fac = (fa && fb) ? Math.abs(fa - fb) / Math.max(fa, fb) : 0;
+  return surf * 1.0 + load * 0.3 + dist * 0.6 + climb * 0.5 + fac * 0.8;
+}
+// Redundancy of `s` = how close it is to its NEAREST neighbour in the list. Small = its
+// information is already covered by something else, so it's the cheapest thing to lose.
+function _calibRedundancy(s, list){
+  let best = Infinity;
+  for(const o of list){
+    if(o === s) continue;
+    best = Math.min(best, _calibDiff(s, o));
+  }
+  return best;   // Infinity when it's the only sample — never evicted
+}
+
+// Add one recorded ride to UI.calibRides. Keeps the library within CALIB_MAX_RIDES by
+// retiring the most REDUNDANT recorded entry (ties → the older one, since fitness drifts
+// and the fresher ride is the better evidence). Manually entered sample rides are never
+// evicted automatically.
 function _recCalibAdd(entry){
   if(calibRideFactor(entry) === null){
     _recToast("Couldn't use this ride for calibration — too short or no moving time");
@@ -4149,29 +4318,52 @@ function _recCalibAdd(entry){
   UI.calibRides = UI.calibRides || [];
   const dup = UI.calibRides.findIndex(s => s.recId === entry.recId);
   if(dup >= 0) UI.calibRides.splice(dup, 1);
+  let replaced = null;
   if(UI.calibRides.length >= CALIB_MAX_RIDES){
-    const old = UI.calibRides.findIndex(s => s.src === 'rec');
-    if(old < 0){
-      _recToast('Calibration list is full (' + CALIB_MAX_RIDES + ' rides) — remove one in Advanced Estimation first');
+    // Candidates are the EXISTING recorded rides — never the one being added, so a new
+    // ride can't evict itself, and of two twins it's the older that goes.
+    const cands = UI.calibRides.filter(s => s.src === 'rec');
+    if(!cands.length){
+      _recToast('Sample list is full (' + CALIB_MAX_RIDES + ' rides) — remove one under Sample Rides first');
       return;
     }
-    UI.calibRides.splice(old, 1);
+    // Score against the list as it WILL be (including the incoming ride), so a new commute
+    // correctly marks the old commute as redundant.
+    const future = UI.calibRides.concat([entry]);
+    const scored = cands.map(s => ({s, red: _calibRedundancy(s, future)}));
+    const minRed = Math.min(...scored.map(x => x.red));
+    // Everything in a tight band around the most-redundant score is, for our purposes, equally
+    // redundant — a cluster of near-identical commutes will all score about the same. Among
+    // those, drop the OLDEST (Peter's rule): two similar rides say the same thing about your
+    // ability, so keep the one that says it about your CURRENT ability. Fitness drifts; a ride
+    // from last month is a fresher read than the same ride from two years ago.
+    // (Samples with no ts are pre-v245 — treat as oldest, so they're retired first.)
+    const CLOSE = 0.10;
+    const tied = scored.filter(x => x.red <= minRed + CLOSE);
+    tied.sort((a, b) => (a.s.ts || 0) - (b.s.ts || 0));
+    const victim = tied[0].s;
+    replaced = victim.name || null;
+    UI.calibRides.splice(UI.calibRides.indexOf(victim), 1);
   }
   UI.calibRides.push(entry);
   // Only rebuild ETAs when Advanced Estimation is actually in use — adding a
   // sample must never silently switch estimation modes.
   if(UI.estModeAdv) for(const rt of ROUTES) rebuildPace(rt);
   saveAll();
-  _recToast(UI.estModeAdv ? 'Added to Speed Calibration'
-                          : 'Saved to Speed Calibration — used when Advanced Estimation is on');
+  // One toast, not two — say if a ride was displaced, so an eviction is never silent.
+  _recToast(replaced ? 'Added to Speed Calibration — replaced a similar ride (' + replaced + ')'
+                     : UI.estModeAdv ? 'Added to Speed Calibration'
+                                     : 'Saved to Speed Calibration — used when Advanced Estimation is on');
 }
 
 // Wire the save modal + rename controls once.
 (function(){
   const $ = id => document.getElementById(id);
   if(!$('rsm-save')) return;
-  $('rsm-save').addEventListener('click', _recSaveConfirm);
-  $('rsm-dismiss').addEventListener('click', ()=>{ _recSaveClose(); });
+  $('rsm-save').addEventListener('click', _recSaveConfirm);   // the only button now ("Done")
+  // v245: the old "Dismiss" button is gone. It implied you could back out of saving —
+  // you can't, the ride is already on disk — and it silently discarded the name the
+  // rider had just typed. The optional-sample checkbox is the only real choice here.
   $('rsm-calib').addEventListener('change', _recSaveCalibToggle);
   // Rename in the ride detail modal
   $('rdm-rename').addEventListener('click', ()=>{
@@ -5024,7 +5216,7 @@ function simStart(){
     _simIdx=startDist>0?Math.max(0,r.points.findIndex(p=>p.dist>=startDist)):0;
     _simElapsedMs=0;
     UI.alertedStops=new Set();
-    _offRouteStart=null;_offRouteAlerted=false;
+    _offRouteReset(true);   // fresh sim run — re-arm off-route alerts
   }
   UI.simPaused=false;
   UI.gpsActive=true;
@@ -5182,6 +5374,12 @@ let _wakeLock=null;
 let _offRouteStart=null;
 let _offRouteAlerted=false;
 let _offRouteLastM=0;
+// How the rider answered the off-route alarm this ride (v245).
+//   null        — armed, no answer yet
+//   'ack'       — "Got it", turning around → still escalates if they stray further
+//   'detour'    — deliberate detour → fully silent until they rejoin the route
+//   'abandoned' — no longer following the route → silent until the ride stops
+let _offRouteMode=null;
 
 // ─── Audio alerts ───
 let _audioCtx=null;
@@ -5418,54 +5616,93 @@ function checkAlerts(){
       return d<300;
     });
     if(!nearOffRoute){
+      // ── Dismiss modes (v245) ───────────────────────────────────────────────
+      // 'abandoned' — rider has given up on the route. Silent for the rest of the
+      //   ride; only cleared when GPS/recording stops (see stopGPS / _offRouteReset).
+      // 'detour'    — rider knows, is going around something, will rejoin. Silent
+      //   HOWEVER FAR they stray; auto-re-arms the moment they're back on route
+      //   (the else-branch below), so a later unintended departure still alarms.
+      // 'ack'       — "Got it", turning around. Alarm stops but ESCALATES again if
+      //   they keep getting further away (Peter wants to keep this).
+      if(_offRouteMode==='abandoned'||_offRouteMode==='detour')return;
       if(!_offRouteStart)_offRouteStart=Date.now();
       const secsOff=(Date.now()-_offRouteStart)/1000;
       if(secsOff>=(UI.offRouteSecs||8)){
-        // Show alert — and re-alert every 15s if still going further off route
         if(!_offRouteAlerted){
           _offRouteAlerted=true;
           _offRouteLastM=offM;
           showOffRouteAlert(Math.round(offM));
-        } else if(offM>(_offRouteLastM||0)+50){
-          // Getting further away — escalate again
+        } else if((_offRouteMode===null||_offRouteMode==='ack')&&offM>(_offRouteLastM||0)+50){
+          // Still heading further away and they haven't chosen detour/abandon —
+          // escalate again. (mode null = alarm showing, unanswered: this also keeps
+          // the on-screen distance live. mode 'ack' = they said they'd turn around
+          // but are still going the wrong way, which is exactly when to re-alarm.)
           _offRouteLastM=offM;
           showOffRouteAlert(Math.round(offM));
         }
       }
     } else {
-      _offRouteStart=null;_offRouteAlerted=false;_offRouteLastM=0;
+      _offRouteReset(true);
     }
   } else {
-    // Back on route — dismiss overlay and stop audio
+    // Back on route — dismiss overlay, stop audio, and re-arm.
+    // A 'detour' or 'ack' is spent here: rejoining the route is exactly the signal
+    // that the rider is done with it. 'abandoned' deliberately survives (they've
+    // stopped following the route; brushing past it shouldn't restart the alarms —
+    // it clears when the ride does).
     if(_offRouteAlerted){
       const ov=document.getElementById('offroute-overlay');
       if(ov)ov.remove();
       stopOffRouteAudio();
     }
-    _offRouteStart=null;_offRouteAlerted=false;_offRouteLastM=0;
+    _offRouteReset(_offRouteMode!=='abandoned');
   }
 }
 
+// Clear the off-route episode. full=true also clears the dismiss mode (re-arms the
+// alarm). Called with false only where we want to keep an 'abandoned' silence.
+function _offRouteReset(clearMode){
+  _offRouteStart=null;_offRouteAlerted=false;_offRouteLastM=0;
+  if(clearMode)_offRouteMode=null;
+}
+
 function showOffRouteAlert(distM){
-  // Full-screen takeover — much more urgent than the regular stop alert
+  // Full-screen takeover — much more urgent than the regular stop alert.
+  // Three exits (v245), because "off route" means three different things to a rider:
+  //   Got it            → I'll turn around. Keeps escalating if you stray further.
+  //   Taking a detour   → I know. Silent until I rejoin the route, then re-arms.
+  //   Stop following    → I've abandoned the route. Silent for the rest of the ride.
+  // Buttons are full-width and tall — this gets tapped with numb hands in gloves.
   let overlay=document.getElementById('offroute-overlay');
   if(!overlay){
     overlay=document.createElement('div');
     overlay.id='offroute-overlay';
-    overlay.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(180,20,20,0.93);backdrop-filter:blur(2px);pointer-events:all;';
+    overlay.style.cssText='position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(180,20,20,0.93);backdrop-filter:blur(2px);pointer-events:all;padding:20px;box-sizing:border-box;';
+    const btnCss='display:block;width:100%;box-sizing:border-box;border:none;border-radius:12px;padding:16px 12px;font-size:18px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;font-family:var(--sans);';
     overlay.innerHTML=`
-      <div style="font-size:72px;line-height:1;margin-bottom:12px;">⛔</div>
-      <div style="font-size:32px;font-weight:800;color:#fff;letter-spacing:1px;margin-bottom:8px;">OFF ROUTE</div>
-      <div id="offroute-dist" style="font-size:22px;color:rgba(255,255,255,0.85);font-family:var(--font);margin-bottom:24px;">${distM}m from route</div>
-      <button id="offroute-ok" style="background:#fff;color:#b91c1c;font-size:20px;font-weight:700;border:none;border-radius:12px;padding:14px 48px;cursor:pointer;-webkit-tap-highlight-color:transparent;">Got it</button>
-      <div style="font-size:14px;color:rgba(255,255,255,0.6);margin-top:16px;">Turn around as soon as safe to do so</div>
+      <div style="font-size:64px;line-height:1;margin-bottom:10px;">⛔</div>
+      <div style="font-size:32px;font-weight:800;color:#fff;letter-spacing:1px;margin-bottom:6px;">OFF ROUTE</div>
+      <div id="offroute-dist" style="font-size:22px;color:rgba(255,255,255,0.85);font-family:var(--font);margin-bottom:22px;">${distM}m from route</div>
+      <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px;">
+        <button id="offroute-ok" style="${btnCss}background:#fff;color:#b91c1c;">Got it — turning around</button>
+        <button id="offroute-detour" style="${btnCss}background:rgba(255,255,255,0.16);color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,0.55);">Taking a detour</button>
+        <button id="offroute-abandon" style="${btnCss}background:transparent;color:rgba(255,255,255,0.85);box-shadow:inset 0 0 0 2px rgba(255,255,255,0.3);font-weight:600;font-size:16px;">Stop following this route</button>
+      </div>
+      <div id="offroute-hint" style="font-size:13px;color:rgba(255,255,255,0.6);margin-top:16px;text-align:center;line-height:1.5;max-width:320px;">Detour: quiet until you rejoin the route.<br>Stop following: quiet for the rest of the ride.</div>
     `;
     document.body.appendChild(overlay);
-    document.getElementById('offroute-ok').addEventListener('click',()=>{
-      overlay.remove();
-      _offRouteAlerted=true; // suppress re-alert for this off-route episode
+    const dismiss=mode=>{
+      _offRouteMode=mode;
+      _offRouteAlerted=true;   // this episode has been answered
       stopOffRouteAudio();
-    });
+      const ov=document.getElementById('offroute-overlay');
+      if(ov)ov.remove();
+      if(mode==='detour')_recToast('Detour — alerts off until you rejoin the route');
+      if(mode==='abandoned')_recToast('Route alerts off for the rest of this ride');
+    };
+    document.getElementById('offroute-ok').addEventListener('click',()=>dismiss('ack'));
+    document.getElementById('offroute-detour').addEventListener('click',()=>dismiss('detour'));
+    document.getElementById('offroute-abandon').addEventListener('click',()=>dismiss('abandoned'));
   } else {
     // Update distance if already showing
     const d=document.getElementById('offroute-dist');
@@ -6724,7 +6961,12 @@ function redrawMap(id){
       drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:liveAnchor,highlightId:_highlightStopId});
     }
   } else {
-    drawMap(cvs,r,{showGPS:false,followGPS:false,anchor:0.5,highlightId:_highlightStopId});
+    // Stops / desktop planning maps: show the GPS dot IF GPS is already running (v245).
+    // Deliberately never followGPS — these maps pan and zoom freely and must stay where
+    // you left them (that's the whole point: working out a detour mid-ride). Costs no
+    // extra battery: drawing the dot is free, and we never switch the GPS on ourselves.
+    const planMapGPS=(id==='stops-map'||id==='desktop-map');
+    drawMap(cvs,r,{showGPS:planMapGPS,followGPS:false,anchor:0.5,highlightId:_highlightStopId});
   }
   if(IS_DESKTOP())renderDesktopMap();
 }
@@ -7038,7 +7280,14 @@ function mapCtrlHTML(mapId,showGPS){
   const isLiveMobile=mapId==='live-map'&&!IS_DESKTOP();
   // Live map: raise buttons above the weather bar overlay; z-index below weather bar so bar expands over buttons.
   // bottom value here is a baseline — _adjustMapCtrlForElev() adjusts it dynamically to clear the elevation strip.
-  const pos=isLiveMobile?'top:auto;bottom:90px;right:8px;left:auto;transform:none;z-index:5;':isStopsMobile?'top:auto;bottom:8px;right:8px;left:auto;transform:none;':'';
+  // Map controls sit on the RIGHT on every device (v245). They always did on mobile; on
+  // desktop nobody ever set a position, so they fell through to .map-ctrl's left:8px
+  // default and ended up on the opposite side. Not a decision — just an unset value.
+  // Mobile is the primary device, so desktop moves to match it.
+  const desktopRight=(mapId==='live-map'||mapId==='stops-map')?'left:auto;right:8px;':'';
+  const pos=isLiveMobile?'top:auto;bottom:90px;right:8px;left:auto;transform:none;z-index:5;'
+           :isStopsMobile?'top:auto;bottom:8px;right:8px;left:auto;transform:none;'
+           :desktopRight;
   const btnSize=isLiveMobile?'width:52px;height:52px;font-size:22px;':'';
   // Build the recording-or-GPS button. On live-map it's the recording control; elsewhere it's the GPS toggle.
   let gpsBtn='';
@@ -7046,21 +7295,51 @@ function mapCtrlHTML(mapId,showGPS){
   if(mapId==='live-map'){
     const recActive = _rec && _rec.status === 'active';
     const recPaused = _rec && _rec.status === 'paused';
-    // SVG icons sized to fit a 52px button. Play triangle / Pause bars.
-    const playSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;margin:auto;"><path d="M7 5 L19 12 L7 19 Z" fill="currentColor"/></svg>';
+    // ── Recording control (v245 rebuild, Peter's principle) ─────────────────────────
+    // The recording state model wasn't legible: an icon-only button meant you had to
+    // remember what the colours meant, and a paused ride restored on app-open looked
+    // like a "play" button sitting there for no reason.
+    //
+    // The rule: TEXT wherever you can afford it, ICON only where you can't.
+    // Which state you're in tells you whether you can afford it:
+    //   Idle     — you're stopped, about to start   → TEXT ("Start ride")
+    //   Recording— you're RIDING, the map matters   → ICON only (small, solid red, blinks)
+    //   Paused   — you're stopped at a cafe/lights  → TEXT ("Resume ride" + "Stop ride")
+    // So the one state that eats map real estate is the one state that doesn't need words.
+    //
+    // Colour discipline: red is RESERVED. Recording = red (live). Delete = red (destroys).
+    // "Stop ride" is deliberately NEUTRAL — stopping isn't irreversible, it just opens the
+    // save panel. If Stop were red too, red would stop meaning anything.
     const pauseSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;margin:auto;"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg>';
+    const shadow='box-shadow:0 2px 8px rgba(0,0,0,.45);';
+    // Wide text-button shell for the stationary states. Height matches the 52px icon
+    // buttons so the control stack stays aligned.
+    const wide=isLiveMobile?'width:auto;height:52px;min-width:52px;padding:0 14px;font-size:15px;'
+                           :'width:auto;padding:0 12px;font-size:14px;';
+    const label=t=>`<span style="font-family:var(--sans);font-weight:600;white-space:nowrap;">${t}</span>`;
+    const dot='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><circle cx="12" cy="12" r="9" fill="#ef4444"/></svg>';
+    const tri='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><path d="M7 5 L19 12 L7 19 Z" fill="currentColor"/></svg>';
+    const row='display:flex;align-items:center;justify-content:center;gap:7px;';
     if(recActive){
-      // Recording — pause icon, red accent + gentle background pulse
-      gpsBtn=`<button class="zbtn rec-pulse" id="btn-gpstoggle" title="Pause recording" style="${btnSize}padding:0;overflow:hidden;color:var(--red);border-color:rgba(248,113,113,.5);">${pauseSvg}</button>`;
+      // RECORDING — icon only. Small, solid TRUE red (--red2; the old --red #f87171 is a
+      // salmon that fills PINK), blinking via .rec-pulse. Tap = pause.
+      gpsBtn=`<button class="zbtn rec-pulse" id="btn-gpstoggle" title="Pause recording" style="${btnSize}padding:0;overflow:hidden;color:#fff;background:var(--red2);border-color:var(--red2);${shadow}">${pauseSvg}</button>`;
     } else if(recPaused){
-      // Paused — play icon (means "resume"), amber accent. Also show the Stop ride button.
-      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Resume recording" style="${btnSize}padding:0;overflow:hidden;color:var(--amber);border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.10);">${playSvg}</button>`;
-      stopBtn=`<button class="zbtn" id="btn-recstop" title="Stop ride" style="${btnSize}width:auto;padding:0 10px;font-size:13px;font-family:var(--font);font-weight:600;color:var(--text);border-color:var(--border2);">Stop ride</button>`;
+      // PAUSED — say so. GREEN "Resume ride" (v245): a button's colour should describe its
+      // ACTION, not the state you're in. Green = go / carry on. The old amber was describing
+      // the paused STATE — but amber means "caution", and there's nothing cautionary about
+      // resuming. The state is already carried by the word "Resume" and by "Stop ride"
+      // appearing alongside. Neutral "Stop ride" sits beneath it.
+      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Resume recording" style="${wide}padding:0 14px;overflow:hidden;color:#fff;background:var(--accent3);border-color:var(--accent2);${shadow}"><span style="${row}">${tri}${label('Resume ride')}</span></button>`;
+      // var(--sans), NOT var(--font): DM Mono is for numbers/metrics only. It was
+      // rendering "Stop ride" as typewriter text (Peter's screenshot).
+      stopBtn=`<button class="zbtn" id="btn-recstop" title="Stop ride" style="${wide}color:var(--text);border-color:var(--border2);font-family:var(--sans);font-weight:600;${shadow}">Stop ride</button>`;
     } else {
-      // Idle — play icon. Solid green fill with a dark glyph so it stands out as
-      // the primary "go" action on top of any map tile (the old faint-green-on-
-      // transparent version blended into the map and was nearly invisible).
-      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${btnSize}padding:0;overflow:hidden;color:#0a0f0a;background:var(--accent);border-color:var(--accent2);box-shadow:0 2px 8px rgba(0,0,0,.45);">${playSvg}</button>`;
+      // IDLE — say what it does. Dark .zbtn body so it sits with the other controls (the
+      // white version looked pasted on); the red dot carries the "record" meaning.
+      // Deliberately NOT a red button: RECORDING is red, and idle-vs-recording is the one
+      // distinction this button absolutely must make at a glance.
+      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${wide}color:var(--text);border-color:var(--border2);${shadow}"><span style="${row}">${dot}${label('Start ride')}</span></button>`;
     }
   } else {
     // Non-Live maps: keep the original GPS-toggle behaviour
@@ -7069,13 +7348,41 @@ function mapCtrlHTML(mapId,showGPS){
       `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);">GPS</button>`;
   }
   const expandBtn=isStopsMobile?`<button class="zbtn" id="stops-map-expand" title="${UI.stopsMapExpanded?'Shrink map':'Expand map'}" style="padding:0;overflow:hidden;">${UI.stopsMapExpanded?ICON_COLLAPSE:ICON_EXPAND}</button>`:'';
-  const recenterBtn=(!isLiveMobile&&showGPS)?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="${btnSize}padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:'';
-  return`<div class="map-ctrl" style="${pos}" id="${mapId==='live-map'?'live-map-ctrl':''}">
+
+  // ── Fit-route (⛶) and crosshair (recentre) on the RIDE map (v245) ──────────────────
+  // These two are coupled. The ride map FOLLOWS GPS continuously, so the crosshair
+  // ("centre on GPS") has nothing to do — the map is already centred on you. The only way
+  // to get off-centre is to press fit-route, which zooms right out to the whole route on a
+  // screen where panning is deliberately disabled, and then snaps back 5 s later. Peter
+  // couldn't find a use for either, and neither could I: the Stops map now shows your
+  // position AND pans freely, which is the proper place to study the route.
+  // BUT: with GPS off, the ride map is a plain static map you CAN pan and zoom — and with
+  // no fit button you could strand yourself with no way back. So they're hidden only while
+  // a ride is actually live. The ride screen simplifies the moment you start riding.
+  const rideLive=(mapId==='live-map')&&(UI.gpsActive||UI.simRunning||!!_rec);
+  // Same square rule as the tile button: on the ride map, width:auto would make it narrower
+  // than the 52px record button sitting under it.
+  const fitSquare=(mapId==='live-map')?'padding:0;':'width:auto;padding:0 8px;';
+  const fitBtn=rideLive?'':`<button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);${fitSquare}">⛶</button>`;
+  // Crosshair: never on the ride map (it follows GPS; nothing to recentre). Still earns its
+  // place on the Stops/desktop maps, where you pan away to look around and want to jump back.
+  const recenterBtn=(mapId!=='live-map'&&showGPS)?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="${btnSize}padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:'';
+  // .map-ctrl is a column flex, which defaults to align-items:stretch — so any button with
+  // width:auto grows to the width of the WIDEST sibling. With the new wide text buttons
+  // ("Start ride" / "Resume ride"), that would drag the ⛶ and tile buttons out to match.
+  // flex-end lets every button keep its natural width and hugs them to the right edge.
+  const ctrlAlign=mapId==='live-map'?'align-items:flex-end;':'';
+  // Tile toggle. On the ride map it must be the SAME SQUARE as the record button beside it:
+  // btnSize sets 52×52, but the trailing `width:auto;padding:0 8px` was overriding the width
+  // and shrinking it to fit "OSM", so it sat visibly narrower than its neighbour. Elsewhere
+  // (planning maps, 38px buttons) width:auto is fine — nothing square sits next to it.
+  const tileSquare=(mapId==='live-map')?'padding:0;':'width:auto;padding:0 8px;';
+  return`<div class="map-ctrl" style="${pos}${ctrlAlign}" id="${mapId==='live-map'?'live-map-ctrl':''}">
     ${expandBtn}
-    <button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
-    <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
+    ${fitBtn}
+    <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${recenterBtn}
-    ${mapId==='live-map'?gpsBtn:''}
+    ${(mapId==='live-map'||mapId==='stops-map')?gpsBtn:''}
     ${stopBtn}
     ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:''}
   </div>`;
@@ -7436,7 +7743,19 @@ document.getElementById('pace-modal-x').addEventListener('click',closePaceModal)
 // Inputs update the draft + factor readouts only (no re-render → no lost focus).
 let _calibDraft=[];
 let _calibOpenIdx=0; // accordion: which sample's fields are expanded (-1 = none)
-function _calibNewDraft(){return {surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate',profile:'rolling',_x:null};}
+function _calibNewDraft(){return {surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate',profile:'rolling',nonstop:false,_x:null};}
+// Coarse age label for a sample ride. Display only — see the CALIB_MAX_RIDES note: a rare
+// ultra is inherently the oldest sample you own AND the most valuable one, so age must never
+// weight or evict anything. This just lets Peter see what's old and decide for himself.
+function _calibAgeStr(ts){
+  const days=Math.floor((Date.now()-ts)/86400000);
+  if(days<1)return 'today';
+  if(days<14)return days+'d ago';
+  if(days<60)return Math.round(days/7)+'w ago';
+  if(days<365)return Math.round(days/30)+'mo ago';
+  const y=(days/365);
+  return (y<1.6?'1 yr':Math.round(y)+' yrs')+' ago';
+}
 function _calibOpen(i){_calibOpenIdx=(_calibOpenIdx===i?-1:i);_calibRenderModal();}
 function openCalibModal(){
   _calibDraft=(UI.calibRides||[]).map(s=>({
@@ -7447,8 +7766,9 @@ function openCalibModal(){
     elevM:s.elevM!=null?String(s.elevM):'',
     load:s.load||'moderate',
     profile:s.profile||'rolling',
-    // Recorded rides carry extra fields (name, src, recId) — keep them through the draft
-    _x:(s.src||s.name||s.recId)?{src:s.src,recId:s.recId,name:s.name}:null
+    nonstop:!!s.nonstop,   // undefined on older samples → false = "stops included" (old behaviour)
+    // Recorded rides carry extra fields (name, src, recId, ts) — keep them through the draft
+    _x:(s.src||s.name||s.recId||s.ts)?{src:s.src,recId:s.recId,name:s.name,ts:s.ts}:null
   }));
   if(!_calibDraft.length)_calibDraft.push(_calibNewDraft());
   // Expand the first incomplete sample; if all are complete, start collapsed
@@ -7459,10 +7779,13 @@ function openCalibModal(){
 function closeCalibModal(){document.getElementById('calib-modal').style.display='none';}
 function _calibDraftToRide(d){
   const hours=(parseFloat(d.h)||0)+(parseFloat(d.m)||0)/60;
-  return {...(d._x||{}),surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load,profile:d.profile||'rolling'};
+  return {...(d._x||{}),surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load,profile:d.profile||'rolling',nonstop:!!d.nonstop};
 }
 function _calibAdd(){
-  if(_calibDraft.length>=CALIB_MAX_RIDES)return;
+  if(_calibDraft.length>=CALIB_MAX_RIDES){
+    _recToast('Sample list is full ('+CALIB_MAX_RIDES+') — remove one first');
+    return;
+  }
   _calibDraft.push(_calibNewDraft());
   _calibOpenIdx=_calibDraft.length-1;
   _calibRenderModal();
@@ -7486,14 +7809,30 @@ function _calibUpdateFactors(){
     if(el)el.textContent=f===null?'':f.toFixed(2)+' ×';
     if(f!==null){const dist=parseFloat(d.distKm);wsum+=f*dist;dsum+=dist;}
   });
+  // Section label above the list, with the live count.
+  const lab=document.getElementById('calib-rides-label');
+  if(lab){
+    const n=_calibDraft.filter(d=>calibRideFactor(_calibDraftToRide(d))!==null).length;
+    lab.textContent=`Sample rides${n?` (${n} of ${CALIB_MAX_RIDES})`:''}`;
+  }
   const row=document.getElementById('calib-factor-row');
   if(!row)return;
-  if(!dsum){row.textContent='Fill in at least one ride to calculate your factor.';row.style.color='var(--text3)';return;}
+  if(!dsum){
+    row.innerHTML=`<div style="font-size:14px;color:var(--text3);line-height:1.5;">No sample rides yet.<br>Add one below, or record a ride and save it as a sample.</div>`;
+    return;
+  }
   const f=Math.min(1.8,Math.max(0.55,wsum/dsum));
   const pct=Math.round(Math.abs(1-f)*100);
-  const desc=f<0.98?`${pct}% faster than the Regular baseline`:(f>1.02?`${pct}% slower than the Regular baseline`:'right on the Regular baseline');
-  row.style.color='var(--text2)';
-  row.innerHTML=`Your rider factor: <b style="color:var(--accent);font-family:var(--font);">${f.toFixed(2)} ×</b> — ${desc}`;
+  const n=_calibDraft.filter(d=>calibRideFactor(_calibDraftToRide(d))!==null).length;
+  // f < 1 = you take LESS time than predicted = faster.
+  const desc=f<0.98?`You ride about <b style="color:var(--text);">${pct}% faster</b> than an average rider`
+           :(f>1.02?`You ride about <b style="color:var(--text);">${pct}% slower</b> than an average rider`
+                   :`You ride at about <b style="color:var(--text);">average</b> pace`);
+  row.innerHTML=
+    `<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--font);margin-bottom:4px;">Your rider factor</div>`+
+    `<div style="font-size:40px;font-weight:600;color:var(--accent);font-family:var(--font);line-height:1.1;">${f.toFixed(2)} ×</div>`+
+    `<div style="font-size:14px;color:var(--text2);margin-top:6px;line-height:1.45;">${desc}</div>`+
+    `<div style="font-size:12px;color:var(--text3);margin-top:6px;">From ${n} sample ride${n===1?'':'s'} · every plan's times are scaled by this</div>`;
 }
 function _calibRenderModal(){
   const wrap=document.getElementById('calib-rides-wrap');
@@ -7503,8 +7842,12 @@ function _calibRenderModal(){
     if(i!==_calibOpenIdx){
       // Collapsed one-line summary — tap to expand
       const complete=calibRideFactor(_calibDraftToRide(d))!==null;
+      // Age is shown so you can prune deliberately — it is NEVER used to weight or evict.
+      // Big rides are rare and therefore old; ageing them out would delete the best evidence
+      // you have for planning another one (Peter's point).
+      const age=(d._x&&d._x.ts)?' · '+_calibAgeStr(d._x.ts):'';
       const bits=complete
-        ?`${d._x&&d._x.name?d._x.name+' · ':''}${surfShort[d.surface]||d.surface} · ${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑ · ${loadShort[d.load]||d.load}${d.profile==='climb'?' · climb':''}`
+        ?`${d._x&&d._x.name?d._x.name+' · ':''}${surfShort[d.surface]||d.surface} · ${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑ · ${loadShort[d.load]||d.load}${d.profile==='climb'?' · climb':''}${d.nonstop?' · +15% faff':''}${age}`
         :'incomplete — tap to finish';
       return `<div onclick="_calibOpen(${i})" style="border:1px solid var(--border2);border-radius:10px;padding:9px 10px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <span style="font-size:13px;color:${complete?'var(--text2)':'var(--text3)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${bits}</span>
@@ -7559,6 +7902,15 @@ function _calibRenderModal(){
           <input type="number" inputmode="numeric" min="0" max="59" step="1" value="${d.m}" placeholder="min" oninput="_calibField(${i},'m',this.value)">
         </div>
       </div>
+      <!-- The faff checkbox. Sits directly under the time, because it's a statement ABOUT the
+           time you just typed. Off by default = "this was a real ride, short stops included". -->
+      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin:0 0 10px;">
+        <input type="checkbox" ${d.nonstop?'checked':''} onchange="_calibField(${i},'nonstop',this.checked)" style="width:16px;height:16px;flex-shrink:0;margin-top:2px;accent-color:var(--accent);cursor:pointer;">
+        <span style="font-size:13px;color:var(--text2);line-height:1.45;">
+          Add 15% faff — this was a short non-stop effort (e.g. a Strava segment)
+          <span style="display:block;color:var(--text3);font-size:12px;margin-top:2px;">A segment ridden straight through has no bottles, layers or gates in it. Without this, every plan comes out optimistic.</span>
+        </span>
+      </label>
       <div class="field">
         <label class="lbl">Load that day</label>
         <select onchange="_calibField(${i},'load',this.value)">
@@ -7631,22 +7983,23 @@ function _speedControlsHTML(r){
         </button>`).join('')}
     </div>`;
   } else if(f===null){
-    riderBody=`<p style="font-size:14px;color:var(--text3);line-height:1.5;">No sample rides yet — add at least one ride you've actually done and PackTimes will work out your speed from real data.</p>
-      <button class="btn btn-sm btn-p" onclick="openCalibModal()" style="width:100%;justify-content:center;">+ Add sample rides</button>`;
+    // Empty state — the ONE place a new rider needs telling that they don't have to type
+    // anything at all. Record a ride, save it, and it offers itself as a sample.
+    riderBody=`<p style="font-size:14px;color:var(--text3);line-height:1.5;margin-bottom:8px;">No sample rides yet. PackTimes works out your speed from rides you've actually done — <b style="color:var(--text2);">record a ride and save it as a sample</b>, or enter one by hand.</p>
+      <button class="btn btn-sm btn-p" onclick="openCalibModal()" style="width:100%;justify-content:center;">Sample rides</button>`;
   } else {
     const pct=Math.round(Math.abs(1-f)*100);
     const desc=f<0.98?`about ${pct}% faster than the Regular baseline`:(f>1.02?`about ${pct}% slower than the Regular baseline`:'right on the Regular baseline');
-    const surfLabels={road:'Sealed',grade2:'Gravel/dirt',single:'Singletrack',grade4:'Rough'};
-    const rows=(UI.calibRides||[]).map(s=>{
-      const rf=calibRideFactor(s);if(rf===null)return'';
-      const hh=Math.floor(s.hours),mm=Math.round((s.hours-hh)*60);
-      return `<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3);padding:2px 0;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.name?s.name+' · ':''}${surfLabels[s.surface]||s.surface} · ${(+s.distKm).toFixed(0)} km · ${hh}h ${mm}m · ${(+s.elevM||0).toFixed(0)} m ↑${s.profile==='climb'?' · climb':''}</span><span style="color:var(--text2);flex-shrink:0;margin-left:6px;">${rf.toFixed(2)} ×</span></div>`;
-    }).join('');
+    // The full sample list used to be duplicated here. It doesn't belong on this screen:
+    // this is the SUMMARY (what's my factor?), and the list lives on the screen whose job is
+    // to edit it. Showing it twice made the popup long and made "Edit sample rides" look like
+    // it opened the same thing again. Just the number, what it means, and where it came from.
+    const n=(UI.calibRides||[]).filter(s=>calibRideFactor(s)!==null).length;
     riderBody=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap;">
         <span style="font-size:24px;font-weight:700;color:var(--accent);font-family:var(--font);white-space:nowrap;flex-shrink:0;">${f.toFixed(2)} ×</span>
         <span style="font-size:13px;color:var(--text3);">${desc}</span>
       </div>
-      ${rows}
+      <div style="font-size:13px;color:var(--text3);margin-top:2px;">Based on ${n} sample ride${n===1?'':'s'} you've done.</div>
       <button class="btn btn-sm" onclick="openCalibModal()" style="width:100%;justify-content:center;margin-top:8px;">Edit sample rides</button>`;
   }
   return `<div style="margin-bottom:12px;">
@@ -9651,7 +10004,7 @@ function tStopsShell(r){
       <div class="map-wrap" id="stops-map-wrap" style="position:relative;">
         <canvas id="stops-map"></canvas>
         <div class="mhint">tap to add stop · drag to pan</div>
-        ${mapCtrlHTML('stops-map',false)}
+        ${mapCtrlHTML('stops-map',true)}
         ${!IS_DESKTOP()?`
         <div id="mobile-map-legend" style="position:absolute;top:8px;left:6px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;z-index:20;">
           ${(()=>{
@@ -10350,21 +10703,29 @@ function tLiveShell(r){
           // _recStopConfirm shows it; _recStopCancel/_recStopConfirm hide it.
           const ptsStr = _rec ? (_rec.points.length + ' pts') : '';
           const distStr = _rec ? (_rec.totalDist.toFixed(1) + ' km') : '';
-          return `<div id="rec-stop-confirm" style="display:none;position:absolute;bottom:160px;right:8px;z-index:6;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;font-family:var(--font);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:8px;max-width:360px;flex-wrap:wrap;justify-content:flex-end;">
-            <div style="font-size:14px;color:var(--text);line-height:1.3;margin-right:auto;">
-              <div style="font-weight:600;margin-bottom:2px;">Stop ride?</div>
-              <div style="font-size:12px;color:var(--text3);">${ptsStr}${ptsStr&&distStr?' · ':''}${distStr}</div>
+          // Centred panel, actions stacked full-width in a column (v245, Peter's ride
+          // test): the old row of three small buttons was cramped, unaligned, and a poor
+          // target with cold hands in gloves. Order is deliberate — the safe, expected
+          // action (Stop & save) is the biggest and first; the destructive one is last.
+          // Panel font is var(--sans); only the pts/km readout stays var(--font) (numbers).
+          return `<div id="rec-stop-confirm" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:var(--r-card);padding:16px;font-family:var(--sans);box-shadow:0 6px 24px rgba(0,0,0,0.6);flex-direction:column;gap:10px;width:min(300px,calc(100vw - 32px));box-sizing:border-box;">
+            <div style="text-align:center;color:var(--text);line-height:1.3;">
+              <div style="font-weight:700;font-size:17px;margin-bottom:3px;">Stop ride?</div>
+              <div style="font-size:13px;color:var(--text3);font-family:var(--font);">${ptsStr}${ptsStr&&distStr?' · ':''}${distStr}</div>
             </div>
-            <button class="btn btn-sm" id="btn-recstop-cancel" style="flex-shrink:0;">Cancel</button>
-            <button class="btn btn-sm btn-r" id="btn-recstop-delete" style="flex-shrink:0;">Delete</button>
-            <button class="btn btn-sm btn-p" id="btn-recstop-confirm" style="flex-shrink:0;font-weight:600;">Stop &amp; save</button>
+            <button class="btn btn-full btn-p" id="btn-recstop-confirm" style="padding:14px 16px;font-size:16px;font-weight:700;">Stop &amp; save</button>
+            <!-- "Back to ride", not "Cancel" — you can only reach this panel from a PAUSED
+                 ride, so this closes the panel and leaves the ride paused exactly as it was.
+                 ("Continue recording" would be a lie: it doesn't resume, you still tap play.) -->
+            <button class="btn btn-full" id="btn-recstop-cancel" style="padding:12px 16px;">Back to ride</button>
+            <button class="btn btn-full btn-d" id="btn-recstop-delete" style="padding:12px 16px;">Delete ride</button>
           </div>`;
         })()}
         ${(()=>{
           // 5-second Undo strip — only visible right after a recording is finalised.
           // Sits at the bottom-centre. _recStopConfirm shows it; the undo timer hides it.
-          return `<div id="rec-undo-strip" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:10px;padding:10px 14px;font-family:var(--font);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:14px;">
-            <span style="font-size:14px;color:var(--text);">Recording saved</span>
+          return `<div id="rec-undo-strip" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;font-family:var(--sans);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:14px;">
+            <span style="font-size:15px;font-weight:600;color:var(--text);">Recording saved</span>
             <button class="btn btn-sm" id="btn-recstop-undo" style="flex-shrink:0;">Undo</button>
           </div>`;
         })()}
@@ -14932,27 +15293,44 @@ if('serviceWorker' in navigator && window.self===window.top){
       const isNavigate=e.request.mode==='navigate';
       const isPage=url.href===PAGE_URL||url.pathname===new URL(PAGE_URL).pathname;
       if(isNavigate||isPage){
+        // Network-first, BUT with a hard 2-second leash (v245).
+        //
+        // Why: with no mobile reception the radio does NOT fail fast — it sits there
+        // trying for 30-60s before fetch() rejects, and the app can't paint until this
+        // respondWith settles. Peter hit exactly this at the start of a ride: long blank
+        // startup, looked like a hang. So:
+        //   - navigator.onLine false  → skip the network entirely, straight to cache.
+        //   - otherwise               → race the network against a 2s timer. If the timer
+        //                               wins and we have a cached copy, serve the cache NOW
+        //                               and let the fetch keep running in the background to
+        //                               refresh the cache for the NEXT open.
+        // Trade-off (accepted): on a slow-but-working link a new push can land one open
+        // later than before. On a good link the fetch beats the 2s and nothing changes.
+        // cache:'no-cache' still forces revalidation with GitHub (beats the 10-min HTTP cache).
+        const NET_LEASH_MS=2000;
+        const fromCache=()=>caches.match(PAGE_URL).then(cached=>cached||new Response(
+          '<h2>Loading PackTimes...</h2><p>Open the app from your home screen while online first to enable offline use.</p>',
+          {headers:{'Content-Type':'text/html'}}
+        ));
+        if(!self.navigator.onLine){e.respondWith(fromCache());return;}
+        // Kick the network off once; both the race and the background refresh share it.
+        const net=fetch(e.request,{cache:'no-cache'}).then(res=>{
+          if(res&&res.ok){
+            const clone=res.clone();
+            caches.open(CACHE).then(c=>c.put(PAGE_URL,clone));
+          }
+          return res;
+        });
+        // Keep the SW alive long enough to finish the background refresh even if we
+        // already answered from cache.
+        e.waitUntil(net.catch(()=>{}));
+        const leash=new Promise(res=>setTimeout(()=>res(null),NET_LEASH_MS));
         e.respondWith(
-          // Network first — get fresh version if online. cache:'no-cache' forces a
-          // revalidation with GitHub instead of trusting the browser's HTTP cache
-          // (max-age=600), so a new push shows up on the very next open rather than
-          // up to 10 minutes later. When unchanged it's a cheap headers-only check.
-          fetch(e.request,{cache:'no-cache'})
-            .then(res=>{
-              if(res&&res.ok){
-                const clone=res.clone();
-                caches.open(CACHE).then(c=>c.put(PAGE_URL,clone));
-              }
-              return res;
-            })
-            .catch(()=>
-              // Offline — serve from cache
-              caches.match(PAGE_URL).then(cached=>cached||new Response(
-                '<h2>Loading PackTimes...</h2><p>Open the app from your home screen while online first to enable offline use.</p>',
-                {headers:{'Content-Type':'text/html'}}
-              ))
-            )
+          Promise.race([net.catch(()=>null),leash])
+            .then(res=>res||fromCache())   // network too slow, or it failed → cache
+            .catch(()=>fromCache())
         );
+        return;
       }
       // Font files — cache-first. Part of the shell: must be there with no signal.
       // (no regex here on purpose — swCode is a template literal, so a backslash escape
