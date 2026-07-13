@@ -320,6 +320,11 @@ select option{background:var(--bg3);}
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
         <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
         <button class="zbtn tile-tog" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
+        <!-- Crosshair — centre the map on your GPS position. This map's controls are hand-written
+             here rather than built by mapCtrlHTML, which is why it never had one. Handled by the
+             [data-recenter] delegator. Deliberately NO GPS toggle: its id would collide with the
+             Ride tab's recording button, which shares #btn-gpstoggle. -->
+        <button class="zbtn" data-recenter="desktop-map" title="Centre on GPS" style="padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
         <button class="zbtn" id="btn-surface-desktop-map" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">SURF</button>
       </div>
     </div>
@@ -740,7 +745,7 @@ select option{background:var(--bg3);}
       <span style="font-size:18px;font-weight:600;color:var(--text);">Sample Rides</span>
       <button class="btn btn-sm" onclick="closeCalibModal()">✕</button>
     </div>
-    <div style="overflow-y:auto;flex:1;min-height:0;">
+    <div id="calib-scroll" style="overflow-y:auto;flex:1;min-height:0;">
 
     <!-- HEADLINE: the one number this whole screen exists to produce. Was buried at the
          bottom under a wall of instructions. -->
@@ -7743,7 +7748,7 @@ document.getElementById('pace-modal-x').addEventListener('click',closePaceModal)
 // Inputs update the draft + factor readouts only (no re-render → no lost focus).
 let _calibDraft=[];
 let _calibOpenIdx=0; // accordion: which sample's fields are expanded (-1 = none)
-function _calibNewDraft(){return {surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate',profile:'rolling',nonstop:false,_x:null};}
+function _calibNewDraft(){return {name:'',surface:'road',distKm:'',h:'',m:'',elevM:'',load:'moderate',profile:'rolling',nonstop:false,_x:null};}
 // Coarse age label for a sample ride. Display only — see the CALIB_MAX_RIDES note: a rare
 // ultra is inherently the oldest sample you own AND the most valuable one, so age must never
 // weight or evict anything. This just lets Peter see what's old and decide for himself.
@@ -7756,9 +7761,33 @@ function _calibAgeStr(ts){
   const y=(days/365);
   return (y<1.6?'1 yr':Math.round(y)+' yrs')+' ago';
 }
-function _calibOpen(i){_calibOpenIdx=(_calibOpenIdx===i?-1:i);_calibRenderModal();}
+function _calibOpen(i){_calibOpenIdx=(_calibOpenIdx===i?-1:i);_calibRenderModal();_calibScrollTo(_calibOpenIdx);}
+// Bring the open sample card into view. The form is appended to the BOTTOM of the scroll area,
+// so on desktop a newly added ride opened below the fold with its "Save this ride" button out of
+// sight (Peter). Rule: reveal the BOTTOM of the card (so the Save button is visible), but never
+// scroll so far that the card's top — the "What was this ride?" field — is pushed off. If the
+// card is taller than the scroll area, showing the top wins; you can't fill in what you can't see.
+function _calibScrollTo(i){
+  if(i<0)return;
+  requestAnimationFrame(()=>{
+    const c=document.getElementById('calib-scroll');
+    const el=document.getElementById('calib-card-'+i);
+    if(!c||!el)return;
+    const cr=c.getBoundingClientRect(), er=el.getBoundingClientRect();
+    const PAD=10;
+    const roomAbove=er.top-cr.top;          // how far we can scroll down before clipping the top
+    let delta=0;
+    if(er.bottom>cr.bottom-PAD)      delta=Math.min(er.bottom-cr.bottom+PAD, roomAbove-PAD);
+    else if(er.top<cr.top+PAD)       delta=er.top-cr.top-PAD;
+    if(delta)c.scrollTop+=delta;
+  });
+}
 function openCalibModal(){
   _calibDraft=(UI.calibRides||[]).map(s=>({
+    // Recorded rides arrive already named ("Hunt 1000 day 2"); hand-entered ones were a row of
+    // bare numbers you couldn't identify six months later — which is no basis for trusting a
+    // figure that scales every plan you make. Optional, but it's the first field for a reason.
+    name:s.name||'',
     surface:s.surface||'road',
     distKm:s.distKm!=null?String(s.distKm):'',
     h:s.hours!=null?String(Math.floor(s.hours)):'',
@@ -7779,7 +7808,12 @@ function openCalibModal(){
 function closeCalibModal(){document.getElementById('calib-modal').style.display='none';}
 function _calibDraftToRide(d){
   const hours=(parseFloat(d.h)||0)+(parseFloat(d.m)||0)/60;
-  return {...(d._x||{}),surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load,profile:d.profile||'rolling',nonstop:!!d.nonstop};
+  const nm=(d.name||'').trim();
+  const r={...(d._x||{}),surface:d.surface,distKm:parseFloat(d.distKm)||0,hours,elevM:parseFloat(d.elevM)||0,load:d.load,profile:d.profile||'rolling',nonstop:!!d.nonstop};
+  // Name lives on the ride itself. Set AFTER the _x spread so an edited name wins over the
+  // original recorded-ride name; delete it if blanked, so we never store an empty string.
+  if(nm)r.name=nm; else delete r.name;
+  return r;
 }
 function _calibAdd(){
   if(_calibDraft.length>=CALIB_MAX_RIDES){
@@ -7789,6 +7823,7 @@ function _calibAdd(){
   _calibDraft.push(_calibNewDraft());
   _calibOpenIdx=_calibDraft.length-1;
   _calibRenderModal();
+  _calibScrollTo(_calibOpenIdx);   // the new form is at the bottom — bring it (and Save) into view
 }
 function _calibRemove(i){
   _calibDraft.splice(i,1);
@@ -7847,24 +7882,34 @@ function _calibRenderModal(){
       // you have for planning another one (Peter's point).
       const age=(d._x&&d._x.ts)?' · '+_calibAgeStr(d._x.ts):'';
       const bits=complete
-        ?`${d._x&&d._x.name?d._x.name+' · ':''}${surfShort[d.surface]||d.surface} · ${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑ · ${loadShort[d.load]||d.load}${d.profile==='climb'?' · climb':''}${d.nonstop?' · +15% faff':''}${age}`
+        ?`${d.name?d.name+' · ':''}${surfShort[d.surface]||d.surface} · ${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑ · ${loadShort[d.load]||d.load}${d.profile==='climb'?' · climb':''}${d.nonstop?' · +15% faff':''}${age}`
         :'incomplete — tap to finish';
+      // The row opens the editor, but there was NOTHING saying so — just a ✕, which made the
+      // whole list read as delete-only (Peter couldn't find where to rename a ride). An explicit
+      // "Edit" button says it in words; the row itself still works as a big tap target.
       return `<div onclick="_calibOpen(${i})" style="border:1px solid var(--border2);border-radius:10px;padding:9px 10px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <span style="font-size:13px;color:${complete?'var(--text2)':'var(--text3)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${bits}</span>
-        <span style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+        <span style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
           <span id="calib-rf-${i}" style="font-size:13px;color:var(--accent);font-family:var(--font);"></span>
-          ${_calibDraft.length>1?`<button class="btn btn-sm" onclick="event.stopPropagation();_calibRemove(${i})" style="padding:2px 8px;">✕</button>`:''}
+          <button class="btn btn-sm" onclick="event.stopPropagation();_calibOpen(${i})" style="padding:2px 8px;">Edit</button>
+          ${_calibDraft.length>1?`<button class="btn btn-sm btn-r" onclick="event.stopPropagation();_calibRemove(${i})" style="padding:2px 8px;">✕</button>`:''}
         </span>
       </div>`;
     }
     return `
-    <div style="border:1px solid var(--accent3,var(--border2));border-radius:10px;padding:10px 10px 4px;margin-bottom:8px;">
+    <div id="calib-card-${i}" style="border:1px solid var(--accent3,var(--border2));border-radius:10px;padding:10px 10px 4px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <span style="font-size:14px;font-weight:600;color:var(--text2);font-family:var(--font);cursor:pointer;" onclick="_calibOpen(${i})">Sample ride ${i+1}</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text2);font-family:var(--sans);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="_calibOpen(${i})">${d.name?d.name.replace(/</g,'&lt;'):'Sample ride '+(i+1)}</span>
         <span style="display:flex;gap:8px;align-items:center;">
           <span id="calib-rf-${i}" style="font-size:13px;color:var(--accent);font-family:var(--font);"></span>
           ${_calibDraft.length>1?`<button class="btn btn-sm" onclick="_calibRemove(${i})" style="padding:2px 8px;">✕</button>`:''}
         </span>
+      </div>
+      <!-- What was this ride? Optional, but it's what turns a row of numbers into something you
+           can still recognise — and audit — a year later. Recorded rides fill it in themselves. -->
+      <div class="field">
+        <label class="lbl">What was this ride?</label>
+        <input type="text" value="${(d.name||'').replace(/"/g,'&quot;')}" placeholder="e.g. Silk Road day 2, or Cloudride Prologue" autocomplete="off" style="width:100%;font-family:var(--sans);" oninput="_calibField(${i},'name',this.value)">
       </div>
       <div class="field">
         <label class="lbl">Surface (mostly)</label>
@@ -7919,12 +7964,19 @@ function _calibRenderModal(){
           <option value="heavy" ${d.load==='heavy'?'selected':''}>Heavy — full expedition or touring load</option>
         </select>
       </div>
+      <!-- Save THIS ride without closing the window, so you can bank it and add another. The
+           footer "Save Sample Rides" still works and does the same commit — neither can lose
+           what you've typed. -->
+      <button class="btn btn-p btn-full" onclick="_calibSaveOne(${i})" style="margin-bottom:10px;">Save this ride</button>
     </div>`;}).join('');
   const addBtn=document.getElementById('calib-add');
   addBtn.style.display=_calibDraft.length>=CALIB_MAX_RIDES?'none':'';
   _calibUpdateFactors();
 }
-function saveCalibModal(){
+// Write the draft to UI.calibRides. Shared by the footer "Save Sample Rides" (which then closes)
+// and the per-sample "Save this ride" (which doesn't) — so both routes commit identically and
+// nothing can be half-saved.
+function _calibCommit(){
   const valid=_calibDraft.map(_calibDraftToRide).filter(s=>calibRideFactor(s)!==null);
   UI.calibRides=valid;
   // Entering sample rides means you want to use them — switch to Advanced globally
@@ -7932,9 +7984,28 @@ function saveCalibModal(){
   // Calibration and mode are global — rebuild every route when Advanced is active
   if(UI.estModeAdv)for(const rt of ROUTES)rebuildPace(rt);
   saveAll();
-  closeCalibModal();
   if(document.getElementById('speed-modal').style.display==='flex')_speedRefresh();
   renderKeepScroll();
+  return valid.length;
+}
+function saveCalibModal(){
+  _calibCommit();
+  closeCalibModal();
+}
+// Save the sample you're editing WITHOUT closing the window — so you can bank one ride and go
+// straight on to entering the next. Previously the only way to save was the footer button, which
+// also closed the popup (Peter: "there's no save button for entering a manual sample ride").
+function _calibSaveOne(i){
+  const d=_calibDraft[i];
+  if(!d)return;
+  if(calibRideFactor(_calibDraftToRide(d))===null){
+    _recToast('Add a distance and a ride time first');
+    return;
+  }
+  _calibCommit();
+  _calibOpenIdx=-1;          // collapse it — the row now shows what you just entered
+  _calibRenderModal();
+  _recToast((d.name||'Sample ride')+' saved');
 }
 
 // ─── Speed Estimation modal ─────────────────────────────────────────────────
