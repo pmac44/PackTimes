@@ -865,7 +865,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v245';
+window.APP_VERSION='v256';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -889,11 +889,20 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   gpsTravelledKm:0,
   _lastSnapIdx:null,                       // route point index of last snap (for directional bias)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,turnAlertM:50,turnIndicator:'single',turnMarkerOffsetM:30,
-  settingsExp:{strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
+  settingsExp:{sharing:false,packride:false,strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
   // Recording state
   recId:null,recMinMoveM:null,recStopDetectMs:null,
+  // Location sharing (Phase 2). shareToken is the SECRET write token — it lives in
+  // its own `shareAuth` KV row, NOT in uiPrefs, so it never syncs out to Dropbox.
+  // No token = never opted in = no code path can transmit a position. That's the
+  // privacy promise, enforced by structure rather than by a flag.
+  shareToken:null,shareLabel:null,shareEnabled:true,shareIntervalS:60,
+  shareLinks:[],shareQueue:[],shareLastPushAt:null,shareLastErr:null,shareBusy:false,
+  sharePendingRide:null,shareRideSent:null,shareRideEvent:null,shareRides:[],
+  // PackRide events (§3.7). eventCode = the event this rider is currently riding in.
+  eventCode:null,eventRouteKey:null,events:[],
   livePills:['speed','off','off']};
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
@@ -973,6 +982,10 @@ async function loadAll(){
     UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
     const sa=await DB.getKV('stravaAuth').catch(()=>null);
     if(sa){UI.stravaToken=sa.token||null;UI.stravaRefreshToken=sa.refresh||null;UI.stravaExpiresAt=sa.expiresAt||null;UI.stravaAthlete=sa.athlete||null;UI.stravaAutoUpload=sa.autoUpload!==false;}
+    // Location sharing — own KV row, deliberately outside uiPrefs (the write token
+    // is a secret and must not ride along to Dropbox with the rest of the prefs).
+    const sh=await DB.getKV('shareAuth').catch(()=>null);
+    if(sh){UI.shareToken=sh.token||null;UI.shareLabel=sh.label||null;UI.shareEnabled=sh.enabled!==false;UI.shareIntervalS=sh.intervalS||60;UI.shareQueue=Array.isArray(sh.queue)?sh.queue:[];UI.sharePendingRide=sh.pendingRide||null;UI.shareRideSent=sh.rideSent||null;UI.shareRideEvent=sh.rideEvent||null;UI.eventCode=sh.eventCode||null;UI.eventRouteKey=sh.eventRouteKey||null;}
     // Restore UI prefs
     const prefs=await DB.getKV('uiPrefs').catch(()=>null);
     if(prefs){
@@ -3384,7 +3397,13 @@ async function startRecording(routeId){
   _recLastFix = null;
   _recStop = null;
   _recStored = null;
+  _shareLastPos = null;    // new ride = push immediately, don't wait out the interval
   UI.recId = _rec.id;
+  // Tell the server what this ride is following, and upload the route if it doesn't
+  // already have it. Queued, so a ride that starts in a dead spot still gets its
+  // route up as soon as there's signal.
+  if(shareIsOn()) _shareQueueRide(_rec, routeId ? ROUTES.find(x => x.id === routeId) : null);
+  if(eventActive()) packStart();   // start watching the pack
   await DB.putRecording(_rec).catch(()=>{});
   await saveAll().catch(()=>{});
   return _rec;
@@ -3421,15 +3440,50 @@ async function finaliseRecording(){
   _recLastFix = null;
   _recStop = null;
   _recStored = null;
+  _shareLastPos = null;
   UI.recId = null;
+  // NOTE: the pack poll deliberately keeps running after you finish. You've stopped
+  // broadcasting (privacy rule), but you still want to watch the others come in.
+  // Ride's over, so sharing is over (privacy rule). Push whatever is still queued
+  // so the watcher's last dot is where you actually finished, not where you last
+  // had signal.
+  if(shareIsSetUp()) _shareFlush();
   await saveAll().catch(()=>{});
   return finalised;
+}
+
+// Build a recorded point. EVERY stored point goes through here — there are four
+// places that store one (first fix, moved-enough, stop marker, resume marker), and
+// having them build the object independently is how power and HR came to be silently
+// dropped from every recording for months. One builder, one place to change.
+//
+// Sensors (v247): if a power meter or HR strap is paired, its current reading rides
+// along with the fix. They were being shown live on the Ride tab and then thrown
+// away — so a rider with a power meter got a bare GPS track on Strava, which for
+// them is the one number that mattered.
+//
+// Fields are omitted (not null) when there's no sensor, so recordings from riders
+// without sensors are byte-for-byte what they were before.
+function _recPt(lat, lon, ele, t, accuracy, extra){
+  const p = {lat, lon, ele: ele == null ? null : ele, t,
+             accuracy: accuracy == null ? null : accuracy};
+  if(UI.hrConnected    && UI.hrBpm        != null) p.hr    = UI.hrBpm;
+  if(UI.powerConnected && UI.powerWatts   != null) p.pw    = UI.powerWatts;
+  if(UI.powerConnected && UI.powerCadence != null) p.cad   = UI.powerCadence;
+  if(UI.powerConnected && UI.powerBalance != null) p.bal   = UI.powerBalance;
+  if(extra) Object.assign(p, extra);
+  return p;
 }
 
 // _appendPoint — the heart of movement-based sampling.
 // Returns true if the point was stored, false if filtered out.
 function _appendPoint(lat, lon, ele, t, accuracy){
   if(!_rec || _rec.status !== 'active') return false;
+  // Location sharing rides on the same fix (architecture-plan.md §4, "one capture,
+  // two destinations"). It is throttled to its own interval inside, and it can
+  // never fire when the rider hasn't opted in. Local recording is never affected
+  // by a failed push — the two are independent.
+  _shareMaybePush(lat, lon, ele, t);
   const fix = {lat, lon, t};
   // ── Gap detection (Step 5b) ──
   // A gap = no fixes at all for GAP_THRESHOLD_MS while recording (screen-off
@@ -3462,7 +3516,7 @@ function _appendPoint(lat, lon, ele, t, accuracy){
   _recLastFix = fix;
   // First point of recording — always store
   if(_rec.points.length === 0){
-    _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy});
+    _rec.points.push(_recPt(lat, lon, ele, t, accuracy));
     _recStored = fix;
     _recMode = 'active';
     return true;
@@ -3473,7 +3527,7 @@ function _appendPoint(lat, lon, ele, t, accuracy){
   if(_recMode === 'active'){
     // Store if moved enough AND enough time has passed
     if(distFromStored >= minMoveM && (t - _recStored.t) >= REC_MIN_TICK_MS){
-      _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy});
+      _rec.points.push(_recPt(lat, lon, ele, t, accuracy));
       _rec.totalDist += distFromStored / 1000;  // store in km, _recDist returns metres
       _recStored = fix;
       // Reset the stationary clock (we just moved)
@@ -3487,7 +3541,7 @@ function _appendPoint(lat, lon, ele, t, accuracy){
       if(!_recStop) _recStop = fix;
       else if((t - _recStop.t) >= stopDetectMs){
         // Enter stationary mode. Mark a stop point at the current location.
-        _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy, _stop: true});
+        _rec.points.push(_recPt(lat, lon, ele, t, accuracy, {_stop: true}));
         _recStored = fix;
         _recMode = 'stationary';
         DB.putRecording(_rec).catch(()=>{});
@@ -3503,7 +3557,7 @@ function _appendPoint(lat, lon, ele, t, accuracy){
   // _recMode === 'stationary' — wait for movement past the stationary radius
   if(distFromStored > REC_STATIONARY_M){
     // Movement resumed. Mark a resume point and return to active mode.
-    _rec.points.push({lat, lon, ele: ele==null?null:ele, t, accuracy: accuracy==null?null:accuracy, _resume: true});
+    _rec.points.push(_recPt(lat, lon, ele, t, accuracy, {_resume: true}));
     _rec.totalDist += distFromStored / 1000;  // store in km, _recDist returns metres
     _recStored = fix;
     _recStop = null;
@@ -3981,7 +4035,15 @@ function _recDetailOpen(recId){
       ? '<a href="' + rec.stravaActivityUrl + '" target="_blank" rel="noopener" style="color:var(--accent);">On Strava ✓ — view activity</a>'
       : rec.stravaUploadStatus === 'queued'
       ? '<span style="color:#f97316;">Queued for Strava upload' + (()=>{const a=rec.stravaUploadAttempts||[];const l=a[a.length-1];return (l&&!l.ok&&l.error)?' — last try: '+l.error:'';})() + '</span>'
-      : '<span style="color:var(--text3);">Local only — not uploaded</span>');
+      : '<span style="color:var(--text3);">Local only — not uploaded</span>') +
+    // A rename that hasn't landed on Strava must SAY so, and say WHY. A silent
+    // "pending" forever is how the v197 bug hid: the rename was failing every time
+    // and the only sign was a toast that said it would keep trying.
+    (rec.stravaNamePending
+      ? '<br><span style="color:var(--amber);">Name not yet synced to Strava'
+        + (rec.stravaNameError ? ' — ' + String(rec.stravaNameError).replace(/</g,'&lt;') : '')
+        + '</span>'
+      : '');
   // Strava button: hidden unless connected; label reflects upload state
   const sBtn = document.getElementById('rdm-strava');
   if(!UI.stravaToken){
@@ -4551,6 +4613,12 @@ const FIELDS_RECORD = [
   { fieldDefNum: 1,   baseType: BT_SINT32 }, // position_long (semicircles)
   { fieldDefNum: 2,   baseType: BT_UINT16 }, // altitude ((m+500)*5)
   { fieldDefNum: 5,   baseType: BT_UINT32 }, // distance (m * 100)
+  // Sensors (v247). Written as FIT "invalid" (0xFF / 0xFFFF) on any point with no
+  // reading, which is the spec's way of saying "no data here" — decoders and Strava
+  // both skip them, so a rider with no sensors is unaffected.
+  { fieldDefNum: 3,   baseType: BT_UINT8  }, // heart_rate (bpm)
+  { fieldDefNum: 4,   baseType: BT_UINT8  }, // cadence (rpm)
+  { fieldDefNum: 7,   baseType: BT_UINT16 }, // power (watts)
 ];
 const FIELDS_LAP = [
   { fieldDefNum: 253, baseType: BT_UINT32 },
@@ -4625,6 +4693,9 @@ function encodeActivityFit(recording) {
       1:   semicircles(p.lon),
       2:   p.ele != null ? fitAltitude(p.ele) : null,
       5:   Math.round(cumDist * 100),
+      3:   p.hr  != null ? Math.round(p.hr)  : null,   // heart_rate
+      4:   p.cad != null ? Math.round(p.cad) : null,   // cadence
+      7:   p.pw  != null ? Math.round(p.pw)  : null,   // power
     });
   }
 
@@ -4775,13 +4846,29 @@ function exportRecordingAsGPX(rec){
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const name = 'PackTimes ride ' + new Date(rec.startTS).toLocaleDateString('en-GB');
   let g = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    + '<gpx version="1.1" creator="PackTimes" xmlns="http://www.topografix.com/GPX/1/1" xmlns:pt="urn:packtimes:gpx">\n'
+    + '<gpx version="1.1" creator="PackTimes" xmlns="http://www.topografix.com/GPX/1/1"'
+    + ' xmlns:pt="urn:packtimes:gpx"'
+    + ' xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"'
+    + ' xmlns:gpxpx="http://www.garmin.com/xmlschemas/PowerExtension/v1">\n'
     + '<trk><name>' + esc(name) + '</name><trkseg>\n';
   for(const p of rec.points){
+    // Sensors (v247) travel in the standard Garmin extensions — the same ones Strava,
+    // Garmin Connect and every analysis tool already read. HR and cadence live in
+    // TrackPointExtension; power has its own PowerExtension. Emitted only when there
+    // is something to say, so a sensorless ride's GPX is unchanged.
+    let ext = '';
+    if(p._synthetic) ext += '<pt:synthetic/>';
+    if(p.pw != null) ext += '<gpxpx:PowerInWatts>' + Math.round(p.pw) + '</gpxpx:PowerInWatts>';
+    if(p.hr != null || p.cad != null){
+      ext += '<gpxtpx:TrackPointExtension>'
+        + (p.hr  != null ? '<gpxtpx:hr>'  + Math.round(p.hr)  + '</gpxtpx:hr>'   : '')
+        + (p.cad != null ? '<gpxtpx:cad>' + Math.round(p.cad) + '</gpxtpx:cad>' : '')
+        + '</gpxtpx:TrackPointExtension>';
+    }
     g += '<trkpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '">'
       + (p.ele != null ? '<ele>' + (Math.round(p.ele * 10) / 10) + '</ele>' : '')
       + (p.t ? '<time>' + new Date(p.t).toISOString() + '</time>' : '')
-      + (p._synthetic ? '<extensions><pt:synthetic/></extensions>' : '')
+      + (ext ? '<extensions>' + ext + '</extensions>' : '')
       + '</trkpt>\n';
   }
   g += '</trkseg></trk>\n</gpx>\n';
@@ -4913,24 +5000,56 @@ function stravaQueue(rec){
 async function stravaSyncName(rec, announce){
   if(!rec || !rec.stravaNamePending || !UI.stravaToken) return;
   const m = (rec.stravaActivityUrl || '').match(/activities\/(\d+)/);
-  if(!m) return;   // not uploaded yet — nothing to rename over there
+  if(!m){
+    // Marked pending but we have no activity id — that's a real inconsistency, and
+    // silently returning was hiding it. Say so.
+    rec.stravaNameError = 'no Strava activity id on this ride';
+    await DB.putRecording(rec).catch(()=>{});
+    if(announce) _recToast('Can\'t rename — this ride has no Strava activity id');
+    return;
+  }
   try{
     const token = await stravaFreshToken();
-    if(!token) throw new Error('not connected');
+    if(!token) throw new Error('not connected — reconnect Strava in Settings');
+
+    // Strava's Update Activity takes a form body, not JSON. (Its own docs describe a
+    // JSON model but the endpoint has always accepted — and its examples use —
+    // form-encoded. Sending form-encoded works for both, so send that.)
+    const body = new URLSearchParams({name: rec.name || ''});
     const res = await fetch('https://www.strava.com/api/v3/activities/' + m[1], {
       method: 'PUT',
-      headers: {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'},
-      body: JSON.stringify({name: rec.name}),
+      headers: {'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/x-www-form-urlencoded'},
+      body,
     });
-    if(!res.ok) throw new Error('rename failed, HTTP ' + res.status);
+
+    if(!res.ok){
+      // Tell the rider WHAT went wrong. The old code swallowed this whole, which is
+      // why a failing rename looked like a rename that just never finished.
+      const txt = await res.text().catch(()=>'');
+      let why = 'HTTP ' + res.status;
+      if(res.status === 401) why = 'Strava login expired — reconnect in Settings';
+      if(res.status === 403) why = 'Strava refused it (403). If your rides are set to '
+                                 + '"Only Me", Strava needs the read_all permission to rename them.';
+      if(res.status === 404) why = 'Strava can\'t find that activity (404) — was it deleted there?';
+      throw new Error(why + (txt ? ' · ' + txt.slice(0, 140) : ''));
+    }
+
     rec.stravaNamePending = false;
+    rec.stravaNameError   = null;
     await DB.putRecording(rec).catch(()=>{});
     const i = RECS.findIndex(x => x.id === rec.id);
     if(i >= 0) RECS[i] = rec;
     if(announce) _recToast('Name updated on Strava ✓');
   }catch(e){
-    // stays pending; retried by the queue triggers
-    if(announce) _recToast('Strava name not updated yet — will keep trying');
+    // Stays pending; retried by the queue triggers. But RECORD why, and show it —
+    // "will keep trying" forever with no reason is not an error message, it's a shrug.
+    rec.stravaNameError = (e && e.message) ? e.message : 'rename failed';
+    await DB.putRecording(rec).catch(()=>{});
+    const i = RECS.findIndex(x => x.id === rec.id);
+    if(i >= 0) RECS[i] = rec;
+    console.log('Strava rename failed:', rec.stravaNameError);
+    if(announce) _recToast('Strava rename failed — ' + rec.stravaNameError);
   }
 }
 
@@ -5183,9 +5302,1446 @@ async function _recStopUndo(){
 }
 
 // ═══════════════════════════════════════════
+//  LOCATION SHARING  (Phase 2 — feeds PackView)
+//
+//  A rider broadcasts ONE position feed. Any number of VIEW LINKS look at it.
+//
+//    write token — SECRET. Minted once (share_init), lives on this device in the
+//                  `shareAuth` KV row. Deliberately NOT in uiPrefs, so it never
+//                  travels to Dropbox. It is what proves a push is really you.
+//    view link   — PUBLIC. An 8-char code in a URL. Many per rider:
+//                    "Jenny"    → permanent, follows every ride
+//                    "Bent 400" → pinned to ONE ride, auto-expires after it
+//                  Revoking one leaves the others untouched. One push feeds all
+//                  of them — the phone neither knows nor cares who is watching.
+//
+//  PRIVACY RULES (architecture-plan.md §7 — do not quietly erode these):
+//    · Nothing is EVER sent until the rider deliberately sets sharing up. A user
+//      who has never opted in has no token, so there is no code path that can
+//      transmit their position. That is the promise, enforced structurally.
+//    · Once set up, sharing runs ONLY WHILE RECORDING. No recording, no push.
+//      Pausing the recording pauses the sharing; stopping stops it.
+//    · Then it defaults ON for every ride — the asymmetry is deliberate. Thinking
+//      you were shared when you weren't could cost you; forgetting to turn it off
+//      costs you some privacy with someone you already chose to trust.
+//    · A visible indicator whenever it's live, and one tap to kill it.
+//
+//  Backend: Supabase (schema in supabase/schema-v2.sql). The publishable key
+//  below is public BY DESIGN — index.html is on GitHub, so assume everyone has
+//  it. The tables are locked shut (RLS on, zero policies) and all access goes
+//  through narrow SQL functions. The key grants no ability to read anyone's
+//  position without their view code, and no ability to write without their
+//  secret token.
+// ═══════════════════════════════════════════
+const SUPA_URL = 'https://iwlgfkedrkajesgorysz.supabase.co';
+const SUPA_KEY = 'sb_publishable_iPzIO8HsrE3v50IIBP7KSg_Zl9TnGMt';
+
+const SHARE_INTERVAL_S_DEFAULT = 60;    // seconds between position pushes
+const SHARE_QUEUE_MAX          = 2000;  // don't grow the offline backlog forever
+const SHARE_LIVE_MS            = 15 * 60 * 1000;  // a fix newer than this = "riding"
+
+let _shareLastPos  = null;    // {lat,lon,t} of the last PUSHED fix (for interval speed)
+let _shareFlushing = false;
+
+async function _shareRpc(fn, args){
+  const res = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
+    method : 'POST',
+    headers: {'Content-Type':'application/json', 'apikey':SUPA_KEY, 'Authorization':'Bearer '+SUPA_KEY},
+    body   : JSON.stringify(args || {}),
+  });
+  if(!res.ok) throw new Error(fn + ' ' + res.status + ' ' + (await res.text().catch(()=>'')));
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : null;   // void functions return an empty body
+}
+
+const shareIsSetUp = () => !!UI.shareToken;
+const shareIsOn    = () => !!UI.shareToken && UI.shareEnabled !== false;
+const shareIsLive  = () => shareIsOn() && !!_rec && _rec.status === 'active';
+
+async function _shareSaveAuth(){
+  await DB.setKV('shareAuth', {
+    token      : UI.shareToken   || null,
+    label      : UI.shareLabel   || null,
+    enabled    : UI.shareEnabled !== false,
+    intervalS  : UI.shareIntervalS || SHARE_INTERVAL_S_DEFAULT,
+    queue      : UI.shareQueue   || [],
+    pendingRide: UI.sharePendingRide || null,   // route+ride upload awaiting signal
+    rideSent   : UI.shareRideSent || null,      // ride already registered with the server
+    rideEvent  : UI.shareRideEvent || null,     // …and the event it was registered with
+    eventCode  : UI.eventCode || null,          // the PackRide event being ridden
+    eventRouteKey: UI.eventRouteKey || null,
+  }).catch(()=>{});
+}
+
+// Called ONCE per rider, ever. Mints the secret token and — because a share with
+// no links is useless — a first permanent link to go with it.
+async function shareSetup(label){
+  const token = await _shareRpc('share_init', {p_label: label || null});
+  UI.shareToken    = token;
+  UI.shareLabel    = label || null;
+  UI.shareEnabled  = true;
+  UI.shareIntervalS = UI.shareIntervalS || SHARE_INTERVAL_S_DEFAULT;
+  UI.shareQueue    = [];
+  await _shareSaveAuth();
+  await shareLinkCreate('Family', null, null);
+  return token;
+}
+
+// rideId null  → permanent link, follows every ride
+// rideId set   → pinned to that one ride and nothing else, ever
+async function shareLinkCreate(name, rideId, expiresAt){
+  if(!UI.shareToken) return null;
+  const code = await _shareRpc('link_create', {
+    p_write_token: UI.shareToken,
+    p_name       : name || null,
+    p_ride_id    : rideId || null,
+    p_expires_at : expiresAt || null,
+  });
+  await shareLinksLoad();
+  return code;
+}
+
+async function shareLinksLoad(){
+  if(!UI.shareToken){ UI.shareLinks = []; return []; }
+  try{
+    UI.shareLinks = (await _shareRpc('link_list', {p_write_token: UI.shareToken})) || [];
+  }catch(e){
+    UI.shareLinks = UI.shareLinks || [];   // offline — keep whatever we last saw
+  }
+  return UI.shareLinks;
+}
+
+async function shareLinkRevoke(code){
+  if(!UI.shareToken) return;
+  await _shareRpc('link_revoke', {p_write_token: UI.shareToken, p_view_code: code});
+  await shareLinksLoad();
+}
+
+// ── The rider's own data (schema v4) ─────────────────────────────────────────
+// THE POLICY, in one line (Peter's wording): all rides stay on the server unless
+// you delete them, which you can do at any time — including your most recent ride.
+//
+// DO NOT ADD AN EXPIRY JOB. The original plan auto-deleted after 7 days, which
+// would have wiped the last known position of a rider who lives alone and went
+// missing on a Tuesday, before anyone was even worried. A rider deleting their own
+// data is a different thing entirely — they're conscious and in reception, by
+// definition — and is always allowed. See supabase/schema-v4.sql.
+
+async function shareRidesLoad(){
+  if(!UI.shareToken){ UI.shareRides = []; return []; }
+  try{
+    UI.shareRides = (await _shareRpc('ride_list', {p_write_token: UI.shareToken})) || [];
+  }catch(e){
+    UI.shareRides = UI.shareRides || [];
+  }
+  return UI.shareRides;
+}
+
+async function shareRideDelete(rideId){
+  if(!UI.shareToken) return;
+  await _shareRpc('ride_delete', {p_write_token: UI.shareToken, p_ride_id: rideId});
+  await shareRidesLoad();
+  await shareLinksLoad();   // any link pinned to that ride is now revoked
+}
+
+async function sharePurge(){
+  if(!UI.shareToken) return;
+  await _shareRpc('share_purge', {p_write_token: UI.shareToken});
+  await shareRidesLoad();
+  await shareLinksLoad();
+}
+
+// Build from the real page URL, NOT location.origin — on a local file:// page
+// location.origin is the literal string "null", which produced a broken link.
+const shareViewUrl = code => location.href.split('?')[0].split('#')[0] + '?view=' + code;
+
+// ── The route (schema v3) ────────────────────────────────────────────────────
+// PackView needs the PLAN, not just the trail — and Peter's reason is the one that
+// matters: in an emergency, a plan is searchable when a position is stale or was
+// never sent. So the route goes up too.
+//
+// Encoded as a Google polyline (~5 bytes a point): a 6,000-point / 300 km route is
+// ~35 KB instead of ~150 KB as raw JSON. Uploaded ONCE per route — the server
+// upserts on route_key, so re-riding it costs nothing and editing it republishes.
+
+function _encodePoly(pts){
+  let out = '', pLat = 0, pLon = 0;
+  const chunk = v => {
+    v = v < 0 ? ~(v << 1) : (v << 1);
+    let s = '';
+    while(v >= 0x20){ s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+    return s + String.fromCharCode(v + 63);
+  };
+  for(const p of pts){
+    const lat = Math.round(p.lat * 1e5), lon = Math.round(p.lon * 1e5);
+    out += chunk(lat - pLat) + chunk(lon - pLon);
+    pLat = lat; pLon = lon;
+  }
+  return out;
+}
+
+function _decodePoly(str){
+  const pts = [];
+  let i = 0, lat = 0, lon = 0;
+  while(i < str.length){
+    let b, shift = 0, res = 0;
+    do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while(b >= 0x20);
+    lat += (res & 1) ? ~(res >> 1) : (res >> 1);
+    shift = 0; res = 0;
+    do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while(b >= 0x20);
+    lon += (res & 1) ? ~(res >> 1) : (res >> 1);
+    pts.push({lat: lat / 1e5, lon: lon / 1e5});
+  }
+  return pts;
+}
+
+// Elevation as a "1D polyline": whole metres, delta-encoded with the SAME varint
+// scheme as _encodePoly (~1–2 bytes a point — a 6,000-point route is ~6 KB). v256:
+// carried alongside the poly (schema v8) because a joined rider's route arrived
+// FLAT — eventRouteToRoute filled ele:0, so their elevation graph was empty and
+// their pace model saw zero climbing (optimistic ETAs on every hilly route).
+function _encodeEles(pts){
+  let out = '', prev = 0;
+  const chunk = v => {
+    v = v < 0 ? ~(v << 1) : (v << 1);
+    let s = '';
+    while(v >= 0x20){ s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+    return s + String.fromCharCode(v + 63);
+  };
+  for(const p of pts){
+    const e = Math.round(p.ele || 0);
+    out += chunk(e - prev);
+    prev = e;
+  }
+  return out;
+}
+
+function _decodeEles(str){
+  const out = [];
+  let i = 0, e = 0;
+  while(i < str.length){
+    let b, shift = 0, res = 0;
+    do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while(b >= 0x20);
+    e += (res & 1) ? ~(res >> 1) : (res >> 1);
+    out.push(e);
+  }
+  return out;
+}
+
+// Queue the route + ride link for upload. Deliberately goes through the SAME queue
+// machinery as positions, so it inherits the offline retry for free: start a ride in
+// a dead spot and the route lands when you next have signal, before any positions.
+function _shareQueueRide(rec, r){
+  if(!shareIsOn()) return;
+  // eventCode is what puts this ride's dots into the pack rather than out on its own.
+  const job = {ride: rec.id, routeKey: null, payload: null, eventCode: UI.eventCode || null};
+  if(r && r.points && r.points.length){
+    job.routeKey = r.id;
+    job.payload = {
+      p_write_token: UI.shareToken,
+      p_route_key : r.id,
+      p_name      : r.label || r.name || 'Route',
+      p_poly      : _encodePoly(r.points),
+      p_ele       : _encodeEles(r.points),   // v256: elevation rides along (schema v8)
+      p_total_dist: r.totalDist || 0,
+      p_stops     : (r.stops || []).filter(s => s.lat && s.lon).map(s => ({
+        name: s.name, type: s.type, dist: s.dist, lat: s.lat, lon: s.lon,
+        sleepAt: s.sleepAt || undefined,
+      })),
+    };
+  }
+  UI.sharePendingRide = job;
+  _shareSaveAuth();
+  _shareFlush();
+}
+
+// Called from _appendPoint on every fix while recording. The GPS fires far more
+// often than we want to transmit, so this throttles to UI.shareIntervalS.
+function _shareMaybePush(lat, lon, ele, t){
+  if(!shareIsOn() || !_rec || _rec.status !== 'active') return;
+
+  // Self-healing registration. startRecording tells the server what this ride is —
+  // its route, and which event it belongs to. But there are several ways to be
+  // recording-and-sharing without that having run, or having run with the WRONG
+  // answer:
+  //   · the app reloaded (or crashed and recovered) mid-ride
+  //   · sharing was switched ON mid-ride
+  //   · the event was CREATED or JOINED mid-ride — which is exactly what happens
+  //     when you're already rolling and then set the group ride up. The ride would
+  //     stay tagged as solo forever, and you'd be invisible to your own pack.
+  // So: if the server's picture of this ride doesn't match ours, fix it. ride_start
+  // upserts, so re-registering is free and safe.
+  const evNow = UI.eventCode || null;
+  if(!UI.sharePendingRide &&
+     (UI.shareRideSent !== _rec.id || UI.shareRideEvent !== evNow)){
+    _shareQueueRide(_rec, _rec.routeId ? ROUTES.find(x => x.id === _rec.routeId) : null);
+  }
+
+  const every = (UI.shareIntervalS || SHARE_INTERVAL_S_DEFAULT) * 1000;
+  if(_shareLastPos && (t - _shareLastPos.t) < every) return;
+
+  // Speed AVERAGED over the interval since the last push — steadier and more
+  // use to a watcher than an instantaneous fix-to-fix figure, which at a
+  // 1-second sample is mostly GPS noise.
+  let speed = null;
+  if(_shareLastPos){
+    const dtH = (t - _shareLastPos.t) / 3600000;
+    if(dtH > 0) speed = (_recDist(_shareLastPos, {lat, lon}) / 1000) / dtH;
+  }
+  _shareLastPos = {lat, lon, t};
+
+  UI.shareQueue = UI.shareQueue || [];
+  UI.shareQueue.push({
+    rideId: _rec.id, lat, lon,
+    ele   : ele == null ? null : Math.round(ele),
+    speed : speed == null ? null : Math.round(speed * 10) / 10,
+    distKm: UI.gpsDistKm == null ? null : Math.round(UI.gpsDistKm * 100) / 100,
+    t     : new Date(t).toISOString(),
+  });
+  if(UI.shareQueue.length > SHARE_QUEUE_MAX)
+    UI.shareQueue.splice(0, UI.shareQueue.length - SHARE_QUEUE_MAX);
+  _shareSaveAuth();
+  _shareFlush();
+}
+
+// Drain oldest-first. Order matters (it's a track), so this is strictly
+// sequential and stops dead at the first failure — no reception means the points
+// simply WAIT. Nothing is ever dropped because a push failed; when you ride back
+// into signal the whole backlog lands and the trail fills in behind you.
+async function _shareFlush(){
+  if(_shareFlushing || !UI.shareToken) return;
+  if(!UI.sharePendingRide && (!UI.shareQueue || !UI.shareQueue.length)) return;
+  if(navigator.onLine === false) return;
+  _shareFlushing = true;
+  try{
+    // The route first — a position that arrives before its route is harmless, but
+    // this way a watcher opening the link early sees the plan straight away.
+    const job = UI.sharePendingRide;
+    if(job){
+      if(job.payload) await _shareRpc('route_ensure', job.payload);
+      await _shareRpc('ride_start', {
+        p_write_token: UI.shareToken,
+        p_ride_id    : job.ride,
+        p_route_key  : job.routeKey,
+        p_event_code : job.eventCode || null,
+      });
+      UI.sharePendingRide = null;
+      UI.shareRideSent    = job.ride;             // this ride is registered…
+      UI.shareRideEvent   = job.eventCode || null; // …with THIS event (null = solo)
+    }
+    while(UI.shareQueue.length){
+      const p = UI.shareQueue[0];
+      await _shareRpc('share_push', {
+        p_write_token: UI.shareToken,
+        p_ride_id    : p.rideId,
+        p_lat: p.lat, p_lon: p.lon,
+        p_ele: p.ele, p_speed: p.speed, p_dist_km: p.distKm, p_t: p.t,
+      });
+      UI.shareQueue.shift();
+      UI.shareLastPushAt = Date.now();
+      UI.shareLastErr    = null;
+    }
+  }catch(e){
+    UI.shareLastErr = (e && e.message) ? e.message : 'push failed';
+  }finally{
+    _shareFlushing = false;
+    _shareSaveAuth();
+  }
+}
+
+// Retry triggers — the same set the Strava queue uses.
+window.addEventListener('online', () => { if(shareIsSetUp()) _shareFlush(); });
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && shareIsSetUp() && !_viewCode) _shareFlush();
+});
+
+// ═══════════════════════════════════════════
+//  PACKRIDE  (events — many riders, one pool)
+//
+//  The ONLY genuinely new primitive in PackRide. Everything else on the feature
+//  list — navigation, turn cues, recording, stops, Strava — already exists, and
+//  everything else in the backend — shares, tokens, routes, positions — is reused
+//  unchanged. Design: _planning/architecture-plan.md §3.7.
+//
+//  IDENTITY: a rider joining an event REUSES the share and write token they already
+//  have. One person, one identity, across every ride and every event. Nothing to
+//  sign up for. A rider who has never shared before gets one minted on join.
+//
+//  VISIBILITY: everyone in the event sees everyone (Peter — a bunch ride is not
+//  hub-and-spoke). The event code is public: it IS the link you paste into a group
+//  chat. Holding it lets you watch the pack and lets you join. It never lets you
+//  write as somebody else — that needs their secret token, which never leaves their
+//  phone.
+//
+//  JOINING DOWNLOADS THE ROUTE TO THE PHONE. Easy to miss and fatal to get wrong:
+//  PackRide is a NAVIGATION tool, and navigation must work in a valley with no
+//  signal. Joining is not "you are on a list" — it is "the route, the turn cues and
+//  the stops are now on your phone, offline, exactly as if you'd imported the file".
+//
+//  PLACINGS ARE FREE: every position already carries dist_km, so the leaderboard is
+//  a sort, not new maths.
+// ═══════════════════════════════════════════
+const PACK_POLL_MS = 15000;   // how often we ASK where everyone is (cheap — a read)
+let _packTimer = null;
+let _packData  = null;        // last event_pack response
+
+const eventActive = () => UI.eventCode || null;
+
+async function eventCreate(name, route, startAt, preset, intervalS){
+  if(!UI.shareToken) throw new Error('sharing not set up');
+  // The route has to be on the server before the event can point at it.
+  if(route && route.points && route.points.length){
+    await _shareRpc('route_ensure', {
+      p_write_token: UI.shareToken,
+      p_route_key : route.id,
+      p_name      : route.label || route.name || 'Route',
+      p_poly      : _encodePoly(route.points),
+      p_ele       : _encodeEles(route.points),   // v256: elevation rides along (schema v8)
+      p_total_dist: route.totalDist || 0,
+      p_stops     : (route.stops || []).filter(s => s.lat && s.lon).map(s => ({
+        name: s.name, type: s.type, dist: s.dist, lat: s.lat, lon: s.lon,
+        sleepAt: s.sleepAt || undefined,
+      })),
+    });
+  }
+  const code = await _shareRpc('event_create', {
+    p_write_token: UI.shareToken,
+    p_name       : name || 'Group ride',
+    p_route_key  : route ? route.id : null,
+    p_start_at   : startAt || null,
+    p_preset     : preset || 'ride',
+    p_interval_s : intervalS || 30,
+  });
+  packReset();
+  UI.eventCode = code;
+  UI.eventRouteKey = route ? route.id : null;
+  await eventListLoad();
+  await _shareSaveAuth();
+  packStart();   // you're in your own event from the moment you make it
+  return code;
+}
+
+const eventInfo = code => _shareRpc('event_info', {p_code: code});
+
+async function eventJoin(code, displayName){
+  if(!UI.shareToken) await shareSetup(displayName || 'Rider');
+  const info = await _shareRpc('event_join', {
+    p_write_token : UI.shareToken,
+    p_code        : code,
+    p_display_name: displayName || UI.shareLabel || null,
+  });
+  if(!info || info.error) return info;
+  packReset();
+  UI.eventCode     = info.code;
+  UI.eventRouteKey = info.route ? info.route.key : null;
+  // The organiser's cadence applies to everyone — one keen rider on 10-second
+  // updates must not drain the whole bunch's phones.
+  if(info.intervalS) UI.shareIntervalS = info.intervalS;
+  await eventListLoad();
+  await _shareSaveAuth();
+  packStart();
+  return info;
+}
+
+async function eventListLoad(){
+  if(!UI.shareToken){ UI.events = []; return []; }
+  try{
+    UI.events = (await _shareRpc('event_list', {p_write_token: UI.shareToken})) || [];
+  }catch(e){ UI.events = UI.events || []; }
+  return UI.events;
+}
+
+async function eventLeave(code){
+  if(!UI.shareToken) return;
+  await _shareRpc('event_leave', {p_write_token: UI.shareToken, p_code: code});
+  if(UI.eventCode === code){ UI.eventCode = null; UI.eventRouteKey = null; packReset(); }
+  await eventListLoad();
+  await _shareSaveAuth();
+}
+
+const eventUrl = code => location.href.split('?')[0].split('#')[0] + '?join=' + code;
+
+// Turn an event's route into a real PackTimes route on this phone. This is what
+// makes the navigation work with no signal — it is a genuine import, identical to
+// the rider having loaded the file themselves.
+function eventRouteToRoute(info){
+  if(!info || !info.route || !info.route.poly) return null;
+  const r = newRoute(info.route.name || info.name || 'Group ride');
+  r.id = info.route.key || r.id;               // keep the organiser's key: same route, same id
+  // v256: decode the elevation that now rides along with the poly (schema v8).
+  // A route uploaded before v8 has no ele → fall back to 0, exactly as before —
+  // but a fresh event gives the joined rider the real profile, so their elevation
+  // graph draws and their pace model sees the actual climbing.
+  let eles = null;
+  if(info.route.ele){ try{ eles = _decodeEles(info.route.ele); }catch(e){ eles = null; } }
+  let d = 0, prev = null, pi = 0;
+  r.points = _decodePoly(info.route.poly).map(p => {
+    if(prev) d += hav(prev, p);
+    prev = p;
+    return {lat: p.lat, lon: p.lon, ele: (eles && pi < eles.length) ? eles[pi++] : 0, dist: d, time: null};
+  });
+  r.totalDist = info.route.totalDist || d;
+  r.stops = (info.route.stops || []).map((s, i) => ({
+    id: 'ev' + i + Math.random().toString(36).slice(2, 5),
+    dist: s.dist, type: s.type || 'stop', name: s.name || 'Stop',
+    lat: s.lat, lon: s.lon, sleepAt: !!s.sleepAt, auto: false, starred: true,
+  }));
+  if(info.startAt){
+    const dt = new Date(info.startAt);
+    r.startDate = dt.toISOString().slice(0, 10);
+    r.startTime = dt.toTimeString().slice(0, 5);
+  }
+  rebuildPace(r);
+  return r;
+}
+
+// ── The pack poll ────────────────────────────────────────────────────────────
+// A read, not a write — cheap, and it does NOT wake the radio on the rider's own
+// transmit schedule. Separate cadence on purpose (see §3.7: sample rate and send
+// rate are different dials, and this is a third).
+// Trails accumulate HERE, not on the wire. Without this, event_pack returned every
+// rider's whole trail to every rider every 15 seconds — bandwidth that grows with
+// the SQUARE of the pack size, over mobile data, on a bike. Ten riders on a long day
+// would have been the single biggest cost in the system, and the least necessary:
+// each phone already has every point it was sent last time.
+let _packTrails = {};   // riderId → [[lat,lon,t], …]
+let _packSince  = null; // "I have everything up to here"
+
+async function packPoll(){
+  if(!eventActive()) return;
+  if(document.hidden) return;      // phone in the pocket — don't poll into the void
+  let d;
+  try{
+    d = await _shareRpc('event_pack', {
+      p_code       : UI.eventCode,
+      p_write_token: UI.shareToken || null,
+      p_since      : _packSince,
+      p_trail      : 500,
+    });
+  }catch(e){ return; }              // no signal — keep the last pack we saw
+  if(!d || d.error) return;
+
+  // Merge the new points into each rider's running trail, then hand the drawing code
+  // the full picture — it never has to know the wire was a delta.
+  let newest = _packSince;
+  for(const r of (d.riders || [])){
+    const id = r.id || r.name;
+    const prev = _packTrails[id] || [];
+    const add  = r.trail || [];
+    const all  = add.length ? prev.concat(add) : prev;
+    _packTrails[id] = all.length > 2000 ? all.slice(all.length - 2000) : all;
+    r.trail = _packTrails[id];
+    for(const p of add){
+      const iso = new Date(p[2]).toISOString();
+      if(!newest || iso > newest) newest = iso;
+    }
+  }
+  _packSince = newest;
+  _packData  = d;
+  if(UI.tab === 'live'){ _packPillSync(); redrawMap('live-map'); }
+}
+
+function packStart(){
+  if(_packTimer) return;
+  packPoll();
+  _packTimer = setInterval(packPoll, PACK_POLL_MS);
+  packFrameStart();
+}
+
+// The pack pill has to be BUILT here, not only in the tLiveShell template.
+//
+// Why: on desktop during a sim or a live GPS ride, render() deliberately
+// short-circuits to updateLive() and never rebuilds the live shell (the anti-flash
+// guard at the top of _render). So anything that only exists in the template is
+// never created mid-ride. This is exactly the trap the turn popup fell into in
+// v237/v238 — same lesson, second time. If you add a new live-map overlay, build it
+// from updateLive/its own sync function, not from the template alone.
+// v254: the PackRide mark — three dots in formation (a leader + two behind), EXACTLY the
+// geometry from _planning/packride-mockups.html (Peter asked for that one). The hex is
+// hard-coded because PACKRIDE_YELLOW is declared further down the file (TDZ at load).
+const PACK_PILL_ICON = '<svg width="15" height="15" viewBox="0 0 20 20" fill="#fde047"><circle cx="10" cy="4.2" r="2.7"/><circle cx="13.9" cy="10.3" r="2.7"/><circle cx="6.1" cy="14.9" r="2.7"/></svg>';
+
+function _packPillSync(){
+  const sec = document.getElementById('live-map-section');
+  if(!sec) return;
+  // v251: the pills live BELOW the slot-0 floating pill on the left edge. The top
+  // row (top:8px) belongs to the distance bar — both pills used to sit straight on
+  // top of it — and top:48px belongs to the floating pills. Measured each pass, not
+  // hard-coded, because the slot-0 pill changes height with what's showing in it.
+  // The SHARE pill is repositioned here too (its template top:8px had the same
+  // overlap on solo shared rides — this runs every updateLive tick, so it holds).
+  const slot0 = sec.querySelector('.live-fpill[data-slot="0"]');
+  const bar   = document.getElementById('live-dist-bar');
+  const yPx   = ((slot0 ? slot0.offsetTop + slot0.offsetHeight
+                        : bar ? bar.offsetTop + bar.offsetHeight : 8) + 6) + 'px';
+  const shp0 = document.getElementById('share-pill');
+  if(shp0) shp0.style.top = yPx;
+  let el = document.getElementById('pack-pill');
+  const rs = (eventActive() && _packData && _packData.riders) ? _packData.riders : null;
+  if(!rs || !rs.length){ if(el) el.remove(); return; }
+
+  const meIdx = rs.findIndex(x => x.isYou);
+  const place = meIdx >= 0 ? (meIdx + 1) + '/' + rs.length : String(rs.length);
+
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'pack-pill';
+    el.style.cssText = 'position:absolute;z-index:22;display:flex;align-items:center;gap:6px;'
+      + 'background:rgba(10,15,10,.88);border:1px solid rgba(253,224,71,.5);border-radius:var(--r-ctrl);'
+      + 'padding:7px 10px;cursor:pointer;';
+    sec.appendChild(el);
+  }
+  // v255: sits just ABOVE the weather pill, bottom-left (Peter's spot), and STAYS
+  // above it. Measured with getBoundingClientRect because the weather bar and this
+  // pill live in DIFFERENT containers — composing inline `bottom` values put the
+  // pill BELOW the weather pill, on the elevation strip (the v254 mistake). Rect
+  // maths is container-agnostic and also rides up when the weather bar expands.
+  const wx = document.getElementById('live-weather-bar');
+  el.style.top = 'auto';
+  el.style.left = '8px';
+  if(wx){
+    const sr = sec.getBoundingClientRect(), wr = wx.getBoundingClientRect();
+    el.style.bottom = Math.max(8, sr.bottom - wr.top + 6) + 'px';
+  } else {
+    el.style.bottom = '14px';
+  }
+  el.innerHTML = PACK_PILL_ICON
+    + '<span style="font-size:12px;font-family:var(--font);font-weight:600;color:#fde047;">' + place + '</span>';
+}
+
+function packStop(){
+  if(_packTimer){ clearInterval(_packTimer); _packTimer = null; }
+  packFrameStop();
+}
+
+// Changing event = a different pack. Drop the accumulated trails, or you'd draw the
+// last event's riders on this one's map.
+function packReset(){
+  packStop();
+  _packTrails = {};
+  _packPlay   = {};
+  _packSince  = null;
+  _packData   = null;
+}
+
+// ── Interpolation: making 30-second updates look live ────────────────────────
+//
+// A dot that teleports 250 m every 30 seconds is unreadable and looks broken. The
+// fix is the technique multiplayer games have used for 25 years — a RENDER BUFFER,
+// a.k.a. entity interpolation:
+//
+//   Don't draw where the rider IS. Draw where they WERE a moment ago, and animate
+//   smoothly BETWEEN two fixes you have both ends of.
+//
+// So the dot glides continuously at the rider's real speed, along the path they
+// really took, and never guesses. The cost is that the display sits up to one update
+// interval behind — which is meaningless, because at a 30-second cadence the watcher
+// was already 30 seconds behind. You trade nothing for continuous motion.
+//
+// The alternative — DEAD RECKONING, extrapolating forward from the last known speed
+// and heading — is deliberately NOT used. It would show the rider carrying straight
+// on through a bend, and then snap them back onto the road when the next fix landed.
+// Inventing positions is exactly what a safety tool must never do.
+//
+// NOTE the playhead advances by REAL ELAPSED TIME, never by comparing the watcher's
+// clock to the rider's timestamps. Phone clocks disagree by seconds; the algorithm
+// must not care, and this one doesn't.
+const PACK_FRAME_MS = 120;    // ~8 fps — enough for smooth motion, cheap on battery
+let _packPlay  = {};          // riderId → playhead (ms, in the rider's own clock)
+let _packFrame = null;
+
+// How far off the route line a fix can be and still count as "on it". Beyond this
+// they have genuinely left the road, and snapping them back onto it would be a lie —
+// the single worst thing a safety tool can do.
+const ONROUTE_KM = 0.06;   // 60 m — comfortably past GPS error, well short of a detour
+
+// Where was this trail at time t? Between two known fixes, NEVER beyond them.
+//
+// Two ways to travel between fix A and fix B:
+//
+//   ALONG THE ROUTE (preferred) — every position carries dist_km, its distance along
+//     the route. So we interpolate the DISTANCE, then read the position off the route
+//     line. The dot follows the road: round the bend, through the switchback, exactly
+//     where the rider actually went. This is what you want 99% of the time, because
+//     99% of the time they're on the route.
+//
+//   STRAIGHT LINE (fallback) — used when there's no route, when a fix carries no
+//     distance, or when the rider is genuinely OFF the route. That last one is the
+//     important case: if they've taken a detour, or come off, the honest thing is to
+//     draw the straight line between where we last saw them and where we see them
+//     now. Pretending they're on the road because the road is where we'd like them
+//     to be is exactly the failure a safety tool must not have.
+//
+//   route — a route-shaped object (points sorted by .dist, km) or null
+//   di    — index of dist_km within a trail point, or null if it doesn't carry one
+function _lerpTrail(pts, t, route, di){
+  if(!pts || !pts.length) return null;
+  if(pts.length === 1 || t <= pts[0][2]) return {lat: pts[0][0], lon: pts[0][1]};
+  const last = pts[pts.length - 1];
+  if(t >= last[2]) return {lat: last[0], lon: last[1]};
+
+  // Walk back from the end — the playhead is nearly always near the newest points.
+  for(let i = pts.length - 1; i > 0; i--){
+    const b = pts[i], a = pts[i - 1];
+    if(t >= a[2] && t <= b[2]){
+      const span = b[2] - a[2];
+      const f = span > 0 ? (t - a[2]) / span : 1;
+
+      if(route && route.points && route.points.length && di != null){
+        const da = a[di], db = b[di];
+        // Sane, forward, and not an implausible jump (a mis-snap on a self-crossing
+        // loop can throw dist_km wildly — don't let it fling the dot down the road).
+        if(da != null && db != null && db >= da && (db - da) < 5){
+          const pa = _ptAtDist(route, da), pb = _ptAtDist(route, db);
+          // Are BOTH ends actually on the route? If either isn't, they're off it.
+          if(pa && pb &&
+             hav({lat: a[0], lon: a[1]}, pa) < ONROUTE_KM &&
+             hav({lat: b[0], lon: b[1]}, pb) < ONROUTE_KM){
+            const p = _ptAtDist(route, da + (db - da) * f);
+            if(p) return p;                      // ← follows the road
+          }
+        }
+      }
+      // Off-route, or no route to follow: the honest straight line.
+      return {lat: a[0] + (b[0] - a[0]) * f, lon: a[1] + (b[1] - a[1]) * f};
+    }
+  }
+  return {lat: pts[0][0], lon: pts[0][1]};
+}
+
+function _packTick(){
+  if(!_packData || !_packData.riders || !_packData.riders.length) return;
+  const lagMs = Math.max(5000, (UI.shareIntervalS || 30) * 1000);
+  let moving = false;
+
+  for(const r of _packData.riders){
+    const pts = _packTrails[r.id] || [];
+    if(pts.length < 2) continue;
+    const newest = pts[pts.length - 1][2];
+    let p = _packPlay[r.id];
+
+    // First sight of this rider, or we've drifted badly out of step (they were in a
+    // tunnel, we were backgrounded) — reseat the playhead one interval behind.
+    if(p == null || newest - p > lagMs * 3 || p > newest) p = newest - lagMs;
+
+    // Advance by real time, but never past the newest fix we actually hold. If we're
+    // running behind, catch up gently (1.15×) rather than snapping.
+    const behind = newest - p;
+    const rate = behind > lagMs * 1.5 ? 1.15 : 1;
+    p = Math.min(newest, p + PACK_FRAME_MS * rate);
+    _packPlay[r.id] = p;
+    if(p < newest) moving = true;
+    // Everyone in an event is on the same route — the one loaded on this phone. So
+    // other riders' dots follow the road, not a straight line across the bend.
+    // Pack trail point = [lat, lon, epoch_ms, dist_km] → dist is index 3.
+    const at = _lerpTrail(pts, p, cur(), 3);
+    if(at){ r._dlat = at.lat; r._dlon = at.lon; }   // where to DRAW them
+  }
+
+  if(moving && UI.tab === 'live') redrawMap('live-map');
+}
+
+function packFrameStart(){
+  if(_packFrame) return;
+  _packFrame = setInterval(_packTick, PACK_FRAME_MS);
+}
+function packFrameStop(){
+  if(_packFrame){ clearInterval(_packFrame); _packFrame = null; }
+}
+
+// Draw the other riders on the live map. Inside drawMap's already-rotated frame —
+// the standing rule (see "Anything drawn on the map goes ON THE MAP CANVAS").
+function drawPack(cvs){
+  if(!_packData || !_packData.riders || !cvs._px) return;
+  const ctx = cvs.getContext('2d');
+  for(const r of _packData.riders){
+    if(r.isYou || r.lat == null) continue;    // your own dot is already drawn, as an arrow
+    // Draw the INTERPOLATED position (_dlat/_dlon) when we have one — the smooth
+    // playhead between two real fixes — and fall back to the last raw fix if not.
+    const dlat = r._dlat != null ? r._dlat : r.lat;
+    const dlon = r._dlon != null ? r._dlon : r.lon;
+    const x = cvs._px(dlon), y = cvs._py(dlat);
+    if(x < -40 || x > cvs.offsetWidth + 40 || y < -40 || y > cvs.offsetHeight + 40) continue;
+
+    // Stale riders fade — a dot that hasn't moved in 20 minutes is not news, and
+    // showing it at full strength would be a lie about where they are NOW.
+    const age = r.lastSeen ? (Date.now() - new Date(r.lastSeen).getTime()) : 0;
+    const stale = age > 20 * 60 * 1000;
+
+    ctx.save();
+    ctx.globalAlpha = stale ? 0.45 : 1;
+
+    // their recent trail
+    if(r.trail && r.trail.length > 1){
+      ctx.beginPath();
+      ctx.moveTo(cvs._px(r.trail[0][1]), cvs._py(r.trail[0][0]));
+      for(let i = 1; i < r.trail.length; i++) ctx.lineTo(cvs._px(r.trail[i][1]), cvs._py(r.trail[i][0]));
+      ctx.strokeStyle = 'rgba(96,165,250,0.55)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832);
+    ctx.fillStyle = '#60a5fa'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#0a0f0a'; ctx.stroke();
+
+    // name — a pack you can't put names to is just noise. v252: drawn COUNTER-ROTATED
+    // (the map frame is rotated by -heading for heading-up; rotating +heading back at
+    // the rider's position keeps the tag horizontal on screen). It used to rotate
+    // with the frame and read upside down half the time (Peter, sim test).
+    const lbl = r.name || 'Rider';
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate((cvs._heading||0)*Math.PI/180);
+    ctx.font = '600 12px DM Sans, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    const w = ctx.measureText(lbl).width;
+    ctx.fillStyle = 'rgba(10,15,10,0.82)';
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(-w/2 - 5, -27, w + 10, 16, 4);
+    else ctx.rect(-w/2 - 5, -27, w + 10, 16);
+    ctx.fill();
+    ctx.fillStyle = '#e8f5e8';
+    ctx.fillText(lbl, 0, -13);
+    ctx.restore();
+    ctx.restore();
+  }
+}
+
+// Zoom to fit every rider (plus you) — a temporary PEEK. v253: the old version set
+// the map centre and a `_packFollow` flag that NOTHING ever read — so the very next
+// GPS tick's follow-draw yanked the map straight back to your own dot and the tap
+// appeared to do nothing (Peter's sim test). Now the follow branches genuinely stand
+// down while the peek is on (`_packPeekOn()` gates redrawMap + updateLive), and you
+// snap back to your own dot after 12 s — or immediately on a second tap.
+let _packPeekUntil = 0, _packPeekTimer = null, _packPeekPrevZoom = null;
+const _packPeekOn = () => !!_packPeekUntil && Date.now() < _packPeekUntil;
+
+function _packPeekEnd(){
+  if(_packPeekTimer){ clearTimeout(_packPeekTimer); _packPeekTimer = null; }
+  if(!_packPeekUntil) return;
+  _packPeekUntil = 0;
+  const st = ms('live-map');
+  if(_packPeekPrevZoom != null){ st.zoom = _packPeekPrevZoom; _packPeekPrevZoom = null; }
+  if(document.getElementById('live-map')) redrawMap('live-map');
+}
+
+function zoomToPack(){
+  if(_packPeekOn()){ _packPeekEnd(); _recToast('Following you'); return; }  // tap again → back to you
+  if(!_packData || !_packData.riders || !_packData.riders.length) return;
+  const pts = _packData.riders.filter(r => r.lat != null).map(r => ({lat: r.lat, lon: r.lon}));
+  if(UI.gpsPos) pts.push({lat: UI.gpsPos.lat, lon: UI.gpsPos.lon});
+  if(!pts.length) return;
+  const st = ms('live-map');
+  if(_packPeekPrevZoom == null) _packPeekPrevZoom = st.zoom;   // restored when the peek ends
+  const lats = pts.map(p => p.lat), lons = pts.map(p => p.lon);
+  st.cx = (Math.max(...lons) + Math.min(...lons)) / 2;
+  st.cy = (Math.max(...lats) + Math.min(...lats)) / 2;
+  st._fitted = false;
+  // Zoom so the spread fits with room to breathe. The map's baseScale is fitted to
+  // the ROUTE, so we work relative to that.
+  const r = cur();
+  if(r && r.points && r.points.length && pts.length > 1){
+    const rLat = Math.max(...r.points.map(p=>p.lat)) - Math.min(...r.points.map(p=>p.lat));
+    const rLon = Math.max(...r.points.map(p=>p.lon)) - Math.min(...r.points.map(p=>p.lon));
+    const pLat = Math.max(...lats) - Math.min(...lats);
+    const pLon = Math.max(...lons) - Math.min(...lons);
+    const span = Math.max(pLat / (rLat || 1e-6), pLon / (rLon || 1e-6));
+    st.zoom = Math.max(1, Math.min(40, 0.75 / Math.max(span, 0.02)));
+  }
+  _packPeekUntil = Date.now() + 12000;
+  if(_packPeekTimer) clearTimeout(_packPeekTimer);
+  _packPeekTimer = setTimeout(_packPeekEnd, 12100);
+  redrawMap('live-map');
+  _recToast('Showing the pack');
+}
+
+// ── The join screen (?join=CODE) ─────────────────────────────────────────────
+// The front door. Someone tapped a link in a group chat and has never heard of
+// PackTimes. They see WHAT the ride is, WHEN it starts, WHERE it goes, and who's in
+// — and nothing else. One field, one button.
+//
+// Joining is a real import: the route, its turn cues and its stops land on the phone
+// and work with no signal, exactly as if they'd loaded the file themselves.
+let _joinCode = null, _joinInfo = null;
+
+async function renderJoin(code){
+  _joinCode = String(code).toUpperCase();
+  document.title = 'PackRide';
+  _packFavicon(PACKRIDE_YELLOW);
+  const app = document.getElementById('app');
+  app.innerHTML = `<div style="display:flex;flex-direction:column;height:100%;background:var(--bg);overflow:auto;">
+    <div style="padding:14px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      ${PACKRIDE_LOGO}
+    </div>
+    <div id="join-body" style="padding:18px 16px;font-family:var(--sans);">Loading…</div>
+  </div>`;
+
+  let info;
+  try{ info = await eventInfo(_joinCode); }
+  catch(e){
+    document.getElementById('join-body').innerHTML =
+      `<p style="color:var(--text2);line-height:1.6;">Can't reach the server. Check your connection and reload.</p>`;
+    return;
+  }
+  if(!info || info.error){
+    document.getElementById('join-body').innerHTML =
+      `<div style="font-size:17px;font-weight:600;margin-bottom:8px;">This ride doesn't exist</div>
+       <p style="color:var(--text2);line-height:1.6;">The link may be wrong, or the ride may have been cancelled. Ask whoever sent it for a new one.</p>`;
+    return;
+  }
+  _joinInfo = info;
+
+  const when = info.startAt ? new Date(info.startAt) : null;
+  const dist = info.route && info.route.totalDist ? info.route.totalDist.toFixed(0) + ' km' : null;
+  const line = (l, v) => `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);">
+      <span style="color:var(--text3);font-size:14px;">${l}</span>
+      <span style="font-family:var(--font);font-size:15px;">${v}</span></div>`;
+
+  document.getElementById('join-body').innerHTML = `
+    <div style="font-size:24px;font-weight:600;line-height:1.25;margin-bottom:4px;">${(info.name||'Group ride').replace(/</g,'&lt;')}</div>
+    <div style="color:var(--text3);font-size:14px;margin-bottom:16px;">${info.organiser ? 'Organised by ' + String(info.organiser).replace(/</g,'&lt;') : 'A group ride'}</div>
+    <div style="margin-bottom:18px;">
+      ${when ? line('Starts', when.toLocaleString([], {weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit'})) : ''}
+      ${dist ? line('Distance', dist) : ''}
+      ${info.route ? line('Route', String(info.route.name||'—').replace(/</g,'&lt;')) : line('Route', 'No route — just a ride')}
+      ${line('Riders', info.members || 1)}
+    </div>
+    <div class="field">
+      <label class="lbl">Your name — what the others see</label>
+      <input type="text" id="join-name" placeholder="e.g. Peter" value="${(UI.shareLabel||'').replace(/"/g,'&quot;')}">
+    </div>
+    <button class="btn btn-full btn-p" id="btn-join-go" style="margin-top:14px;">Join this ride</button>
+    <p style="font-size:13px;color:var(--text3);line-height:1.6;margin-top:14px;">
+      Joining puts the route on your phone so it works with no signal. While you're recording the ride, the others can see where you are — and you can see them. You can turn that off at any time.
+    </p>`;
+
+  document.getElementById('btn-join-go').addEventListener('click', async () => {
+    const btn  = document.getElementById('btn-join-go');
+    const name = (document.getElementById('join-name').value || '').trim();
+    if(!name){ alert('Put your name in first, so the others know who you are.'); return; }
+    btn.disabled = true; btn.textContent = 'Joining…';
+    try{
+      const res = await eventJoin(_joinCode, name);
+      if(!res || res.error) throw new Error('join failed');
+      // Import the route as a real local route — this is what makes it work offline.
+      const r = eventRouteToRoute(res);
+      if(r){
+        const existing = ROUTES.findIndex(x => x.id === r.id);
+        if(existing >= 0) ROUTES[existing] = r; else ROUTES.push(r);
+        CUR = ROUTES.findIndex(x => x.id === r.id);
+      }
+      UI.tab = 'live';
+      await saveAll();
+      // Drop the ?join= and boot the app proper, now with the ride loaded.
+      location.href = location.href.split('?')[0].split('#')[0];
+    }catch(e){
+      btn.disabled = false; btn.textContent = 'Join this ride';
+      alert("Couldn't join — check your connection and try again.");
+    }
+  });
+}
+
+// ═══════════════════════════════════════════
+//  PACKVIEW  (the spectator page)
+//
+//  Same file, different mode: index.html?view=ABC123. It replaces the entire app
+//  shell, so a family member on a kitchen-table laptop sees a plain web page —
+//  no tabs, no settings, nothing to install, nothing to understand.
+//
+//  It reuses the real map engine (drawMap), which is the whole reason PackView is
+//  NOT a separate app: one codebase, one map, one thing to fix when a map bug
+//  appears. Peter's call, and the right one.
+// ═══════════════════════════════════════════
+let _viewCode = null, _viewData = null, _viewTimer = null;
+let _viewRoute = null;            // what drawMap draws: the PLANNED route if there is
+                                  // one, otherwise the trail (a free ride)
+let _viewTrail = null;            // always the breadcrumbs — where they've actually been
+let _viewFollow = true, _viewCentre = null;
+let _viewSel = null;              // index of the tapped breadcrumb, or null
+let _viewKm = true;               // km markers on the route line
+const VIEW_POLL_MS = 30000;
+
+// ── The family's colours ─────────────────────────────────────────────────────
+//
+// One mark — the PackTimes stopwatch — in three colours. Same product, three front
+// doors, and you can tell which one you're on at a glance:
+//
+//   PackTimes  GREEN  (--accent #4ade80)   the app
+//   PackView   CYAN   (#22d3ee)            the watching page
+//   PackRide   YELLOW (#fde047)            the group ride
+//
+// PackView's cyan is deliberately THE SAME cyan as the route line on the map. The
+// page is about the route, and its brand colour is the route's colour.
+//
+// Neither is --amber (#fbbf24): amber is the WARNING colour, and Peter's verdict was
+// that it reads orange. These are their own tokens and mean nothing else.
+//
+// TRAIL_COL is a map convention, not a brand: yellow = "where they have actually
+// been", on any map, in any of the three. It must contrast with the cyan route line,
+// which is what "where they are going" looks like. Plan vs fact.
+const PACKVIEW_CYAN   = '#22d3ee';
+const PACKRIDE_YELLOW = '#fde047';
+const TRAIL_COL       = '#fde047';
+
+// `currentColor` on the SVG keeps the mark and the type in step from one value, so a
+// logo is just the mark plus a colour plus a word.
+const _packLogo = (colour, word) => `<span style="display:inline-flex;align-items:center;gap:6px;color:${colour};flex-shrink:0;">
+  <svg width="20" height="20" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg>
+  <span style="font-family:var(--sans);font-weight:600;font-size:17px;letter-spacing:-.3px;">${word}</span>
+</span>`;
+
+const PACKVIEW_LOGO = _packLogo(PACKVIEW_CYAN,   'PackView');
+const PACKRIDE_LOGO = _packLogo(PACKRIDE_YELLOW, 'PackRide');
+
+// Repaint the browser-tab icon (an inline SVG data URI in <head>) to the front door
+// you're actually on, so a watcher with the tab pinned all day knows which is which.
+function _packFavicon(colour){
+  const f = document.querySelector('link[rel="icon"]');
+  if(f) f.href = f.href.split('%234ade80').join('%23' + colour.slice(1));
+}
+
+// The trail (packed arrays from share_view) → a route-shaped object drawMap
+// understands. Same trick as _recAsRoute.
+function _viewAsRoute(trail){
+  let d = 0, prev = null;
+  const pts = (trail || []).map(a => {
+    const p = {lat: a[0], lon: a[1], ele: 0, dist: 0, t: a[2], spd: a[3], dkm: a[4]};
+    if(prev) d += hav(prev, p);
+    prev = p; p.dist = d;
+    return p;
+  });
+  return {id:'view', name:'Ride', points: pts, stops: [], turns: [], paceSegs: [],
+          totalDist: d, timeFactor: 1};
+}
+
+function _viewAgo(ms){
+  if(!ms) return '';
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if(s <  90) return s + ' sec ago';
+  const m = Math.round(s / 60);
+  if(m <  90) return m + ' min ago';
+  const h = Math.round(m / 60);
+  if(h <  36) return h + (h === 1 ? ' hour ago' : ' hours ago');
+  return Math.round(h / 24) + ' days ago';
+}
+
+async function renderViewer(code){
+  _viewCode = String(code).toUpperCase();
+  document.title = 'PackView';
+  _packFavicon(PACKVIEW_CYAN);
+  document.getElementById('app').innerHTML = `
+    <div style="display:flex;flex-direction:column;height:100%;background:var(--bg);">
+      <div style="display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        ${PACKVIEW_LOGO}
+        <span id="view-sep" style="color:var(--border2);font-size:15px;">|</span>
+        <span id="view-name" style="font-family:var(--sans);font-weight:600;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">…</span>
+        <span id="view-status" style="margin-left:auto;font-size:13px;color:var(--text3);font-family:var(--sans);white-space:nowrap;padding-left:8px;"></span>
+      </div>
+      <div id="view-stats" style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;"></div>
+      <div id="view-mapwrap" style="flex:1;min-height:0;position:relative;">
+        <canvas id="view-map" style="width:100%;height:100%;display:block;"></canvas>
+        <div id="view-tip" style="display:none;position:absolute;z-index:10;pointer-events:none;background:rgba(10,15,10,.94);border:1px solid var(--border2);border-radius:var(--r-ctrl);padding:6px 10px;font-family:var(--sans);color:var(--text);white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.5);"></div>
+        <div id="view-tiles" style="position:absolute;top:10px;left:10px;z-index:10;display:flex;gap:0;background:rgba(10,15,10,.9);border:1px solid var(--border2);border-radius:var(--r-ctrl);overflow:hidden;"></div>
+        <button id="view-recentre" style="display:none;position:absolute;bottom:14px;right:14px;z-index:10;align-items:center;gap:6px;background:rgba(10,15,10,.9);border:1px solid var(--border2);color:var(--text);border-radius:var(--r-ctrl);padding:8px 12px;font-family:var(--sans);font-size:14px;cursor:pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/></svg>
+          Recentre
+        </button>
+      </div>
+      <div id="view-msg" style="display:none;padding:48px 24px;text-align:center;color:var(--text2);font-family:var(--sans);line-height:1.6;"></div>
+    </div>`;
+  document.getElementById('view-recentre').addEventListener('click', _viewRecentre);
+  try{
+    const saved = parseInt(localStorage.getItem('packview_tiles'), 10);
+    if(saved >= 1 && saved <= 4) _tileMode = saved;
+    if(localStorage.getItem('packview_km') === '0') _viewKm = false;
+  }catch(e){}
+  _viewTilesRender();
+  document.getElementById('view-tiles').addEventListener('click', e => {
+    const t = e.target.closest('[data-tile]');
+    if(t){ _viewSetTiles(+t.dataset.tile); return; }
+    if(e.target.closest('[data-km]')) _viewToggleKm();
+  });
+  await _viewPoll();
+  _viewTimer = setInterval(_viewPoll, VIEW_POLL_MS);
+  _viewFrameStart();   // smooth motion between polls
+  document.addEventListener('visibilitychange', () => { if(!document.hidden && _viewCode) _viewPoll(); });
+  window.addEventListener('resize', () => _viewRedraw());
+}
+
+// ── The watcher's cache ──────────────────────────────────────────────────────
+// The trail and the route live in the browser between visits, so a poll only ever
+// asks for what's NEW. Without this, PackView re-downloads the whole trail AND the
+// whole route polyline every 30 seconds — ~54 KB a poll, ~130 MB per watcher per
+// long ride. That's the bill that would decide the economics of the whole product.
+//
+// Someone returning after three days pays ONE full download and then goes back to
+// deltas. The first fetch was never the problem; sending it 2,400 times was.
+//
+// Cache is dropped whenever the RIDE changes (a permanent link followed the rider
+// onto their next ride) — a stale trail from yesterday's ride would be a lie.
+const _VC_KEY = c => 'pv_' + c;
+
+function _viewCacheLoad(code){
+  try{
+    const raw = localStorage.getItem(_VC_KEY(code));
+    if(!raw) return null;
+    const c = JSON.parse(raw);
+    return (c && Array.isArray(c.pts)) ? c : null;
+  }catch(e){ return null; }
+}
+
+function _viewCacheSave(code, c){
+  try{
+    // Cap the stored trail. A multi-day ultra could otherwise grow past what
+    // localStorage will hold, and 8,000 points is already more than any screen can
+    // usefully draw.
+    if(c.pts.length > 8000) c.pts = c.pts.slice(c.pts.length - 8000);
+    localStorage.setItem(_VC_KEY(code), JSON.stringify(c));
+  }catch(e){ /* quota or private mode — we just lose the cache, never the app */ }
+}
+
+async function _viewPoll(){
+  const cache = _viewCacheLoad(_viewCode) || {rideId: null, routeKey: null, route: null, pts: [], lastT: null};
+  let d;
+  try{
+    d = await _shareRpc('share_view', {
+      p_view_code : _viewCode,
+      p_since     : cache.lastT ? new Date(cache.lastT).toISOString() : null,
+      p_have_route: cache.routeKey || null,
+      p_trail     : 5000,
+    });
+  }catch(e){
+    const st = document.getElementById('view-status');
+    if(st) st.textContent = 'Can\'t reach the server';
+    return;
+  }
+  if(!d || d.error){ _viewNotFound(); return; }
+
+  // A different ride = a different trail. Throw the old one away rather than draw
+  // yesterday's ride under today's dot.
+  if(cache.rideId && d.rideId && cache.rideId !== d.rideId){
+    cache.pts = []; cache.lastT = null; cache.rideId = d.rideId;
+    // and re-ask, this time for everything
+    try{
+      d = await _shareRpc('share_view', {
+        p_view_code: _viewCode, p_since: null,
+        p_have_route: null, p_trail: 5000,
+      });
+    }catch(e){ return; }
+  }
+  cache.rideId = d.rideId || cache.rideId;
+
+  // Route: only ever sent when we don't already hold it.
+  if(d.route && d.route.poly){ cache.route = d.route; cache.routeKey = d.route.key || d.routeKey || null; }
+  else if(d.routeKey) cache.routeKey = d.routeKey;
+  if(!d.route && cache.route) d.route = cache.route;
+
+  // Trail: append the new points to the ones we already had.
+  const fresh = d.trail || [];
+  if(cache.lastT == null) cache.pts = fresh;
+  else if(fresh.length)   cache.pts = cache.pts.concat(fresh);
+  if(cache.pts.length) cache.lastT = cache.pts[cache.pts.length - 1][2];
+  _viewCacheSave(_viewCode, cache);
+
+  d.trail = cache.pts;              // the drawing code always sees the WHOLE trail
+  _viewData  = d;
+  _viewTrail = _viewAsRoute(d.trail);
+
+  // If the rider is following a route, THAT is what the map draws — line, stops,
+  // start/finish flags, the lot, straight out of the same drawMap the Ride tab uses.
+  // The breadcrumb trail then goes on top of it. No route (a free ride) → fall back
+  // to drawing the trail itself as the line, exactly as before v3.
+  if(d.route && d.route.poly){
+    let dist = 0, prev = null;
+    const pts = _decodePoly(d.route.poly).map(p => {
+      if(prev) dist += hav(prev, p);
+      prev = p;
+      return {lat: p.lat, lon: p.lon, ele: 0, dist};
+    });
+    _viewRoute = {id:'view-plan', name: d.route.name || 'Route', points: pts,
+                  stops: (d.route.stops || []).map((s, i) => ({...s, id: 'vs' + i})),
+                  turns: [], paceSegs: [],
+                  totalDist: d.route.totalDist || dist, timeFactor: 1};
+  } else {
+    _viewRoute = _viewTrail;
+  }
+  _viewDraw();
+}
+
+function _viewDraw(){
+  const d = _viewData; if(!d) return;
+  const trail = d.trail || [];
+  const last  = trail.length ? trail[trail.length - 1] : null;
+  const seen  = d.lastSeenAt ? new Date(d.lastSeenAt).getTime() : null;
+  const live  = seen && (Date.now() - seen) < SHARE_LIVE_MS;
+
+  const nm = document.getElementById('view-name');
+  if(nm) nm.textContent = d.label || 'Rider';
+
+  const st = document.getElementById('view-status');
+  if(st){
+    st.innerHTML = !seen
+      ? 'Not riding yet'
+      : `<span style="color:${live ? 'var(--accent)' : 'var(--text3)'};">●</span> ${live ? 'Riding' : 'Stopped'} · ${_viewAgo(seen)}`;
+  }
+
+  const stats = document.getElementById('view-stats');
+  if(stats){
+    const cell = (v, l) => `<div style="flex:1;padding:11px 6px;text-align:center;border-right:1px solid var(--border);">
+        <div style="font-family:var(--font);font-size:23px;font-weight:500;">${v}</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--sans);margin-top:2px;">${l}</div>
+      </div>`;
+    const spd = (last && last[3] != null) ? Number(last[3]).toFixed(1) : '–';
+    const dst = (last && last[4] != null) ? Number(last[4]).toFixed(1)
+              : (_viewRoute ? _viewRoute.totalDist.toFixed(1) : '–');
+    stats.innerHTML = cell(spd, 'km/h') + cell(dst, 'km');
+  }
+  _viewRedraw();
+}
+
+// The map follows the rider by default — that's the whole point of the page. But a
+// watcher who drags the map away to look at something has plainly chosen to look at
+// something, so following backs off until they tap Recentre.
+//
+// How the pan is detected: drawMap only writes state.cx/cy when it fits or follows.
+// So if cx/cy changed since our last draw and WE didn't change them, the user did.
+function _viewRedraw(){
+  const cvs = document.getElementById('view-map');
+  if(!cvs || !_viewRoute || !_viewRoute.points.length) return;
+  const tpts = _viewTrail ? _viewTrail.points : [];
+  // Follow the INTERPOLATED dot, not the last raw fix — otherwise the map jerks once
+  // per poll while the dot it's meant to be following glides along smoothly.
+  const raw  = _viewData && _viewData.trail;
+  const last = (_viewPlay != null && raw && raw.length > 1)
+    ? _lerpTrail(raw, _viewPlay, _viewPlanRoute(), 4)
+    : (tpts.length ? tpts[tpts.length - 1] : null);
+  const st   = ms('view-map');
+
+  if(_viewFollow && _viewCentre &&
+     (st.cx !== _viewCentre.cx || st.cy !== _viewCentre.cy)){
+    _viewFollow = false;                   // they dragged the map — leave them alone
+    const b = document.getElementById('view-recentre');
+    if(b) b.style.display = 'flex';
+  }
+  if(_viewFollow && last){
+    st.cx = last.lon; st.cy = last.lat; st._fitted = false;
+  }
+
+  attachMap(cvs, null);                    // pan / pinch / wheel — a plain map
+  _viewAttachTap(cvs);
+  drawMap(cvs, _viewRoute, {anchor: 0.5, noKm: !_viewKm});
+  _viewCentre = {cx: st.cx, cy: st.cy};
+  if(_viewRoute !== _viewTrail) _viewDrawTrail(cvs);   // where they've actually been
+  _viewDrawDot(cvs);
+  _viewDrawSel(cvs);
+}
+
+// The breadcrumb trail, laid over the planned route. Deliberately a different colour
+// from the route line: the route is the plan, the trail is the fact. Drawn with the
+// projection drawMap leaves on the canvas, so it stays welded through pan and zoom.
+function _viewDrawTrail(cvs){
+  const pts = _viewTrail ? _viewTrail.points : null;
+  if(!pts || pts.length < 2 || !cvs._px) return;
+  const ctx = cvs.getContext('2d');
+  ctx.save();
+  ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = TRAIL_COL;   // where they've BEEN — must contrast with the cyan plan
+  ctx.beginPath();
+  ctx.moveTo(cvs._px(pts[0].lon), cvs._py(pts[0].lat));
+  for(let i = 1; i < pts.length; i++) ctx.lineTo(cvs._px(pts[i].lon), cvs._py(pts[i].lat));
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Tap a breadcrumb → when was the rider there? The single most useful thing a
+// watcher can ask of a trail, and there's no other way to tell a fresh dot from
+// one laid down four hours ago.
+//
+// Deliberately NOT wired through attachMap's tapCb: that path runs hitTest, which
+// calls cur() — and PackView has no current route. Own listener, own hit test.
+function _viewAttachTap(cvs){
+  if(cvs._viewTap) return;
+  cvs._viewTap = true;
+  let dx = 0, dy = 0, down = false;
+  const start = (x, y) => { down = true; dx = x; dy = y; };
+  const end = (x, y) => {
+    if(!down) return;
+    down = false;
+    if(Math.abs(x - dx) > 6 || Math.abs(y - dy) > 6) return;   // that was a drag
+    const pts = _viewTrail ? _viewTrail.points : null;   // you tap breadcrumbs, not the plan
+    if(!pts || !pts.length || !cvs._px) return;
+    const rect = cvs.getBoundingClientRect();
+    const mx = x - rect.left, my = y - rect.top;
+    let best = -1, bestD = Infinity;
+    for(let i = 0; i < pts.length; i++){
+      const d = Math.hypot(cvs._px(pts[i].lon) - mx, cvs._py(pts[i].lat) - my);
+      if(d < bestD){ bestD = d; best = i; }
+    }
+    _viewSel = (best >= 0 && bestD < 28) ? best : null;   // 28px — a fat-finger target
+    _viewRedraw();
+  };
+  cvs.addEventListener('mousedown',  e => start(e.clientX, e.clientY));
+  cvs.addEventListener('mouseup',    e => end(e.clientX, e.clientY));
+  cvs.addEventListener('touchstart', e => { const t = e.touches[0]; if(t) start(t.clientX, t.clientY); }, {passive:true});
+  cvs.addEventListener('touchend',   e => { const t = e.changedTouches[0]; if(t) end(t.clientX, t.clientY); }, {passive:true});
+}
+
+// The selected breadcrumb: ring it, and float a label above it. Positioned from the
+// live projection every redraw, so it stays welded to the point through pan and zoom.
+function _viewDrawSel(cvs){
+  const tip = document.getElementById('view-tip');
+  const pts = _viewTrail ? _viewTrail.points : null;
+  if(_viewSel == null || !pts || !pts[_viewSel] || !cvs._px){
+    if(tip) tip.style.display = 'none';
+    return;
+  }
+  const p = pts[_viewSel];
+  const x = cvs._px(p.lon), y = cvs._py(p.lat);
+
+  const ctx = cvs.getContext('2d');
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, 8, 0, 6.2832);
+  ctx.lineWidth = 2.5; ctx.strokeStyle = TRAIL_COL;   // matches the trail it sits on
+  ctx.stroke();
+  ctx.restore();
+
+  if(!tip) return;
+  const when = p.t ? new Date(p.t) : null;
+  const time = when ? when.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '—';
+  const bits = [];
+  if(p.spd != null) bits.push(Number(p.spd).toFixed(1) + ' km/h');
+  if(p.dkm != null) bits.push(Number(p.dkm).toFixed(1) + ' km in');
+  tip.innerHTML = `<div style="font-family:var(--font);font-size:15px;font-weight:500;">${time}</div>
+    <div style="font-size:12px;color:var(--text3);margin-top:1px;">${_viewAgo(p.t)}${bits.length ? ' · ' + bits.join(' · ') : ''}</div>`;
+  tip.style.display = 'block';
+  // Clamp inside the canvas so a tap near an edge doesn't push the label off-screen
+  const w = tip.offsetWidth || 120, h = tip.offsetHeight || 40;
+  tip.style.left = Math.max(6, Math.min(cvs.offsetWidth  - w - 6, x - w / 2)) + 'px';
+  tip.style.top  = Math.max(6, Math.min(cvs.offsetHeight - h - 6, y - h - 14)) + 'px';
+}
+
+// Map style switcher. `_tileMode` is the same global every other map in the app uses
+// (0=off 1=OSM 2=Satellite 3=CyclOSM 4=Topo), so there is nothing new to build — just
+// a control to set it. Choice is remembered, because a watcher who prefers satellite
+// will prefer it again tomorrow.
+const VIEW_TILES = [[1,'Map'],[2,'Satellite'],[3,'Cycle'],[4,'Topo']];
+
+function _viewTilesRender(){
+  const box = document.getElementById('view-tiles');
+  if(!box) return;
+  const btn = (attr, val, label, on) =>
+    `<button ${attr}="${val}" style="border:0;border-left:1px solid var(--border2);background:${on ? PACKVIEW_CYAN : 'transparent'};color:${on ? '#0a0f0a' : 'var(--text2)'};font-family:var(--sans);font-size:13px;font-weight:${on ? 600 : 400};padding:7px 11px;cursor:pointer;">${label}</button>`;
+  box.innerHTML =
+    VIEW_TILES.map(([n, label], i) =>
+      btn('data-tile', n, label, _tileMode === n).replace(i ? '' : 'border-left:1px solid var(--border2);', '')
+    ).join('')
+    + btn('data-km', '1', 'km', _viewKm);
+}
+
+function _viewSetTiles(n){
+  _tileMode = n;
+  try{ localStorage.setItem('packview_tiles', String(n)); }catch(e){}
+  _viewTilesRender();
+  _viewRedraw();
+}
+
+function _viewToggleKm(){
+  _viewKm = !_viewKm;
+  try{ localStorage.setItem('packview_km', _viewKm ? '1' : '0'); }catch(e){}
+  _viewTilesRender();
+  _viewRedraw();
+}
+
+function _viewRecentre(){
+  _viewFollow = true;
+  _viewCentre = null;
+  const b = document.getElementById('view-recentre');
+  if(b) b.style.display = 'none';
+  _viewRedraw();
+}
+
+// PackView's own render buffer — same technique as the pack (see the long note on
+// _packTick). This is where it earns its keep: someone watching from a kitchen table
+// at a 30-second cadence sees a dot GLIDING along the road, not one teleporting 250 m
+// every half minute. Nothing is invented — the dot only ever moves between two fixes
+// we actually hold.
+const VIEW_FRAME_MS = 120;
+let _viewPlay = null, _viewFrame = null;
+
+// The PLANNED route, or null on a free ride. (_viewRoute doubles as the trail when
+// there's no plan — in that case there is no road to follow, so return nothing and
+// the interpolation falls back to the straight line.)
+const _viewPlanRoute = () => (_viewRoute && _viewRoute !== _viewTrail) ? _viewRoute : null;
+
+function _viewTick(){
+  const pts = (_viewData && _viewData.trail) ? _viewData.trail : null;
+  if(!pts || pts.length < 2) return;
+  const newest = pts[pts.length - 1][2];
+  const lagMs  = 35000;   // a shade over PackView's 30 s poll, so there's always a pair to sit between
+
+  if(_viewPlay == null || newest - _viewPlay > lagMs * 3 || _viewPlay > newest)
+    _viewPlay = newest - lagMs;
+
+  const behind = newest - _viewPlay;
+  const rate = behind > lagMs * 1.5 ? 1.15 : 1;    // catch up gently, never snap
+  _viewPlay = Math.min(newest, _viewPlay + VIEW_FRAME_MS * rate);
+  if(_viewPlay < newest) _viewRedraw();
+}
+
+function _viewFrameStart(){
+  if(_viewFrame) return;
+  _viewFrame = setInterval(_viewTick, VIEW_FRAME_MS);
+}
+
+// The rider. Drawn with the projection drawMap leaves on the canvas, so it stays
+// welded to the trail through pan, zoom and every tile load.
+function _viewDrawDot(cvs){
+  const pts = _viewTrail ? _viewTrail.points : null;   // the rider is the last FIX, not the last plan point
+  if(!pts || !pts.length || !cvs._px) return;
+  // The smooth playhead between two real fixes, when we have one. Follows the ROUTE
+  // when there is one and the rider is on it (_viewPlanRoute()), so the dot rounds
+  // the bends instead of cutting across them.
+  const raw = _viewData && _viewData.trail;
+  const at  = (_viewPlay != null && raw && raw.length > 1)
+    ? _lerpTrail(raw, _viewPlay, _viewPlanRoute(), 4)   // view trail = [lat,lon,t,speed,distKm]
+    : null;
+  const p = at || pts[pts.length - 1];
+  const x = cvs._px(p.lon), y = cvs._py(p.lat);
+  const ctx = cvs.getContext('2d');
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, 12, 0, 6.2832);
+  ctx.fillStyle = 'rgba(74,222,128,0.22)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.2832);
+  ctx.fillStyle = '#4ade80'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = '#0a0f0a'; ctx.stroke();
+  ctx.restore();
+}
+
+function _viewNotFound(){
+  const wrap  = document.getElementById('view-mapwrap');
+  const stats = document.getElementById('view-stats');
+  const st    = document.getElementById('view-status');
+  const nm    = document.getElementById('view-name');
+  const msg   = document.getElementById('view-msg');
+  const sep = document.getElementById('view-sep');
+  if(wrap)  wrap.style.display  = 'none';
+  if(stats) stats.style.display = 'none';
+  if(st)    st.textContent = '';
+  if(nm)    nm.textContent = '';       // no rider to name — just the wordmark
+  if(sep)   sep.style.display = 'none';
+  if(msg){
+    msg.style.display = 'block';
+    msg.innerHTML = `<div style="font-size:17px;font-weight:600;color:var(--text);margin-bottom:8px;">This link isn't active</div>
+      <div>It may have expired, or the rider may have turned it off.<br>Ask them for a new one.</div>`;
+  }
+  if(_viewTimer){ clearInterval(_viewTimer); _viewTimer = null; }
+}
+
+// ═══════════════════════════════════════════
 //  RIDE SIMULATOR
 // ═══════════════════════════════════════════
 let _simPts=null,_simIdx=0,_simTimer=null,_simElapsedMs=0;
+let _simPlanMs=null;   // real-world ms the current step should take, per the pace plan
 
 function _updateSimButtons(){
   const startBtn=document.getElementById('btn-sim-start');
@@ -5236,6 +6792,7 @@ function simStart(){
     const p=_simPts[_simIdx];
     // Calculate realistic speed from route plan (cumRiding hours)
     let spd=null;
+    _simPlanMs=null;   // real-world ms this step SHOULD take, per the plan
     if(_simIdx>0){
       const rr=cur();
       if(rr&&rr.cumRiding){
@@ -5249,7 +6806,7 @@ function simStart(){
           const cr2=cumRidingAt(p.dist!=null?p.dist:0,rr);
           if(cr1!==null&&cr2!==null){
             const dtH=(cr2-cr1)*scale;
-            if(dtH>0)spd=(d/dtH)/3.6; // km/h → m/s
+            if(dtH>0){spd=(d/dtH)/3.6; _simPlanMs=dtH*3600000;} // km/h → m/s
           }
         }
       }
@@ -5298,14 +6855,27 @@ function simStart(){
       status.textContent=`Point ${_simIdx+1}/${_simPts.length} · ${distKm} along route`;
     }
     _simIdx++;
-    // Calculate delay from real timestamps
+    // How long should this step take in the real world? Two sources, in order:
+    //
+    //   1. The route's own TIMESTAMPS, if it has them (a FIT/GPX from a real ride).
+    //   2. THE PLAN — the pace model's own cumRiding hours (_simPlanMs above).
+    //
+    // (2) matters more than it looks. A route with no timestamps — a plan, a
+    // hand-drawn route, or a route handed to you by joining a PackRide event —
+    // used to fall through to a fixed 100 ms per point, which IGNORED the speed
+    // multiplier entirely and tore through the course at whatever the point spacing
+    // happened to give. That's why a joined rider blew down the road at 20× with
+    // the sim set to 1×.
     let delay=100;
     if(_simIdx<_simPts.length){
       const curr=_simPts[_simIdx-1],next=_simPts[_simIdx];
+      let realMs=null;
       if(curr.time&&next.time){
-        const realMs=new Date(next.time)-new Date(curr.time);
-        if(realMs>0&&realMs<60000)delay=Math.max(30,realMs/speed);
+        const dt=new Date(next.time)-new Date(curr.time);
+        if(dt>0&&dt<60000)realMs=dt;
       }
+      if(realMs==null&&_simPlanMs>0&&_simPlanMs<60000)realMs=_simPlanMs;
+      if(realMs!=null)delay=Math.max(30,realMs/speed);
       // At low speed / sparse points the gap between points can be seconds — tween the marker + map
       // smoothly across it instead of freezing then jumping (desktop sim readability).
       if(delay>180){_simTweenTo(curr,next,delay);return;}
@@ -6572,7 +8142,8 @@ function drawMap(cvs,r,opts){
   flag(0,'#4ade80','S');flag(pts.length-1,'#ef4444','F');
 
   // km markers — true pxPerKm from total route screen length
-  if(!(UI.hiddenMapTypes.has('kmmarkers')&&(cvs.id==='desktop-map'||id==='stops-map'))){
+  // opts.noKm is PackView's off switch (its own control; it has no Settings tab).
+  if(!opts.noKm&&!(UI.hiddenMapTypes.has('kmmarkers')&&(cvs.id==='desktop-map'||id==='stops-map'))){
     ctx.save();
     let totalScreenPx=0;
     for(let i=1;i<pts.length;i++){
@@ -6671,6 +8242,11 @@ function drawMap(cvs,r,opts){
       }
     }
   }
+
+  // The pack (PackRide). Drawn BEFORE your own arrow, so you are always on top of
+  // everyone else — you are the one thing you must never lose on the screen.
+  // Inside drawMap, in the already-rotated frame: the standing rule.
+  if(id==='live-map'&&_packData)drawPack(cvs);
 
   // GPS arrow (route-only)
   if(hasRoute&&opts.showGPS&&UI.gpsDistKm!==null){
@@ -6891,25 +8467,58 @@ function peekLiveStop(s,r){
 function _rideHeadingDeg(pts){
   let deg=null;
   const onRoute = UI._snapOffKm!=null && UI._snapOffKm < 0.06;   // within ~60 m of the line
-  if(onRoute && UI._lastSnapIdx!=null && UI._lastSnapIdx>=0 && pts && pts.length>1){
-    const si=Math.max(0,Math.min(pts.length-1,UI._lastSnapIdx));
-    const dir=_snapDir>=0?1:-1;                                   // forward or reversed along route
-    const sd=pts[si].dist;
-    // SHORT window centred on the current position (~30 m each side) so the map shows the direction
-    // you're travelling NOW — not anticipating a turn hundreds of metres ahead. Too short and the
-    // bearing swings wildly at a corner (flicker); ~30 m is stable without anticipating.
-    const walk=step=>{let i=si;while(i+step>=0&&i+step<pts.length&&Math.abs(pts[i+step].dist-sd)<0.03)i+=step;return i;};
-    const bi=walk(-dir),fi=walk(dir);
-    if(fi!==bi){
-      const dLon=(pts[fi].lon-pts[bi].lon)*Math.cos(pts[si].lat*Math.PI/180);
-      const dLat=pts[fi].lat-pts[bi].lat;
-      deg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
-    }
+  if(onRoute && UI.gpsDistKm!=null && pts && pts.length>1){
+    // v252: chord from ~30 m behind to ~30 m ahead of the rider's along-route position,
+    // with INTERPOLATED endpoints (binary search, same idea as _ptAtDist). The old
+    // version walked route VERTICES within a ±30 m window — wherever the points are
+    // spaced wider than that it found nothing and silently fell back to the raw GPS
+    // heading, so the map's target flickered between "route bearing" and "phone
+    // heading" at bends (the jitter Peter saw, sim and phone alike). Interpolated
+    // arms can never be degenerate while on route, and the bearing sweeps
+    // CONTINUOUSLY through a corner instead of jumping vertex to vertex.
+    const at=d=>{
+      if(d<=pts[0].dist)return pts[0];
+      const last=pts[pts.length-1];if(d>=last.dist)return last;
+      let lo=0,hi=pts.length-1;
+      while(hi-lo>1){const m=(lo+hi)>>1;if(pts[m].dist<d)lo=m;else hi=m;}
+      const a=pts[lo],b=pts[hi],t=(d-a.dist)/((b.dist-a.dist)||1);
+      return{lat:a.lat+(b.lat-a.lat)*t,lon:a.lon+(b.lon-a.lon)*t};
+    };
+    const dir=_snapDir>=0?1:-1,H=0.03;                            // forward or reversed along route
+    const A=at(UI.gpsDistKm-dir*H),B=at(UI.gpsDistKm+dir*H);
+    const dLon=(B.lon-A.lon)*Math.cos(A.lat*Math.PI/180),dLat=B.lat-A.lat;
+    if(dLon||dLat) deg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
   }
   if(deg==null && UI.gpsHeading!=null) deg=UI.gpsHeading;         // off-route → best-effort GPS heading
   if(deg==null) return UI._mapOrient!=null?UI._mapOrient:null;    // nothing yet → hold last (or north-up)
-  if(UI._mapOrient==null){ UI._mapOrient=deg; }
-  else { const d=((deg-UI._mapOrient+540)%360)-180; UI._mapOrient=(UI._mapOrient+d*0.18+360)%360; }   // damped (was .35 — too eager, chased jitter)
+  if(UI._mapOrient==null){ UI._mapOrient=deg; return UI._mapOrient; }
+  const d=((deg-UI._mapOrient+540)%360)-180;
+  const now=Date.now();
+  // v251: FLIP REJECTION. Where the route doubles back past itself (start/finish
+  // overlap, out-and-back legs), the snap can jump to the other leg and the target
+  // heading flips ~180° — then flips back — and the easing swung the whole map
+  // violently to and fro (Peter, sim test near Canberra at ~324 km). A near-reversal
+  // is almost never the rider genuinely turning around within one fix, so hold the
+  // current heading and only accept the flip once it has PERSISTED ~2.5 s. A real
+  // U-turn just means the map takes a couple of seconds to come around — fine. A
+  // ridden switchback never trips this: its bearing sweeps through the intermediate
+  // angles rather than jumping.
+  if(Math.abs(d)>120){
+    if(!UI._flipHoldT) UI._flipHoldT=now;
+    if(now-UI._flipHoldT<2500) return UI._mapOrient;
+  } else UI._flipHoldT=null;
+  // v252: TIME-BASED easing + rate cap. The old step was a fixed fraction PER CALL,
+  // but live-map redraws come from several timers at once (sim tween ~110 ms, pack
+  // frames 120 ms, turn blink 130 ms, tile loads) — irregular call spacing made
+  // irregular step sizes, which read as jitter. Now the step depends only on
+  // wall-clock time: close ~2× the remaining error per second, and never rotate
+  // faster than 60°/s however fast the target moves (20× sim, snap jitter).
+  const dtS=Math.min(0.5,Math.max(0,(now-(UI._orientT||now))/1000));
+  UI._orientT=now;
+  let stepDeg=d*Math.min(1,2*dtS);
+  const maxStep=60*dtS;
+  if(Math.abs(stepDeg)>maxStep) stepDeg=Math.sign(stepDeg)*maxStep;
+  UI._mapOrient=(UI._mapOrient+stepDeg+360)%360;
   return UI._mapOrient;
 }
 
@@ -6919,6 +8528,8 @@ function redrawMap(id){
   // Route through _recDetailRedraw so the dashed synthetic overlay reapplies on
   // every tile load and pan/zoom gesture.
   if(id==='rec-detail-map'){if(_recDetailRoute)_recDetailRedraw();return;}
+  // PackView draws a trail, not a route — and has no cur() at all.
+  if(id==='view-map'){if(_viewRoute)_viewRedraw();return;}
   const r=cur();if(!r)return;
   const isLive=id==='live-map';
   const isReview=id==='turn-review-map';
@@ -6956,13 +8567,15 @@ function redrawMap(id){
   if(isLive){
     const st=ms('live-map');
     const gpsOn=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
-    if(gpsOn&&!st._fitted){
+    // _packPeekOn(): while "show the pack" is active, follow-GPS stands down so the
+    // pack framing isn't yanked back to your own dot on the next tick (v253).
+    if(gpsOn&&!st._fitted&&!_packPeekOn()){
       // Match GPS handler exactly so tile loads / redraws don't cause a jump.
       // forceHeading = route-aligned (or GPS-heading off-route) orientation; the
       // triangle is drawn fixed pointing up, so the map turns and "you" stays put.
       drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:false,forceHeading:_rideHeadingDeg(r.points),highlightId:_highlightStopId});
     } else {
-      const liveAnchor=(st.cx===null||st.cy===null)?0.5:0.65;
+      const liveAnchor=(st.cx===null||st.cy===null||_packPeekOn())?0.5:0.65;
       drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:liveAnchor,highlightId:_highlightStopId});
     }
   } else {
@@ -9998,6 +11611,9 @@ function sortedLayers(r){
 }
 
 function _render(){
+  // PackView and the join screen have torn the app shell out — there are no tabs and
+  // no content-wrap to render into. Any stray render() call would throw, so bail.
+  if(_viewCode || _joinCode) return;
   initDesktop(); // ensure content-wrap is in the right container
   // Tabs
   document.getElementById('tabs').innerHTML=
@@ -10769,6 +12385,21 @@ function tLiveShell(r){
         ${distBar}
         ${mapCtrlHTML('live-map',true)}
         ${(()=>{
+          // SHARING indicator. Peter's rule: if the app is broadcasting your
+          // position, that fact must be on screen, and it must be one tap to stop.
+          // Only ever shown while it is genuinely transmitting.
+          if(!shareIsLive())return'';
+          const q=(UI.shareQueue&&UI.shareQueue.length)?` · ${UI.shareQueue.length} waiting`:'';
+          return`<div id="share-pill" style="position:absolute;top:8px;left:8px;z-index:22;display:flex;align-items:center;gap:6px;background:rgba(10,15,10,.88);border:1px solid rgba(74,222,128,.45);border-radius:var(--r-ctrl);padding:5px 9px;cursor:pointer;">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;"></span>
+            <span style="font-size:12px;font-family:var(--sans);font-weight:600;letter-spacing:.4px;color:var(--accent);">SHARING${q}</span>
+          </div>`;
+        })()}
+        <!-- PACK pill is built by _packPillSync(), NOT here — see the note on that
+             function. Anything only in this template is never created mid-ride,
+             because render() short-circuits to updateLive() during a sim/GPS. -->
+
+        ${(()=>{
           // Inline confirmation strip — only visible after the user taps "Stop ride".
           // Sits just under the map controls, right side. Hidden by default.
           // _recStopConfirm shows it; _recStopCancel/_recStopConfirm hide it.
@@ -10872,17 +12503,12 @@ function initLiveMap(r){
       const lo=document.getElementById('live-scroller');
       if(lo)lo.style.height=Math.max(mapH+200,viewH-tabsH)+'px';
     }
-    if(_livePeekTimer){
-      redrawMap('live-map'); // recalculates peek framing at new size
-    } else {
-      const st=ms('live-map');
-      const gpsOn=(UI.gpsActive||UI.simRunning)&&UI.gpsDistKm!==null;
-      if(gpsOn&&!st._fitted){
-        drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
-      } else {
-        drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:st._fitted?0.5:0.65,rotate:false});
-      }
-    }
+    // v252: ONE drawing authority. This used to be a second, older copy of the
+    // live-draw branch that rotated by the RAW GPS heading (rotate:true, no
+    // forceHeading) or drew north-up — so every resize (address bar, strip text
+    // reflow) fought the eased route-aligned orientation and twitched the map.
+    // redrawMap('live-map') already handles peek / follow / fitted correctly.
+    redrawMap('live-map');
   };
   // Call immediately, then again after layout settles (sidebar/strips may not have final dimensions yet)
   sizeLiveMap();
@@ -11275,6 +12901,152 @@ function tSettings(r){
     </div>
     <p style="font-size:13px;color:var(--text3);margin-top:10px;line-height:1.5;">💡 Sync is triggered on save and on startup. To sync between devices manually, tap <strong>Save now</strong> on one device then <strong>Force load</strong> on the other.</p>`;
 
+  // ── Location sharing ──
+  // Two states: never set up (nothing has ever been sent, and can't be), or set
+  // up (a token exists; sharing runs whenever you record, unless you say not to).
+  const sharingBody=(()=>{
+    if(!shareIsSetUp())return`
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Let someone follow your dot on a map while you ride. They open a link in a browser — nothing to install, no account, and they see only where you are.</p>
+      <p style="font-size:14px;color:var(--text3);line-height:1.6;margin-bottom:12px;">Sharing only ever runs <strong>while you're recording a ride</strong>, and you can turn it off for any ride. Until you set it up here, nothing leaves your phone.</p>
+      <div class="field">
+        <label class="lbl">Your name — what watchers see</label>
+        <input type="text" id="share-label" placeholder="Peter" value="${(UI.shareLabel||'').replace(/"/g,'&quot;')}">
+      </div>
+      <button class="btn btn-full btn-p" id="btn-share-setup" style="margin-top:10px;">Set up sharing</button>
+      <p style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5;">⚠️ This is not an emergency beacon. It needs mobile reception — which is exactly what you don't have in the places an accident is worst. It's a "they can see I'm fine" feature, not a substitute for a PLB.</p>`;
+
+    const links=(UI.shareLinks||[]).filter(l=>!l.revokedAt);
+    const rideId=_rec?_rec.id:null;
+    const linkRow=l=>{
+      const exp=l.expiresAt?new Date(l.expiresAt):null;
+      const dead=exp&&exp<new Date();
+      const kind=l.rideId?'One ride only':'Permanent';
+      return`<div style="border:1px solid var(--border);border-radius:var(--r-ctrl);padding:9px 10px;margin-bottom:6px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.name||'Unnamed link'}</div>
+            <div style="font-size:12px;color:var(--text3);font-family:var(--font);margin-top:1px;">${l.viewCode} · ${kind}${exp?(dead?' · expired':' · until '+exp.toLocaleDateString()):''}</div>
+          </div>
+          <button class="btn btn-sm" data-sharecopy="${l.viewCode}">Copy link</button>
+          <button class="btn btn-sm btn-d" data-sharerevoke="${l.viewCode}">Revoke</button>
+        </div>
+      </div>`;
+    };
+
+    return`
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Sharing is set up as <strong style="color:var(--accent);">${UI.shareLabel||'Rider'}</strong>. It runs automatically whenever you record a ride.</p>
+
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:15px;padding:2px;">
+        <input type="checkbox" id="toggle-share-enabled" ${UI.shareEnabled!==false?'checked':''} style="width:18px;height:18px;accent-color:var(--accent);">
+        <span>Share my location while recording</span>
+      </label>
+      <p style="font-size:12px;color:var(--text3);margin:4px 0 0 30px;line-height:1.5;">On by default on purpose — thinking you were shared when you weren't is the worse mistake. Untick to ride privately; it stays off until you tick it again.</p>
+
+      <div class="field" style="margin-top:16px;">
+        <label class="lbl">Update every — <span id="share-int-val" class="unit">${UI.shareIntervalS||60}s</span></label>
+        <input type="range" id="share-int-sl" min="15" max="300" step="15" value="${UI.shareIntervalS||60}" style="width:100%;accent-color:var(--accent);">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>15s</span><span>2min</span><span>5min</span></div>
+        <p style="font-size:12px;color:var(--text3);margin-top:4px;line-height:1.5;">How often your position goes up. Most dot-watching sites use 5–10 minutes — slower is kinder to the battery and nobody watching from a kitchen table needs any better. Faster is for testing (and, later, pack rides).</p>
+      </div>
+
+      <div style="font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px;">Who can watch</div>
+      ${links.length?links.map(linkRow).join(''):`<p style="font-size:14px;color:var(--text3);margin-bottom:8px;">No live links. Make one below and send it to someone.</p>`}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button class="btn btn-sm btn-p" id="btn-share-link-new">+ Permanent link</button>
+        ${rideId?`<button class="btn btn-sm" id="btn-share-link-ride">+ This ride only</button>`:''}
+        <button class="btn btn-sm" id="btn-share-refresh">Refresh</button>
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.5;">A <strong>permanent</strong> link follows every ride — give it to family once and it just works. A <strong>this-ride-only</strong> link is pinned to the ride you're on now and expires 48 hours after it; hand it to a group-ride organiser and they can never see anything else, ever. Revoking one link leaves the others alone.</p>
+
+      <div style="font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px;">Your rides on the server</div>
+      <p style="font-size:13px;color:var(--text3);line-height:1.6;margin-bottom:8px;">All rides stay on the server unless you delete them, which you can do at any time. <strong>Replay link</strong> makes a permanent page for that one ride, like a dot-watcher archive.</p>
+      ${(()=>{
+        const rides=UI.shareRides||[];
+        if(!rides.length)return`<p style="font-size:14px;color:var(--text3);">Nothing on the server yet.</p>`;
+        return rides.map(rd=>{
+          const when=rd.started_at?new Date(rd.started_at):null;
+          return`<div style="border:1px solid var(--border);border-radius:var(--r-ctrl);padding:9px 10px;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${rd.route_name||'Free ride'}</div>
+                <div style="font-size:12px;color:var(--text3);font-family:var(--font);margin-top:1px;">${when?when.toLocaleDateString():'—'} · ${rd.points||0} points</div>
+              </div>
+              <button class="btn btn-sm" data-ridelink="${rd.ride_id}">Replay link</button>
+              <button class="btn btn-sm btn-d" data-ridedel="${rd.ride_id}">Delete</button>
+            </div>
+          </div>`;
+        }).join('');
+      })()}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button class="btn btn-sm" id="btn-share-rides-refresh">Refresh</button>
+        <button class="btn btn-sm btn-d" id="btn-share-purge">Delete everything</button>
+      </div>
+
+      <div style="font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px;">Status</div>
+      <div style="font-size:14px;color:var(--text3);font-family:var(--font);line-height:1.7;">
+        ${shareIsLive()?'<span style="color:var(--accent);">● Sharing now</span>':(_rec?'Recording — sharing off':'Not recording')}<br>
+        ${UI.shareLastPushAt?'Last sent '+new Date(UI.shareLastPushAt).toLocaleTimeString():'Nothing sent yet'}
+        ${(UI.shareQueue&&UI.shareQueue.length)?`<br><span style="color:var(--amber);">${UI.shareQueue.length} point${UI.shareQueue.length===1?'':'s'} waiting for signal</span>`:''}
+        ${UI.shareLastErr?`<br><span style="color:var(--red);">Last error: ${UI.shareLastErr}</span>`:''}
+      </div>`;
+  })();
+
+  // ── PackRide (events) ──
+  // An event is one route, one start time, one code — and everyone in it sees
+  // everyone. The code IS the link you paste into a group chat.
+  const packrideBody=(()=>{
+    if(!shareIsSetUp())return`
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;">Ride with other people and see where everyone is on the map. Set up <strong>Location Sharing</strong> first — a group ride is sharing, with more than one rider.</p>`;
+
+    const evs=UI.events||[];
+    const evRow=ev=>{
+      const when=ev.startAt?new Date(ev.startAt):null;
+      const on=UI.eventCode===ev.code;
+      return`<div style="border:1px solid ${on?'rgba(96,165,250,.5)':'var(--border)'};border-radius:var(--r-ctrl);padding:9px 10px;margin-bottom:6px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(ev.name||'Group ride').replace(/</g,'&lt;')}${ev.organiser?' <span style="font-size:11px;color:var(--text3);font-weight:400;">· yours</span>':''}</div>
+            <div style="font-size:12px;color:var(--text3);font-family:var(--font);margin-top:1px;">${when?when.toLocaleString([],{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'No start time'} · ${ev.members} rider${ev.members===1?'':'s'} · every ${ev.intervalS}s</div>
+          </div>
+          <button class="btn btn-sm" data-evcopy="${ev.code}">Invite</button>
+          ${on?`<button class="btn btn-sm" data-evoff="1">Riding</button>`
+              :`<button class="btn btn-sm btn-p" data-evon="${ev.code}">Ride it</button>`}
+          <button class="btn btn-sm btn-d" data-evleave="${ev.code}">✕</button>
+        </div>
+      </div>`;
+    };
+
+    const r0=cur();
+    return`
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">A group ride: one route, one start time, one link. Everyone who joins sees everyone else on the map while they ride.</p>
+
+      ${evs.length?evs.map(evRow).join(''):`<p style="font-size:14px;color:var(--text3);margin-bottom:10px;">You're not in any group rides.</p>`}
+      ${UI.eventCode?`<p style="font-size:12px;color:#60a5fa;line-height:1.5;margin:2px 0 10px;">Your next recorded ride joins this group ride. Tap <strong>Riding</strong> to ride solo instead.</p>`:''}
+
+      <div style="font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px;">Create a group ride</div>
+      ${r0?`
+        <div class="field">
+          <label class="lbl">Name</label>
+          <input type="text" id="ev-name" placeholder="Saturday bunch ride">
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label class="lbl">Update every — <span id="ev-int-val" class="unit">30s</span></label>
+          <input type="range" id="ev-int-sl" min="10" max="300" step="10" value="30" style="width:100%;accent-color:var(--accent);">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:2px;font-family:var(--font);"><span>10s</span><span>1min</span><span>5min</span></div>
+          <p style="font-size:12px;color:var(--text3);margin-top:4px;line-height:1.5;">You set this for everyone — so one keen rider can't flatten the whole bunch's phones. Fast for a short sprint, slow for a long day. 10 min is too slow even for an ultra.</p>
+        </div>
+        <button class="btn btn-full btn-p" id="btn-ev-create" style="margin-top:10px;">Create from "${(r0.label||r0.name||'this route').replace(/"/g,'&quot;').replace(/</g,'&lt;')}"</button>
+        <p style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.5;">Uses the route and start time you've already set on the Route tab. Everyone who joins gets the route on their phone, so it navigates with no signal.</p>
+      `:`<p style="font-size:14px;color:var(--text3);">Load a route first — a group ride needs somewhere to go.</p>`}
+
+      <div style="font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px;">Join with a code</div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="ev-join-code" placeholder="ABCD1234" style="flex:1;text-transform:uppercase;font-family:var(--font);">
+        <button class="btn btn-p" id="btn-ev-join">Join</button>
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.5;">Normally you'd just tap the link someone sent you. This is for typing a code in by hand.</p>`;
+  })();
+
   const alertsHdr=t=>`<div style="font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px;">${t}</div>`;
   const alertsBody=r?`
     <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:2px;">Turn cues, stop alerts and off-route warnings for while you ride.</p>
@@ -11455,6 +13227,8 @@ function tSettings(r){
     <span style="flex:1;"></span>
     <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
   </div>
+  ${section('sharing','📍 Location Sharing',sharingBody)}
+  ${section('packride','👥 Group Rides (PackRide)',packrideBody)}
   ${section('strava','Strava',(()=>{
     if(!UI.stravaToken)return`
       <p style="font-size:15px;color:var(--text3);margin-bottom:10px;line-height:1.5;">Connect your Strava account to upload recorded rides straight from PackTimes. After connecting, each finished ride uploads automatically (you can turn that off here).</p>
@@ -13234,6 +15008,7 @@ function renderTurnCue(r,liveDist){
 // ═══════════════════════════════════════════
 function updateLive(){
   const r=cur();if(!r)return;
+  _packPillSync();   // built here, not in the template — see the note on _packPillSync
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const prog=liveDist/Math.max(1,r.totalDist);
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
@@ -13499,10 +15274,15 @@ function updateLive(){
           const mc2=document.getElementById('live-map');
           if(mc2){
             const st=ms('live-map');
-            if(st._fitted){
+            if(st._fitted||_packPeekOn()){   // pack peek = overview: don't re-centre on you (v253)
               drawMap(mc2,r,{showGPS:true,followGPS:false,anchor:0.5,rotate:false});
             } else {
-              drawMap(mc2,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:true});
+              // v252: was rotate:true = RAW GPS heading — while every other live
+              // redraw used the eased route-aligned heading. This is the MAIN draw
+              // (fires on every GPS/sim tick), so the map was told two different
+              // orientations many times a second: the jitter at every bend, on the
+              // phone and the sim alike. Now the same single authority everywhere.
+              drawMap(mc2,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:false,forceHeading:_rideHeadingDeg(r.points)});
             }
           }
         });
@@ -14232,6 +16012,190 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
 
   /* alert-ok handler removed — stop alerts now use next-strip pulse + audio chime */
+  // ── PackRide (events) ──
+  if(e.target.closest('#pack-pill')){ zoomToPack(); return; }
+  if(e.target.closest('#btn-ev-create')){
+    const r=cur();
+    if(!r){_recToast('Load a route first');return;}
+    if(UI.shareBusy)return;UI.shareBusy=true;
+    const nm=(document.getElementById('ev-name')?.value||'').trim()||'Group ride';
+    const iv=+(document.getElementById('ev-int-sl')?.value||30);
+    // Start time comes from the route — it's already set on the Route tab, and
+    // asking twice for the same fact is how forms get long.
+    let startAt=null;
+    try{ startAt=startDT(r)?.toISOString()||null; }catch(_){}
+    _recToast('Creating the group ride…');
+    eventCreate(nm,r,startAt,'ride',iv)
+      .then(code=>{
+        const url=eventUrl(code);
+        (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject())
+          .then(()=>_recToast('Created — invite link copied'))
+          .catch(()=>{window.prompt('Invite link:',url);});
+      })
+      .catch(()=>_recToast('Couldn\'t create it — check your connection'))
+      .finally(()=>{UI.shareBusy=false;render();});
+    return;
+  }
+  if(e.target.closest('#btn-ev-join')){
+    const code=(document.getElementById('ev-join-code')?.value||'').trim().toUpperCase();
+    if(!code){_recToast('Put the code in first');return;}
+    if(UI.shareBusy)return;UI.shareBusy=true;
+    eventJoin(code,UI.shareLabel||'Rider')
+      .then(info=>{
+        if(!info||info.error){_recToast('No ride with that code');return;}
+        const r=eventRouteToRoute(info);
+        if(r){
+          const i=ROUTES.findIndex(x=>x.id===r.id);
+          if(i>=0)ROUTES[i]=r; else ROUTES.push(r);
+          CUR=ROUTES.findIndex(x=>x.id===r.id);
+        }
+        saveAll();
+        _recToast('Joined — route is on your phone');
+      })
+      .catch(()=>_recToast('Couldn\'t join — check your connection'))
+      .finally(()=>{UI.shareBusy=false;render();});
+    return;
+  }
+  const _evcopy=e.target.closest('[data-evcopy]');
+  if(_evcopy){
+    const url=eventUrl(_evcopy.dataset.evcopy);
+    (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject())
+      .then(()=>_recToast('Invite link copied — paste it in the group chat'))
+      .catch(()=>{window.prompt('Invite link:',url);});
+    return;
+  }
+  const _evon=e.target.closest('[data-evon]');
+  if(_evon){
+    packReset();
+    UI.eventCode=_evon.dataset.evon;
+    const ev=(UI.events||[]).find(x=>x.code===UI.eventCode);
+    if(ev&&ev.intervalS)UI.shareIntervalS=ev.intervalS;
+    _shareSaveAuth();
+    if(_rec)packStart();
+    _recToast('Your next ride joins this group');
+    render();
+    return;
+  }
+  if(e.target.closest('[data-evoff]')){
+    UI.eventCode=null;UI.eventRouteKey=null;packReset();
+    _shareSaveAuth();
+    _recToast('Riding solo');
+    render();
+    return;
+  }
+  const _evleave=e.target.closest('[data-evleave]');
+  if(_evleave){
+    const code=_evleave.dataset.evleave;
+    if(!confirm('Leave this group ride?\n\nThe others stop seeing you, and you stop seeing them. You can re-join with the same link.'))return;
+    eventLeave(code).then(()=>{_recToast('Left the group ride');render();})
+      .catch(()=>_recToast('Couldn\'t leave — check your connection'));
+    return;
+  }
+
+  // ── Location sharing ──
+  if(e.target.closest('#share-pill')){
+    // One tap to stop broadcasting, from the ride screen, with numb hands.
+    if(!confirm('Stop sharing your location?\n\nWhoever has your link will stop seeing you. Recording carries on as normal.\n\nYou can turn it back on in Settings.'))return;
+    UI.shareEnabled=false;
+    _shareSaveAuth();
+    _recToast('Sharing off');
+    render();
+    return;
+  }
+  if(e.target.closest('#btn-share-setup')){
+    const nm=(document.getElementById('share-label')?.value||'').trim();
+    if(!nm){_recToast('Put in a name first');return;}
+    if(UI.shareBusy)return;
+    UI.shareBusy=true;_recToast('Setting up sharing…');
+    shareSetup(nm).then(()=>{_recToast('Sharing is set up ✓');}).catch(err=>{
+      _recToast('Couldn\'t set up sharing — check your connection');
+      console.log('share setup failed',err);
+    }).finally(()=>{UI.shareBusy=false;render();});
+    return;
+  }
+  if(e.target.id==='toggle-share-enabled'){
+    UI.shareEnabled=e.target.checked;
+    _shareSaveAuth();
+    _recToast(UI.shareEnabled?'Sharing on':'Sharing off — riding privately');
+    render();
+    return;
+  }
+  if(e.target.closest('#btn-share-link-new')){
+    if(UI.shareBusy)return;UI.shareBusy=true;
+    shareLinkCreate('New link',null,null)
+      .then(c=>{_recToast(c?'Permanent link created':'Failed');})
+      .catch(()=>_recToast('Couldn\'t create the link'))
+      .finally(()=>{UI.shareBusy=false;render();});
+    return;
+  }
+  if(e.target.closest('#btn-share-link-ride')){
+    // Pinned to THIS ride and nothing else, ever — and it dies 48h after you finish.
+    if(!_rec){_recToast('Start recording first');return;}
+    if(UI.shareBusy)return;UI.shareBusy=true;
+    const exp=new Date(Date.now()+48*3600*1000).toISOString();
+    shareLinkCreate('This ride',_rec.id,exp)
+      .then(c=>{_recToast(c?'One-ride link created':'Failed');})
+      .catch(()=>_recToast('Couldn\'t create the link'))
+      .finally(()=>{UI.shareBusy=false;render();});
+    return;
+  }
+  if(e.target.closest('#btn-share-refresh')){
+    shareLinksLoad().then(()=>render());
+    return;
+  }
+  if(e.target.closest('#btn-share-rides-refresh')){
+    shareRidesLoad().then(()=>render());
+    return;
+  }
+  const _rdlink=e.target.closest('[data-ridelink]');
+  if(_rdlink){
+    // A link pinned to ONE ride with NO expiry = a permanent replay page for that
+    // ride, forever, that can never show any other. The dot-watcher archive.
+    if(UI.shareBusy)return;UI.shareBusy=true;
+    const rid=_rdlink.dataset.ridelink;
+    const rd=(UI.shareRides||[]).find(x=>x.ride_id===rid);
+    shareLinkCreate('Replay — '+((rd&&rd.route_name)||'ride'),rid,null)
+      .then(c=>{
+        if(!c){_recToast('Failed');return;}
+        const url=shareViewUrl(c);
+        (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject())
+          .then(()=>_recToast('Replay link created and copied'))
+          .catch(()=>{window.prompt('Replay link:',url);});
+      })
+      .catch(()=>_recToast('Couldn\'t create the link'))
+      .finally(()=>{UI.shareBusy=false;render();});
+    return;
+  }
+  const _rddel=e.target.closest('[data-ridedel]');
+  if(_rddel){
+    const rid=_rddel.dataset.ridedel;
+    if(!confirm('Delete this ride from the server?\n\nIts positions are gone for good, and any replay link pointing at it stops working. Your recording on this phone is NOT touched.'))return;
+    shareRideDelete(rid).then(()=>{_recToast('Deleted from the server');render();})
+      .catch(()=>_recToast('Couldn\'t delete — check your connection'));
+    return;
+  }
+  if(e.target.closest('#btn-share-purge')){
+    if(!confirm('Delete ALL your shared data?\n\nEvery position, every ride, every route on the server. Gone for good.\n\nYour recordings on this phone are NOT touched, and your family\'s permanent link keeps working for future rides.'))return;
+    sharePurge().then(()=>{_recToast('Server data deleted');render();})
+      .catch(()=>_recToast('Couldn\'t delete — check your connection'));
+    return;
+  }
+  const _shcopy=e.target.closest('[data-sharecopy]');
+  if(_shcopy){
+    const url=shareViewUrl(_shcopy.dataset.sharecopy);
+    (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject())
+      .then(()=>_recToast('Link copied — paste it into a message'))
+      .catch(()=>{window.prompt('Copy this link:',url);});
+    return;
+  }
+  const _shrev=e.target.closest('[data-sharerevoke]');
+  if(_shrev){
+    const code=_shrev.dataset.sharerevoke;
+    if(!confirm('Revoke this link?\n\nWhoever has it will stop seeing you. Your other links are unaffected.'))return;
+    shareLinkRevoke(code).then(()=>{_recToast('Link revoked');render();})
+      .catch(()=>_recToast('Couldn\'t revoke — check your connection'));
+    return;
+  }
   if(e.target.closest('#btn-strava-connect')){sessionStorage.setItem('strava_return_tab',UI.tab);window.location.href=stravaAuthURL();return;}
   if(e.target.closest('#btn-strava-retry')){_recToast('Retrying Strava uploads…');_stravaLastForce=0;stravaProcessQueue(true);return;}
   if(e.target.closest('#btn-strava-disconnect')){stravaDisconnect();return;}
@@ -14268,6 +16232,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const key=settingsHdr.id.replace('settings-hdr-','');
     if(UI.settingsExp.hasOwnProperty(key)){
       UI.settingsExp[key]=!UI.settingsExp[key];
+      // Opening Location Sharing: pull the current link list from the server, so
+      // it's right even if links were made or revoked on another device.
+      if(key==='sharing'&&UI.settingsExp.sharing&&shareIsSetUp())
+        Promise.all([shareLinksLoad(),shareRidesLoad()]).then(()=>renderKeepScroll()).catch(()=>{});
+      if(key==='packride'&&UI.settingsExp.packride&&shareIsSetUp())
+        eventListLoad().then(()=>renderKeepScroll()).catch(()=>{});
       // Use setTimeout to defer render past any touch event propagation
       // This prevents ghost taps on newly revealed buttons (e.g. sim Play button)
       setTimeout(()=>renderKeepScroll(),50);
@@ -14675,6 +16645,16 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     UI.alertKm=+e.target.value;
     const v=document.getElementById('alert-km-val');
     if(v)v.textContent=UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):((UI.alertKm*1000).toFixed(0)+'m');
+    return;}
+  if(e.target.id==='ev-int-sl'){
+    const v=document.getElementById('ev-int-val');
+    if(v)v.textContent=e.target.value+'s';
+    return;}
+  if(e.target.id==='share-int-sl'){
+    UI.shareIntervalS=+e.target.value;
+    const v=document.getElementById('share-int-val');
+    if(v)v.textContent=UI.shareIntervalS+'s';
+    _shareSaveAuth();
     return;}
   if(e.target.id==='turn-alert-sl'){
     UI.turnAlertM=+e.target.value;
@@ -15310,12 +17290,26 @@ async function geocodeStop(stop,lat,lon,r){
 //  INIT
 // ═══════════════════════════════════════════
 loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
+  // ── PackView mode ──
+  // ?view=ABC123 → this is a spectator, not the rider. Replace the whole shell
+  // with the viewer and stop: no tabs, no GPS, no Dropbox, no recovery prompt.
+  // Same file, same map engine, completely different thing on screen.
+  const _q  = new URLSearchParams(location.search);
+  const _vc = _q.get('view');
+  if(_vc){ renderViewer(_vc); return; }
+  // ── PackRide join (?join=CODE) ──
+  // Someone tapped a link in a group chat. Show them the ride, not the app.
+  const _jc = _q.get('join');
+  if(_jc){ renderJoin(_jc); return; }
   // Kill any leftover sim state from a previous PWA session
   if(_simTimer){clearTimeout(_simTimer);_simTimer=null;}
   UI.simRunning=false;UI.simPaused=false;_simPts=null;_simIdx=0;
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;
   DB.setKV('lastGpsState',null).catch(()=>{});
   initDesktop();render();
+  // Watching the pack starts as soon as you're in an event — not when you press
+  // record. You want to see people arriving at the start, not a blank map.
+  if(eventActive())packStart();
   // Crash recovery: prompt for any unfinished recordings found during loadAll
   _recRecoveryShow();
   // Auto-load from Dropbox if connected and cloud is newer

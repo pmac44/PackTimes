@@ -58,6 +58,258 @@ gated by `planStartInFuture`, so a future-dated plan stays on its planned clock)
 
 ---
 
+## Current status (14 July 2026, v251–v256) — PackRide sim-test fixes + THE ROTATION FIGHT
+
+Fixes from Peter's first two-browser PackRide simulation (desktop, two windows + a
+PackView window). **NOT ride-tested.** Note: v248–v250 (PackRide itself — events, join
+links, the pack on the live map, the 1/2 placing pill) were built in another session and
+are not written up here; grep the `PACKRIDE` banner (~5625) for the model.
+
+**(v252) THE MAP-ROTATION JITTER — three controls genuinely fighting (Peter called it).**
+After v251's flip fix the map was still jittery at every bend, at 1× and on the phone.
+Peter's diagnosis — "competing controls for aligning with the route and pointing north,
+maybe using the phone's heading" — was right on all three counts:
+1. **The MAIN per-GPS-tick draw in `updateLive` used `rotate:true` = RAW GPS heading**,
+   while every `redrawMap` path used the eased route heading — the map was told two
+   different orientations many times a second. Now all live draws go through
+   `forceHeading:_rideHeadingDeg(...)` (one authority).
+2. **A second old copy of the live-draw branch in `sizeLiveMap`** also rotated by raw
+   heading (or north-up) on every resize — address-bar/strip reflows on the phone.
+   Replaced with a plain `redrawMap('live-map')`.
+3. **`_rideHeadingDeg`'s ±30 m window walked route VERTICES** — points spaced wider
+   than 30 m found nothing → silent fallback to raw GPS heading → target flickered
+   route-bearing ↔ phone-heading at bends. Now an interpolated chord (binary search,
+   ~30 m behind → ~30 m ahead of `gpsDistKm`): never degenerate on-route, and the
+   bearing sweeps CONTINUOUSLY through corners.
+Also: easing is now TIME-based (close ~2×error/s), not per-call — redraws come from
+several timers at once (tween 110 ms / pack 120 ms / blink 130 ms) and per-call steps
+beat against each other. Node-verified on a twisty sparse route: dead steady on
+straights, smooth 0→90° sweep through a corner, max 14°/s, sparse points no longer null.
+**Rider name tags counter-rotate** in `drawPack` (translate → rotate(+`cvs._heading`))
+so they stay horizontal on the heading-up map — they read upside down half the time.
+
+**(1) Pack + sharing pills were drawn ON TOP of the distance bar.** Both were hard-coded
+`top:8px`, but the ride distance bar owns 6–40px and the floating pills own `top:48px`.
+Now `_packPillSync` measures the slot-0 floating pill each pass and sits BOTH pills just
+below it on the left edge (falls back to below the bar if no pill row). The share pill is
+repositioned there too — its template `top:8px` had the same overlap on solo shared rides.
+
+**(2) Map rotated violently to-and-fro in the start/finish overlap zone.** At ~324 km the
+route runs beside its own outbound 25 km leg; the snap flipped between legs, the target
+heading flipped ~180° each time, and the 0.18 easing swung the whole map around and back.
+Two additions to `_rideHeadingDeg`: **flip rejection** (a >120° jump is held for 2.5 s
+before being believed — a ridden switchback never trips it because its bearing sweeps
+through intermediate angles rather than jumping) and a **rate cap** (map may not rotate
+faster than 60°/s of wall-clock time, so 20× sim or snap jitter can't whip it). Node truth-
+tabled: flip-flop = zero swing; real U-turn comes around after the hold; 90° corner and
+±15° jitter unchanged.
+
+**Sim-testing PackRide (the recipe, for next time):** one browser window per rider — each
+needs its own storage (incognito = one extra rider; Chrome profiles or other browsers for
+more). Organiser creates the event; rider 2 opens the `?join=CODE` link. **A rider is only
+visible while RECORDING** (sharing transmits only then), so each window must press record
+AND run the sim. The "1/2" pill = your placing of the riders the server knows. PackView
+`?view=` links are single-rider by design — there is no whole-event spectator page yet.
+Sim artefacts, not bugs: watcher speed reads ~20× real (positions arrive 20× fast); the
+trail's yellow line jumps ahead of the interpolated dot on each fresh position.
+
+**(v253) Pack pill works + wears the colours.** Tapping the pill did nothing: `zoomToPack`
+set the map centre and a `_packFollow` flag that NOTHING read, so the next GPS tick's
+follow-draw yanked the map straight back. Now it's a proper PEEK: `_packPeekOn()` gates
+the follow branches in `redrawMap` AND `updateLive`'s RAF draw; zoom is saved/restored;
+snaps back after 12 s or on a second tap ("Following you"). Pill icon is now three
+yellow dots on a diagonal (a paceline — Peter's request; hex #fde047 hard-coded in
+`PACK_PILL_ICON` because `PACKRIDE_YELLOW` is declared later in the file), text +
+border yellow to match.
+
+**(v254–v255) Pill polish + moved to Peter's spot.** Pack pill icon is now EXACTLY the
+mockup mark from `_planning/packride-mockups.html` (three dots in formation, leader +
+two behind, viewBox 20). Pill moved to bottom-left, just above the weather pill.
+v254 composed inline `bottom` values and landed BELOW the weather pill on the elevation
+strip — the weather bar and the pill live in DIFFERENT containers. v255 measures with
+`getBoundingClientRect` (container-agnostic, rides up when the bar expands). Share pill
+still sits below the speed pill. **Gotcha for anything positioned against another live
+overlay: the live-map-section spans more than the map canvas, and overlays are anchored
+in different sub-containers — always use rect maths, never compose `top`/`bottom` px.**
+
+**STILL OPEN (Peter's direction, next session):**
+- **RIDE-SCREEN CONSOLIDATION (design piece, do it with mockups like the turn-cue
+  process).** Peter: "There is a lot going on... it needs to be super simple." Sharing
+  pill + pack pill + record button all compete. His ideas so far: the PackRide button
+  could BLINK/PULSE to show location sharing is live (one object, two jobs); tap →
+  popup listing every rider and their position/gap (big, glove-friendly). Also:
+  "recording must be on to share" is fundamentally right (Peter agrees) but currently
+  incomprehensible to a user — the UI must EXPLAIN the coupling, e.g. a sharing pill
+  that shows "sharing starts with your ride" when armed-but-not-recording.
+- ~~Joined riders get a FLAT route~~ **DONE (v256 + schema-v8.sql, Peter's diagnosis was
+  exact).** Routes now carry `ele` — whole metres, delta-encoded with the same varint
+  scheme as the poly (`_encodeEles`/`_decodeEles`, ~1 B/pt, node-verified exact
+  round-trip on 6,000 points). Both `route_ensure` payloads send it; `event_info`
+  returns it; `eventRouteToRoute` decodes it (pre-v8 routes have null ele → falls back
+  to 0 as before). **ORDER: run `supabase/schema-v8.sql` BEFORE using the v256 client**
+  — the new client sends `p_ele`, which the v7 function doesn't accept (old clients
+  against the new function are fine; p_ele defaults null). Existing events keep their
+  flat route row — create a NEW event (route_ensure upserts) to get elevation across.
+  `share_view`/PackView deliberately untouched (no elevation graph there).
+- **Joining via a PackRide link should open the PackRide PRESET, not full PackTimes.**
+  Peter's sim: the `?join=` link showed the join page, but after joining it boots the
+  FULL app ("all features enabled"). The architecture-plan §3.6/§3.7 model is doorways
+  set the preset — a rider arriving via a PackRide link should land in the pared-down
+  group-ride experience. `event_create` already stores `p_preset`; nothing applies it
+  client-side yet.
+- **Event PackView (Peter wants this)**: a spectator page for a whole event — one link,
+  ALL riders, for a follower at home. **Scoped, needs NO backend change:** `event_pack`
+  already accepts a null write token (granted to anon; isYou simply false) and
+  `event_info(code)` returns the route poly + stops. So: a `?watch=EVENTCODE` boot mode
+  reusing the PackView shell + `drawPack`, polling `event_pack`, plus a "Copy spectator
+  link" button in the PackRide settings section.
+- **PackView: trail lines OFF by default, as a toggleable LAYER** (like the km-marker
+  toggle) — the yellow line drawn between fixes (which also visibly jumps ahead of the
+  interpolated dot on each fresh position) shouldn't show unless turned on.
+- **PackView: hover on a rider dot → name + some info** (speed / distance / last seen).
+  It's a kitchen-table page, so hover is fair game; complements the existing
+  tap-a-breadcrumb timestamp/speed.
+- Organiser window UX: nothing tells you the other riders can't see you until you record.
+
+## Current status (13 July 2026, v247) — POWER + HEART RATE ARE NOW ACTUALLY RECORDED
+
+**A real hole, found by Peter asking a question: power and HR were never recorded, so they
+were never uploaded to Strava.** The sensors were read over Bluetooth, shown live on the Ride
+tab pills, and then *thrown away* when the fix was stored. A rider with a power meter got a
+bare GPS track on Strava — the one number they care about, missing. Silently, for months.
+
+**Root cause, and the reason it stayed hidden:** four separate places in `_appendPoint`
+built a recorded point with their own object literal (first fix / moved-enough / stop marker
+/ resume marker). Nobody thought to add sensors to all four, so nobody added them to any.
+Fixed structurally: **all four now go through one `_recPt()` builder.** If a field needs to
+ride along with a fix, there is exactly one place to add it. Keep it that way.
+
+- **Point shape** gains `hr`, `pw`, `cad`, `bal` — *omitted, not null*, when there's no
+  sensor, so a sensorless rider's recordings are byte-identical to before. No migration.
+- **FIT** record message gains the standard fields: `heart_rate` (3), `cadence` (4),
+  `power` (7). Points with no reading are written as FIT "invalid" (0xFF / 0xFFFF), which is
+  the spec's way of saying "no data" — decoders and Strava skip them. Session `sport` was
+  already `cycling`, so Strava derives avg/max/normalised power and HR zones straight from
+  the per-record values; nothing else needed computing.
+- **GPX** gains the standard Garmin extensions — `gpxtpx:TrackPointExtension` (hr, cad) and
+  `gpxpx:PowerInWatts`. Same ones Strava/Garmin Connect/every analysis tool already read.
+- **VERIFIED against the real Garmin SDK decoder** (`_planning/fit-spike/`, which exists for
+  exactly this): integrity true, CRC valid, zero decode errors, sensors present on precisely
+  the records that had them and absent on the ones that didn't, sport = cycling.
+
+**Not yet ride-tested with a real power meter / HR strap.** The maths is verified; the
+Bluetooth capture path is the untested half.
+
+## Current status (13 July 2026, v246) — LOCATION SHARING + PACKVIEW (Phase 2 begins)
+
+**The one-way door is open: PackTimes now has a backend.** Supabase (free tier, Sydney
+region, project `iwlgfkedrkajesgorysz`). Schema is version-controlled in
+`supabase/schema-v2.sql` — that file is the source of truth; `schema-v1.sql` and
+`schema-v2-patch.sql` are superseded and can be deleted. **NOT ride-tested.**
+
+**The model (Peter drove this, and it's right).**
+- **One SHARE = one rider.** A secret `write_token`, minted once by `share_init`, lives
+  on the phone in its OWN KV row (`shareAuth`) — deliberately NOT in `uiPrefs`, so it
+  never rides along to Dropbox with the rest of the prefs. The phone pushes its position
+  **once** per interval, no matter how many people are watching.
+- **Many VIEW LINKS hang off it.** Each is an 8-char public code, separately named,
+  separately expiring, separately revokable.
+  - *Permanent* (`ride_id` null) → follows every ride. Give it to family once, forever.
+  - *Pinned* (`ride_id` set + 48 h expiry) → welded to ONE ride. Hand it to a group-ride
+    organiser and they can never see any other ride, ever, even by accident.
+  - Revoking one link leaves the others alone.
+- **Why this shape:** my first cut tied the write token and the view code together 1:1,
+  which meant a NEW LINK EVERY RIDE — useless, your wife would need a fresh URL each
+  time. Peter caught it. Splitting rider-identity from watch-window is what makes both
+  the permanent-family case and the one-off-organiser case fall out for free.
+
+**PRIVACY — the rules, and why (do not quietly erode these).** Full contract in
+`architecture-plan.md §7`, which was rewritten today.
+- Nothing is EVER sent until the rider deliberately sets sharing up. No token = no code
+  path that can transmit. Structural, not a flag.
+- Sharing runs **only while recording** (Peter's call — kept the original rule). Pause
+  the recording, sharing pauses. Stop it, sharing stops.
+- Then it **defaults ON every ride**, with a visible indicator and one tap to kill it.
+  The asymmetry is deliberate: thinking you were shared when you weren't could cost you;
+  forgetting to turn it off costs you some privacy with someone you already trust.
+  **Key argument that resolves the default-on vs off-by-default tension:** for a rider
+  who has never made a link, default-on carries the full privacy cost and *zero* safety
+  benefit — nobody is watching. Safety only exists once someone holds a link. So
+  "off until set up, on by default after" is the same rule applied honestly, not a fudge.
+- **Not an emergency beacon, and the UI must never imply it is.** Needs reception, which
+  is exactly what you don't have where an accident is worst. Not a PLB substitute.
+
+**SECURITY.** The publishable key is in `index.html`, which is public on GitHub — so
+assume everyone has it. Both tables have **RLS on with ZERO policies**, so the key cannot
+touch them directly at all. Everything goes through narrow `security definer` SQL
+functions (`share_init`, `share_set_label`, `link_create`, `link_list`, `link_revoke`,
+`share_push`, `share_view`). Holding a view link lets you WATCH and nothing else — there
+is no path that returns a write token. Guessing a view code is 32^8 ≈ 1.1 trillion tries.
+Accepted limit: anyone with the key can call `share_init` and make junk shares; costs us
+rows and nothing else. **Gotcha:** pgcrypto lives in the `extensions` schema on Supabase,
+so every function needs `set search_path = public, extensions` or `gen_random_bytes` is
+not found.
+
+**PACKVIEW is the same file, not a second app** (Peter's reasoning, and it's the strongest
+argument in the room): two codebases = two map engines = every map fix has to be remembered
+twice, and that's what rots side projects. So `index.html?view=ABC123` boots into
+`renderViewer()`, which replaces the WHOLE `#app` shell — no tabs, no settings, nothing to
+install — and reuses the real `drawMap`. Checked the load cost first because Peter made it
+a condition: 875 KB raw but ~180 KB gzipped over the wire, once, then cached. Less than a
+phone photo. `_render()` bails early when `_viewCode` is set (there's no content-wrap to
+render into). `redrawMap('view-map')` is special-cased like `rec-detail-map`.
+
+**Code map:** new `LOCATION SHARING` + `PACKVIEW` banner sections sit between STRAVA and
+RIDE SIMULATOR (~5206). Hooks: `_shareMaybePush` fires from the top of `_appendPoint`
+("one capture, two destinations" — a failed push never affects the local recording);
+`startRecording`/`finaliseRecording` reset `_shareLastPos`; Settings gets a
+`📍 Location Sharing` section; the Ride tab gets a `#share-pill` indicator (only rendered
+while genuinely transmitting, tap to stop).
+
+**Offline behaviour:** `_shareFlush` drains the queue oldest-first, strictly sequentially,
+and stops dead at the first failure. No reception = points WAIT (persisted in the
+`shareAuth` KV row, so a crash doesn't lose them). Nothing is ever dropped because a push
+failed — ride back into signal and the whole backlog lands, filling the trail in behind
+you. Retry triggers are the same set Strava's queue uses (`online`, `visibilitychange`).
+
+**Interval:** default 60 s (Peter wants it fast for testing). Most dot-watching sites use
+5–10 min; slower is kinder to the battery and no watcher needs better. Slider is 15 s–5 min.
+High-frequency mode is a Phase 4 / PackRide concern.
+
+**STILL OPEN:**
+- **Nothing in v246 is tested on a real ride.** Desktop/SQL only. Two things a ride must
+  prove: positions actually land at 60 s intervals with the screen off, and the queue
+  drains correctly after a reception blackout.
+- ~~PackView shows the breadcrumb trail only~~ **DONE (schema v3).** PackView now draws the
+  **planned route + stops** underneath the yellow breadcrumb trail — same `drawMap` the Ride
+  tab uses. The route is uploaded once per route (`route_ensure` upserts on `route_key`, so
+  re-riding is free and editing republishes), as an encoded **Google polyline** — a
+  6,000-point / 300 km route is **24 KB**, vs 118 KB as raw JSON. `rides` links a ride to its
+  route, which is what lets a *pinned* link show the right route for its one ride while a
+  *permanent* link follows the rider onto the next. Queued through the SAME retry machinery
+  as positions, so a ride started in a dead spot gets its route up when signal returns.
+  **Peter's argument for defaulting route-sharing ON, and it's the right one:** in an
+  emergency the PLAN can matter more than the position — a plan is searchable when a
+  position is stale or was never sent. Family should have it; a group ride already has the
+  route; a public event publishes it anyway. If a "position only" link is ever wanted, add a
+  `show_route` flag to `view_links` — the plumbing is already isolated for it.
+- PackView extras built alongside: map-style switcher (Map/Satellite/Cycle/Topo — just sets
+  the existing `_tileMode` global), km-marker toggle (new `opts.noKm` in `drawMap`), tap a
+  breadcrumb for its timestamp/speed (its OWN hit test — the map engine's `tapCb` path runs
+  `hitTest`, which calls `cur()`, and PackView has no current route), follow-the-dot with a
+  Recentre button when the watcher pans away, and its own yellow (`PACKVIEW_YELLOW` #fde047
+  — NOT `--amber`, which is the warning colour and reads orange).
+- **ETAs / next stop are still not shown** in PackView. The stops are on the server now, so
+  this is mostly a rendering job.
+- No **data retention/expiry job** yet (privacy promise 8 says delete after ~7 days).
+  Supabase free tier has `pg_cron`; wire it up before anyone but Peter uses this.
+- Supabase free projects **pause after 7 days of database inactivity** (~30 s wake on the
+  next request; the phone's queue retries straight through it, so nobody sees it). The
+  real tail risk is a *very* long layoff — a twice-weekly keep-warm ping kills it. Not
+  built yet.
+- Accounts, paid tiers, and using the same backend to replace flaky Dropbox sync: all
+  deliberately parked. Get the technical pipe solid first (Peter).
+
 ## Current status (13 July 2026, v245) — ride-test fixes
 
 **v245 (13 Jul 2026) — four fixes from Peter's 12 Jul ride test. NOT yet ride-tested.**
@@ -218,7 +470,61 @@ by hand"*. The wall of guidance is broken into five headed sections. Note the su
 deliberately soft — *"Keep rides to a single surface as much as possible"* — because a pure
 single-surface ride is rare and the old wording implied a standard nobody can meet.
 
-**STILL OPEN:** none of v245 is ride-tested yet.
+**(13) Eviction refined — of two SIMILAR rides, the OLDER one goes (Peter's rule).** Redundancy
+alone could evict any member of a cluster. Now `_recCalibAdd` takes everything within a tight band
+(`CLOSE = 0.10`) of the most-redundant score and drops the **oldest** of them: two similar rides say
+the same thing about your ability, so keep the one that says it about your CURRENT ability. Samples
+with no `ts` (pre-v245) count as oldest and retire first. **Simulated 370 rides over 3 years** (70%
+commutes): final list = 10 commutes, 5 weekend road, 2 gravel days, 2 big bikepacking, 1 ultra —
+i.e. it converges on a diverse spread, and rare rides are massively over-represented vs how often
+they're ridden. **Honest caveat Peter accepted:** an old ultra IS eventually replaced — but only by
+a NEWER ultra, never by a commute. The list is a slow rolling window, not a permanent archive.
+
+**(14) Sample rides got NAMES, an Edit affordance, and a per-sample Save.** Three separate
+"the app knew but never said" bugs Peter found by using it:
+- **Name** (`s.name`, optional, first field): recorded rides always carried one; hand-entered ones
+  were an anonymous row of numbers you couldn't identify — or audit — six months later. A sample
+  silently scales EVERY estimate, so being unable to recognise one is a real reason not to trust it.
+  Rows now lead with the name; renaming a recorded sample keeps its `recId`/`src`/`ts` intact.
+- **Edit button** on each collapsed row. The row was always tappable but showed only a ✕, so the
+  list read as view-and-delete — there was no way to discover the editor existed.
+- **"Save this ride"** inside each sample box. The popup edits a DRAFT and only wrote on the footer
+  button, which also closed the window — so there was no way to bank one ride and add another.
+  `_calibCommit()` is now shared by both paths, so neither can half-save. Incomplete samples refuse
+  to save ("Add a distance and a ride time first") rather than vanishing.
+- `_calibScrollTo(i)` brings the open card into view: reveal the BOTTOM (so Save is visible) but
+  never push the card's TOP off (you can't fill in a form you can't see). Card taller than the
+  scroll area → top wins.
+
+**(15) Copy: less of it.** Peter's verdict on my first explainer: *"good for the tech head, but the
+average person won't read or understand it"* — and he was right; it explained the implementation
+(distance-weighted mean, per-sample factors) rather than what a rider needs. The whole "How your
+rider factor is worked out" section was DELETED. Sample Rides now opens with the headline number
+and two sentences: what a sample is (recorded or hand-entered → faster/slower than an average
+rider), and that it keeps up to 20 covering different distances/surfaces/loads, dropping older
+similar ones as new rides come in. The long practical guidance stays, collapsed, behind "How to
+choose a good sample ride". **Standing lesson: the reasoning belongs in CLAUDE.md and code
+comments; the app only says what a rider must act on.**
+
+**(16) Popup renamed "Advanced Estimation" → "Sample Rides".** "Advanced Estimation" is the name of
+a MODE (the Basic/Advanced toggle). Reusing it for the popup that edits the rides the mode feeds on
+was a genuine collision. The mode keeps its name; everything pointing at the popup now says Sample
+Rides. Also: the desktop map's controls are **hand-written static HTML** (`desktop-map-ctrl`), NOT
+built by `mapCtrlHTML` — which is why it never had a crosshair despite my saying it would keep one.
+Added `data-recenter="desktop-map"` there. Deliberately NO GPS toggle on it: the id would collide
+with the Ride tab's recording button (both `#btn-gpstoggle`).
+
+**STILL OPEN / NEXT SESSION:**
+- **Nothing in v245 is ride-tested.** Pushed 13 Jul 2026 after a desktop smoke test only.
+- Two things only a real ride can prove: (a) the **SW 2-second leash** — the startup hang only
+  reproduces with no reception; if the app ever feels SLOWER to open on good signal, that's the
+  leash misbehaving. (b) the **off-route 'detour' mode** — it must stay silent however far you
+  stray, then auto-re-arm the moment you rejoin the route.
+- Carried over from v243/v244: roundabouts treated as a single corner; generated turns (geometry
+  only) need OSM junction context; stop-peek zoom hides the peeked stop under the +/speed button;
+  the top distance bar is hard to read; route colour + weather don't re-time to NOW when a ride
+  starts (`etaAt`'s GPS re-anchor is gated by `planStartInFuture`).
+- Phase 1b (Capacitor wrap) still gated on a couple of clean soak-test rides. Don't push it.
 
 ## Current status (11 July 2026, v244)
 
