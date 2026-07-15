@@ -166,10 +166,21 @@ sim-tested. What's in (all in the PACKRIDE section, replacing `_packPillSync`):
   Settings).
 - **Rider colours** (`PACK_COLS`/`_packColFor`, reset in `packReset`): stable per
   rider per event, used by the list rows AND `drawPack`'s dots + trails (was all-blue)
-  — the list IS the legend. Name tags on the map are hidden while a peek is on.
+  — the list IS the legend. Name tags hidden only while the LIST view is open (the
+  list is the legend there); they SHOW on the full pack map, where there's no legend
+  and there's room (Peter's sim-test question, refined from "hidden during any peek").
 - Verified: fragment `node --check` clean + 10-case truth-table (gap formatting,
   sort/placing, nearest-focus, colour stability, stale×3) all pass. Still v257 (one
   push = one version; v257 is unpushed).
+- **Sim-test fixes (same session):** (a) desktop peek overlay now confined to the
+  ride column via `_packOvRegion()` (was fixed inset:0 over the whole window incl.
+  the big planning map); tab clicks close the peek (the tab bar stays reachable on
+  desktop). (b) **Strip-view jitter** — updateLive's RAF peek draw used anchor:0.5
+  while redrawMap's peek branch framed at `_packPeekAnchor` (~0.15); two framings
+  alternating per tick = vertical hopping; now both read `_packPeekAnchor` (the v252
+  one-authority lesson, third occurrence). Both peek draws are north-up by design —
+  a pack overview has no "up". (c) name tags show on the FULL pack map (no legend
+  there), hidden only in the list view.
 
 **Sim-test checklist for slice 2 (two browser windows, the v251 recipe):** pack button
 appears with placing once riders are known · pulses only while recording+sharing ·
@@ -178,8 +189,26 @@ your exact zoom · countdown auto-closes both views · "Sharing & invites" opens
 sheet in-event · "Leave this ride" exits and the SHARING button returns · yesterday's
 stale event no longer claims the slot on boot.
 
-Slices left: 3 PackRide creation on Route tab (+ "Start a group ride" row in the
-sharing sheet as its second doorway; slice 4's eye is done).
+**SLICE 3 BUILT (same session): PackRide creation where the route is.** NOT tested.
+- **PackRide button on the SELECTED route's tile** (`.packride-route`, logo + words —
+  "PackRide · start a group ride", or "· invite" when already in an event). Excluded
+  from the tile's select-tap like the other tile buttons.
+- **The creation sheet** (`_evSheetShow/_evSheetRender/_evSheetOnClick`, ids
+  `ev-sheet-*`, body-level overlay with its own listener): three states — not-set-up
+  (→ opens the sharing setup sheet), already-in-an-event (event name + Copy invite
+  row + where to leave), and the form (ride name, update frequency slider 10 s–5 min
+  default 30 s, "Create & copy the invite link"). Uses cur() route + its start time
+  (asking twice for the same fact is how forms get long — same rule as the Settings
+  creator, which stays). After create it re-renders into the invite state.
+- **"Start a group ride" row in the sharing sheet** when NOT in an event (the invite
+  row's slot — they're mutually exclusive); in an event the invite-copy row shows as
+  before. Second doorway, same sheet.
+- Verified: fragment `node --check` + smoke run clean. STILL OPEN (unchanged): a
+  `?join=` link boots the full app, not the PackRide preset (architecture §3.6/§3.7).
+
+ALL FOUR SLICES of the ride-screen consolidation are now BUILT (v257, unpushed):
+1 sharing button + sheets · 2 pack button + peek · 3 creation doorways · 4 the marks.
+None of it has met a phone or a two-window sim yet.
 
 ## Design session — 15 July 2026 (ride-screen consolidation designed & agreed; slice 1 built as v257 above)
 

@@ -6347,22 +6347,37 @@ function _packFocus(){
   return {pts, focusIds: new Set([ahead, behind].filter(Boolean).map(x => x.r.id || x.r.name))};
 }
 
+// Where the peek lives. Phone: the whole viewport (the ride screen IS the screen).
+// Desktop: just the ride column — it's a ride-screen overlay, not an app-wide one
+// (Peter's desktop test: full-screen covered the big planning map too).
+function _packOvRegion(){
+  const sc = document.getElementById('live-scroller');
+  if(IS_DESKTOP() && sc){
+    const r = sc.getBoundingClientRect();
+    return {left: r.left, top: Math.max(0, r.top),
+            width: r.width, height: Math.min(r.height, window.innerHeight - Math.max(0, r.top))};
+  }
+  return {left: 0, top: 0, width: window.innerWidth, height: window.innerHeight};
+}
+
 function _packListShow(){
   if(!_eventLive()) return;
   _packOvClose(true);   // clean slate, keep nothing half-open
   _packListOpen = true;
   const sec = document.getElementById('live-map-section');
   if(sec) sec.classList.add('pack-peeking');
+  const reg = _packOvRegion();
   const ov = document.createElement('div');
   ov.id = 'pack-ov';
-  ov.style.cssText = 'position:fixed;inset:0;z-index:9998;display:flex;flex-direction:column;';
+  ov.style.cssText = 'position:fixed;z-index:9998;display:flex;flex-direction:column;'
+    + `left:${reg.left}px;top:${reg.top}px;width:${reg.width}px;height:${reg.height}px;`;
   ov.addEventListener('click', _packOvOnClick);           // body-level = direct listener (the gotcha)
   ov.addEventListener('touchstart', () => { if(_packListOpen) _packCdReset(); }, {passive:true});
   document.body.appendChild(ov);
   _packListRender();
   // the map: you + nearest, parked in the strip band
   const rect = document.getElementById('live-map') ? document.getElementById('live-map').getBoundingClientRect() : null;
-  const stripBottom = window.innerHeight * 0.25;
+  const stripBottom = reg.top + reg.height * 0.25;
   let band = 0.15;
   if(rect && rect.height > 0) band = Math.max(0.08, Math.min(0.5, ((stripBottom - rect.top) / 2) / rect.height));
   _packFit(_packFocus().pts, band);
@@ -6423,9 +6438,11 @@ function _packFullShow(){
   const pts = rows.map(x => ({lat: x.r.lat, lon: x.r.lon}));
   if(UI.gpsPos) pts.push({lat: UI.gpsPos.lat, lon: UI.gpsPos.lon});
   _packFit(pts, 0.5);
+  const reg = _packOvRegion();
   const full = document.createElement('div');
   full.id = 'pack-full-ov';
-  full.style.cssText = 'position:fixed;inset:0;z-index:9998;cursor:pointer;';
+  full.style.cssText = 'position:fixed;z-index:9998;cursor:pointer;'
+    + `left:${reg.left}px;top:${reg.top}px;width:${reg.width}px;height:${reg.height}px;`;
   full.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(36,48,36,.8);"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;"></div></div>';
   full.addEventListener('click', () => _packOvClose());
   document.body.appendChild(full);
@@ -6746,10 +6763,11 @@ function drawPack(cvs){
     // (the map frame is rotated by -heading for heading-up; rotating +heading back at
     // the rider's position keeps the tag horizontal on screen). It used to rotate
     // with the frame and read upside down half the time (Peter, sim test).
-    // v257: HIDDEN while a pack peek is open — the design rule is no name labels on
-    // the peek map; the coloured list rows are the legend, and tags at strip-zoom
-    // would shingle over each other.
-    if(!_packPeekOn()){
+    // v257: HIDDEN while the LIST view is open — the coloured list rows are the
+    // legend there, and tags at strip-zoom would shingle over each other. On the
+    // FULL pack map (strip tapped) the list is gone, so labels come back — without
+    // them there'd be no legend at all (Peter's question, first sim test).
+    if(!_packListOpen){
       const lbl = r.name || 'Rider';
       ctx.save();
       ctx.translate(x, y);
@@ -15993,7 +16011,11 @@ function updateLive(){
           if(mc2){
             const st=ms('live-map');
             if(st._fitted||_packPeekOn()){   // pack peek = overview: don't re-centre on you (v253)
-              drawMap(mc2,r,{showGPS:true,followGPS:false,anchor:0.5,rotate:false});
+              // v257: SAME anchor as redrawMap's peek branch. This drew anchor:0.5
+              // while the peek framed the group at _packPeekAnchor (~0.15, the top
+              // strip band) — two framings alternating many times a second = the
+              // strip-view jitter. One authority, again (the v252 lesson).
+              drawMap(mc2,r,{showGPS:true,followGPS:false,anchor:_packPeekOn()?_packPeekAnchor:0.5,rotate:false});
             } else {
               // v252: was rotate:true = RAW GPS heading — while every other live
               // redraw used the eased route-aligned heading. This is the MAIN draw
@@ -16067,6 +16089,9 @@ let _liveResizeHandler=null;
 document.getElementById('tabs').addEventListener('click',e=>{
   const b=e.target.closest('[data-tab]');
   if(b){
+    // Desktop: the pack peek only covers the ride column, so the tab bar stays
+    // reachable — don't leave an orphaned overlay behind (v257).
+    _packOvClose();
     // Clean up live map resize listener when leaving live tab
     if(_liveResizeHandler){
       if(window.visualViewport)window.visualViewport.removeEventListener('resize',_liveResizeHandler);
