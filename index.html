@@ -120,6 +120,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    not a throb, and both ends are unambiguously RED. */
 .rec-pulse{animation:recpulse 1.4s steps(1,end) infinite;}
 @keyframes recpulse{0%,72%{background:var(--red2);}73%,100%{background:var(--red3);}}
+/* Sharing button (ride screen): slow pulse while genuinely transmitting */
+@keyframes shbPulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.5);}70%{box-shadow:0 0 0 12px rgba(74,222,128,0);}100%{box-shadow:0 0 0 0 rgba(74,222,128,0);}}
 .tabs{display:flex;justify-content:space-around;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;padding:0;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:0 1 auto;min-width:0;padding:8px 6px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
@@ -865,7 +867,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v256';
+window.APP_VERSION='v257';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -900,6 +902,9 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   // privacy promise, enforced by structure rather than by a flag.
   shareToken:null,shareLabel:null,shareEnabled:true,shareIntervalS:60,
   shareLinks:[],shareQueue:[],shareLastPushAt:null,shareLastErr:null,shareBusy:false,
+  // v257 ride-screen sharing button: per-ride off (reverts when the ride ends),
+  // pre-minted id for "PackView link before the ride exists", one-time bubble flag.
+  shareOffThisRide:false,shareNextRideId:null,shareBubbleSeen:false,
   sharePendingRide:null,shareRideSent:null,shareRideEvent:null,shareRides:[],
   // PackRide events (§3.7). eventCode = the event this rider is currently riding in.
   eventCode:null,eventRouteKey:null,events:[],
@@ -985,7 +990,7 @@ async function loadAll(){
     // Location sharing — own KV row, deliberately outside uiPrefs (the write token
     // is a secret and must not ride along to Dropbox with the rest of the prefs).
     const sh=await DB.getKV('shareAuth').catch(()=>null);
-    if(sh){UI.shareToken=sh.token||null;UI.shareLabel=sh.label||null;UI.shareEnabled=sh.enabled!==false;UI.shareIntervalS=sh.intervalS||60;UI.shareQueue=Array.isArray(sh.queue)?sh.queue:[];UI.sharePendingRide=sh.pendingRide||null;UI.shareRideSent=sh.rideSent||null;UI.shareRideEvent=sh.rideEvent||null;UI.eventCode=sh.eventCode||null;UI.eventRouteKey=sh.eventRouteKey||null;}
+    if(sh){UI.shareToken=sh.token||null;UI.shareLabel=sh.label||null;UI.shareEnabled=sh.enabled!==false;UI.shareIntervalS=sh.intervalS||60;UI.shareQueue=Array.isArray(sh.queue)?sh.queue:[];UI.sharePendingRide=sh.pendingRide||null;UI.shareRideSent=sh.rideSent||null;UI.shareRideEvent=sh.rideEvent||null;UI.eventCode=sh.eventCode||null;UI.eventRouteKey=sh.eventRouteKey||null;UI.shareOffThisRide=!!sh.offThisRide;UI.shareNextRideId=sh.nextRideId||null;UI.shareBubbleSeen=!!sh.bubbleSeen;}
     // Restore UI prefs
     const prefs=await DB.getKV('uiPrefs').catch(()=>null);
     if(prefs){
@@ -2905,6 +2910,46 @@ async function fetchAccommodation(){
 // Direction is inferred from consecutive snap indices.
 let _snapDir=0,_snapDirAccum=0;
 
+// How far (deg) the given heading is from the route's LOCAL bearing at vertex i —
+// one point either side, so tens of metres, not the ±20-point (±1.6 km on an 80 m
+// route!) arms the old first-fix guess used. 0 = riding forward along the route.
+function _snapBrgDiff(r,i,heading){
+  const pn=r.points,a=pn[i>0?i-1:i],b=pn[i<pn.length-1?i+1:i];
+  const dLon=(b.lon-a.lon)*Math.cos(a.lat*Math.PI/180),dLat=b.lat-a.lat;
+  if(!dLon&&!dLat)return 90;   // degenerate — no evidence either way
+  const brg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
+  return Math.abs(((heading-brg+540)%360)-180);
+}
+
+// Sub-vertex refinement (v257). snapTo used to return the NEAREST VERTEX's dist, so
+// on a sparsely-spaced route (Peter's 200 km FIT: ~80 m median) gpsDistKm jumped up
+// to HALF A SEGMENT ahead as you crossed each midpoint (measured: up to 49 m ahead,
+// 19 m mean error). Everything keyed to along-route distance — map rotation, the
+// turn countdown, the orange highlight — therefore ran EARLY at bends ("rotating
+// prematurely"). Project onto the two segments adjacent to the winning vertex and
+// return the interpolated dist + true perpendicular off. idx stays the vertex (all
+// the window/lookup consumers want an index).
+function _snapRefine(r,lat,lon,best){
+  const pn=r.points,i=best.idx,cs=Math.cos(lat*Math.PI/180);
+  let bd=Infinity,bt=null,bA=null,bB=null;
+  for(const seg of [[i-1,i],[i,i+1]]){
+    const a=seg[0],b=seg[1];
+    if(a<0||b>=pn.length)continue;
+    const A=pn[a],B=pn[b];
+    const ax=(A.lon-lon)*cs,ay=A.lat-lat,bx=(B.lon-lon)*cs,by=B.lat-lat;
+    const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy;
+    let t=L2?(-(ax*dx+ay*dy))/L2:0;
+    t=Math.max(0,Math.min(1,t));
+    const px2=ax+dx*t,py2=ay+dy*t,d2=px2*px2+py2*py2;
+    if(d2<bd){bd=d2;bt=t;bA=A;bB=B;}
+  }
+  if(bA){
+    best.dist=bA.dist+(bB.dist-bA.dist)*bt;
+    best.off=hav({lat,lon},{lat:bA.lat+(bB.lat-bA.lat)*bt,lon:bA.lon+(bB.lon-bA.lon)*bt});
+  }
+  return best;
+}
+
 function snapTo(r,lat,lon,lastIdx){
   if(!r.points.length)return null;
   let best=null,bd=Infinity;
@@ -2923,22 +2968,45 @@ function snapTo(r,lat,lon,lastIdx){
       if(d<bd){bd=d;best={idx:i,dist:p.dist,off:hav({lat,lon},p)};}
     }
     if(best&&best.off<0.5){
-      // Update direction from index movement (smoothed)
-      const delta=best.idx-lastIdx;
-      if(Math.abs(delta)>2){
-        _snapDirAccum+=delta>0?1:-1;
-        // Flip direction only after consistent evidence (3 consecutive same-dir snaps)
-        if(_snapDirAccum>=3){_snapDir=1;_snapDirAccum=3;}
-        else if(_snapDirAccum<=-3){_snapDir=-1;_snapDirAccum=-3;}
+      // v257: direction evidence now comes from the HEADING vs the route's local
+      // bearing. The old rule only counted index jumps >2 points — but normal
+      // forward riding advances 1–2 points per fix, so forward motion could NEVER
+      // vote, and a wrong -3 lock had no way back (the backward-biased window it
+      // causes is self-reinforcing). Node-tested on the real 200 km route: a forced
+      // wrong direction now recovers within ~550 m; the old rule never recovered.
+      if(UI.gpsHeading!=null){
+        const dd=_snapBrgDiff(r,best.idx,UI.gpsHeading);
+        let v=0;
+        if(dd<70)v=1;else if(dd>110)v=-1;   // ambiguous middle band = no vote
+        if(v){
+          _snapDirAccum+=v;
+          if(_snapDirAccum>=3){_snapDir=1;_snapDirAccum=3;}
+          else if(_snapDirAccum<=-3){_snapDir=-1;_snapDirAccum=-3;}
+        }
+      }else{
+        // No heading available (rare) — the old index-movement evidence
+        const delta=best.idx-lastIdx;
+        if(Math.abs(delta)>2){
+          _snapDirAccum+=delta>0?1:-1;
+          if(_snapDirAccum>=3){_snapDir=1;_snapDirAccum=3;}
+          else if(_snapDirAccum<=-3){_snapDir=-1;_snapDirAccum=-3;}
+        }
       }
-      return best;
+      return _snapRefine(r,lat,lon,best);
     }
   }
   // Fallback: full search (first fix, or rider far from expected window)
   best=null;bd=Infinity;
   r.points.forEach((p,i)=>{const d=Math.sqrt((p.lat-lat)**2+(p.lon-lon)**2);if(d<bd){bd=d;best={idx:i,dist:p.dist,off:hav({lat,lon},p)};}});
-  // On first snap, try to determine direction from GPS heading vs route bearing
-  if(best&&lastIdx==null&&UI.gpsHeading!=null){
+  // First-fix direction guess — now gated on _snapDir===0 (v257). This block used
+  // to run on EVERY call that omitted lastIdx — and checkAlerts' off-route check is
+  // exactly such a call, every tick — so it kept OVERWRITING _snapDir mid-ride with
+  // a coin-flip guess whose ±20-point bearing arms straddle an entire switchback
+  // cluster. That was THE map-rides-backwards bug (206 reversed frames through the
+  // 12–14 km S-bends of Peter's Kyrgyzstan route; first flip at 12.7 km — the exact
+  // spot in his screenshot). Gated, it runs once per GPS session (startGPS resets
+  // _snapDir to 0), which was its original job.
+  if(best&&lastIdx==null&&UI.gpsHeading!=null&&_snapDir===0){
     const bi=best.idx;
     const ahead=Math.min(bi+20,r.points.length-1);
     const behind=Math.max(bi-20,0);
@@ -2949,7 +3017,7 @@ function snapTo(r,lat,lon,lastIdx){
     _snapDir=diffFwd<=diffBwd?1:-1;
     _snapDirAccum=_snapDir*2;
   }
-  return best;
+  return best?_snapRefine(r,lat,lon,best):best;
 }
 
 // ═══════════════════════════════════════════
@@ -3380,7 +3448,11 @@ function _recDist(a, b){
 async function startRecording(routeId){
   if(_rec) return _rec;  // already recording — do nothing
   _rec = {
-    id: _recId(),
+    // If a PackView link was copied BEFORE the ride existed, its ride id was
+    // pre-minted (v257) — use it, so that link points at THIS ride. Ride ids are
+    // client-generated and the server upserts on first push, so a link pinned to
+    // a not-yet-started ride simply shows nothing until you roll.
+    id: UI.shareNextRideId || _recId(),
     routeId: routeId || null,
     status: 'active',
     startTS: Date.now(),
@@ -3398,6 +3470,7 @@ async function startRecording(routeId){
   _recStop = null;
   _recStored = null;
   _shareLastPos = null;    // new ride = push immediately, don't wait out the interval
+  if(UI.shareNextRideId){ UI.shareNextRideId = null; _shareSaveAuth(); }  // consumed
   UI.recId = _rec.id;
   // Tell the server what this ride is following, and upload the route if it doesn't
   // already have it. Queued, so a ride that starts in a dead spot still gets its
@@ -3442,6 +3515,9 @@ async function finaliseRecording(){
   _recStored = null;
   _shareLastPos = null;
   UI.recId = null;
+  // Per-ride privacy off is exactly that — PER RIDE. The ride is over, so the
+  // default-on safety rule comes back by itself for the next one (v257).
+  if(UI.shareOffThisRide){ UI.shareOffThisRide = false; _shareSaveAuth(); }
   // NOTE: the pack poll deliberately keeps running after you finish. You've stopped
   // broadcasting (privacy rule), but you still want to watch the others come in.
   // Ride's over, so sharing is over (privacy rule). Push whatever is still queued
@@ -4814,7 +4890,9 @@ function _recToast(msg){
   if(!el){
     el = document.createElement('div');
     el.id = 'rec-toast';
-    el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--accent2);color:var(--text);padding:10px 16px;border-radius:var(--r-ctrl);font-size:15px;z-index:1001;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:opacity .3s;max-width:90vw;text-align:center;';
+    // z-index 10001: toasts are FEEDBACK and must never hide behind an overlay —
+    // the sharing sheet (z-9999) was swallowing "link copied" (Peter's test, v257).
+    el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--accent2);color:var(--text);padding:10px 16px;border-radius:var(--r-ctrl);font-size:15px;z-index:10001;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:opacity .3s;max-width:90vw;text-align:center;';
     document.body.appendChild(el);
   }
   el.textContent = msg;
@@ -5243,6 +5321,8 @@ async function _recStopDelete(){
   await DB.delRecording(rec.id).catch(()=>{});
   RECS = RECS.filter(x=>x.id!==rec.id);
   _rec=null;_recMode='active';_recLastFix=null;_recStop=null;_recStored=null;UI.recId=null;
+  // Deleting the ride ends it just as surely as finishing it — per-ride off reverts.
+  if(UI.shareOffThisRide){ UI.shareOffThisRide=false; _shareSaveAuth(); }
   await saveAll().catch(()=>{});
   render();
   _recToast('Ride deleted');
@@ -5355,7 +5435,11 @@ async function _shareRpc(fn, args){
 }
 
 const shareIsSetUp = () => !!UI.shareToken;
-const shareIsOn    = () => !!UI.shareToken && UI.shareEnabled !== false;
+// Two off-switches, different lifetimes (v257): UI.shareEnabled is the sticky
+// MASTER in Settings; UI.shareOffThisRide is the ride-screen "ride privately"
+// switch, which reverts by itself when the ride ends — so the safety default
+// (sharing on) always comes back for the next ride without being remembered.
+const shareIsOn    = () => !!UI.shareToken && UI.shareEnabled !== false && !UI.shareOffThisRide;
 const shareIsLive  = () => shareIsOn() && !!_rec && _rec.status === 'active';
 
 async function _shareSaveAuth(){
@@ -5370,6 +5454,9 @@ async function _shareSaveAuth(){
     rideEvent  : UI.shareRideEvent || null,     // …and the event it was registered with
     eventCode  : UI.eventCode || null,          // the PackRide event being ridden
     eventRouteKey: UI.eventRouteKey || null,
+    offThisRide: UI.shareOffThisRide || false,  // per-ride privacy off (v257)
+    nextRideId : UI.shareNextRideId || null,    // pre-minted id for a pre-ride PackView link
+    bubbleSeen : UI.shareBubbleSeen || false,   // "shares when you start riding" shown once
   }).catch(()=>{});
 }
 
@@ -5383,7 +5470,8 @@ async function shareSetup(label){
   UI.shareIntervalS = UI.shareIntervalS || SHARE_INTERVAL_S_DEFAULT;
   UI.shareQueue    = [];
   await _shareSaveAuth();
-  await shareLinkCreate('Family', null, null);
+  // "Permanent", not "Family" (Peter, 15 Jul): family is the example, not the name.
+  await shareLinkCreate('Permanent', null, null);
   return token;
 }
 
@@ -5655,6 +5743,230 @@ document.addEventListener('visibilitychange', () => {
   if(!document.hidden && shareIsSetUp() && !_viewCode) _shareFlush();
 });
 
+// ── THE SHARING BUTTON (ride screen, bottom-left — v257) ─────────────────────
+// One object replaces the old share pill: always present on a solo Ride tab, so
+// sharing finally has a HOME on the ride screen — setup, the per-ride off switch
+// and the links all live behind it instead of only in Settings. Design + mockups:
+// _planning/ride-screen-sharing-mockups.html (15 Jul 2026).
+//
+// Built HERE, not in tLiveShell — same lesson as the pack pill: render()
+// short-circuits to updateLive() mid-ride, so template-only elements are never
+// created. Positioned with the same rect maths as the pack pill (above the
+// weather pill; the containers differ, so never compose bottom values).
+//
+// States: notset (grey — tap opens setup) / armed (green outline — will share
+// when you start riding) / live (pulsing — transmitting now) / off (slashed —
+// riding privately, reverts next ride).
+const SHARE_BTN_ICON = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="15" r="2.3" fill="currentColor" stroke="none"/><path d="M8 10.4a5.6 5.6 0 0 1 8 0"/><path d="M5.4 7.6a9.4 9.4 0 0 1 13.2 0"/></svg>';
+
+function _shareBtnState(){
+  if(!shareIsSetUp()) return 'notset';
+  if(UI.shareEnabled === false || UI.shareOffThisRide) return 'off';
+  return shareIsLive() ? 'live' : 'armed';
+}
+
+function _shareBtnSync(){
+  const sec = document.getElementById('live-map-section');
+  let el = document.getElementById('share-btn');
+  // In a PackRide the bottom-left slot belongs to the pack pill — one slot, one
+  // object (the ride-screen consolidation rule). Settings still reaches sharing.
+  if(!sec || UI.tab !== 'live' || eventActive()){ if(el) el.remove(); return; }
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'share-btn';
+    el.style.cssText = 'position:absolute;left:8px;z-index:22;width:54px;height:54px;'
+      + 'border-radius:var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;'
+      + 'align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;';
+    sec.appendChild(el);
+  }
+  const wx = document.getElementById('live-weather-bar');
+  el.style.top = 'auto';
+  if(wx){
+    const sr = sec.getBoundingClientRect(), wr = wx.getBoundingClientRect();
+    el.style.bottom = Math.max(8, sr.bottom - wr.top + 6) + 'px';
+  } else {
+    el.style.bottom = '14px';
+  }
+  const st = _shareBtnState();
+  if(el._shareState !== st){
+    el._shareState = st;
+    const C = {notset:['rgba(157,184,157,.45)','var(--text3)'],
+               armed :['rgba(74,222,128,.55)','var(--accent)'],
+               live  :['var(--accent)','var(--accent)'],
+               off   :['rgba(157,184,157,.35)','#6a8a6a']}[st];
+    el.style.border = '2px solid ' + C[0];
+    el.style.color = C[1];
+    el.style.animation = st === 'live' ? 'shbPulse 1.6s ease-out infinite' : 'none';
+    el.style.boxShadow = 'none';
+    el.innerHTML = SHARE_BTN_ICON + (st === 'off'
+      ? '<span style="position:absolute;width:34px;height:3px;background:#6a8a6a;border-radius:2px;transform:rotate(-45deg);"></span>' : '');
+  }
+  // One-time bubble: the recording↔sharing coupling, explained at the moment it
+  // matters (set up, not yet rolling) instead of left as a mystery.
+  if(st === 'armed' && !UI.shareBubbleSeen && !document.getElementById('share-btn-tip')){
+    UI.shareBubbleSeen = true; _shareSaveAuth();
+    const tip = document.createElement('div');
+    tip.id = 'share-btn-tip';
+    tip.style.cssText = 'position:absolute;left:70px;z-index:22;background:rgba(10,15,10,.92);'
+      + 'border:1px solid rgba(74,222,128,.4);border-radius:var(--r-ctrl);padding:8px 12px;'
+      + 'font-family:var(--sans);font-size:13px;color:var(--text);white-space:nowrap;';
+    tip.style.bottom = el.style.bottom;
+    tip.textContent = 'Shares when you start riding';
+    sec.appendChild(tip);
+    setTimeout(() => tip.remove(), 7000);
+  }
+}
+
+// ── The sharing sheet (and first-time setup) — v257 ──────────────────────────
+// A bottom sheet over the ride screen. First tap ever → setup, right here, no
+// Settings dead end. After that → the per-ride switch and the three link kinds:
+// permanent (every ride) / PackView (watch this ride only) / PackRide (join this
+// ride only). The universal rule — links only see you while recording — is said
+// ONCE at the top, where it covers all of them.
+function _shareCopyText(url, ok){
+  (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
+    .then(() => _recToast(ok))
+    .catch(() => { window.prompt('Copy this link:', url); });
+}
+
+function _shareSheetClose(){
+  const ov = document.getElementById('share-sheet-ov');
+  if(ov) ov.remove();
+}
+
+function _shareSheetShow(){
+  _shareSheetClose();
+  const ov = document.createElement('div');
+  ov.id = 'share-sheet-ov';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(5,8,5,.6);'
+    + 'display:flex;align-items:flex-end;justify-content:center;';
+  // Direct listener, NOT the content-wrap delegator: this overlay hangs off
+  // document.body, so delegated clicks never reach it (the bug Peter found on
+  // first test — the whole sheet was deaf, not just the scrim). Same pattern as
+  // showSurfHelp / the gap modal. One listener on the overlay survives
+  // _shareSheetRender innerHTML rebuilds.
+  ov.addEventListener('click', _shareSheetOnClick);
+  document.body.appendChild(ov);
+  _shareSheetRender();
+  // Refresh the link list so "copy permanent" has a live code even if links were
+  // made or revoked on another device. Offline just keeps what we last saw.
+  if(shareIsSetUp()) shareLinksLoad().then(() => _shareSheetRender()).catch(() => {});
+}
+
+function _shareSheetRender(){
+  const ov = document.getElementById('share-sheet-ov');
+  if(!ov) return;
+  let body;
+  if(!shareIsSetUp()){
+    body = `
+      <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px;">Share your location</div>
+      <p style="font-size:14px;color:var(--text2);line-height:1.55;margin:0 0 12px;">Let someone at home watch your ride live on a map. Nothing is ever sent until you set this up — and then only while you're recording a ride.</p>
+      <input type="text" id="share-sheet-name" placeholder="Your name — what watchers see" value="${(UI.shareLabel||'').replace(/"/g,'&quot;')}" style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);color:var(--text);font-family:var(--sans);font-size:16px;padding:12px;">
+      <button class="btn btn-full btn-p" id="share-sheet-setup" style="margin-top:10px;padding:13px;font-size:16px;">Set up sharing</button>
+      <button class="btn btn-full" id="share-sheet-notnow" style="margin-top:8px;padding:12px;">Not now</button>
+      <p style="font-size:12px;color:var(--text3);margin:12px 0 0;line-height:1.5;text-align:center;">Creates your permanent link, ready to copy and send.<br>Needs reception · not an emergency beacon.</p>`;
+  } else {
+    const on = UI.shareEnabled !== false && !UI.shareOffThisRide;
+    const row = (id, icon, title, sub) => `
+      <div id="${id}" style="display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:13px 12px;margin-top:9px;cursor:pointer;">
+        <span style="flex-shrink:0;display:inline-flex;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:16px;font-weight:600;color:var(--text);">${title}</div>
+          <div style="font-size:13px;color:var(--text3);margin-top:1px;">${sub}</div>
+        </div>
+      </div>`;
+    // Product icons. Hexes hard-coded like PACK_PILL_ICON (PACKVIEW_CYAN /
+    // PACKRIDE_YELLOW are declared later in the file — TDZ at load).
+    const icPerm = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>';
+    const icEye  = '<svg width="24" height="24" viewBox="0 0 100 100" fill="none" style="color:#22d3ee;"><path d="M18 50 C 30 24, 70 24, 82 50 C 70 76, 30 76, 18 50 Z" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/><circle cx="50" cy="50" r="13" fill="currentColor"/></svg>';
+    const icPack = '<svg width="24" height="24" viewBox="0 0 20 20" fill="#fde047"><circle cx="10" cy="4.2" r="2.7"/><circle cx="13.9" cy="10.3" r="2.7"/><circle cx="6.1" cy="14.9" r="2.7"/></svg>';
+    body = `
+      <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:6px;">Location sharing</div>
+      <p style="font-size:13px;color:var(--text2);line-height:1.5;margin:0;">Links only ever see you <strong style="color:var(--text);">while you're recording a ride</strong> — whichever kind they are.</p>
+      <div id="share-sheet-toggle" style="display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:13px 12px;margin-top:10px;cursor:pointer;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:16px;font-weight:600;color:var(--text);">Share this ride</div>
+          <div style="font-size:13px;color:var(--text3);margin-top:1px;">${on?'Off = ride privately · recording still works':'Off — riding privately · back on next ride'}</div>
+        </div>
+        <div style="width:46px;height:26px;border-radius:13px;flex-shrink:0;position:relative;background:${on?'var(--accent2)':'#3a4a3a'};">
+          <div style="position:absolute;top:3px;${on?'right:3px;':'left:3px;'}width:20px;height:20px;border-radius:50%;background:#fff;"></div>
+        </div>
+      </div>
+      ${row('share-sheet-copyperm', icPerm, 'Copy your permanent link', 'Every ride you record · family &amp; friends')}
+      ${row('share-sheet-copypv', icEye, 'Copy a PackView link', _rec?'Watch this ride only · expires after it':'Watch your next ride only · expires after it')}
+      ${eventActive()?row('share-sheet-copyjoin', icPack, 'Copy the PackRide invite', 'Join this ride only · expires after it'):''}
+      <button class="btn btn-full" id="share-sheet-done" style="margin-top:12px;padding:12px;font-size:16px;">Done</button>
+      <p style="font-size:12px;color:var(--text3);margin:12px 0 0;line-height:1.5;text-align:center;">Manage links &amp; update frequency in Settings → Location Sharing</p>`;
+  }
+  ov.innerHTML = `<div id="share-sheet" style="width:min(430px,100%);box-sizing:border-box;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card) var(--r-card) 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));font-family:var(--sans);box-shadow:0 -6px 24px rgba(0,0,0,.5);">${body}</div>`;
+}
+
+// All sheet interaction lands here (bound on the overlay in _shareSheetShow).
+function _shareSheetOnClick(e){
+  if(e.target.id==='share-sheet-ov'){_shareSheetClose();return;}   // tap the scrim = out
+  if(e.target.closest('#share-sheet-done')||e.target.closest('#share-sheet-notnow')){_shareSheetClose();return;}
+  if(e.target.closest('#share-sheet-setup')){
+    const nm=(document.getElementById('share-sheet-name')?.value||'').trim();
+    if(!nm){_recToast('Put in a name first');return;}
+    if(UI.shareBusy)return;
+    UI.shareBusy=true;_recToast('Setting up sharing…');
+    shareSetup(nm)
+      .then(()=>{_recToast('Sharing is set up ✓');_shareSheetRender();_shareBtnSync();})
+      .catch(()=>_recToast('Couldn\'t set up sharing — check your connection'))
+      .finally(()=>{UI.shareBusy=false;});
+    return;
+  }
+  if(e.target.closest('#share-sheet-toggle')){
+    const on=UI.shareEnabled!==false&&!UI.shareOffThisRide;
+    if(on){
+      UI.shareOffThisRide=true;
+      _recToast('Sharing off for this ride — back on next ride');
+    }else{
+      // "On" means ON, whichever switch had it off. If the Settings master was
+      // off and the rider flicks this on from the bar, they mean it — honour it.
+      UI.shareOffThisRide=false;UI.shareEnabled=true;
+      _recToast('Sharing on');
+    }
+    _shareSaveAuth();_shareSheetRender();_shareBtnSync();
+    return;
+  }
+  if(e.target.closest('#share-sheet-copyperm')){
+    const perm=(UI.shareLinks||[]).find(l=>!l.revokedAt&&!l.rideId&&(!l.expiresAt||new Date(l.expiresAt)>new Date()));
+    if(perm){_shareCopyText(shareViewUrl(perm.viewCode),'Permanent link copied — paste it into a message');return;}
+    // All permanent links revoked (or list never loaded) — make one, then copy.
+    if(UI.shareBusy)return;UI.shareBusy=true;
+    shareLinkCreate('Permanent',null,null)
+      .then(c=>{if(c)_shareCopyText(shareViewUrl(c),'Permanent link created and copied');else _recToast('Failed');})
+      .catch(()=>_recToast('Couldn\'t make the link — check your connection'))
+      .finally(()=>{UI.shareBusy=false;});
+    return;
+  }
+  if(e.target.closest('#share-sheet-copypv')){
+    // Pinned to ONE ride. Mid-ride that's this ride; before a ride it's pinned to
+    // a pre-minted id that startRecording will use — the link goes live when you
+    // roll. Tapping again reuses the same link rather than minting duplicates.
+    let rid,msg;
+    if(_rec){rid=_rec.id;msg='PackView link copied — this ride only';}
+    else{
+      if(!UI.shareNextRideId){UI.shareNextRideId=_recId();_shareSaveAuth();}
+      rid=UI.shareNextRideId;msg='PackView link copied — goes live when you start riding';
+    }
+    const existing=(UI.shareLinks||[]).find(l=>!l.revokedAt&&l.rideId===rid&&(!l.expiresAt||new Date(l.expiresAt)>new Date()));
+    if(existing){_shareCopyText(shareViewUrl(existing.viewCode),msg);return;}
+    if(UI.shareBusy)return;UI.shareBusy=true;
+    const exp=new Date(Date.now()+48*3600*1000).toISOString();
+    shareLinkCreate('PackView',rid,exp)
+      .then(c=>{if(c)_shareCopyText(shareViewUrl(c),msg);else _recToast('Failed');})
+      .catch(()=>_recToast('Couldn\'t make the link — check your connection'))
+      .finally(()=>{UI.shareBusy=false;});
+    return;
+  }
+  if(e.target.closest('#share-sheet-copyjoin')){
+    if(UI.eventCode)_shareCopyText(eventUrl(UI.eventCode),'PackRide invite copied — this ride only');
+    return;
+  }
+}
+
 // ═══════════════════════════════════════════
 //  PACKRIDE  (events — many riders, one pool)
 //
@@ -5864,18 +6176,8 @@ const PACK_PILL_ICON = '<svg width="15" height="15" viewBox="0 0 20 20" fill="#f
 function _packPillSync(){
   const sec = document.getElementById('live-map-section');
   if(!sec) return;
-  // v251: the pills live BELOW the slot-0 floating pill on the left edge. The top
-  // row (top:8px) belongs to the distance bar — both pills used to sit straight on
-  // top of it — and top:48px belongs to the floating pills. Measured each pass, not
-  // hard-coded, because the slot-0 pill changes height with what's showing in it.
-  // The SHARE pill is repositioned here too (its template top:8px had the same
-  // overlap on solo shared rides — this runs every updateLive tick, so it holds).
-  const slot0 = sec.querySelector('.live-fpill[data-slot="0"]');
-  const bar   = document.getElementById('live-dist-bar');
-  const yPx   = ((slot0 ? slot0.offsetTop + slot0.offsetHeight
-                        : bar ? bar.offsetTop + bar.offsetHeight : 8) + 6) + 'px';
-  const shp0 = document.getElementById('share-pill');
-  if(shp0) shp0.style.top = yPx;
+  // (v257: the old share pill is gone — the sharing button positions itself in
+  // _shareBtnSync with the same rect maths this function uses for the pack pill.)
   let el = document.getElementById('pack-pill');
   const rs = (eventActive() && _packData && _packData.riders) ? _packData.riders : null;
   if(!rs || !rs.length){ if(el) el.remove(); return; }
@@ -8261,19 +8563,17 @@ function drawMap(cvs,r,opts){
       ctx.fillStyle='rgba(96,165,250,.1)';ctx.fill();
       ctx.strokeStyle='rgba(96,165,250,.25)';ctx.lineWidth=1;ctx.stroke();
     }
-    // Arrow always points in direction of travel.
-    // Derive bearing from route points near snap index, or GPS heading as fallback.
+    // Arrow always points in direction of travel — from the SAME heading authority
+    // as the rotated live map (v257). The old code here walked from the snap vertex
+    // to the vertex FIFTEEN points ahead — 300–700 m on a sparse route — so on a
+    // north-up map (desktop big map, stops map) the arrow swung into a corner half
+    // a kilometre before the rider did. That's the v243 map-rotation bug, which
+    // survived here as a private copy after v252 fixed the map itself.
+    // _rideHeadingDeg = interpolated ±30 m chord centred on the rider, eased,
+    // flip-rejected, rate-capped. One authority for "which way am I going".
+    // (Extra calls are safe: its easing is time-based, so call count doesn't matter.)
     let travelDeg=null;
-    if(UI._lastSnapIdx!=null&&UI._lastSnapIdx>=0){
-      const si=UI._lastSnapIdx;
-      const lookAhead=_snapDir>=0?1:-1; // use snap direction
-      const ni=Math.max(0,Math.min(pts.length-1,si+lookAhead*15));
-      if(ni!==si){
-        const dLon=(pts[ni].lon-pts[si].lon)*Math.cos(pts[si].lat*Math.PI/180);
-        const dLat=pts[ni].lat-pts[si].lat;
-        travelDeg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
-      }
-    }
+    if(hasRoute&&heading===null)travelDeg=_rideHeadingDeg(pts);   // rotated maps don't need it (arrow cancels the frame)
     if(travelDeg==null&&UI.gpsHeading!=null)travelDeg=UI.gpsHeading;
     // Last resort: keep the previous arrow angle rather than snapping to north (0°).
     // A hard default of 0 was what made the arrow appear "stuck pointing north".
@@ -8484,8 +8784,16 @@ function _rideHeadingDeg(pts){
       const a=pts[lo],b=pts[hi],t=(d-a.dist)/((b.dist-a.dist)||1);
       return{lat:a.lat+(b.lat-a.lat)*t,lon:a.lon+(b.lon-a.lon)*t};
     };
-    const dir=_snapDir>=0?1:-1,H=0.03;                            // forward or reversed along route
-    const A=at(UI.gpsDistKm-dir*H),B=at(UI.gpsDistKm+dir*H);
+    // v257: ASYMMETRIC arms — 25 m behind, only 10 m ahead. The symmetric ±30 m
+    // chord had its forward arm around a hairpin's apex while the rider was still
+    // approaching it, so the map rotated EARLY (node-measured: 24° before even
+    // entering a 15 m-radius hairpin; asym = 3.5°, still perfectly continuous
+    // through the corner). Heading should say where you ARE going, which is mostly
+    // where you've just been — the map turns AS you turn, never before (Peter's
+    // 15 Jul desktop-sim test: mid-hairpin the early rotation read as riding
+    // backwards).
+    const dir=_snapDir>=0?1:-1,HB=0.025,HF=0.010;                 // behind / ahead arms (km)
+    const A=at(UI.gpsDistKm-dir*HB),B=at(UI.gpsDistKm+dir*HF);
     const dLon=(B.lon-A.lon)*Math.cos(A.lat*Math.PI/180),dLat=B.lat-A.lat;
     if(dLon||dLat) deg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
   }
@@ -12256,7 +12564,7 @@ function tLiveShell(r){
     rideavg: {label:'Ride Avg',  val:()=>{
       const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
       const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsDistKm!==null)?Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm):0;
-      const sessMs=UI.simRunning?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
+      const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);   // v257: a PAUSED sim must keep sim time — falling back to wall clock made the average drop on every tap/render
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       return totalH>0.01?(totalKm/totalH).toFixed(1):'—';
     },unit:'km/h'},
@@ -12313,14 +12621,27 @@ function tLiveShell(r){
       const curSpd=s!==null&&s>=0.3?s.toFixed(1):'—';
       const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
       const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
-      const sessMs=UI.simRunning?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
+      const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);   // v257: a PAUSED sim must keep sim time — falling back to wall clock made the average drop on every tap/render
       const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
       const avgVal=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:5px 8px;text-align:center;min-width:78px;" id="live-fpill-speed">
-        <div style="line-height:1.0;"><span style="font-size:34px;font-weight:800;color:var(--text);font-family:var(--sans);" id="live-speed-cur">${curSpd}</span></div>
-        <div style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.5);font-family:var(--font);line-height:1.1;margin-bottom:4px;">km/h</div>
-        <div style="line-height:1.0;"><span style="font-size:22px;font-weight:400;color:rgba(255,255,255,0.6);font-family:var(--sans);" id="live-speed-avg">${avgVal}</span></div>
-        <div style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.4);font-family:var(--font);line-height:1.1;">km/h avg</div>
+      // v257: numbers on var(--font) = DM Mono (tabular digits — DM Sans digits are
+      // proportional, which made the pill CHANGE WIDTH every update; the v244 rule
+      // is numbers=DM Mono, no exceptions). Weight 500, not 800 — DM Mono only
+      // ships 400/500 and a faked bold renders mushy. min-width holds the pill
+      // steady for "88.8" (2 digits + point + 1 — Peter: >100 km/h can fend for
+      // itself). The AVERAGE half is REVERSED (light bg, dark figures) — on a long
+      // ride the average is the number that matters; current speed wobbles.
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-speed">
+        <div style="padding:5px 8px 3px;">
+          <!-- numbers RIGHT-JUSTIFIED in a fixed 4-character box (DM Mono = equal
+               widths), so the decimal point never moves between 9.2 and 18.0 -->
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-speed-cur">${curSpd}</span></div>
+          <div style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.5);font-family:var(--font);line-height:1.1;">km/h</div>
+        </div>
+        <div style="background:#eef3ee;padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--font);line-height:1.1;">km/h avg</div>
+        </div>
       </div>`;
     }
     if(type==='power'){
@@ -12384,20 +12705,12 @@ function tLiveShell(r){
         <canvas id="live-map"></canvas>
         ${distBar}
         ${mapCtrlHTML('live-map',true)}
-        ${(()=>{
-          // SHARING indicator. Peter's rule: if the app is broadcasting your
-          // position, that fact must be on screen, and it must be one tap to stop.
-          // Only ever shown while it is genuinely transmitting.
-          if(!shareIsLive())return'';
-          const q=(UI.shareQueue&&UI.shareQueue.length)?` · ${UI.shareQueue.length} waiting`:'';
-          return`<div id="share-pill" style="position:absolute;top:8px;left:8px;z-index:22;display:flex;align-items:center;gap:6px;background:rgba(10,15,10,.88);border:1px solid rgba(74,222,128,.45);border-radius:var(--r-ctrl);padding:5px 9px;cursor:pointer;">
-            <span style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;"></span>
-            <span style="font-size:12px;font-family:var(--sans);font-weight:600;letter-spacing:.4px;color:var(--accent);">SHARING${q}</span>
-          </div>`;
-        })()}
-        <!-- PACK pill is built by _packPillSync(), NOT here — see the note on that
-             function. Anything only in this template is never created mid-ride,
-             because render() short-circuits to updateLive() during a sim/GPS. -->
+        <!-- The SHARING BUTTON (v257, replaces the old share pill) and the PACK
+             pill are built by _shareBtnSync()/_packPillSync(), NOT here — anything
+             only in this template is never created mid-ride, because render()
+             short-circuits to updateLive() during a sim/GPS. Peter's rule still
+             holds: broadcasting is always visibly on screen (the pulsing state),
+             and one tap reaches the off switch. -->
 
         ${(()=>{
           // Inline confirmation strip — only visible after the user taps "Stop ride".
@@ -12513,7 +12826,8 @@ function initLiveMap(r){
   // Call immediately, then again after layout settles (sidebar/strips may not have final dimensions yet)
   sizeLiveMap();
   _adjustWeatherForElev();
-  setTimeout(()=>{sizeLiveMap();_adjustWeatherForElev();}, 200);
+  _shareBtnSync();   // idle Ride tab too (updateLive only runs during GPS/sim)
+  setTimeout(()=>{sizeLiveMap();_adjustWeatherForElev();_shareBtnSync();}, 200);
   // Re-size when address bar retracts/appears — debounced to prevent rapid iOS resize loops
   let _sizeDebounce=null;
   const debouncedSize=()=>{if(_sizeDebounce)clearTimeout(_sizeDebounce);_sizeDebounce=setTimeout(sizeLiveMap,150);};
@@ -12940,7 +13254,7 @@ function tSettings(r){
         <input type="checkbox" id="toggle-share-enabled" ${UI.shareEnabled!==false?'checked':''} style="width:18px;height:18px;accent-color:var(--accent);">
         <span>Share my location while recording</span>
       </label>
-      <p style="font-size:12px;color:var(--text3);margin:4px 0 0 30px;line-height:1.5;">On by default on purpose — thinking you were shared when you weren't is the worse mistake. Untick to ride privately; it stays off until you tick it again.</p>
+      <p style="font-size:12px;color:var(--text3);margin:4px 0 0 30px;line-height:1.5;">On by default on purpose — thinking you were shared when you weren't is the worse mistake. Untick to ride privately; it stays off until you tick it again. The sharing button on the Ride screen can switch a <strong>single ride</strong> off instead — that one comes back on by itself.</p>
 
       <div class="field" style="margin-top:16px;">
         <label class="lbl">Update every — <span id="share-int-val" class="unit">${UI.shareIntervalS||60}s</span></label>
@@ -15009,6 +15323,7 @@ function renderTurnCue(r,liveDist){
 function updateLive(){
   const r=cur();if(!r)return;
   _packPillSync();   // built here, not in the template — see the note on _packPillSync
+  _shareBtnSync();   // ditto (v257) — state + position tracked every live tick
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const prog=liveDist/Math.max(1,r.totalDist);
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
@@ -15034,7 +15349,7 @@ function updateLive(){
   if(avgEl){
     const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
     const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
-    const sessMs=UI.simRunning?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
+    const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);   // v257: a PAUSED sim must keep sim time — falling back to wall clock made the average drop on every tap/render
     const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
     const av=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
     if(avgEl.textContent!==av)avgEl.textContent=av;
@@ -16092,16 +16407,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
 
-  // ── Location sharing ──
-  if(e.target.closest('#share-pill')){
-    // One tap to stop broadcasting, from the ride screen, with numb hands.
-    if(!confirm('Stop sharing your location?\n\nWhoever has your link will stop seeing you. Recording carries on as normal.\n\nYou can turn it back on in Settings.'))return;
-    UI.shareEnabled=false;
-    _shareSaveAuth();
-    _recToast('Sharing off');
-    render();
-    return;
-  }
+  // ── Location sharing — the ride-screen button (v257) ──
+  // The button lives in content-wrap, so it's delegated here. The SHEET hangs off
+  // document.body, where this delegator can't hear it — its clicks are handled by
+  // _shareSheetOnClick, bound directly on the overlay (Peter's first-test bug:
+  // the whole sheet was deaf, including the close).
+  if(e.target.closest('#share-btn')){_shareSheetShow();return;}
   if(e.target.closest('#btn-share-setup')){
     const nm=(document.getElementById('share-label')?.value||'').trim();
     if(!nm){_recToast('Put in a name first');return;}

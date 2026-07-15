@@ -15,6 +15,164 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (15 July 2026, v257) — SLICE 1 BUILT: the sharing button + sheets (solo)
+
+First build slice of the ride-screen consolidation (design below). **NOT ride-tested, NOT
+sim-tested — desktop fragment checks + a 14-case node truth-table only.** What's in:
+
+- **The SHARING BUTTON** (`_shareBtnSync`, LOCATION SHARING section, after the retry
+  triggers): 54px, bottom-left above the weather pill (same getBoundingClientRect maths as
+  the pack pill), built from updateLive + initLiveMap (NOT the template — the pack-pill
+  lesson). Four states via `_shareBtnState()`: notset/armed/live(pulses via `shbPulse`
+  keyframes, added next to recpulse)/off(slash). Hidden when `eventActive()` — in a
+  PackRide the slot belongs to the pack pill until slice 2 merges them. One-time armed
+  bubble "Shares when you start riding" (`UI.shareBubbleSeen`, persisted in shareAuth).
+  **The old share pill is GONE** (template block + handler + `_packPillSync`'s shp0 lines).
+- **Setup sheet + sharing sheet** (`_shareSheetShow/_shareSheetRender`, fixed overlay
+  z-9999, ids `share-sheet-*`, handlers in the delegator where the share-pill handler
+  was). Setup = name → shareSetup right there. Main sheet = universal rule line, per-ride
+  switch, Copy permanent / Copy PackView / Copy PackRide invite (invite row only when in
+  an event; creation itself is slice 3). Copy rows reuse an existing live link before
+  minting a new one.
+- **Per-ride off** (`UI.shareOffThisRide`, in shareAuth as `offThisRide`): now part of
+  `shareIsOn()`, so it gates every transmit path structurally. Set/cleared by the sheet
+  switch; **auto-reverts at finaliseRecording AND _recStopDelete** (ride over = safety
+  default back). Sheet switch ON also clears the Settings master (`shareEnabled=true`) —
+  the rider flicking it on means it. Settings master stays sticky, copy updated to say so.
+- **Pre-ride PackView links** (the flagged build question — resolved with no schema
+  change): `UI.shareNextRideId` (in shareAuth) is minted on first pre-ride copy;
+  `startRecording` uses it as the ride id and clears it. Ride ids were always
+  client-generated and `ride_start` upserts, so the pinned link simply shows nothing
+  until the ride starts. 48 h expiry from link creation (same as the Settings path).
+- **'Family' → 'Permanent'**: `shareSetup`'s auto-created first link renamed.
+- Verified: fragments `node --check` clean; truth-table (notset/armed/live/paused/
+  off-this-ride/master-off × recording states, pre-mint lifecycle, revert-on-finalise,
+  revert-on-delete, master untouched by ride end) — all pass. **APP_VERSION v256 → v257.**
+- **Fix from Peter's first desktop test (same session): the sheet was DEAF.** The main
+  click delegator is bound to `#content-wrap`, but the sheet overlay hangs off
+  `document.body` — so no click inside it (scrim, toggle, copy rows) ever reached the
+  handlers. Moved all sheet handling to `_shareSheetOnClick`, bound directly on the
+  overlay (the showSurfHelp pattern), and added an explicit **Done** button. **STANDING
+  GOTCHA: anything appended to document.body cannot use the content-wrap delegator —
+  bind directly, like every other body-level modal in the file.** Also from that test:
+  a STALE PackRide event squats on the ride screen forever (events never end) — leave/
+  delete in Settings → Group Rides is the only exit; auto-expiry + a visible "Leave this
+  ride" are now explicitly slice 2 scope, and "Start a group ride" as a sheet row (second
+  doorway to slice 3's Route-tab creation) is noted for slice 3. In-event there is NO
+  ride-screen path to the per-ride switch until slice 2's pack overlay lands (Settings
+  master is the workaround). Second test fix: **_recToast was z-1001, under the sheet's
+  z-9999** — "link copied" fired invisibly behind the scrim. Toast is now z-10001;
+  toasts are feedback and must outrank every overlay. Third fix (unrelated to sharing,
+  found in the same test): **the GPS arrow on north-up maps (desktop big map / stops
+  map) anticipated turns by ~½ km** — the arrow block in drawMap had its OWN copy of
+  the v243 look-ahead bug (snap vertex → vertex+15), which survived when v252 fixed the
+  map rotation. It now uses `_rideHeadingDeg(pts)` — the same ±30 m chord authority the
+  live map rotates by (extra calls safe: easing is time-based). On the rotated live map
+  nothing changes (arrow cancels frame rotation there). Fourth fix from the same test:
+  **the speed pill changed width with the digits** — both numbers were on var(--sans)
+  (DM Sans digits are proportional; the v244 rule is numbers = DM Mono, no exceptions).
+  Now DM Mono weight 500 (Mono ships 400/500 only), pill min-width 100px sized for
+  "88.8", and the AVERAGE half is REVERSED (light bg #eef3ee, dark figures) — Peter's
+  idea: on a long ride average matters more than the wobbling current speed. He
+  SAW it and likes it (avg now same 34px size as current — his call). Fifth fix:
+  **the rotated live map anticipated hairpins** — `_rideHeadingDeg`'s ±30 m symmetric
+  chord had its forward arm around the apex while the rider was still approaching
+  (node-measured 24° of rotation before even entering a 15 m hairpin; mid-corner it
+  read as riding backwards). Arms are now ASYMMETRIC (25 m behind / 10 m ahead —
+  node-verified: 3.5° pre-corner, continuous 3.8°/m sweep through it, exact after).
+  Principle: heading = where you ARE going ≈ where you've just been; the map turns AS
+  you turn, never before. Also gated the arrow's _rideHeadingDeg call to north-up maps
+  only (rotated map's arrow just cancels the frame). Sixth fix: **tapping anything
+  while the sim was PAUSED knocked ~0.5 km/h off the displayed average per tap** — the
+  ride-average session time used `UI.simRunning?_simElapsedMs:wall-clock`, so a paused
+  sim fell back to real elapsed time (a bigger, growing denominator). All three sites
+  now use `(UI.simRunning||UI.simPaused)?_simElapsedMs:…`. **Seventh (the big one — the
+  map-rides-backwards flip + the premature rotation, SOLVED with Peter's real FIT).**
+  Three synthetic reproductions failed; Peter dropped the real 200 km Kyrgyzstan FIT in
+  and the harness (Garmin SDK via `_planning/fit-spike/`, exact snapTo+_rideHeadingDeg,
+  sim-tween emulation) reproduced BOTH complaints exactly: 206 reversed frames, first at
+  12.7 km — the very spot in his screenshot. TWO root causes, both in snapTo:
+  (1) **checkAlerts' off-route check calls snapTo WITHOUT lastIdx every tick**, which
+  re-ran the "first fix" direction guess each time — ±20-point bearing arms = ±1.6 km on
+  this 80 m-spaced route, straddling the whole switchback cluster = coin flip, written
+  straight to `_snapDir` with no latch. Now gated on `_snapDir===0` (startGPS resets it,
+  so the genuine first fix still works). (2) **The old |delta|>2 vote rule made forward
+  riding voiceless** (normal progress advances 1–2 points/fix), so a wrong -3 lock never
+  recovered — and its backward-biased window self-reinforces. Votes now come from
+  gpsHeading vs the route's LOCAL bearing (±1 vertex) with the same ±3 latch; node-tested
+  on the real route: forced wrong direction recovers in ~550 m (old: never). Plus
+  (3) **`_snapRefine`**: snapTo returned the nearest VERTEX's dist, so gpsDistKm jumped
+  up to half a segment ahead crossing each midpoint (real route: up to 49 m ahead, 19 m
+  mean error) — THAT was the "rotating prematurely" Peter kept seeing (it was never the
+  chord length); it also made the turn countdown and orange highlight run early. Now
+  projects onto the two segments adjacent to the winning vertex → interpolated dist +
+  true perpendicular off. Verified on the real route, 60 km incl. both trouble spots:
+  reversed frames 213 → 0, position error 49 m max → ~0. Harness scripts left in
+  `_planning/fit-spike/_tmp_realroute.mjs/_tmp_recovery.mjs/_tmp_full.mjs` (bash can't
+  delete on this mount — Peter can bin them). Peter's FIT is in the session uploads, not
+  the repo.
+
+**Ride/sim test checklist for Peter:** button appears bottom-left on the Ride tab (all
+four states), setup from the button works cold, per-ride off actually stops pushes and
+comes back next ride, pre-ride PackView link goes live once recording starts, and the old
+share pill is gone without regressions. Slices left: 2 pack button + ¾ list/¼ strip peek,
+3 PackRide creation on Route tab, 4 the eye.
+
+## Design session — 15 July 2026 (ride-screen consolidation designed & agreed; slice 1 built as v257 above)
+
+The "ride-screen consolidation" open item is now a settled design, mocked in
+`_planning/ride-screen-sharing-mockups.html` (9 frames on Peter's real Ride screenshot) +
+`_planning/packview-eye.svg`. Decisions, all Peter-approved:
+
+- **ONE button, bottom-left above the weather pill, replaces THREE things**: the share pill,
+  the pack pill, and the 1/2 placing pill. Solo ride = the SHARING button; in a PackRide the
+  same slot = the PACK button (sharing is implied by being in the ride).
+- **Solo states:** not-set-up (grey) / armed (green outline + one-time bubble "Shares when you
+  start riding" — this is how the recording↔sharing coupling finally gets EXPLAINED) / live
+  (solid green, slow pulse) / off-for-this-ride (dimmed + slash). Tap not-set-up → setup sheet
+  IN PLACE (name → mints token + permanent link, ready to copy — no Settings dead end). Tap
+  when set up → sharing sheet.
+- **Sharing sheet:** universal rule stated ONCE at top ("Links only ever see you while you're
+  recording a ride — whichever kind they are"), then: per-ride switch ("Off = ride privately ·
+  recording still works"), Copy your permanent link ("Every ride you record · family &
+  friends"), Copy a PackView link ("Watch this ride only · expires after it"), Invite a rider —
+  PackRide ("Join this ride only · expires after it"). The two temporary kinds deliberately
+  share the same sub-text shape so permanent-vs-temporary is unmissable.
+- **Naming: "Permanent", not "Family"** (Peter: "Family" annoys people without/not wanting
+  family). Change `shareSetup`'s auto-created link label 'Family' → 'Permanent' when building.
+- **Per-ride off must REVERT next ride** — a new transient this-ride flag, reset at
+  `startRecording`. Today's sticky `UI.shareEnabled` stays as the master switch in Settings.
+  (Peter's point: the current sticky-off is WORSE for the safety default.)
+- **Pack button tap → ¾ rider list + top ¼ live map strip** zoomed to you + nearest ahead +
+  nearest behind. NO name labels on the map — dot colours match the list rows (the list IS the
+  legend); outliers become edge chips ("Dave 4.2 km ›"). You highlighted mid-list showing
+  placing ("2nd of 5"); gaps are along-route distance only (time gaps lie). The whole strip is
+  one giant button → full-screen pack map. BOTH views on countdowns (~8 s, list touches reset
+  it): expiry or any tap → map snaps back to the EXACT previous zoom, following you, via the
+  v253 peek save/restore. One tap in, ZERO taps required out (the glove rule). NO zoom-scope
+  setting yet — nearest-riders fit is the only behaviour until it annoys someone.
+- **PackRide creation moves to the Route tab** (logo + words, not logo alone) → popup: ride
+  name, join link to copy, update frequency (frequency here, not Settings). NOT mocked yet —
+  simple enough to design in code.
+- **PackView finally gets its own mark: the EYE** (`_planning/packview-eye.svg` — squarish
+  64×52 in a 100 viewBox, stroke-7 like the stopwatch, solid pupil, NO lashes — tried, rejected:
+  fuzz at 16 px, off-family, reads cosmetic). Colour locked: **PACKVIEW_CYAN**, and the route
+  line STAYS cyan (blue is water's colour in-app; blue route would sink into OSM water + blue
+  cycle-route dashes). Until now all three products shared the recoloured stopwatch in
+  `_packLogo` — PackRide keeps the three dots, PackTimes the stopwatch.
+- **Temporary links keep expiring** (Peter probed "should PackView links live forever for
+  replay?" — answer: no; link leakage accumulates, and "where you've been" leaks
+  home/route/absence patterns). "Expires after ride" copy is fine; the 48 h grace lives in fine
+  print. **Replay of past epics = a possible future deliberate share-a-past-ride feature**
+  (mint a fresh link to a finished ride from the Rides card), parked — not a side effect of
+  immortal links.
+
+**Build questions flagged, unresolved:** (1) Copying a PackView link BEFORE recording starts —
+the ride id doesn't exist yet; likely mint it armed for "your next ride" and attach at
+`startRecording`. (2) Frame 8's map strip: the floating pills (speed box etc.) must HIDE while
+the peek is open. (3) The sim recipe (one storage per rider) is the test path before any real
+ride.
+
 ## Session summary — 11 July 2026 (v243 + v244, NOT yet pushed, NOT yet ride-tested)
 
 Everything below in one place, so neither of us has to re-read the long entries. Detail is in the
