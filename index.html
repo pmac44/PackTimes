@@ -122,6 +122,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 @keyframes recpulse{0%,72%{background:var(--red2);}73%,100%{background:var(--red3);}}
 /* Sharing button (ride screen): slow pulse while genuinely transmitting */
 @keyframes shbPulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.5);}70%{box-shadow:0 0 0 12px rgba(74,222,128,0);}100%{box-shadow:0 0 0 0 rgba(74,222,128,0);}}
+/* Pack button: same pulse in PackRide yellow — the button IS the sharing indicator in an event */
+@keyframes pkbPulse{0%{box-shadow:0 0 0 0 rgba(253,224,71,.45);}70%{box-shadow:0 0 0 12px rgba(253,224,71,0);}100%{box-shadow:0 0 0 0 rgba(253,224,71,0);}}
+/* While the pack peek is open, the top quarter of the screen IS the map — every
+   floating overlay in that band stands down (flagged in the 15 Jul design). */
+.pack-peeking .live-fpill,.pack-peeking #live-dist-bar,.pack-peeking .map-ctrl,
+.pack-peeking #live-weather-bar-wrap,.pack-peeking #turn-cue,.pack-peeking .turn-cue,
+.pack-peeking #pack-btn,.pack-peeking #share-btn,.pack-peeking #rec-stop-confirm{visibility:hidden;}
 .tabs{display:flex;justify-content:space-around;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;padding:0;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:0 1 auto;min-width:0;padding:8px 6px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
@@ -5768,9 +5775,10 @@ function _shareBtnState(){
 function _shareBtnSync(){
   const sec = document.getElementById('live-map-section');
   let el = document.getElementById('share-btn');
-  // In a PackRide the bottom-left slot belongs to the pack pill — one slot, one
-  // object (the ride-screen consolidation rule). Settings still reaches sharing.
-  if(!sec || UI.tab !== 'live' || eventActive()){ if(el) el.remove(); return; }
+  // In a PackRide the bottom-left slot belongs to the pack button — one slot, one
+  // object (the ride-screen consolidation rule). A STALE event doesn't count
+  // (_eventLive), so an old sim ride can't hog the slot forever.
+  if(!sec || UI.tab !== 'live' || _eventLive()){ if(el) el.remove(); return; }
   if(!el){
     el = document.createElement('div');
     el.id = 'share-btn';
@@ -5894,7 +5902,9 @@ function _shareSheetRender(){
       </div>
       ${row('share-sheet-copyperm', icPerm, 'Copy your permanent link', 'Every ride you record · family &amp; friends')}
       ${row('share-sheet-copypv', icEye, 'Copy a PackView link', _rec?'Watch this ride only · expires after it':'Watch your next ride only · expires after it')}
-      ${eventActive()?row('share-sheet-copyjoin', icPack, 'Copy the PackRide invite', 'Join this ride only · expires after it'):''}
+      ${eventActive()
+        ? row('share-sheet-copyjoin', icPack, 'Copy the PackRide invite', 'Join this ride only · expires after it')
+        : row('share-sheet-startpack', icPack, 'Start a group ride — PackRide', 'One link · everyone sees everyone')}
       <button class="btn btn-full" id="share-sheet-done" style="margin-top:12px;padding:12px;font-size:16px;">Done</button>
       <p style="font-size:12px;color:var(--text3);margin:12px 0 0;line-height:1.5;text-align:center;">Manage links &amp; update frequency in Settings → Location Sharing</p>`;
   }
@@ -5963,6 +5973,11 @@ function _shareSheetOnClick(e){
   }
   if(e.target.closest('#share-sheet-copyjoin')){
     if(UI.eventCode)_shareCopyText(eventUrl(UI.eventCode),'PackRide invite copied — this ride only');
+    return;
+  }
+  if(e.target.closest('#share-sheet-startpack')){
+    _shareSheetClose();
+    _evSheetShow();     // second doorway to PackRide creation (v257 slice 3)
     return;
   }
 }
@@ -6150,7 +6165,11 @@ async function packPoll(){
   }
   _packSince = newest;
   _packData  = d;
-  if(UI.tab === 'live'){ _packPillSync(); redrawMap('live-map'); }
+  if(UI.tab === 'live'){
+    _packBtnSync();
+    if(_packListOpen) _packListRender();   // fresh gaps mid-peek
+    redrawMap('live-map');
+  }
 }
 
 function packStart(){
@@ -6160,55 +6179,386 @@ function packStart(){
   packFrameStart();
 }
 
-// The pack pill has to be BUILT here, not only in the tLiveShell template.
+// ── THE PACK BUTTON + THE PACK PEEK (v257 slice 2) ───────────────────────────
+// In a PackRide the bottom-left slot is the PACK button — same slot the sharing
+// button uses solo (one slot, one object; the ride-screen consolidation). It wears
+// your placing and pulses while you're transmitting: the button IS the sharing
+// indicator in an event. Tap → ¾ rider list + top ¼ map strip zoomed to you and
+// your nearest neighbours; tap the strip → full-screen pack map. BOTH on ~8 s
+// countdowns; expiry or a tap snaps the map back to your exact previous zoom via
+// the v253 peek machinery. One tap in, ZERO taps required out (the glove rule).
 //
-// Why: on desktop during a sim or a live GPS ride, render() deliberately
-// short-circuits to updateLive() and never rebuilds the live shell (the anti-flash
-// guard at the top of _render). So anything that only exists in the template is
-// never created mid-ride. This is exactly the trap the turn popup fell into in
-// v237/v238 — same lesson, second time. If you add a new live-map overlay, build it
-// from updateLive/its own sync function, not from the template alone.
-// v254: the PackRide mark — three dots in formation (a leader + two behind), EXACTLY the
-// geometry from _planning/packride-mockups.html (Peter asked for that one). The hex is
-// hard-coded because PACKRIDE_YELLOW is declared further down the file (TDZ at load).
-const PACK_PILL_ICON = '<svg width="15" height="15" viewBox="0 0 20 20" fill="#fde047"><circle cx="10" cy="4.2" r="2.7"/><circle cx="13.9" cy="10.3" r="2.7"/><circle cx="6.1" cy="14.9" r="2.7"/></svg>';
+// Built here, NOT in tLiveShell — the standing lesson: render() short-circuits to
+// updateLive() mid-ride, so template-only elements are never created. Hexes are
+// hard-coded where PACKRIDE_YELLOW would be a TDZ at load.
+const PACK_BTN_ICON = '<svg width="24" height="24" viewBox="0 0 20 20" fill="#fde047"><circle cx="10" cy="4.2" r="2.7"/><circle cx="13.9" cy="10.3" r="2.7"/><circle cx="6.1" cy="14.9" r="2.7"/></svg>';
 
-function _packPillSync(){
+// Rider colours — the list rows ARE the map legend (no name labels during a peek),
+// so the dot colour must be stable per rider for the whole event. Green is you,
+// cyan is the route: neither is in the palette.
+const PACK_COLS = ['#c084fc','#60a5fa','#fbbf24','#f87171','#f472b6','#fb923c','#2dd4bf','#a3e635'];
+let _packColMap = {};
+function _packColFor(id){
+  if(_packColMap[id] == null) _packColMap[id] = Object.keys(_packColMap).length % PACK_COLS.length;
+  return PACK_COLS[_packColMap[id]];
+}
+
+// Events never end on the server (yet) — a sim ride from last week must not own the
+// ride screen forever (Peter's first test). Stale = started more than 48 h ago AND
+// nobody heard from for a day. Stale events keep their membership (Settings), they
+// just stop claiming the slot; the sharing button comes back.
+function _eventStale(){
+  if(!eventActive()) return false;
+  const ev = (UI.events || []).find(e => e.code === UI.eventCode);
+  const started = ev && ev.startAt ? new Date(ev.startAt).getTime() : null;
+  if(!started || Date.now() - started < 48 * 3600 * 1000) return false;
+  const rs = (_packData && _packData.riders) || [];
+  const newest = rs.reduce((m, r) => Math.max(m, r.lastSeen ? new Date(r.lastSeen).getTime() : 0), 0);
+  return (Date.now() - newest) > 24 * 3600 * 1000;
+}
+const _eventLive = () => !!eventActive() && !_eventStale();
+
+function _packBtnSync(){
   const sec = document.getElementById('live-map-section');
-  if(!sec) return;
-  // (v257: the old share pill is gone — the sharing button positions itself in
-  // _shareBtnSync with the same rect maths this function uses for the pack pill.)
-  let el = document.getElementById('pack-pill');
-  const rs = (eventActive() && _packData && _packData.riders) ? _packData.riders : null;
-  if(!rs || !rs.length){ if(el) el.remove(); return; }
-
-  const meIdx = rs.findIndex(x => x.isYou);
-  const place = meIdx >= 0 ? (meIdx + 1) + '/' + rs.length : String(rs.length);
-
+  let el = document.getElementById('pack-btn');
+  // Staleness needs the event's startAt, which lives in the events list — lazily
+  // fetch it once after a cold boot with a persisted eventCode, then re-judge.
+  // (UI.events starts as [] in STATE, so a fetched-flag, not a null check.)
+  if(eventActive() && !UI._eventsFetched){
+    UI._eventsFetched = true;
+    eventListLoad().then(() => _packBtnSync()).catch(() => {});
+  }
+  if(!sec || UI.tab !== 'live' || !_eventLive()){ if(el) el.remove(); return; }
   if(!el){
     el = document.createElement('div');
-    el.id = 'pack-pill';
-    el.style.cssText = 'position:absolute;z-index:22;display:flex;align-items:center;gap:6px;'
-      + 'background:rgba(10,15,10,.88);border:1px solid rgba(253,224,71,.5);border-radius:var(--r-ctrl);'
-      + 'padding:7px 10px;cursor:pointer;';
+    el.id = 'pack-btn';
+    el.style.cssText = 'position:absolute;left:8px;z-index:22;width:54px;height:54px;'
+      + 'border-radius:var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;flex-direction:column;'
+      + 'align-items:center;justify-content:center;gap:1px;cursor:pointer;box-sizing:border-box;'
+      + 'border:2px solid #fde047;color:#fde047;';
     sec.appendChild(el);
   }
-  // v255: sits just ABOVE the weather pill, bottom-left (Peter's spot), and STAYS
-  // above it. Measured with getBoundingClientRect because the weather bar and this
-  // pill live in DIFFERENT containers — composing inline `bottom` values put the
-  // pill BELOW the weather pill, on the elevation strip (the v254 mistake). Rect
-  // maths is container-agnostic and also rides up when the weather bar expands.
+  // Same rect maths as the share button: above the weather pill, container-agnostic.
   const wx = document.getElementById('live-weather-bar');
   el.style.top = 'auto';
-  el.style.left = '8px';
   if(wx){
     const sr = sec.getBoundingClientRect(), wr = wx.getBoundingClientRect();
     el.style.bottom = Math.max(8, sr.bottom - wr.top + 6) + 'px';
   } else {
     el.style.bottom = '14px';
   }
-  el.innerHTML = PACK_PILL_ICON
-    + '<span style="font-size:12px;font-family:var(--font);font-weight:600;color:#fde047;">' + place + '</span>';
+  const rs = (_packData && _packData.riders) || [];
+  const meIdx = rs.findIndex(x => x.isYou);
+  const place = rs.length ? (meIdx >= 0 ? (meIdx + 1) + '/' + rs.length : String(rs.length)) : '';
+  const live = shareIsLive();
+  const key = place + (live ? 'L' : '');
+  if(el._packKey !== key){
+    el._packKey = key;
+    el.style.animation = live ? 'pkbPulse 1.6s ease-out infinite' : 'none';
+    el.innerHTML = PACK_BTN_ICON
+      + (place ? '<span style="font-size:11px;font-family:var(--font);font-weight:600;color:#fde047;line-height:1;">' + place + '</span>' : '');
+  }
+}
+
+// ── The peek itself: ¾ list + ¼ strip, then full map ─────────────────────────
+const PACK_PEEK_MS = 8000;
+let _packListOpen = false, _packFullOpen = false, _packCdUntil = 0, _packCdTimer = null;
+
+// gap to me, formatted honestly: metres under a km, one decimal above
+function _packGapTxt(g){
+  const a = Math.abs(g);
+  const t = a < 0.95 ? (Math.round(a * 100) * 10) + ' m' : a.toFixed(1) + ' km';
+  return (g >= 0 ? '+' : '−') + t;
+}
+
+// Along-route distance for a rider: the newest trail point carries dist_km (idx 3).
+function _packRiderDist(r){
+  if(r.isYou) return UI.gpsDistKm;
+  const tr = r.trail;
+  if(tr && tr.length && tr[tr.length - 1][3] != null) return tr[tr.length - 1][3];
+  return null;
+}
+
+function _packRows(){
+  const rs = (_packData && _packData.riders) || [];
+  const rows = rs.map(r => ({
+    r, isYou: !!r.isYou,
+    dist: _packRiderDist(r),
+    col: r.isYou ? '#4ade80' : _packColFor(r.id || r.name),
+    stale: r.lastSeen ? (Date.now() - new Date(r.lastSeen).getTime()) > 20 * 60 * 1000 : false,
+  }));
+  rows.sort((a, b) => (b.dist == null ? -Infinity : b.dist) - (a.dist == null ? -Infinity : a.dist));
+  return rows;
+}
+
+function _packCdReset(){
+  _packCdUntil = Date.now() + PACK_PEEK_MS;
+  _packPeekUntil = _packCdUntil;   // keep the follow-gate in step with the countdown
+}
+
+function _packCdTick(){
+  // The sharing sheet on top pauses the clock — reading link options shouldn't race it.
+  if(document.getElementById('share-sheet-ov')){ _packCdReset(); return; }
+  const bar = document.getElementById('pack-cd-bar');
+  if(bar) bar.style.width = Math.max(0, (_packCdUntil - Date.now()) / PACK_PEEK_MS * 100) + '%';
+  if(Date.now() >= _packCdUntil) _packOvClose();
+}
+
+// Fit the map to `pts`, with the group parked in the top band of the canvas when
+// the list is up (bandFrac = vertical fraction where the group centre should sit).
+function _packFit(pts, bandFrac){
+  const st = ms('live-map');
+  if(_packPeekPrevZoom == null) _packPeekPrevZoom = st.zoom;
+  if(!pts.length) return;
+  const lats = pts.map(p => p.lat), lons = pts.map(p => p.lon);
+  st.cx = (Math.max(...lons) + Math.min(...lons)) / 2;
+  st.cy = (Math.max(...lats) + Math.min(...lats)) / 2;
+  st._fitted = false;
+  _packPeekAnchor = bandFrac;
+  const r = cur();
+  if(r && r.points && r.points.length && pts.length > 1){
+    const rLat = Math.max(...r.points.map(p => p.lat)) - Math.min(...r.points.map(p => p.lat));
+    const rLon = Math.max(...r.points.map(p => p.lon)) - Math.min(...r.points.map(p => p.lon));
+    const pLat = Math.max(...lats) - Math.min(...lats);
+    const pLon = Math.max(...lons) - Math.min(...lons);
+    // Vertical budget shrinks with the band: at bandFrac 0.5 this is the whole
+    // canvas (the v253 fit); at 0.15 the group must fit the top strip.
+    const span = Math.max(pLon / (rLon || 1e-6), (pLat / (rLat || 1e-6)) / Math.max(0.2, bandFrac * 2));
+    st.zoom = Math.max(1, Math.min(40, 0.75 / Math.max(span, 0.02)));
+  }
+  redrawMap('live-map');
+}
+
+// You + nearest ahead + nearest behind — the only zoom behaviour until it annoys
+// someone (deliberately NO setting yet). Everyone else becomes an edge chip.
+function _packFocus(){
+  const rows = _packRows().filter(x => x.r.lat != null || x.isYou);
+  const me = rows.find(x => x.isYou);
+  const myDist = me ? me.dist : UI.gpsDistKm;
+  let ahead = null, behind = null;
+  for(const x of rows){
+    if(x.isYou || x.dist == null || myDist == null) continue;
+    if(x.dist >= myDist){ if(!ahead || x.dist < ahead.dist) ahead = x; }
+    else { if(!behind || x.dist > behind.dist) behind = x; }
+  }
+  const pts = [];
+  if(UI.gpsPos) pts.push({lat: UI.gpsPos.lat, lon: UI.gpsPos.lon});
+  for(const x of [ahead, behind]) if(x && x.r.lat != null) pts.push({lat: x.r.lat, lon: x.r.lon});
+  return {pts, focusIds: new Set([ahead, behind].filter(Boolean).map(x => x.r.id || x.r.name))};
+}
+
+function _packListShow(){
+  if(!_eventLive()) return;
+  _packOvClose(true);   // clean slate, keep nothing half-open
+  _packListOpen = true;
+  const sec = document.getElementById('live-map-section');
+  if(sec) sec.classList.add('pack-peeking');
+  const ov = document.createElement('div');
+  ov.id = 'pack-ov';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9998;display:flex;flex-direction:column;';
+  ov.addEventListener('click', _packOvOnClick);           // body-level = direct listener (the gotcha)
+  ov.addEventListener('touchstart', () => { if(_packListOpen) _packCdReset(); }, {passive:true});
+  document.body.appendChild(ov);
+  _packListRender();
+  // the map: you + nearest, parked in the strip band
+  const rect = document.getElementById('live-map') ? document.getElementById('live-map').getBoundingClientRect() : null;
+  const stripBottom = window.innerHeight * 0.25;
+  let band = 0.15;
+  if(rect && rect.height > 0) band = Math.max(0.08, Math.min(0.5, ((stripBottom - rect.top) / 2) / rect.height));
+  _packFit(_packFocus().pts, band);
+  _packCdReset();
+  if(!_packCdTimer) _packCdTimer = setInterval(_packCdTick, 150);
+}
+
+function _packListRender(){
+  const ov = document.getElementById('pack-ov');
+  if(!ov) return;
+  const rows = _packRows();
+  const me = rows.find(x => x.isYou);
+  const myDist = me ? me.dist : UI.gpsDistKm;
+  const meIdx = rows.indexOf(me);
+  const ord = n => n + (['th','st','nd','rd'][((n % 100) > 10 && (n % 100) < 14) ? 0 : Math.min(n % 10, 4) % 4] || 'th');
+  const focus = _packFocus().focusIds;
+  const chips = {ahead: [], behind: []};
+  for(const x of rows){
+    if(x.isYou || x.r.lat == null || focus.has(x.r.id || x.r.name)) continue;
+    if(x.dist != null && myDist != null)
+      (x.dist >= myDist ? chips.ahead : chips.behind).push(
+        `<div style="background:rgba(10,15,10,.88);border:2px solid ${x.col};color:${x.col};border-radius:14px;padding:3px 10px;font-family:var(--sans);font-size:12px;font-weight:600;white-space:nowrap;">${(x.r.name||'Rider')} ${_packGapTxt(x.dist-myDist).replace('+','').replace('−','')} ${x.dist>=myDist?'›':'‹'}</div>`);
+  }
+  const row = x => {
+    const gap = (x.dist != null && myDist != null && !x.isYou) ? _packGapTxt(x.dist - myDist) : (x.isYou ? '' : '—');
+    const sub = x.isYou
+      ? (UI.gpsDistKm != null ? UI.gpsDistKm.toFixed(1) + ' km ridden' : '')
+      : (x.stale ? 'last seen ' + _viewAgo(new Date(x.r.lastSeen).getTime()) : '');
+    return `<div style="display:flex;align-items:center;gap:12px;padding:13px 12px;border-radius:var(--r-ctrl);margin-bottom:7px;${x.isYou?'background:rgba(74,222,128,.13);border:1px solid rgba(74,222,128,.5);':'background:var(--card2);border:1px solid var(--border);'}${x.stale?'opacity:.55;':''}">
+      <span style="width:13px;height:13px;border-radius:50%;background:${x.col};flex-shrink:0;${x.isYou?'outline:2px solid #fff;outline-offset:1px;':''}"></span>
+      <span style="flex:1;min-width:0;font-family:var(--sans);font-size:17px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${x.isYou?'You':(x.r.name||'Rider')}${sub?`<span style="display:block;font-size:12px;font-weight:400;color:var(--text3);">${sub}</span>`:''}</span>
+      <span style="font-family:var(--font);font-size:19px;font-weight:500;color:${x.isYou?'#4ade80':'var(--text)'};white-space:nowrap;">${x.isYou?(meIdx>=0?ord(meIdx+1)+' of '+rows.length:''):gap}</span>
+    </div>`;
+  };
+  ov.innerHTML = `
+    <div id="pack-strip" style="height:25%;flex-shrink:0;position:relative;cursor:pointer;border-bottom:3px solid #fde047;">
+      <div style="position:absolute;left:8px;top:8px;display:flex;flex-direction:column;gap:5px;align-items:flex-start;">${chips.behind.join('')}</div>
+      <div style="position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:5px;align-items:flex-end;">${chips.ahead.join('')}</div>
+      <div style="position:absolute;right:10px;bottom:8px;background:rgba(10,15,10,.85);border:1px solid rgba(253,224,71,.5);border-radius:var(--r-ctrl);padding:5px 11px;font-family:var(--sans);font-size:13px;font-weight:600;color:#fde047;">Tap for map</div>
+    </div>
+    <div id="pack-list" style="flex:1;min-height:0;background:rgba(8,12,8,.97);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;overflow:hidden;">
+      <div style="height:4px;background:#243024;border-radius:2px;margin-bottom:10px;overflow:hidden;"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;border-radius:2px;"></div></div>
+      <div style="flex:1;min-height:0;overflow-y:auto;">
+        ${rows.length ? rows.map(row).join('') : '<div style="padding:30px 10px;text-align:center;color:var(--text3);font-family:var(--sans);">No one else is riding yet — riders appear when they record.</div>'}
+      </div>
+      <div id="pack-ov-share" style="display:flex;align-items:center;justify-content:center;gap:10px;background:var(--card2);border:1px solid var(--border2);border-radius:var(--r-ctrl);padding:13px;margin-top:8px;cursor:pointer;font-family:var(--sans);font-size:16px;font-weight:600;color:var(--text);">Sharing &amp; invites&nbsp;›</div>
+      <div id="pack-ov-leave" style="text-align:center;padding:11px;margin-top:7px;cursor:pointer;font-family:var(--sans);font-size:14px;color:var(--red);border:1px solid rgba(248,113,113,.35);border-radius:var(--r-ctrl);">Leave this ride</div>
+    </div>`;
+}
+
+function _packFullShow(){
+  _packListOpen = false;
+  _packFullOpen = true;
+  const ov = document.getElementById('pack-ov');
+  if(ov) ov.remove();
+  // whole pack, whole canvas — the v253 fit
+  const rows = _packRows().filter(x => x.r.lat != null);
+  const pts = rows.map(x => ({lat: x.r.lat, lon: x.r.lon}));
+  if(UI.gpsPos) pts.push({lat: UI.gpsPos.lat, lon: UI.gpsPos.lon});
+  _packFit(pts, 0.5);
+  const full = document.createElement('div');
+  full.id = 'pack-full-ov';
+  full.style.cssText = 'position:fixed;inset:0;z-index:9998;cursor:pointer;';
+  full.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(36,48,36,.8);"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;"></div></div>';
+  full.addEventListener('click', () => _packOvClose());
+  document.body.appendChild(full);
+  _packCdReset();
+}
+
+function _packOvClose(keepPeek){
+  _packListOpen = false;
+  _packFullOpen = false;
+  const ov = document.getElementById('pack-ov');       if(ov) ov.remove();
+  const full = document.getElementById('pack-full-ov'); if(full) full.remove();
+  if(_packCdTimer){ clearInterval(_packCdTimer); _packCdTimer = null; }
+  const sec = document.getElementById('live-map-section');
+  if(sec) sec.classList.remove('pack-peeking');
+  if(!keepPeek) _packPeekEnd();   // exact previous zoom, following you — zero taps out
+}
+
+function _packOvOnClick(e){
+  if(e.target.closest('#pack-strip')){ _packFullShow(); return; }
+  if(e.target.closest('#pack-ov-share')){ _packOvClose(); _shareSheetShow(); return; }
+  if(e.target.closest('#pack-ov-leave')){
+    if(!confirm('Leave this group ride?\n\nYou\'ll stop seeing the pack and they\'ll stop seeing you. Your recording is not affected.')) return;
+    const code = UI.eventCode;
+    _packOvClose();
+    eventLeave(code)
+      .then(() => { _recToast('Left the group ride'); _packBtnSync(); _shareBtnSync(); })
+      .catch(() => _recToast('Couldn\'t leave — check your connection'));
+    return;
+  }
+  if(_packListOpen) _packCdReset();   // any other list touch buys more reading time
+}
+
+// ── PACKRIDE CREATION (v257 slice 3) ─────────────────────────────────────────
+// A bottom sheet reached from the PackRide button on the current route's tile, or
+// from "Start a group ride" in the sharing sheet. Same job as the Settings creator
+// (which stays), but where the route is — the doorway model. Body-level overlay =
+// its own click listener, per the standing gotcha.
+function _evSheetClose(){
+  const ov = document.getElementById('ev-sheet-ov');
+  if(ov) ov.remove();
+}
+
+function _evSheetShow(){
+  _evSheetClose();
+  const ov = document.createElement('div');
+  ov.id = 'ev-sheet-ov';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(5,8,5,.6);'
+    + 'display:flex;align-items:flex-end;justify-content:center;';
+  ov.addEventListener('click', _evSheetOnClick);
+  document.body.appendChild(ov);
+  _evSheetRender();
+}
+
+function _evSheetRender(){
+  const ov = document.getElementById('ev-sheet-ov');
+  if(!ov) return;
+  const head = `<div style="display:flex;align-items:center;gap:8px;font-size:18px;font-weight:600;color:#fde047;margin-bottom:8px;">${PACK_BTN_ICON}PackRide — group ride</div>`;
+  let body;
+  if(!shareIsSetUp()){
+    body = head + `
+      <p style="font-size:14px;color:var(--text2);line-height:1.55;margin:0 0 12px;">A group ride is location sharing with more than one rider — so sharing needs setting up first (a name and a link, ~10 seconds).</p>
+      <button class="btn btn-full btn-p" id="ev-sheet-setup" style="padding:13px;font-size:16px;">Set up sharing first</button>
+      <button class="btn btn-full" id="ev-sheet-notnow" style="margin-top:8px;padding:12px;">Not now</button>`;
+  } else if(eventActive()){
+    const ev = (UI.events || []).find(x => x.code === UI.eventCode);
+    body = head + `
+      <p style="font-size:14px;color:var(--text2);line-height:1.55;margin:0 0 4px;">You're in <strong style="color:var(--text);">${((ev && ev.name) || 'a group ride').replace(/</g,'&lt;')}</strong>. Anyone with the invite link joins this ride and gets the route on their phone.</p>
+      <div id="ev-sheet-copy" style="display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:13px 12px;margin-top:10px;cursor:pointer;">
+        <span style="flex-shrink:0;display:inline-flex;">${PACK_BTN_ICON}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:16px;font-weight:600;color:var(--text);">Copy the invite link</div>
+          <div style="font-size:13px;color:var(--text3);margin-top:1px;">Join this ride only · expires after it</div>
+        </div>
+      </div>
+      <button class="btn btn-full" id="ev-sheet-done" style="margin-top:10px;padding:12px;font-size:16px;">Done</button>
+      <p style="font-size:12px;color:var(--text3);margin:10px 0 0;line-height:1.5;text-align:center;">Leave the ride from the pack button on the Ride screen, or Settings → Group Rides.</p>`;
+  } else {
+    const r = cur();
+    if(!r || !r.points || !r.points.length){
+      body = head + `
+        <p style="font-size:14px;color:var(--text2);line-height:1.55;margin:0 0 12px;">A group ride needs somewhere to go — load a route first.</p>
+        <button class="btn btn-full" id="ev-sheet-notnow" style="padding:12px;">Close</button>`;
+    } else {
+      body = head + `
+        <p style="font-size:14px;color:var(--text2);line-height:1.55;margin:0 0 12px;">One link, everyone sees everyone while riding. Uses <strong style="color:var(--text);">${(r.label||r.name||'this route').replace(/</g,'&lt;')}</strong> and its start time — everyone who joins gets the route on their phone, so it navigates with no signal.</p>
+        <input type="text" id="ev-sheet-name" placeholder="Ride name — e.g. Saturday bunch" style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);color:var(--text);font-family:var(--sans);font-size:16px;padding:12px;">
+        <div style="margin-top:12px;">
+          <div style="font-size:13px;color:var(--text3);font-family:var(--sans);margin-bottom:4px;">Update every — <span id="ev-sheet-int-val" style="color:var(--text);font-family:var(--font);">30s</span></div>
+          <input type="range" id="ev-sheet-int" min="10" max="300" step="10" value="30" style="width:100%;accent-color:#fde047;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);font-family:var(--font);"><span>10s</span><span>1min</span><span>5min</span></div>
+        </div>
+        <button class="btn btn-full btn-p" id="ev-sheet-create" style="margin-top:12px;padding:13px;font-size:16px;">Create &amp; copy the invite link</button>
+        <button class="btn btn-full" id="ev-sheet-notnow" style="margin-top:8px;padding:12px;">Not now</button>
+        <p style="font-size:12px;color:var(--text3);margin:10px 0 0;line-height:1.5;text-align:center;">You set the update rate for everyone — one keen rider can't flatten the whole bunch's phones.</p>`;
+    }
+  }
+  ov.innerHTML = `<div id="ev-sheet" style="width:min(430px,100%);box-sizing:border-box;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card) var(--r-card) 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));font-family:var(--sans);box-shadow:0 -6px 24px rgba(0,0,0,.5);">${body}</div>`;
+  const sl = ov.querySelector('#ev-sheet-int');
+  if(sl) sl.addEventListener('input', () => {
+    const v = ov.querySelector('#ev-sheet-int-val');
+    if(v) v.textContent = sl.value + 's';
+  });
+}
+
+function _evSheetOnClick(e){
+  if(e.target.id === 'ev-sheet-ov'){ _evSheetClose(); return; }
+  if(e.target.closest('#ev-sheet-notnow') || e.target.closest('#ev-sheet-done')){ _evSheetClose(); return; }
+  if(e.target.closest('#ev-sheet-setup')){ _evSheetClose(); _shareSheetShow(); return; }
+  if(e.target.closest('#ev-sheet-copy')){
+    if(UI.eventCode) _shareCopyText(eventUrl(UI.eventCode), 'Invite link copied — paste it in the group chat');
+    return;
+  }
+  if(e.target.closest('#ev-sheet-create')){
+    const r = cur();
+    if(!r || !r.points.length){ _recToast('Load a route first'); return; }
+    if(UI.shareBusy) return; UI.shareBusy = true;
+    const nm = (document.getElementById('ev-sheet-name')?.value || '').trim() || 'Group ride';
+    const iv = +(document.getElementById('ev-sheet-int')?.value || 30);
+    // Start time comes from the route — already set on the Route tab; asking twice
+    // for the same fact is how forms get long.
+    let startAt = null;
+    try{ startAt = startDT(r)?.toISOString() || null; }catch(_){}
+    _recToast('Creating the group ride…');
+    eventCreate(nm, r, startAt, 'ride', iv)
+      .then(code => {
+        _shareCopyText(eventUrl(code), 'Created — invite link copied');
+        _evSheetRender();          // flips to the "you're in a ride" state with the copy row
+        _packBtnSync(); _shareBtnSync();
+      })
+      .catch(() => _recToast('Couldn\'t create it — check your connection'))
+      .finally(() => { UI.shareBusy = false; });
+    return;
+  }
 }
 
 function packStop(){
@@ -6224,6 +6574,8 @@ function packReset(){
   _packPlay   = {};
   _packSince  = null;
   _packData   = null;
+  _packColMap = {};        // new event = fresh colour assignments (v257)
+  _packOvClose(true);      // and no half-open peek from the old one
 }
 
 // ── Interpolation: making 30-second updates look live ────────────────────────
@@ -6373,38 +6725,47 @@ function drawPack(cvs){
     ctx.save();
     ctx.globalAlpha = stale ? 0.45 : 1;
 
+    // v257: each rider wears THEIR colour (assigned once per event, _packColFor) —
+    // during a pack peek the list rows are the legend, so dot colours must match.
+    const col = _packColFor(r.id || r.name);
+
     // their recent trail
     if(r.trail && r.trail.length > 1){
       ctx.beginPath();
       ctx.moveTo(cvs._px(r.trail[0][1]), cvs._py(r.trail[0][0]));
       for(let i = 1; i < r.trail.length; i++) ctx.lineTo(cvs._px(r.trail[i][1]), cvs._py(r.trail[i][0]));
-      ctx.strokeStyle = 'rgba(96,165,250,0.55)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.strokeStyle = col + '8C'; ctx.lineWidth = 3; ctx.lineCap = 'round';   // 55% alpha
       ctx.stroke();
     }
 
     ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832);
-    ctx.fillStyle = '#60a5fa'; ctx.fill();
+    ctx.fillStyle = col; ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = '#0a0f0a'; ctx.stroke();
 
     // name — a pack you can't put names to is just noise. v252: drawn COUNTER-ROTATED
     // (the map frame is rotated by -heading for heading-up; rotating +heading back at
     // the rider's position keeps the tag horizontal on screen). It used to rotate
     // with the frame and read upside down half the time (Peter, sim test).
-    const lbl = r.name || 'Rider';
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate((cvs._heading||0)*Math.PI/180);
-    ctx.font = '600 12px DM Sans, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    const w = ctx.measureText(lbl).width;
-    ctx.fillStyle = 'rgba(10,15,10,0.82)';
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(-w/2 - 5, -27, w + 10, 16, 4);
-    else ctx.rect(-w/2 - 5, -27, w + 10, 16);
-    ctx.fill();
-    ctx.fillStyle = '#e8f5e8';
-    ctx.fillText(lbl, 0, -13);
-    ctx.restore();
+    // v257: HIDDEN while a pack peek is open — the design rule is no name labels on
+    // the peek map; the coloured list rows are the legend, and tags at strip-zoom
+    // would shingle over each other.
+    if(!_packPeekOn()){
+      const lbl = r.name || 'Rider';
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((cvs._heading||0)*Math.PI/180);
+      ctx.font = '600 12px DM Sans, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      const w = ctx.measureText(lbl).width;
+      ctx.fillStyle = 'rgba(10,15,10,0.82)';
+      ctx.beginPath();
+      if(ctx.roundRect) ctx.roundRect(-w/2 - 5, -27, w + 10, 16, 4);
+      else ctx.rect(-w/2 - 5, -27, w + 10, 16);
+      ctx.fill();
+      ctx.fillStyle = '#e8f5e8';
+      ctx.fillText(lbl, 0, -13);
+      ctx.restore();
+    }
     ctx.restore();
   }
 }
@@ -6415,46 +6776,23 @@ function drawPack(cvs){
 // appeared to do nothing (Peter's sim test). Now the follow branches genuinely stand
 // down while the peek is on (`_packPeekOn()` gates redrawMap + updateLive), and you
 // snap back to your own dot after 12 s — or immediately on a second tap.
-let _packPeekUntil = 0, _packPeekTimer = null, _packPeekPrevZoom = null;
+// v257 slice 2: the peek is now driven by the pack OVERLAY (_packListShow /
+// _packFullShow / _packFit above) and its countdown — this state is the follow-gate
+// + the zoom save/restore. _packPeekAnchor parks the fitted group in the top band
+// of the canvas while the ¾ list covers the rest (redrawMap reads it as the live
+// anchor while the peek is on). zoomToPack (the v253 tap-the-pill fit) is gone —
+// _packFit(pts, 0.5) is the same fit, reusable.
+let _packPeekUntil = 0, _packPeekTimer = null, _packPeekPrevZoom = null, _packPeekAnchor = 0.5;
 const _packPeekOn = () => !!_packPeekUntil && Date.now() < _packPeekUntil;
 
 function _packPeekEnd(){
   if(_packPeekTimer){ clearTimeout(_packPeekTimer); _packPeekTimer = null; }
+  _packPeekAnchor = 0.5;
   if(!_packPeekUntil) return;
   _packPeekUntil = 0;
   const st = ms('live-map');
   if(_packPeekPrevZoom != null){ st.zoom = _packPeekPrevZoom; _packPeekPrevZoom = null; }
   if(document.getElementById('live-map')) redrawMap('live-map');
-}
-
-function zoomToPack(){
-  if(_packPeekOn()){ _packPeekEnd(); _recToast('Following you'); return; }  // tap again → back to you
-  if(!_packData || !_packData.riders || !_packData.riders.length) return;
-  const pts = _packData.riders.filter(r => r.lat != null).map(r => ({lat: r.lat, lon: r.lon}));
-  if(UI.gpsPos) pts.push({lat: UI.gpsPos.lat, lon: UI.gpsPos.lon});
-  if(!pts.length) return;
-  const st = ms('live-map');
-  if(_packPeekPrevZoom == null) _packPeekPrevZoom = st.zoom;   // restored when the peek ends
-  const lats = pts.map(p => p.lat), lons = pts.map(p => p.lon);
-  st.cx = (Math.max(...lons) + Math.min(...lons)) / 2;
-  st.cy = (Math.max(...lats) + Math.min(...lats)) / 2;
-  st._fitted = false;
-  // Zoom so the spread fits with room to breathe. The map's baseScale is fitted to
-  // the ROUTE, so we work relative to that.
-  const r = cur();
-  if(r && r.points && r.points.length && pts.length > 1){
-    const rLat = Math.max(...r.points.map(p=>p.lat)) - Math.min(...r.points.map(p=>p.lat));
-    const rLon = Math.max(...r.points.map(p=>p.lon)) - Math.min(...r.points.map(p=>p.lon));
-    const pLat = Math.max(...lats) - Math.min(...lats);
-    const pLon = Math.max(...lons) - Math.min(...lons);
-    const span = Math.max(pLat / (rLat || 1e-6), pLon / (rLon || 1e-6));
-    st.zoom = Math.max(1, Math.min(40, 0.75 / Math.max(span, 0.02)));
-  }
-  _packPeekUntil = Date.now() + 12000;
-  if(_packPeekTimer) clearTimeout(_packPeekTimer);
-  _packPeekTimer = setTimeout(_packPeekEnd, 12100);
-  redrawMap('live-map');
-  _recToast('Showing the pack');
 }
 
 // ── The join screen (?join=CODE) ─────────────────────────────────────────────
@@ -6816,9 +7154,12 @@ function _viewDraw(){
 
   const stats = document.getElementById('view-stats');
   if(stats){
+    // NO text-transform on unit labels: SI symbols are case-sensitive — km/h
+    // uppercased becomes KM/H, which is wrong (KM = kelvin·mega; Peter's rule,
+    // now in the style guide). Units render exactly as written.
     const cell = (v, l) => `<div style="flex:1;padding:11px 6px;text-align:center;border-right:1px solid var(--border);">
         <div style="font-family:var(--font);font-size:23px;font-weight:500;">${v}</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--sans);margin-top:2px;">${l}</div>
+        <div style="font-size:11px;color:var(--text3);letter-spacing:.6px;font-family:var(--sans);margin-top:2px;">${l}</div>
       </div>`;
     const spd = (last && last[3] != null) ? Number(last[3]).toFixed(1) : '–';
     const dst = (last && last[4] != null) ? Number(last[4]).toFixed(1)
@@ -8942,7 +9283,7 @@ function redrawMap(id){
       // triangle is drawn fixed pointing up, so the map turns and "you" stays put.
       drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:false,forceHeading:_rideHeadingDeg(r.points),highlightId:_highlightStopId});
     } else {
-      const liveAnchor=(st.cx===null||st.cy===null||_packPeekOn())?0.5:0.65;
+      const liveAnchor=_packPeekOn()?_packPeekAnchor:((st.cx===null||st.cy===null)?0.5:0.65);
       drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:liveAnchor,highlightId:_highlightStopId});
     }
   } else {
@@ -13053,6 +13394,9 @@ function tRoutes(r){
         +'<button class="btn btn-sm reload-route" data-ridx="'+i+'" title="Update route (reimport GPX)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>'
         +'<button class="btn btn-sm btn-r del-route" data-ridx="'+i+'" style="margin-left:auto;">✕</button>'
         +'</div>'
+        // PackRide doorway (v257 slice 3): on the SELECTED route only — logo + words,
+        // not logo alone (the mark hasn't earned solo recognition yet).
+        +(i===CUR&&rt.points.length?'<div style="margin-top:6px;"><button class="btn btn-sm packride-route" data-ridx="'+i+'" style="display:inline-flex;align-items:center;gap:6px;color:#fde047;border-color:rgba(253,224,71,.45);"><svg width="15" height="15" viewBox="0 0 20 20" fill="#fde047"><circle cx="10" cy="4.2" r="2.7"/><circle cx="13.9" cy="10.3" r="2.7"/><circle cx="6.1" cy="14.9" r="2.7"/></svg>PackRide'+(UI.eventCode?' · invite':' · start a group ride')+'</button></div>':'')
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='loading'?'<div id="tile-dl-progress"><div style="background:var(--bg3);border-radius:4px;height:6px;overflow:hidden;"><div id="tile-dl-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.2s;border-radius:4px;"></div></div><span id="tile-dl-msg" style="font-size:11px;color:var(--text3);font-family:var(--font);"></span></div>':'')
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='done'?'<div style="font-size:12px;color:var(--accent);">✓ '+(UI.tileDownloadMsg||'Cached')+'</div>':'')
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='error'?'<div style="font-size:12px;color:#ef4444;">✗ '+(UI.tileDownloadMsg||'Failed')+'</div>':'')
@@ -15381,7 +15725,7 @@ function renderTurnCue(r,liveDist){
 // ═══════════════════════════════════════════
 function updateLive(){
   const r=cur();if(!r)return;
-  _packPillSync();   // built here, not in the template — see the note on _packPillSync
+  _packBtnSync();    // built here, not in the template — see the note on _packBtnSync
   _shareBtnSync();   // ditto (v257) — state + position tracked every live tick
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const prog=liveDist/Math.max(1,r.totalDist);
@@ -15779,7 +16123,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;}
   // Route list select
   const rli=e.target.closest('.rli');
-  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('.reload-route')&&!e.target.closest('.share-route')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
+  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('.reload-route')&&!e.target.closest('.share-route')&&!e.target.closest('.packride-route')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
     const newIdx=+rli.dataset.ridx;
     if(newIdx!==CUR&&IS_DESKTOP()){
       // Reset desktop map so it zooms to fit the newly selected route
@@ -15884,6 +16228,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // Reload/update route
   const shBtn=e.target.closest('.share-route');
   if(shBtn){const i=+shBtn.dataset.ridx;shareRideFile(ROUTES[i]);return;}
+  if(e.target.closest('.packride-route')){_evSheetShow();return;}
   const rlBtn=e.target.closest('.reload-route');
   if(rlBtn){const i=+rlBtn.dataset.ridx;_reloadRouteIdx=i;document.getElementById('gpx-reload-input').click();return;}
   // Recorded Rides (Routes tab): trigger opens full-screen popup; ride rows open detail
@@ -16387,7 +16732,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
 
   /* alert-ok handler removed — stop alerts now use next-strip pulse + audio chime */
   // ── PackRide (events) ──
-  if(e.target.closest('#pack-pill')){ zoomToPack(); return; }
+  if(e.target.closest('#pack-btn')){ _packListShow(); return; }
   if(e.target.closest('#btn-ev-create')){
     const r=cur();
     if(!r){_recToast('Load a route first');return;}

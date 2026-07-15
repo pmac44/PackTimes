@@ -135,12 +135,51 @@ visibly jumped ahead of the interpolated dot). (4) Small permanent caption botto
 dot for its time" — the moving dot is deliberately not tappable (it's the render-buffer
 playhead, ~35 s behind; the dots are the truth).
 
-**Ride/sim test checklist for Peter:** button appears bottom-left on the Ride tab (all
-four states), setup from the button works cold, per-ride off actually stops pushes and
-comes back next ride, pre-ride PackView link goes live once recording starts, and the old
-share pill is gone without regressions. PackView: eye in the tab, layers row, dots +
-trail-line toggle, lag note. Slices left: 2 pack button + ¾ list/¼ strip peek,
-3 PackRide creation on Route tab (slice 4's eye is done).
+**SLICE 2 BUILT (same session): the pack button + the two-stage pack peek.** NOT
+sim-tested. What's in (all in the PACKRIDE section, replacing `_packPillSync`):
+
+- **The PACK BUTTON** (`_packBtnSync`): 54px, same slot/rect-maths as the sharing
+  button, PackRide yellow, pack mark + placing ("2/5"), **pulses (`pkbPulse`) while
+  `shareIsLive()`** — the button IS the sharing indicator in an event. Replaces the
+  pack pill AND the placing pill. The old `zoomToPack` is gone (refactored into
+  `_packFit(pts, bandFrac)`).
+- **Stale events stop owning the slot** (`_eventStale`/`_eventLive`): started >48 h ago
+  AND nobody heard from in 24 h → pack button hides, sharing button returns; membership
+  stays in Settings. `UI.events` lazily fetched once per boot (`UI._eventsFetched`) so
+  staleness is judgeable cold. Both buttons gate on `_eventLive()` now.
+- **Tap → ¾ rider list + top ¼ map strip** (`_packListShow`, overlay z-9998 with its
+  own click listener — the content-wrap delegator can't hear body-level overlays):
+  rows sorted by along-route distance (newest trail point's dist_km), you highlighted
+  with placing ("2nd of 5"), others show ±gap (m under 950 m, km above, ±10 m
+  rounding), stale riders dimmed with "last seen". Map fits you + nearest ahead +
+  nearest behind into the top band (`_packPeekAnchor` — redrawMap's live anchor reads
+  it while the peek is on); outliers become edge chips (behind left, ahead right).
+  Floating pills/dist bar/map-ctrl/weather/turn cue hide via `.pack-peeking` CSS.
+- **Strip tap → full-screen pack map** (`_packFullShow`): whole pack, whole canvas
+  (the v253 fit), transparent tap-catcher, tap anywhere = out.
+- **BOTH views on one ~8 s countdown** (`_packCdReset/_packCdTick`, yellow bar): any
+  list touch resets it; the sharing sheet on top pauses it; expiry or tap →
+  `_packOvClose` → `_packPeekEnd` restores the EXACT previous zoom, following you.
+- **Footer rows:** "Sharing & invites ›" → closes the peek, opens the sharing sheet
+  (finally a ride-screen path to the per-ride switch in-event); "Leave this ride" →
+  confirm → `eventLeave` (leave ≠ delete — the organiser-side delete stays in
+  Settings).
+- **Rider colours** (`PACK_COLS`/`_packColFor`, reset in `packReset`): stable per
+  rider per event, used by the list rows AND `drawPack`'s dots + trails (was all-blue)
+  — the list IS the legend. Name tags on the map are hidden while a peek is on.
+- Verified: fragment `node --check` clean + 10-case truth-table (gap formatting,
+  sort/placing, nearest-focus, colour stability, stale×3) all pass. Still v257 (one
+  push = one version; v257 is unpushed).
+
+**Sim-test checklist for slice 2 (two browser windows, the v251 recipe):** pack button
+appears with placing once riders are known · pulses only while recording+sharing ·
+tap → list + strip (gaps sane, you mid-list) · strip tap → full map → tap → back at
+your exact zoom · countdown auto-closes both views · "Sharing & invites" opens the
+sheet in-event · "Leave this ride" exits and the SHARING button returns · yesterday's
+stale event no longer claims the slot on boot.
+
+Slices left: 3 PackRide creation on Route tab (+ "Start a group ride" row in the
+sharing sheet as its second doorway; slice 4's eye is done).
 
 ## Design session — 15 July 2026 (ride-screen consolidation designed & agreed; slice 1 built as v257 above)
 

@@ -21,6 +21,10 @@ hard-code px sizes, spacing, radii, or category hex again.**
 ```
 Fonts: **DM Sans** for UI/prose, **DM Mono** (`--font`) for numbers, labels, metrics.
 
+**Unit symbols follow SI casing, always**: km, m, h, min, s, °C, km/h — never KM, Kms,
+Km or KPH. (KM would read as kelvin·mega. Peter's rule, 15 Jul 2026.) Unit symbols
+take no plural s and no full stop.
+
 > Hierarchy rule: section heading (17, bold, uppercase) > body/button (17) >
 > meta (15) > label/tag (13). Don't shrink section headings to caption size.
 
