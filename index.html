@@ -903,6 +903,14 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
   // Recording state
   recId:null,recMinMoveM:null,recStopDetectMs:null,
+  // v257 "Riding this now?" — the rider pressed record on a plan dated for a future
+  // day (scouting a leg, or just riding the route early). rideNowId = which route it
+  // applies to; rideNowTs = when they actually rolled. Lives HERE and not on the
+  // route on purpose: v189's whole promise is that a future-dated plan never gets
+  // stamped with real times, so this mode changes what the ride screen SHOWS without
+  // writing a thing to the plan. Persisted so a mid-ride reload/crash-recovery keeps
+  // today's clock; cleared when the ride ends (see finaliseRecording).
+  rideNowId:null,rideNowTs:null,
   // Location sharing (Phase 2). shareToken is the SECRET write token — it lives in
   // its own `shareAuth` KV row, NOT in uiPrefs, so it never syncs out to Dropbox.
   // No token = never opted in = no code path can transmit a position. That's the
@@ -980,7 +988,7 @@ async function saveAll(){
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -1025,6 +1033,8 @@ async function loadAll(){
       if(prefs.elevZoomKm)UI.elevZoomKm=prefs.elevZoomKm;
       if(Array.isArray(prefs.livePills)&&prefs.livePills.length===3)UI.livePills=prefs.livePills;
       if(prefs.recId)UI.recId=prefs.recId;
+      if(prefs.rideNowId)UI.rideNowId=prefs.rideNowId;
+      if(prefs.rideNowTs)UI.rideNowTs=prefs.rideNowTs;
       if(prefs.recMinMoveM)UI.recMinMoveM=prefs.recMinMoveM;
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
       if(Array.isArray(prefs.calibRides))UI.calibRides=prefs.calibRides;
@@ -1907,6 +1917,14 @@ function startDT(r){
   // already started a ride you're still planning for a later date, so it's a stale
   // leftover from an earlier GPS fix and must not pollute the plan's finish/ETAs.
   // A recorded start at or after the planned start (e.g. you rolled out late) is kept.
+  // "Riding this now" (v257): the rider pressed record on a plan dated for a future
+  // day and said yes, they're riding it now. The ride's real start is the RECORDING's
+  // start — which is the honest answer and, crucially, is not stored on the plan. So
+  // the ride screen runs on today's clock (ETAs, day labels, weather, daylight) while
+  // the saved plan keeps its planned date, untouched. Checked FIRST: it outranks both
+  // the actual stamp and the planned start, because it is the most specific statement
+  // of intent the rider can make — they told us, out loud, today.
+  if(rideNowOn(r))return new Date(UI.rideNowTs);
   if(r.actualStartTime){
     const planned=(r.startDate&&r.startTime)?new Date(`${r.startDate}T${r.startTime}:00`):null;
     if(!planned||r.actualStartTime>=planned.getTime())return new Date(r.actualStartTime);
@@ -1915,14 +1933,50 @@ function startDT(r){
   if(!r.startDate||!r.startTime)return null;
   return new Date(`${r.startDate}T${r.startTime}:00`);
 }
+// True when the rider has said "yes, I'm riding this now" for THIS route. Deliberately
+// narrow: tied to one route id, and cleared the moment the ride ends, so it can never
+// leak onto the next ride or a different plan.
+function rideNowOn(r){return !!(r&&UI.rideNowId&&UI.rideNowTs&&UI.rideNowId===r.id);}
+// Ride-now ends with the ride. Called from finaliseRecording AND the delete path —
+// exactly where the v257 per-ride sharing flag reverts, and for the same reason: a
+// mode that survives its own ride is a mode that lies on the next one.
+// The stash exists for the 5-second Undo window: stopping and immediately un-stopping
+// must not silently drop the ride screen back onto the planned date mid-ride — the
+// prompt only ever fires at record start, so there would be no way to get it back.
+let _rideNowPrev=null;
+function rideNowClear(){
+  if(!UI.rideNowId&&!UI.rideNowTs)return false;
+  _rideNowPrev={id:UI.rideNowId,ts:UI.rideNowTs};
+  UI.rideNowId=null;UI.rideNowTs=null;
+  return true;
+}
+function rideNowRestore(){
+  if(!_rideNowPrev)return false;
+  UI.rideNowId=_rideNowPrev.id;UI.rideNowTs=_rideNowPrev.ts;
+  _rideNowPrev=null;
+  return true;
+}
 // True when the route's planned start is still in the future — i.e. we're PLANNING,
 // not riding. Used to (a) stop GPS from stamping "actual" times onto a plan you
 // haven't ridden yet, and (b) ignore any leftover actual stamps when showing ETAs.
+//
+// v257 — these two jobs are NO LONGER the same question, so don't re-merge them:
+//   · CAPTURE (may we write real times onto this plan?) keeps using this predicate
+//     RAW. A future-dated plan must never be stamped, even while you're riding it
+//     today — that is exactly the v189 promise, and "riding this now" must not
+//     quietly undo it.
+//   · DISPLAY (what clock should the ride screen run on?) uses planShowsPlanned()
+//     below, which also honours the rider saying "I'm riding this now".
+// Peter's case: a plan for 8 Aug, ridden early to scout a leg. Riding it must not
+// rewrite the plan; but the screen must still tell him the truth about today.
 function planStartInFuture(r){
   if(!r||!r.startDate||!r.startTime)return false;
   const t=new Date(`${r.startDate}T${r.startTime}:00`).getTime();
   return isFinite(t)&&t>Date.now();
 }
+// DISPLAY gate: true = show the planned clock (we're planning); false = show real
+// time (we're riding it, whether on the planned day or today).
+function planShowsPlanned(r){return planStartInFuture(r)&&!rideNowOn(r);}
 // Clear the "actual" ride stamps from a route: the recorded start time and every
 // stop's recorded arrival. Called when the user sets a NEW start date/time (planning
 // a fresh run), so times from a previous ride don't anchor the new plan. Does NOT
@@ -2011,7 +2065,9 @@ function etaAt(distKm,r){
   // A FUTURE-dated plan is still only a plan, so never anchor it to now even if
   // GPS or the simulator is active (this branch was the one v189 missed — running
   // the sim on a future plan was pinning every ETA to the current clock time).
-  if(UI.gpsActive&&UI.gpsDistKm!==null&&!planStartInFuture(r)){
+  // v257: unless the rider has told us they're riding it now — then it isn't a plan
+  // any more, it's a ride, and anchoring to now is the whole point.
+  if(UI.gpsActive&&UI.gpsDistKm!==null&&!planShowsPlanned(r)){
     const nowDist=UI.gpsDistKm;
     const nowTime=UI.gpsPos?new Date(UI.gpsPos.ts):new Date();
     // Riding time remaining from current position to destination
@@ -2070,7 +2126,10 @@ function etaAt(distKm,r){
   // yet — ignore any leftover "actual" stamps and the last saved GPS position, and
   // compute purely from the planned start. Stops a stale stamp from a past GPS fix
   // (or a previous run of this route) polluting a future plan's finish/ETAs.
-  const planningFuture=planStartInFuture(r);
+  // v257: "riding this now" means we're no longer planning, so the saved-GPS-position
+  // anchor applies (the GPS-off-in-the-tent case). No actualArrival stamps exist in
+  // that mode — capture stays off — so this can't resurrect stale plan data.
+  const planningFuture=planShowsPlanned(r);
 
   // Find the last stop before distKm that has a recorded actualArrival — this is our
   // most recent known-good time anchor. Everything before it is fact; everything after
@@ -2236,6 +2295,58 @@ function etaAt(distKm,r){
   hrs+=sleepOffset;
   return new Date(base.getTime()+hrs*3600000);
 }
+
+// v257: THE END OF TODAY, not the end of the ride.
+// On a multi-day plan with a planned sleep and a wake time, the sleep ABSORBS all
+// the variance: arrive at the motel two hours late and you still wake at 07:00, so
+// the finish does not move. A finish ETA on day 1 of 3 therefore LOOKS like a live
+// number while being structurally insensitive to how today is actually going —
+// which is the worst kind of number, because it invites you to trust it. What a
+// rider on a multi-day plan is actually riding towards is tonight's bed.
+//
+// ONE rule, no toggle, no setting: the next sleep stop ahead of you; if there is
+// none ahead, the finish. It self-solves at both ends —
+//   · on the LAST day there is no sleep ahead, so it becomes the finish at exactly
+//     the point the finish starts to matter;
+//   · a non-stop / race plan has no sleep stops at all, so it always reads the
+//     finish, which is correct — there, the finish IS the live number.
+// Returns the ARRIVAL at the sleep stop (etaAt is arrival, before that stop's own
+// sleep and meals) — i.e. "what time do I get in tonight", which is the question.
+function legEnd(r,liveDist){
+  // r.stops is kept sorted by dist (addStop sorts), so find() gives the nearest ahead.
+  const s=r.stops.find(x=>x.dist>liveDist&&isSleepStop(x));
+  if(!s)return{dist:r.totalDist,eta:etaAt(r.totalDist,r),name:null,isFinish:true};
+  return{dist:s.dist,eta:etaAt(s.dist,r),name:s.name||'Sleep',isFinish:false};
+}
+// Chequered flag = the finish. Crescent moon = tonight's bed. Two DIFFERENT
+// destinations, so they must never wear the same icon — the icon is what tells the
+// rider at a glance which question the time is answering.
+const LEG_FLAG_SVG='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
+const LEG_MOON_SVG='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><path d="M13.6 10.3A6.2 6.2 0 0 1 5.7 2.4a6.2 6.2 0 1 0 7.9 7.9z" fill="currentColor"/></svg>';
+// ONE authority for the distance bar's centre text. Both the template and
+// updateLive's patch call THIS — they must never each compute it, because two
+// copies of the same rule is exactly how this file has drifted before (v252's
+// rotation fight, v257's peek-anchor jitter: same lesson, three times).
+// No weekday on a leg end: the next sleep ahead of you IS tonight, by definition.
+// The finish keeps its weekday — it can be days out.
+function legEndTxt(r,liveDist,sdt){
+  const leg=legEnd(r,liveDist);
+  if(leg.isFinish){
+    const d=sdt&&leg.eta?dayOff(leg.eta,sdt):'';
+    return LEG_FLAG_SVG+(d?d.trim()+' ':'')+fmtT(leg.eta);
+  }
+  // The bar is 34px in a moving frame — a long motel name would run under the
+  // distance figures either side (they sit at a higher z-index and would win).
+  const nm=leg.name.length>12?leg.name.slice(0,11).trim()+'…':leg.name;
+  return LEG_MOON_SVG+nm+' '+fmtT(leg.eta);
+}
+// The "to go" figure has to point at the SAME place the ETA does, or the bar names
+// two different destinations at once ("32.1 km" beside "Grenfell 21:00" where the
+// 32.1 was to a finish three days away). On a plan with no sleeps this is exactly
+// the old whole-route number, so nothing changes for a non-stop ride.
+// The bar's FILL is deliberately still whole-route: left figure + fill = where you
+// are in the whole ride; centre + right = tonight's target. Two honest scopes.
+function legToGoKm(r,liveDist){return Math.max(0,legEnd(r,liveDist).dist-liveDist);}
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
 function fmtDT(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
 function fmtDTY(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
@@ -3524,6 +3635,10 @@ async function finaliseRecording(){
   // Per-ride privacy off is exactly that — PER RIDE. The ride is over, so the
   // default-on safety rule comes back by itself for the next one (v257).
   if(UI.shareOffThisRide){ UI.shareOffThisRide = false; _shareSaveAuth(); }
+  // Same rule for "riding this now" (v257): it described THIS ride. With the ride
+  // over, the plan goes back to being a plan — otherwise a scouting run in July
+  // would leave the 8 August plan reading today's clock forever.
+  rideNowClear();
   // NOTE: the pack poll deliberately keeps running after you finish. You've stopped
   // broadcasting (privacy rule), but you still want to watch the others come in.
   // Ride's over, so sharing is over (privacy rule). Push whatever is still queued
@@ -5278,6 +5393,62 @@ function _recShowUndoStrip(show){
   if(show && UI.tab==='live') render();
 }
 
+// ── "Riding this now?" (v257) ────────────────────────────────────────────────
+// Asked ONCE, at record start, only when the loaded plan is dated for a future day.
+// Peter's case: a plan for 8 Aug, ridden three weeks early to scout a couple of legs.
+// v189 correctly refuses to let that ride stamp the plan — but the side effect was
+// that every ETA, sunrise and weather reading on the ride screen stayed anchored to
+// 8 Aug, i.e. the screen was useless for the ride actually being ridden. His only
+// workaround was to change the start date (destroying the plan's stamps) and change
+// it back.
+//
+// Deliberately NOT blocking: the ride starts the instant the button is pressed and
+// the prompt appears over the top. Pressing record must never wait on a question —
+// if the rider ignores it, they get today's ride recorded and yesterday's clock,
+// which is exactly what happens today. The prompt can only improve things.
+function _rideNowClose(){const ov=document.getElementById('ridenow-ov');if(ov)ov.remove();}
+function _rideNowMaybeShow(r){
+  if(!r||!planStartInFuture(r))return;   // dated today or past = nothing to ask
+  if(rideNowOn(r))return;                // already answered yes for this ride
+  _rideNowClose();
+  const planned=new Date(`${r.startDate}T${r.startTime}:00`);
+  const when=planned.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+  const ov=document.createElement('div');
+  ov.id='ridenow-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(5,8,5,.6);'
+    +'display:flex;align-items:center;justify-content:center;padding:var(--sp-4);';
+  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);max-width:340px;width:100%;">
+    <div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-2);">Riding this now?</div>
+    <div style="font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-4);">
+      This plan is set for ${when}. Times can run from now instead — ETAs, daylight and weather.<br><br>Either way your saved plan keeps its ${when} times.
+    </div>
+    <button class="btn btn-p" id="ridenow-yes" style="width:100%;margin-bottom:var(--sp-2);">Ride now</button>
+    <button class="btn" id="ridenow-no" style="width:100%;">Keep planned times</button>
+  </div>`;
+  // Direct listener on the overlay — it hangs off document.body, where the
+  // content-wrap delegator cannot hear it (the v257 standing gotcha).
+  ov.addEventListener('click',_rideNowOnClick);
+  document.body.appendChild(ov);
+}
+function _rideNowOnClick(e){
+  const yes=e.target.closest('#ridenow-yes'), no=e.target.closest('#ridenow-no');
+  if(!yes&&!no)return;   // taps on the scrim do nothing: this is a real either/or
+  if(yes){
+    const r=cur();
+    if(r){
+      UI.rideNowId=r.id;
+      // The ride's real start is when the RECORDING started, not when the rider got
+      // round to answering — they may have rolled a minute before tapping. Falls back
+      // to now if there's somehow no recording.
+      UI.rideNowTs=_rec&&_rec.startTS?_rec.startTS:Date.now();
+      saveAll().catch(()=>{});
+    }
+  }
+  _rideNowClose();
+  render();
+  if(yes)_recToast("Times are running from now");
+}
+
 async function _recControlTap(){
   // Three-state primary button:
   //   no recording  → start GPS + start recording (and link to current route if loaded)
@@ -5288,6 +5459,7 @@ async function _recControlTap(){
     const r = cur();
     await startRecording(r ? r.id : null);
     render();
+    _rideNowMaybeShow(r);   // v257 — after the ride is safely started, never before
     return;
   }
   if(_rec.status === 'active'){
@@ -5329,6 +5501,7 @@ async function _recStopDelete(){
   _rec=null;_recMode='active';_recLastFix=null;_recStop=null;_recStored=null;UI.recId=null;
   // Deleting the ride ends it just as surely as finishing it — per-ride off reverts.
   if(UI.shareOffThisRide){ UI.shareOffThisRide=false; _shareSaveAuth(); }
+  rideNowClear();   // ditto (v257)
   await saveAll().catch(()=>{});
   render();
   _recToast('Ride deleted');
@@ -5380,6 +5553,7 @@ async function _recStopUndo(){
   const lp = rec.points && rec.points.length ? rec.points[rec.points.length-1] : null;
   _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
   UI.recId = rec.id;
+  rideNowRestore();   // v257 — un-stopping puts the ride's clock back as it was
   await saveAll().catch(()=>{});
   _recLastFinalised = null;
   if(_recUndoTimer){ clearTimeout(_recUndoTimer); _recUndoTimer = null; }
@@ -5625,6 +5799,69 @@ function _decodeEles(str){
 // Queue the route + ride link for upload. Deliberately goes through the SAME queue
 // machinery as positions, so it inherits the offline retry for free: start a ride in
 // a dead spot and the route lands when you next have signal, before any positions.
+// ONE authority for what a stop looks like on the wire. Was duplicated verbatim in
+// _shareQueueRide and eventCreate — the standing lesson in this file is that two
+// copies of one rule drift (v252's rotation, v257's peek anchor). p_stops is jsonb
+// and is stored/returned wholesale, so adding fields here needs NO schema change.
+//
+// v257 — this now carries the plan's DECISIONS, not just the pins. Before, a joined
+// rider got "Grenfell Motel" as a bare sleep pin: no duration, no wake time, no
+// meals. Their ETAs therefore disagreed with the organiser's for reasons neither of
+// them could see, and the sleep — which on a multi-day plan absorbs all the variance
+// and sets the whole shape of the days — was simply missing.
+//
+// Not sent: ohRaw (bulky OSM data, not a decision the organiser made).
+function _shareStopsPayload(r){
+  return (r.stops || []).filter(s => s.lat && s.lon).map(s => ({
+    name: s.name, type: s.type, dist: s.dist, lat: s.lat, lon: s.lon,
+    sleepAt: s.sleepAt || undefined,
+    // The sleep's shape. departTime is the wake time — the single most load-bearing
+    // number on a multi-day plan, and the one most obviously missing before.
+    sleepH: s.sleepH || undefined,
+    departTime: s.departTime || undefined,
+    // Planned eats: type/when/duration drive the joiner's ETAs; name/source tell
+    // them what the plan actually was.
+    meals: (s.meals && s.meals.length) ? s.meals.map(m => ({
+      type: m.type, name: m.name, source: m.source,
+      when: m.when, durationMin: m.durationMin,
+    })) : undefined,
+    // Water is safety-critical and explicit-only by design (v233) — never inferred.
+    // If the organiser confirmed water here, that must travel.
+    waterHere: s.waterHere === true ? true : undefined,
+  }));
+}
+
+// The organiser's PACE — schema v9. Same four things the "share whole ride" file has
+// always carried (see SHARE WHOLE RIDE); PackRide was the odd one out, and a joiner
+// was silently rebuilding the plan with newRoute()'s generic defaults (timeFactor 1,
+// 'regular' rider, 'moderate' load, no pace overrides). Those ETAs were neither the
+// organiser's nor the joiner's — they were a stranger's. On a loaded bikepacking
+// route the load preset alone is ~8–10%: hours, across a multi-day plan.
+//
+// This is NOT "copying someone else's speed onto you" (the thing Peter rightly called
+// a rabbit warren). The organiser DECIDES the group's pace — that is the plan, and a
+// group ride should read one plan. Meanwhile a joiner on Advanced calibration keeps
+// their OWN rider ability for free: buildCumRiding takes UI.estModeAdv's calibRiderMult
+// ahead of the route's riderPreset, so nothing is overwritten and nothing double-counts.
+// GPS + adaptive speed correct the rest on the day, and the joiner can just change it.
+//
+// baseTimeFactor is deliberately NOT on the wire: it's the adaptive-drift baseline
+// (±30% cap), and unpackRoute already derives it from timeFactor when absent — so the
+// joiner's baseline is their own copy's, which is what adaptive should drift from.
+// adaptiveSpeed isn't sent either: whether YOUR ETAs self-correct is your setting,
+// not the organiser's.
+function _sharePacePayload(r){
+  if(!r) return null;
+  return {
+    timeFactor : r.timeFactor || 1.0,
+    riderPreset: r.riderPreset || 'regular',
+    loadPreset : r.loadPreset  || 'moderate',
+    // Deliberate per-section overrides ("this bit is hike-a-bike, allow 2 h") are
+    // plan decisions of exactly the same kind as a sleep or a meal.
+    paceSegs   : (r.paceSegs && r.paceSegs.length) ? r.paceSegs : undefined,
+  };
+}
+
 function _shareQueueRide(rec, r){
   if(!shareIsOn()) return;
   // eventCode is what puts this ride's dots into the pack rather than out on its own.
@@ -5638,10 +5875,8 @@ function _shareQueueRide(rec, r){
       p_poly      : _encodePoly(r.points),
       p_ele       : _encodeEles(r.points),   // v256: elevation rides along (schema v8)
       p_total_dist: r.totalDist || 0,
-      p_stops     : (r.stops || []).filter(s => s.lat && s.lon).map(s => ({
-        name: s.name, type: s.type, dist: s.dist, lat: s.lat, lon: s.lon,
-        sleepAt: s.sleepAt || undefined,
-      })),
+      p_stops     : _shareStopsPayload(r),
+      p_pace      : _sharePacePayload(r),   // v9
     };
   }
   UI.sharePendingRide = job;
@@ -6027,10 +6262,8 @@ async function eventCreate(name, route, startAt, preset, intervalS){
       p_poly      : _encodePoly(route.points),
       p_ele       : _encodeEles(route.points),   // v256: elevation rides along (schema v8)
       p_total_dist: route.totalDist || 0,
-      p_stops     : (route.stops || []).filter(s => s.lat && s.lon).map(s => ({
-        name: s.name, type: s.type, dist: s.dist, lat: s.lat, lon: s.lon,
-        sleepAt: s.sleepAt || undefined,
-      })),
+      p_stops     : _shareStopsPayload(route),
+      p_pace      : _sharePacePayload(route),   // v9
     });
   }
   const code = await _shareRpc('event_create', {
@@ -6110,11 +6343,42 @@ function eventRouteToRoute(info){
     return {lat: p.lat, lon: p.lon, ele: (eles && pi < eles.length) ? eles[pi++] : 0, dist: d, time: null};
   });
   r.totalDist = info.route.totalDist || d;
+  // v257: rebuild the organiser's PLAN, not just their pins — sleep duration, wake
+  // time, planned meals and confirmed water all ride along now. Every field is
+  // optional: a route uploaded by a pre-v257 client simply has none of them, and the
+  // stop falls back to exactly the old defaults (sleepHoursFor's ||10, no meals),
+  // so old events keep working untouched. No migration.
   r.stops = (info.route.stops || []).map((s, i) => ({
     id: 'ev' + i + Math.random().toString(36).slice(2, 5),
     dist: s.dist, type: s.type || 'stop', name: s.name || 'Stop',
     lat: s.lat, lon: s.lon, sleepAt: !!s.sleepAt, auto: false, starred: true,
+    // Match addStop's shape: sleepH is null (not undefined) when unset, and
+    // sleepHoursFor reads `s.sleepH || fallback`, so null behaves as before.
+    sleepH: s.sleepH != null ? s.sleepH : (s.sleepAt || s.type === 'sleep' ? 10 : null),
+    departTime: s.departTime || null,
+    meals: Array.isArray(s.meals) && s.meals.length ? s.meals.map(m => ({
+      type: m.type || 'meal', name: m.name || '', source: m.source,
+      when: m.when, durationMin: m.durationMin,
+    })) : undefined,
+    // Tri-state by design (v230/v232): true = confirmed, undefined = not assigned.
+    // Never write false — that's an explicit "no water here", which the organiser
+    // didn't say.
+    waterHere: s.waterHere === true ? true : undefined,
   }));
+  // v9: the organiser's pace. A route uploaded by a pre-v9 client has pace = null,
+  // so the joiner simply keeps newRoute()'s defaults — today's behaviour exactly.
+  // Note this must land BEFORE rebuildPace() below, since that's what reads it.
+  if(info.route.pace){
+    const p = info.route.pace;
+    if(p.timeFactor)  r.timeFactor  = p.timeFactor;
+    if(p.riderPreset) r.riderPreset = p.riderPreset;
+    if(p.loadPreset)  r.loadPreset  = p.loadPreset;
+    if(Array.isArray(p.paceSegs)) r.paceSegs = p.paceSegs;
+    // The adaptive baseline is what drift is measured FROM, so it has to start at
+    // the plan's factor — otherwise the ±30% cap is anchored to a 1.0 that this
+    // plan never used, and adaptive would fight the organiser's pace all day.
+    r.baseTimeFactor = r.timeFactor;
+  }
   if(info.startAt){
     const dt = new Date(info.startAt);
     r.startDate = dt.toISOString().slice(0, 10);
@@ -13018,10 +13282,9 @@ function tLiveShell(r){
     </div>`;
   };
   const doneTxt='<span style="display:inline-flex;align-items:baseline;">'+liveDist.toFixed(1)+'<span class="live-dist-unit"> km/route</span></span>';
-  const leftTxt='<span style="display:inline-flex;align-items:baseline;">'+(r.totalDist-liveDist).toFixed(1)+'<span class="live-dist-unit"> km</span></span>';
+  const leftTxt='<span style="display:inline-flex;align-items:baseline;">'+legToGoKm(r,liveDist).toFixed(1)+'<span class="live-dist-unit"> km</span></span>';
   const pct=Math.max(0,Math.min(100,prog*100));
-  const _flagSvg='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
-  const finTxt=_flagSvg+(finDay?finDay.trim()+' ':'')+fmtT(finEta);
+  const finTxt=legEndTxt(r,liveDist,sdt);
   const distBar=`<div class="live-dist-bar" id="live-dist-bar">
     <div class="live-dist-fill" id="live-dist-fill" style="width:${pct.toFixed(1)}%"></div>
     <div class="live-dist-done" id="live-dist-done">${doneTxt}</div>
@@ -15798,16 +16061,14 @@ function updateLive(){
   const distLeft=document.getElementById('live-dist-left');
   if(distFill)distFill.style.width=(prog*100).toFixed(1)+'%';
   if(distDone){const h='<span style="display:inline-flex;align-items:baseline;">'+liveDist.toFixed(1)+'<span class="live-dist-unit"> km/route</span></span>';if(distDone._lastVal!==h){distDone._lastVal=h;distDone.innerHTML=h;}}
-  if(distLeft){const h='<span style="display:inline-flex;align-items:baseline;">'+(r.totalDist-liveDist).toFixed(1)+'<span class="live-dist-unit"> km</span></span>';if(distLeft._lastVal!==h){distLeft._lastVal=h;distLeft.innerHTML=h;}}
+  if(distLeft){const h='<span style="display:inline-flex;align-items:baseline;">'+legToGoKm(r,liveDist).toFixed(1)+'<span class="live-dist-unit"> km</span></span>';if(distLeft._lastVal!==h){distLeft._lastVal=h;distLeft.innerHTML=h;}}
   const distFinish=document.getElementById('live-dist-finish');
   if(distFinish){
-    const _flagSvg='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
-    // Rotate between: finish ETA, ride time, GPS distance travelled
+    // Rotate between: leg-end ETA, ride time, GPS distance travelled
     const phase=Math.floor(Date.now()/4000)%3;
     let h='';
     if(phase===0){
-      const sdt2=startDT(r);const fe=etaAt(r.totalDist,r);const fd=sdt2&&fe?dayOff(fe,sdt2):'';
-      h=_flagSvg+(fd?fd.trim()+' ':'')+fmtT(fe);
+      h=legEndTxt(r,liveDist,startDT(r));   // v257: same authority as the template
     } else if(phase===1){
       // Ride time
       const accumMs=UI._rideAvgMsAccum||0;

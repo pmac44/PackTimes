@@ -231,6 +231,143 @@ radio, the `turn-ind-opt` change listener, and `UI.turnIndicator` (STATE + uiPre
 save/load — a stale `turnIndicator` key in old saved prefs is simply ignored, no
 migration needed).
 
+## Session — 16 July 2026 (still v257, unpushed) — leg ETAs · "Riding this now?" · PackRide carries the plan
+
+Three builds off Peter's questions. **None ride-tested; desktop reasoning + node truth-tables
+only (18/18, 25/25, 22/22). Still v257 — it has never been pushed, so a v258 label would name
+a version no phone ever ran.**
+
+**First, the answers to what he asked (all read out of the code, not guessed):**
+- **PackRide links already carry stops AND the start time.** `route_ensure` sends `p_stops`;
+  `event_create` sends `p_start_at` from the route's `startDT()`; `eventRouteToRoute` rebuilds
+  both. What was NOT travelling was the *plan* — see below.
+- **Sharing starts when RECORDING starts. Full stop.** `shareIsLive() = shareIsOn() && _rec &&
+  status==='active'`. There is no 15-min-before, and no "ride" to activate — the event exists
+  from creation; your dot appears when you record. The planned start time does **nothing** for
+  sharing; it is used only for display, staleness (`_eventStale`, >48 h), and the joiner's route
+  start date. So copying a PackRide link at any time is safe. Peter was not overthinking — two
+  of his four worries were phantoms, two were real.
+
+**(1) THE DISTANCE BAR'S ETA IS NOW THE END OF TODAY, not the finish** (`legEnd`/`legEndTxt`/
+`legToGoKm`, TIME CALC, after `etaAt`). **Peter's argument, and it's stronger than it first
+sounds:** with a planned sleep + a wake time, the sleep ABSORBS all variance — arrive at the
+motel two hours late, you still wake at 07:00, so the finish doesn't move. A finish ETA on day
+1 of 3 therefore *looks* live while being structurally insensitive to how today is going: the
+worst kind of number, because it invites trust. His framing: a planned sleep implies planned
+rest, so it isn't a non-stop race — **finishing each day is the goal**.
+- **ONE rule, no toggle, no setting:** the next sleep stop ahead; if none ahead, the finish.
+  Self-solves at both ends — on the last day there IS no sleep ahead, so it becomes the finish
+  exactly when the finish starts to matter; a non-stop/race plan has no sleep stops, so it
+  always reads the finish, which is correct there.
+- Returns **arrival** at the sleep stop (`etaAt` is arrival, before that stop's own sleep/meals)
+  = "what time do I get in tonight".
+- **Chequered flag = finish, crescent moon = tonight's bed.** Two destinations must never wear
+  one icon. No weekday on a leg end (the next sleep IS tonight); the finish keeps its weekday.
+- **"To go" is leg-scoped too** (`legToGoKm`) — otherwise the bar named two destinations at once
+  ("247.3 km" beside "Grenfell 21:00"). The FILL stays whole-route on purpose: left figure +
+  fill = where you are in the whole ride; centre + right = tonight's target. Two honest scopes.
+  Identical to the old number on a plan with no sleeps. **Flagged for Peter to veto — trivial revert.**
+- **ONE authority** (`legEndTxt`) called by both the template and `updateLive`'s patch. Two
+  copies of one rule is how this file has drifted three times (v252 rotation, v257 peek anchor).
+- Deliberately untouched: the `finish` stat PILL still says "Finish" and still means it.
+
+**(2) "RIDING THIS NOW?" — a future-dated plan can run on today's clock** (`rideNowOn`/
+`rideNowClear`/`rideNowRestore` in TIME CALC; `_rideNowMaybeShow` in RECORDING). **The bug Peter
+half-noticed without naming:** he rode his 8 Aug plan on 12 Jul to scout some legs. v189 correctly
+refused to let that ride pollute the plan — which also meant every ETA, daylight and weather
+reading on his ride screen was anchored to 8 August. The ride screen was useless for the ride he
+was actually doing. His only workaround was to change the start date (wiping the plan's stamps)
+and change it back.
+- **Naming: Peter rejected "scout"** — most people never scout, they just ride a route on a
+  different day. Chose **"Riding this now?"** (over "Riding it today?"/"Use today's times?") —
+  "now" also covers an 11 pm start that runs into tomorrow. Buttons: **Ride now** / **Keep
+  planned times**.
+- **THE KEY MOVE — this does NOT re-break v189.** The two jobs `planStartInFuture` used to serve
+  are now split and **must not be re-merged**:
+  · **CAPTURE** ("may we write real times onto this plan?") still uses `planStartInFuture` RAW.
+    A future-dated plan is *never* stamped, even while ridden today. v189's promise, intact.
+  · **DISPLAY** ("what clock does the screen run on?") uses new `planShowsPlanned(r)` =
+    `planStartInFuture(r) && !rideNowOn(r)`.
+  The transient "actual start" lives on the **recording** (`_rec.startTS`) — where actuals
+  belong — so `startDT` returns today's real start without writing a thing to the plan.
+  `startDT` checks ride-now FIRST: it outranks even a stale actual stamp, because it's the most
+  specific statement of intent the rider can make.
+- **Also closes the standing open item** "route colour + weather don't re-time to NOW when a ride
+  starts" — same root cause (`etaAt`'s GPS re-anchor gated by `planStartInFuture`).
+- **Trigger: record start only** (Peter's call). GPS-on would prompt on any stray fix near the
+  route while planning — the exact nuisance v189 exists to stop. **Non-blocking**: the ride starts
+  the instant the button is pressed and the prompt appears over it. Pressing record must never
+  wait on a question; ignoring the prompt just gives today's behaviour.
+- **Per-ride, like the v257 sharing flag**: cleared at `finaliseRecording` AND `_recStopDelete`,
+  and **restored by `_recStopUndo`** — un-stopping within the 5 s window must not silently drop
+  the screen back onto 8 August with no way to re-ask (the prompt only fires at record start).
+  Persisted in `uiPrefs` (`rideNowId`/`rideNowTs`) so crash recovery keeps today's clock.
+- Note `_recStopUndo` does NOT restore `shareOffThisRide` — pre-existing v257 gap, same shape.
+
+**(3) PACKRIDE NOW CARRIES THE PLAN, NOT JUST THE PINS** (`_shareStopsPayload`). A joined rider
+got "Grenfell Motel" as a bare sleep pin — no duration, no wake time, no meals — so their ETAs
+disagreed with the organiser's for reasons neither could see, and the sleep (which shapes the
+whole multi-day plan) was simply missing. Now sends `sleepH`, `departTime` (the wake time — the
+most load-bearing number on a multi-day plan), `meals[]`, and `waterHere`.
+- The stop-level fields need **no schema change** — `p_stops` is `jsonb`, stored and returned
+  wholesale. The PACE fields below **do** (see `supabase/schema-v9.sql`).
+- **Every field optional → pre-v257 events still work** (verified): missing fields fall back to
+  the old defaults (`sleepHoursFor`'s ||10, no meals). No migration. `waterHere` stays tri-state —
+  never write `false`, that's an explicit "no water here" the organiser never said.
+- Killed the two verbatim-duplicated `p_stops` blocks (`_shareQueueRide` + `eventCreate`) — one
+  authority now.
+
+**(3b) THE ORGANISER'S PACE TRAVELS TOO — `supabase/schema-v9.sql`, RUN IT BEFORE PUSHING**
+(`_sharePacePayload`). **I got this wrong first and Peter caught it.** He'd said sharing a plan
+"implicitly includes your speed… that's a rabbit warren"; I read that as *don't send speed*. He
+meant the opposite: the plan carries the organiser's speed and that's FINE — the rabbit warren is
+trying to *reconcile* different riders' speeds automatically. His actual model: **the organiser
+decides the group's pace** (that IS the plan); a race has differing speeds by definition; the
+receiver can adjust it, or GPS + adaptive speed fix it on the day.
+- **He was right, and the code proves it twice over.** (i) `newRoute()` gives a joiner
+  `timeFactor 1.0 / riderPreset 'regular' / loadPreset 'moderate' / no paceSegs` — so a joiner's
+  ETAs were neither the organiser's NOR their own: a stranger's. On a social-pace + heavy-load
+  plan the toy model measured a **5.6 h gap on a 300 km leg**. (ii) The existing **"share whole
+  ride" file has ALWAYS sent** timeFactor/baseTimeFactor/riderPreset/loadPreset/adaptiveSpeed/
+  paceSegs (SHARE WHOLE RIDE, ~11840). PackRide was the odd one out — two ways of sharing one
+  plan that disagreed.
+- **Sends:** `timeFactor`, `riderPreset`, `loadPreset`, `paceSegs` (deliberate per-section
+  overrides are plan decisions like a sleep or a meal).
+- **THE ELEGANT BIT — the "don't copy someone else's speed" worry is already handled by the
+  architecture, for free.** `buildCumRiding` (~1739) is
+  `rm = (UI.estModeAdv ? calibRiderMult() : null) || RIDER_MULT[riderSimplePreset(r)]` — so a
+  joiner running **Advanced calibration keeps their OWN rider ability**, the organiser's
+  riderPreset is simply ignored, and nothing double-counts. Meanwhile `lm` is always the ROUTE's
+  loadPreset, so the organiser's load still applies (correct — the load is a fact about the ride,
+  not the rider). Verified both ways.
+- **NOT sent:** `baseTimeFactor` (the adaptive ±30% drift baseline — `unpackRoute` already derives
+  it from timeFactor, and the joiner set it from the plan's factor on decode, so adaptive drifts
+  from the organiser's pace rather than fighting a 1.0 the plan never used); `adaptiveSpeed`
+  (whether YOUR ETAs self-correct is your setting).
+- **ORDER MATTERS, same trap as v256:** the new client sends `p_pace`, which the v8 function does
+  not accept. **Run `supabase/schema-v9.sql` BEFORE deploying.** Old clients are fine against the
+  new function (p_pace defaults null); a pre-v9 route has `pace = null` → joiner keeps its own
+  defaults = today's behaviour exactly. Existing events keep their old route row — re-create the
+  event (or just ride it again; `route_ensure` upserts) to republish with pace attached.
+- Standing lesson recorded: **when Peter says something is "a rabbit warren", check WHICH part he
+  means before deleting a feature.** I removed the wrong half and told him it was his call.
+
+**STILL OPEN from today:**
+- **RUN `supabase/schema-v9.sql` BEFORE THE NEXT PUSH** — the client now sends `p_pace`.
+- **Nothing here has met a phone or a sim.** The leg ETA wants a multi-day plan with a real sleep;
+  ride-now wants a future-dated plan + record; the pace payload wants a two-window PackRide sim
+  (organiser on social/heavy, joiner should read the SAME ETAs).
+- **The distance bar VISUAL is the next job — and it is ONLY graphics.** Peter's verdict, explicit:
+  *"I think graphics is the main problem with the distance bar, not the concept or content"* — and
+  he already knew about the 4-second centre rotation (`Math.floor(Date.now()/4000)%3`), it doesn't
+  bother him. So **do not redesign the content, the rotation, or the fill scoping**; make the thing
+  look good. The one structural note worth carrying in: three text layers sit ON TOP of a sweeping
+  fill, so a label rides over dark bg, then fill, then half-and-half — a contrast problem no amount
+  of styling fixes, so the fix probably has to separate text from fill rather than restyle it.
+  Mockups on Peter's real screenshot, the turn-cue process.
+- Leg-end naming uses the SLEEP PIN's name ("Grenfell Motel"), truncated at 12 chars — v215 says
+  the TOWN is the cluster's title ("Grenfell"). Cheap to switch via `clusterStops` if Peter prefers.
+
 ## Design session — 15 July 2026 (ride-screen consolidation designed & agreed; slice 1 built as v257 above)
 
 The "ride-screen consolidation" open item is now a settled design, mocked in
