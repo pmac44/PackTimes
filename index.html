@@ -6561,16 +6561,20 @@ let _viewTrail = null;            // always the breadcrumbs — where they've ac
 let _viewFollow = true, _viewCentre = null;
 let _viewSel = null;              // index of the tapped breadcrumb, or null
 let _viewKm = true;               // km markers on the route line
+let _viewLines = false;           // trail LINES between fixes — OFF by default (v257):
+                                  // dots at each real fix are the honest evidence; the
+                                  // connecting line is decoration, and with several
+                                  // watchable riders it's clutter. Toggleable layer.
 const VIEW_POLL_MS = 30000;
 
-// ── The family's colours ─────────────────────────────────────────────────────
+// ── The family's marks & colours ─────────────────────────────────────────────
 //
-// One mark — the PackTimes stopwatch — in three colours. Same product, three front
-// doors, and you can tell which one you're on at a glance:
+// Three products, three marks, three colours (settled 15 Jul 2026, mockups in
+// _planning/ride-screen-sharing-mockups.html + packview-eye.svg):
 //
-//   PackTimes  GREEN  (--accent #4ade80)   the app
-//   PackView   CYAN   (#22d3ee)            the watching page
-//   PackRide   YELLOW (#fde047)            the group ride
+//   PackTimes  GREEN  (--accent #4ade80)   the app        — the STOPWATCH
+//   PackView   CYAN   (#22d3ee)            the watching page — the EYE
+//   PackRide   YELLOW (#fde047)            the group ride  — the PACK (three dots)
 //
 // PackView's cyan is deliberately THE SAME cyan as the route line on the map. The
 // page is about the route, and its brand colour is the route's colour.
@@ -6586,20 +6590,35 @@ const PACKRIDE_YELLOW = '#fde047';
 const TRAIL_COL       = '#fde047';
 
 // `currentColor` on the SVG keeps the mark and the type in step from one value, so a
-// logo is just the mark plus a colour plus a word.
-const _packLogo = (colour, word) => `<span style="display:inline-flex;align-items:center;gap:6px;color:${colour};flex-shrink:0;">
-  <svg width="20" height="20" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg>
+// logo is just a mark plus a colour plus a word.
+const _MARK_STOPWATCH = '<svg width="20" height="20" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg>';
+const _MARK_EYE       = '<svg width="20" height="20" viewBox="0 0 100 100" fill="none"><path d="M18 50 C 30 24, 70 24, 82 50 C 70 76, 30 76, 18 50 Z" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/><circle cx="50" cy="50" r="13" fill="currentColor"/></svg>';
+const _MARK_PACK      = '<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="4.2" r="2.7"/><circle cx="13.9" cy="10.3" r="2.7"/><circle cx="6.1" cy="14.9" r="2.7"/></svg>';
+
+const _packLogoMark = (colour, word, mark) => `<span style="display:inline-flex;align-items:center;gap:6px;color:${colour};flex-shrink:0;">
+  ${mark}
   <span style="font-family:var(--sans);font-weight:600;font-size:17px;letter-spacing:-.3px;">${word}</span>
 </span>`;
+const _packLogo = (colour, word) => _packLogoMark(colour, word, _MARK_STOPWATCH);
 
-const PACKVIEW_LOGO = _packLogo(PACKVIEW_CYAN,   'PackView');
-const PACKRIDE_LOGO = _packLogo(PACKRIDE_YELLOW, 'PackRide');
+const PACKVIEW_LOGO = _packLogoMark(PACKVIEW_CYAN,   'PackView', _MARK_EYE);
+const PACKRIDE_LOGO = _packLogoMark(PACKRIDE_YELLOW, 'PackRide', _MARK_PACK);
 
 // Repaint the browser-tab icon (an inline SVG data URI in <head>) to the front door
 // you're actually on, so a watcher with the tab pinned all day knows which is which.
 function _packFavicon(colour){
   const f = document.querySelector('link[rel="icon"]');
   if(f) f.href = f.href.split('%234ade80').join('%23' + colour.slice(1));
+}
+
+// PackView's tab icon is its OWN mark (the eye), not a recoloured stopwatch —
+// Peter spotted the stopwatch squatting in the browser tab of a shared link.
+function _packFaviconEye(){
+  const f = document.querySelector('link[rel="icon"]');
+  if(f) f.href = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+    + '<path d="M18 50 C 30 24, 70 24, 82 50 C 70 76, 30 76, 18 50 Z" fill="none" stroke="#22d3ee" stroke-width="9" stroke-linejoin="round"/>'
+    + '<circle cx="50" cy="50" r="14" fill="#22d3ee"/></svg>');
 }
 
 // The trail (packed arrays from share_view) → a route-shaped object drawMap
@@ -6630,7 +6649,7 @@ function _viewAgo(ms){
 async function renderViewer(code){
   _viewCode = String(code).toUpperCase();
   document.title = 'PackView';
-  _packFavicon(PACKVIEW_CYAN);
+  _packFaviconEye();
   document.getElementById('app').innerHTML = `
     <div style="display:flex;flex-direction:column;height:100%;background:var(--bg);">
       <div style="display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--border);flex-shrink:0;">
@@ -6644,6 +6663,10 @@ async function renderViewer(code){
         <canvas id="view-map" style="width:100%;height:100%;display:block;"></canvas>
         <div id="view-tip" style="display:none;position:absolute;z-index:10;pointer-events:none;background:rgba(10,15,10,.94);border:1px solid var(--border2);border-radius:var(--r-ctrl);padding:6px 10px;font-family:var(--sans);color:var(--text);white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.5);"></div>
         <div id="view-tiles" style="position:absolute;top:10px;left:10px;z-index:10;display:flex;gap:0;background:rgba(10,15,10,.9);border:1px solid var(--border2);border-radius:var(--r-ctrl);overflow:hidden;"></div>
+        <!-- LAYER toggles on their own row, below the map-background row — different
+             jobs, different levels (Peter). -->
+        <div id="view-layers" style="position:absolute;top:50px;left:10px;z-index:10;display:flex;gap:0;background:rgba(10,15,10,.9);border:1px solid var(--border2);border-radius:var(--r-ctrl);overflow:hidden;"></div>
+        <div id="view-lagnote" style="position:absolute;bottom:14px;left:10px;z-index:10;background:rgba(10,15,10,.75);border-radius:var(--r-ctrl);padding:4px 9px;font-family:var(--sans);font-size:11px;color:var(--text3);pointer-events:none;">The moving dot runs a little behind the newest fix · tap a trail dot for its time</div>
         <button id="view-recentre" style="display:none;position:absolute;bottom:14px;right:14px;z-index:10;align-items:center;gap:6px;background:rgba(10,15,10,.9);border:1px solid var(--border2);color:var(--text);border-radius:var(--r-ctrl);padding:8px 12px;font-family:var(--sans);font-size:14px;cursor:pointer;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/></svg>
           Recentre
@@ -6656,12 +6679,16 @@ async function renderViewer(code){
     const saved = parseInt(localStorage.getItem('packview_tiles'), 10);
     if(saved >= 1 && saved <= 4) _tileMode = saved;
     if(localStorage.getItem('packview_km') === '0') _viewKm = false;
+    if(localStorage.getItem('packview_lines') === '1') _viewLines = true;
   }catch(e){}
   _viewTilesRender();
   document.getElementById('view-tiles').addEventListener('click', e => {
     const t = e.target.closest('[data-tile]');
-    if(t){ _viewSetTiles(+t.dataset.tile); return; }
-    if(e.target.closest('[data-km]')) _viewToggleKm();
+    if(t) _viewSetTiles(+t.dataset.tile);
+  });
+  document.getElementById('view-layers').addEventListener('click', e => {
+    if(e.target.closest('[data-km]')){ _viewToggleKm(); return; }
+    if(e.target.closest('[data-lines]')) _viewToggleLines();
   });
   await _viewPoll();
   _viewTimer = setInterval(_viewPoll, VIEW_POLL_MS);
@@ -6838,20 +6865,41 @@ function _viewRedraw(){
   _viewDrawSel(cvs);
 }
 
-// The breadcrumb trail, laid over the planned route. Deliberately a different colour
-// from the route line: the route is the plan, the trail is the fact. Drawn with the
+// The breadcrumbs, laid over the planned route. Deliberately a different colour from
+// the route line: the route is the plan, the trail is the fact. Drawn with the
 // projection drawMap leaves on the canvas, so it stays welded through pan and zoom.
+//
+// v257 (Peter): DOTS at each real fix are the default — they're the tappable
+// evidence, they don't clutter when several riders are on screen, and they don't
+// jump ahead of the interpolated rider dot the way the connecting line visibly did.
+// The LINE between them is a toggleable layer (_viewLines), off by default.
 function _viewDrawTrail(cvs){
   const pts = _viewTrail ? _viewTrail.points : null;
-  if(!pts || pts.length < 2 || !cvs._px) return;
+  if(!pts || !pts.length || !cvs._px) return;
   const ctx = cvs.getContext('2d');
   ctx.save();
-  ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.strokeStyle = TRAIL_COL;   // where they've BEEN — must contrast with the cyan plan
-  ctx.beginPath();
-  ctx.moveTo(cvs._px(pts[0].lon), cvs._py(pts[0].lat));
-  for(let i = 1; i < pts.length; i++) ctx.lineTo(cvs._px(pts[i].lon), cvs._py(pts[i].lat));
-  ctx.stroke();
+  if(_viewLines && pts.length > 1){
+    ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = TRAIL_COL;   // where they've BEEN — must contrast with the cyan plan
+    ctx.beginPath();
+    ctx.moveTo(cvs._px(pts[0].lon), cvs._py(pts[0].lat));
+    for(let i = 1; i < pts.length; i++) ctx.lineTo(cvs._px(pts[i].lon), cvs._py(pts[i].lat));
+    ctx.stroke();
+  }
+  // Fix dots, thinned in SCREEN space (skip any closer than ~9 px to the last one
+  // drawn) so a zoomed-out multi-hour trail doesn't render as a smear of thousands.
+  // The tap hit-test still sees every point — thinning is drawing-only.
+  ctx.fillStyle = TRAIL_COL;
+  ctx.strokeStyle = 'rgba(10,15,10,.8)';
+  ctx.lineWidth = 1.5;
+  let lx = -1e9, ly = -1e9;
+  for(let i = 0; i < pts.length; i++){
+    const x = cvs._px(pts[i].lon), y = cvs._py(pts[i].lat);
+    if((x-lx)*(x-lx) + (y-ly)*(y-ly) < 81 && i < pts.length - 1) continue;   // 9px², newest always drawn
+    lx = x; ly = y;
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.2832);
+    ctx.fill(); ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -6929,15 +6977,19 @@ function _viewDrawSel(cvs){
 const VIEW_TILES = [[1,'Map'],[2,'Satellite'],[3,'Cycle'],[4,'Topo']];
 
 function _viewTilesRender(){
-  const box = document.getElementById('view-tiles');
-  if(!box) return;
   const btn = (attr, val, label, on) =>
     `<button ${attr}="${val}" style="border:0;border-left:1px solid var(--border2);background:${on ? PACKVIEW_CYAN : 'transparent'};color:${on ? '#0a0f0a' : 'var(--text2)'};font-family:var(--sans);font-size:13px;font-weight:${on ? 600 : 400};padding:7px 11px;cursor:pointer;">${label}</button>`;
-  box.innerHTML =
+  const box = document.getElementById('view-tiles');
+  if(box) box.innerHTML =
     VIEW_TILES.map(([n, label], i) =>
       btn('data-tile', n, label, _tileMode === n).replace(i ? '' : 'border-left:1px solid var(--border2);', '')
-    ).join('')
-    + btn('data-km', '1', 'km', _viewKm);
+    ).join('');
+  // Layers live on their OWN row (v257) — map backgrounds and overlays are
+  // different jobs and were shoulder-to-shoulder in one bar.
+  const lay = document.getElementById('view-layers');
+  if(lay) lay.innerHTML =
+    btn('data-km', '1', 'km', _viewKm).replace('border-left:1px solid var(--border2);', '')
+    + btn('data-lines', '1', 'Trail line', _viewLines);
 }
 
 function _viewSetTiles(n){
@@ -6950,6 +7002,13 @@ function _viewSetTiles(n){
 function _viewToggleKm(){
   _viewKm = !_viewKm;
   try{ localStorage.setItem('packview_km', _viewKm ? '1' : '0'); }catch(e){}
+  _viewTilesRender();
+  _viewRedraw();
+}
+
+function _viewToggleLines(){
+  _viewLines = !_viewLines;
+  try{ localStorage.setItem('packview_lines', _viewLines ? '1' : '0'); }catch(e){}
   _viewTilesRender();
   _viewRedraw();
 }

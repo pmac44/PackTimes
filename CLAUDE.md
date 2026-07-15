@@ -108,15 +108,39 @@ sim-tested — desktop fragment checks + a 14-case node truth-table only.** What
   projects onto the two segments adjacent to the winning vertex → interpolated dist +
   true perpendicular off. Verified on the real route, 60 km incl. both trouble spots:
   reversed frames 213 → 0, position error 49 m max → ~0. Harness scripts left in
-  `_planning/fit-spike/_tmp_realroute.mjs/_tmp_recovery.mjs/_tmp_full.mjs` (bash can't
-  delete on this mount — Peter can bin them). Peter's FIT is in the session uploads, not
-  the repo.
+  `_planning/fit-spike/_tmp_realroute.mjs/_tmp_recovery.mjs/_tmp_full.mjs/_tmp_lead.mjs`
+  (bash can't delete on this mount — Peter can bin them). Peter's FIT is in the session
+  uploads, not the repo. **Follow-up measurement (same session): chord forward arm HF is
+  OPTIMAL at 10 m** — shortening it makes lead WORSE (mean 3.0° at 10 m → 4.4° at 0 m;
+  shorter chord = noisier target = more time mid-transition). Residual "looking ahead"
+  Peter sees at 5× sim is a playback-speed artefact: 5× ≈ 90 km/h through switchbacks,
+  map perpetually mid-swing, leftover rotation from one bend reads as anticipation of the
+  alternating next. At 1× the same route measures ~2° mean error. Verdict: judge rotation
+  at 1× / on a real ride before touching the v252 easing constants. Also: speed-pill
+  numbers now right-justified in a fixed 4ch box (decimal point never moves).
+
+**PackView batch (same session, Peter's requests from watching a shared sim link):**
+(1) **The EYE is live** — PackView's logo and browser-tab favicon are now the eye
+(`_MARK_EYE` / `_packFaviconEye`), not the recoloured stopwatch; `_packLogo` refactored
+to `_packLogoMark(colour, word, mark)` and PackRide's logo now wears its three-dot pack
+mark (`_MARK_PACK`) per the settled marks design — slice 4 is effectively done for
+PackView/PackRide (PackTimes keeps the stopwatch). (2) **Layer toggles moved to their
+own row** (`#view-layers`, below `#view-tiles`): km markers + the new "Trail line".
+(3) **Trail = DOTS at each real fix by default** (screen-space thinned at ~9 px for
+drawing only — tap hit-test sees every point; newest fix always drawn); the yellow
+connecting LINE is now a toggleable layer (`_viewLines`, `packview_lines` in
+localStorage, off by default — Peter: less clutter with many riders, and the line
+visibly jumped ahead of the interpolated dot). (4) Small permanent caption bottom-left
+(`#view-lagnote`): "The moving dot runs a little behind the newest fix · tap a trail
+dot for its time" — the moving dot is deliberately not tappable (it's the render-buffer
+playhead, ~35 s behind; the dots are the truth).
 
 **Ride/sim test checklist for Peter:** button appears bottom-left on the Ride tab (all
 four states), setup from the button works cold, per-ride off actually stops pushes and
 comes back next ride, pre-ride PackView link goes live once recording starts, and the old
-share pill is gone without regressions. Slices left: 2 pack button + ¾ list/¼ strip peek,
-3 PackRide creation on Route tab, 4 the eye.
+share pill is gone without regressions. PackView: eye in the tab, layers row, dots +
+trail-line toggle, lag note. Slices left: 2 pack button + ¾ list/¼ strip peek,
+3 PackRide creation on Route tab (slice 4's eye is done).
 
 ## Design session — 15 July 2026 (ride-screen consolidation designed & agreed; slice 1 built as v257 above)
 
