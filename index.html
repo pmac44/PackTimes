@@ -897,7 +897,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   // Cumulative GPS distance — haversine sum, immune to out-and-back snap issues
   gpsTravelledKm:0,
   _lastSnapIdx:null,                       // route point index of last snap (for directional bias)
-  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,turnAlertM:50,turnIndicator:'single',turnMarkerOffsetM:30,
+  opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,turnAlertM:50,turnMarkerOffsetM:30,
   settingsExp:{sharing:false,packride:false,strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
@@ -980,7 +980,7 @@ async function saveAll(){
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnIndicator:UI.turnIndicator,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -1005,7 +1005,6 @@ async function loadAll(){
       if(prefs.keepScreenOn!==undefined)UI.keepScreenOn=prefs.keepScreenOn;
       if(prefs.alertKm!==undefined)UI.alertKm=prefs.alertKm;
       if(prefs.turnAlertM!==undefined)UI.turnAlertM=prefs.turnAlertM;
-      if(prefs.turnIndicator!==undefined)UI.turnIndicator=prefs.turnIndicator;
       if(prefs.turnMarkerOffsetM!==undefined)UI.turnMarkerOffsetM=prefs.turnMarkerOffsetM;
       if(prefs.offRouteM!==undefined)UI.offRouteM=prefs.offRouteM;
       if(prefs.offRouteSecs!==undefined)UI.offRouteSecs=prefs.offRouteSecs;
@@ -6306,21 +6305,30 @@ function _packCdTick(){
 
 // Fit the map to `pts`, with the group parked in the top band of the canvas when
 // the list is up (bandFrac = vertical fraction where the group centre should sit).
-function _packFit(pts, bandFrac){
+function _packFit(pts, bandFrac, centre){
   const st = ms('live-map');
   if(_packPeekPrevZoom == null) _packPeekPrevZoom = st.zoom;
   if(!pts.length) return;
   const lats = pts.map(p => p.lat), lons = pts.map(p => p.lon);
-  st.cx = (Math.max(...lons) + Math.min(...lons)) / 2;
-  st.cy = (Math.max(...lats) + Math.min(...lats)) / 2;
+  // Strip view passes YOU as the centre (Peter: the frame itself then says "ahead
+  // is up there, behind is down there"); the full view fits the whole pack's bbox.
+  let pLat, pLon;
+  if(centre){
+    st.cx = centre.lon; st.cy = centre.lat;
+    pLat = 2 * Math.max(...lats.map(v => Math.abs(v - centre.lat)));
+    pLon = 2 * Math.max(...lons.map(v => Math.abs(v - centre.lon)));
+  } else {
+    st.cx = (Math.max(...lons) + Math.min(...lons)) / 2;
+    st.cy = (Math.max(...lats) + Math.min(...lats)) / 2;
+    pLat = Math.max(...lats) - Math.min(...lats);
+    pLon = Math.max(...lons) - Math.min(...lons);
+  }
   st._fitted = false;
   _packPeekAnchor = bandFrac;
   const r = cur();
   if(r && r.points && r.points.length && pts.length > 1){
     const rLat = Math.max(...r.points.map(p => p.lat)) - Math.min(...r.points.map(p => p.lat));
     const rLon = Math.max(...r.points.map(p => p.lon)) - Math.min(...r.points.map(p => p.lon));
-    const pLat = Math.max(...lats) - Math.min(...lats);
-    const pLon = Math.max(...lons) - Math.min(...lons);
     // Vertical budget shrinks with the band: at bandFrac 0.5 this is the whole
     // canvas (the v253 fit); at 0.15 the group must fit the top strip.
     const span = Math.max(pLon / (rLon || 1e-6), (pLat / (rLat || 1e-6)) / Math.max(0.2, bandFrac * 2));
@@ -6380,7 +6388,7 @@ function _packListShow(){
   const stripBottom = reg.top + reg.height * 0.25;
   let band = 0.15;
   if(rect && rect.height > 0) band = Math.max(0.08, Math.min(0.5, ((stripBottom - rect.top) / 2) / rect.height));
-  _packFit(_packFocus().pts, band);
+  _packFit(_packFocus().pts, band, UI.gpsPos ? {lat: UI.gpsPos.lat, lon: UI.gpsPos.lon} : null);
   _packCdReset();
   if(!_packCdTimer) _packCdTimer = setInterval(_packCdTick, 150);
 }
@@ -8948,16 +8956,15 @@ function drawMap(cvs,r,opts){
       const seg=_turnSegPts(r,at.cornerDist,at.alertM/1000,0.06),S=[];
       for(const p of seg){if(p&&p.lat!=null){const x=px(p.lon),y=py(p.lat);if(isFinite(x)&&isFinite(y))S.push([x,y]);}}
       if(S.length>=2){
-        const rails=UI.turnIndicator==='rails',bp=Math.floor(Date.now()/350)%2;
-        // Rails are THINNER and spaced wider so the route colour shows clearly between them;
-        // single line is one bold stroke.
-        const coreW=rails?(at.blink?(bp?7:4):5):(at.blink?(bp?12:6):9);
-        const caseW=coreW+(rails?3:4);
-        const lines=rails?_tcRailsPts(S,14):[S];   // 14 px each side → ~28 px channel, route visible
+        // v257: single bold line only — Peter rode both v243 styles and the twin
+        // rails lost ("not worth the trouble"); the style toggle is gone.
+        const bp=Math.floor(Date.now()/350)%2;
+        const coreW=at.blink?(bp?12:6):9;
+        const caseW=coreW+4;
         ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
         const sl=(pts2,col,w)=>{ctx.beginPath();ctx.moveTo(pts2[0][0],pts2[0][1]);for(let i=1;i<pts2.length;i++)ctx.lineTo(pts2[i][0],pts2[i][1]);ctx.strokeStyle=col;ctx.lineWidth=w;ctx.stroke();};
-        for(const ln of lines)sl(ln,'#10141a',caseW);
-        for(const ln of lines)sl(ln,'#f2740c',coreW);
+        sl(S,'#10141a',caseW);
+        sl(S,'#f2740c',coreW);
         ctx.restore();
       }
     }
@@ -13069,25 +13076,30 @@ function tLiveShell(r){
           <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
         </div>`;
       }
+      // v257: same treatment as the speed pill — DM Mono figures right-justified in
+      // a fixed 4-character box (no width wobble), and the long-ride number lives in
+      // a REVERSED light half: weighted power is the ride's truth, 3 s power wobbles.
+      // Zone colour tints the TOP half only (the light half must stay light).
+      // Units sit OUTSIDE the patched spans — updateLive/BLE patch textContent, and
+      // nested unit spans were being wiped on the first update (old bug).
       const pw=UI.powerWatts;
       const pz=pw!==null?powerZone(pw,UI.ftp):null;
-      const bg=pz?pz.bg:pillBg;
       const bdr=pz?('2px solid '+pz.border):pillBorder;
-      const col=pz?(pz.textDark?'#000':'#fff'):'#fbbf24';
+      const col=pz?(pz.textDark?'#000':'#fff'):'var(--text)';
+      const lblCol=pz?col:'rgba(255,255,255,0.5)';
       const curVal=pw!==null?pw:'—';
       const np=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):'—';
-      const subCol=pz?col:'rgba(255,255,255,0.55)';
-      const lblCol=pz?col:'rgba(255,255,255,0.35)';
-      const cad=UI.powerCadence;
-      const bal=UI.powerBalance;
-      const cadTxt=cad!==null?cad:'—';
-      const balTxt=bal!==null?bal+'/'+(100-bal):'—';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;text-align:center;" id="live-fpill-power">
-        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:32px;font-weight:800;color:${col};font-family:var(--sans);" id="live-power-cur">${curVal}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">W</span></div>
-        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);" id="live-power-np">${np}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">wP</span></div>
-        <div style="display:flex;justify-content:center;gap:8px;margin-top:2px;">
-          <span style="font-size:14px;font-weight:600;color:${subCol};font-family:var(--sans);" id="live-power-cad">${cadTxt}<span style="font-size:11px;font-weight:400;color:${lblCol};margin-left:1px;">rpm</span></span>
-          <span style="font-size:14px;font-weight:600;color:${subCol};font-family:var(--sans);" id="live-power-bal">${balTxt}<span style="font-size:11px;font-weight:400;color:${lblCol};margin-left:1px;">L/R</span></span>
+      const cadTxt=UI.powerCadence!==null?UI.powerCadence:'—';
+      const balTxt=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${bdr};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-power">
+        <div id="live-power-top" style="padding:5px 8px 3px;${pz?`background:${pz.bg};`:''}">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-power-cur">${curVal}</span></div>
+          <div style="font-size:11px;font-weight:400;color:${lblCol};font-family:var(--font);line-height:1.1;">W · 3 s</div>
+        </div>
+        <div style="background:#eef3ee;padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-power-np">${np}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--font);line-height:1.1;">W weighted</div>
+          <div style="line-height:1.2;margin-top:2px;font-family:var(--font);font-size:13px;font-weight:500;color:#101510;white-space:nowrap;"><span id="live-power-cad">${cadTxt}</span><span style="font-size:10px;color:#4a5a4a;"> rpm</span><span style="color:#4a5a4a;"> · </span><span id="live-power-bal">${balTxt}</span><span style="font-size:10px;color:#4a5a4a;"> L/R</span></div>
         </div>
       </div>`;
     }
@@ -13808,17 +13820,6 @@ function tSettings(r){
         <p style="font-size:12px;color:var(--text3);margin-top:4px;line-height:1.5;">Couldn't auto-detect a consistent offset for this route, so set it to match your RideWithGPS export (<strong>default 30 m</strong>). RWGPS puts each turn marker this far <em>before</em> the corner; getting it right makes the distance-to-turn and "done ✓" land at the <em>actual corner</em> — safety-critical when you can't see the junction.</p>
       </div>`;
     })()}
-    <div class="field" style="margin-top:10px;">
-      <label class="lbl">Indicator style</label>
-      <div style="display:flex;gap:8px;margin-top:4px;">
-        ${[['single','Single line'],['rails','Twin rails']].map(([val,lbl])=>`
-          <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-size:15px;padding:9px 8px;border-radius:7px;border:1px solid ${(UI.turnIndicator||'single')===val?'var(--accent)':'var(--border)'};background:${(UI.turnIndicator||'single')===val?'rgba(74,222,128,0.07)':'var(--bg3)'};">
-            <input type="radio" name="turn-ind" class="turn-ind-opt" value="${val}" ${(UI.turnIndicator||'single')===val?'checked':''} style="width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;">${lbl}
-          </label>`).join('')}
-      </div>
-      <p style="font-size:12px;color:var(--text3);margin-top:4px;line-height:1.5;"><strong>Single line</strong> is bolder; <strong>twin rails</strong> keep the route colour visible between them.</p>
-    </div>
-
     ${alertsHdr('Stops')}
     <div class="field">
       <label class="lbl">Alert distance — <span id="alert-km-val" class="unit">${(UI.alertKm>=1?(UI.alertKm.toFixed(1)+' km'):(UI.alertKm*1000).toFixed(0)+'m')}</span></label>
@@ -15519,8 +15520,8 @@ function factorDesc(f){
 // ─── Turn cue overlay (v243 rework) ───
 // The turn is shown by HIGHLIGHTING THE ROUTE ITSELF on the map — an orange segment from the
 // alert distance, through the turn, to a bit past it — instead of a big arrow blocking the map.
-// Two styles (UI.turnIndicator): 'single' (one bold orange line) or 'rails' (two lines either
-// side, leaving the route colour visible between). Steady until the final ~50 m, then a car-rate
+// ONE style: a single bold orange line (the v243 twin-rails alternative was ridden, judged
+// not worth the trouble, and deleted in v257). Steady until the final ~50 m, then a car-rate
 // width-BLINK (thin<->thick, never off) via the .blink CSS class. Blink stops at the corner; the
 // cue lingers steady ~25 m past the turn as a "you did it" confirmation, then clears — unless the
 // NEXT turn's window has already opened, in which case it jumps straight to it. A compact box
@@ -15631,24 +15632,8 @@ function _markerOffKm(r){
   const m=(r&&r._moffM!=null)?r._moffM:(UI.turnMarkerOffsetM!=null?UI.turnMarkerOffsetM:30);
   return m/1000;
 }
-// Two parallel rail point-arrays, offset g px either side of the centre polyline (screen coords).
-// Uses a proper MITRE at each vertex (offset by g/cos(half-angle) along the angle bisector) so the
-// rails stay parallel to the route through a corner instead of the outer one cutting in.
-function _tcRailsPts(S,g){
-  const n=S.length,Lp=[],Rp=[];
-  const dir=(p,q)=>{let x=q[0]-p[0],y=q[1]-p[1],L=Math.hypot(x,y)||1;return [x/L,y/L];};
-  for(let i=0;i<n;i++){
-    const d1=(i>0)?dir(S[i-1],S[i]):dir(S[i],S[i+1]);
-    const d2=(i<n-1)?dir(S[i],S[i+1]):dir(S[i-1],S[i]);
-    const n1x=-d1[1],n1y=d1[0],n2x=-d2[1],n2y=d2[0];   // left-hand normals of each segment
-    let mx=n1x+n2x,my=n1y+n2y,mL=Math.hypot(mx,my)||1;mx/=mL;my/=mL;   // bisector normal
-    let cos=mx*n1x+my*n1y;const s=cos<0?-1:1;if(Math.abs(cos)<0.5)cos=s*0.5;   // clamp sharp spikes
-    const m=g/cos;
-    Lp.push([S[i][0]+mx*m,S[i][1]+my*m]);
-    Rp.push([S[i][0]-mx*m,S[i][1]-my*m]);
-  }
-  return [Lp,Rp];
-}
+// (v257: _tcRailsPts — the twin-rails offset/mitre maths — deleted with the rails
+// style. Peter rode both v243 styles; single bold line won.)
 // Which turn is active and how — SHARED by the on-map highlight (drawMap) and the box (below).
 // The BOX shows the next turn ALWAYS (distance + direction, counting down from any distance); the
 // orange highlight + blink only switch on within the alert window (`showOrange` / `blink`).
@@ -17341,12 +17326,6 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     UI.gpsZoom=parseFloat(e.target.value);
     saveAll();render();return;
   }
-  if(e.target.classList.contains('turn-ind-opt')){
-    UI.turnIndicator=e.target.value;
-    saveAll();
-    if(UI.tab==='settings')render(); else if(UI.gpsActive)updateLive();
-    return;
-  }
 });
 
 document.getElementById('content-wrap').addEventListener('input',e=>{
@@ -17895,34 +17874,30 @@ async function connectPowerMeter(){
           if(_npRawBuffer.length>NP_WINDOW_S*2)_npRawBuffer.splice(0,_npRawBuffer.length-NP_WINDOW_S);
         }
       }
-      // Patch floating power pill directly without full re-render
+      // Patch floating power pill directly without full re-render.
+      // v257: zone colour goes on the TOP half (live-power-top) + the border — the
+      // reversed light half (weighted power, cad, L/R) keeps its own dark-on-light
+      // colours and must never be repainted by the zone.
       const pill=document.getElementById('live-fpill-power');
+      const top=document.getElementById('live-power-top');
       const pwCur=document.getElementById('live-power-cur');
       const npEl=document.getElementById('live-power-np');
-      const lblEl=document.getElementById('live-power-lbl');
       if(pwCur)pwCur.textContent=avg;
       if(npEl){
         const np=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):'—';
         npEl.textContent=np;
       }
-      if(lblEl&&lblEl.textContent==='hold to pair')lblEl.textContent='W (wP)';
-      // Update zone colour if FTP is set
       const pz=powerZone(avg,UI.ftp);
       if(pill&&pz){
-        const _pvc=pz.textDark?'#000':'#fff';
-        pill.style.background=pz.bg;
         pill.style.borderColor=pz.border;
         pill.style.borderWidth='2px';
-        if(pwCur)pwCur.style.color=_pvc;
-        if(npEl)npEl.style.color=_pvc;
-        if(lblEl){lblEl.style.color=_pvc;}
+        if(top)top.style.background=pz.bg;
+        if(pwCur)pwCur.style.color=pz.textDark?'#000':'#fff';
       } else if(pill&&!pz){
-        pill.style.background='rgba(10,15,10,0.85)';
         pill.style.borderColor='rgba(255,255,255,0.15)';
         pill.style.borderWidth='1px';
-        if(pwCur)pwCur.style.color='#fbbf24';
-        if(npEl)npEl.style.color='rgba(255,255,255,0.55)';
-        if(lblEl){lblEl.style.color='rgba(255,255,255,0.35)';}
+        if(top)top.style.background='transparent';
+        if(pwCur)pwCur.style.color='var(--text)';
       }
     });
     UI.powerConnected=true;

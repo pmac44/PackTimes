@@ -180,7 +180,10 @@ sim-tested. What's in (all in the PACKRIDE section, replacing `_packPillSync`):
   alternating per tick = vertical hopping; now both read `_packPeekAnchor` (the v252
   one-authority lesson, third occurrence). Both peek draws are north-up by design —
   a pack overview has no "up". (c) name tags show on the FULL pack map (no legend
-  there), hidden only in the list view.
+  there), hidden only in the list view. (d) strip view now centres on YOU (Peter's
+  rule: the frame itself says ahead-is-up-there/behind-is-down-there), zoomed so the
+  nearest ahead + behind both fit (`_packFit` grew an optional `centre` arg); the
+  full view keeps the whole-pack bbox fit.
 
 **Sim-test checklist for slice 2 (two browser windows, the v251 recipe):** pack button
 appears with placing once riders are known · pulses only while recording+sharing ·
@@ -209,6 +212,24 @@ stale event no longer claims the slot on boot.
 ALL FOUR SLICES of the ride-screen consolidation are now BUILT (v257, unpushed):
 1 sharing button + sheets · 2 pack button + peek · 3 creation doorways · 4 the marks.
 None of it has met a phone or a two-window sim yet.
+
+**POWER PILL restyled to match the speed pill (same session, Peter's request):** DM Mono
+figures right-justified in a fixed 4ch box; top half = 3 s power ("W · 3 s" — that IS the
+existing POWER_SMOOTH_MS window) with the zone colour tinting the TOP HALF + border only;
+bottom half REVERSED light with **weighted power** (the existing 30 s-rolling NP maths)
+plus a cadence · L/R balance line in dark mono. Also fixed on the way: the BLE patch and
+updateLive set textContent on `live-power-cad`/`live-power-bal` whose unit labels were
+NESTED inside — first live update wiped "rpm"/"L/R"; units now sit outside the patched
+spans. The BLE zone-patch no longer repaints the np/label colours (they live on the light
+half now). HR pill deliberately untouched — same treatment can follow once Peter approves
+the power pill's look.
+
+**TWIN RAILS deleted (same session, Peter's verdict): the v243 turn-indicator evaluation
+is over — single bold orange line wins.** Removed: the rails branch in drawMap's
+turn-highlight block, `_tcRailsPts` (the mitre maths), the Settings "Indicator style"
+radio, the `turn-ind-opt` change listener, and `UI.turnIndicator` (STATE + uiPrefs
+save/load — a stale `turnIndicator` key in old saved prefs is simply ignored, no
+migration needed).
 
 ## Design session — 15 July 2026 (ride-screen consolidation designed & agreed; slice 1 built as v257 above)
 
