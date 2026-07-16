@@ -202,6 +202,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .stops-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 .stops-map-panel{flex-shrink:0;background:#0a0f0a;position:relative;}
 .stops-scroll{flex:1;overflow-y:auto;padding:11px 13px 20px;display:flex;flex-direction:column;gap:11px;-webkit-overflow-scrolling:touch;}
+/* v260e — the grab strip that replaced the expand/collapse button (Peter). It sits BETWEEN
+   the map panel and the list, in the 6px spacer's slot, and is the whole reason the list
+   can never disappear: the old expanded state set .stops-scroll to display:none, so the
+   button was the only way back. A handle you can always see and grab is a more direct
+   control than a button that toggles something off-screen — and it costs a map button.
+   touch-action:none or the browser tries to scroll the page out from under the drag.
+   ns-resize is the desktop affordance; the handle itself is mobile-only (desktop pins the
+   map at a flat 250px and never had an expand button either). */
+.stops-drag{flex-shrink:0;background:var(--bg);height:22px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;-webkit-tap-highlight-color:transparent;}
+.stops-drag-grip{width:44px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28);pointer-events:none;}
+.stops-drag:active .stops-drag-grip{background:rgba(255,255,255,0.5);}
 .map-wrap{position:relative;background:#0d1a0d;overflow:hidden;touch-action:none;}
 .map-wrap canvas{display:block;width:100%;height:100%;touch-action:none;}
 .mhint{position:absolute;bottom:6px;left:0;right:0;text-align:center;font-size:var(--fs-sm);color:rgba(255,255,255,.35);pointer-events:none;}
@@ -2426,7 +2437,13 @@ function fmtStopPct(p){
 // decimal point; a figure that ticks once a minute doesn't need protecting from itself,
 // and a 5-day event is exactly when you'd want the minutes rather than a rounded "120h".
 function fmtDurPill(ms){
-  if(!(ms>=1000))return'—';
+  // v260e — ZERO IS A VALUE, and it formats like one. The old guard turned 0 into a dash,
+  // which was right when a dash meant "no reading" and wrong now: before you record, the
+  // ride's elapsed time genuinely IS nothing, and "0h00" says so. Peter drew the line and
+  // it's the right one — for a SENSOR zero would be a lie (no heart rate is not 0 bpm, so
+  // the pill dashes), but for a CLOCK zero is simply true. Only a missing or nonsense
+  // value dashes now.
+  if(ms==null||!isFinite(ms)||ms<0)return'—';
   const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
   // ALWAYS lead with the hours, even at zero. "4m" was a real error, not a style choice:
   // m is the SI symbol for METRE (minutes are min), so on a ride screen full of distances
@@ -10146,15 +10163,11 @@ function hitTest(cvs,cx,cy,cb){
       if(Math.sqrt(bestStopD)<28){
         _highlightStopId=bestStop.id;
         if(cvs.id==='stops-map'){
-          // If map is expanded, collapse it first then scroll to tile
-          if(UI.stopsMapExpanded){
-            UI.stopsMapExpanded=false;
-            setStopsMapHeight(0.50,false);
-            const expandBtn=document.getElementById('stops-map-expand');
-            if(expandBtn)expandBtn.innerHTML=ICON_EXPAND;
-            const scroll=document.querySelector('.stops-scroll');
-            if(scroll)scroll.style.display='';
-          }
+          // Tapping a stop dot while the map is dragged DOWN pulls it back up first, so
+          // the tile we're about to scroll to is actually on screen. v260e: goes through
+          // the snap now — the old code poked the expand button's icon by hand and undid
+          // the list's display:none, and neither of those things exists any more.
+          if(UI.stopsMapExpanded)_stopsApplySnap(false,false);
           // Pan and zoom to stop
           const state=ms(cvs.id);
           const p=pts[cidx(r,bestStop.dist)];
@@ -10351,13 +10364,30 @@ function mapCtrlHTML(mapId,showGPS){
       // distinction this button absolutely must make at a glance.
       gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${wide}color:var(--text);border-color:var(--border2);${shadow}"><span style="${row}">${dot}${label('Start ride')}</span></button>`;
     }
-  } else {
-    // Non-Live maps: keep the original GPS-toggle behaviour
-    gpsBtn=UI.gpsActive?
-      `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);"><div class="pulse" style="color:var(--red);background:var(--red);width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:3px;"></div>GPS</button>`:
-      `<button class="zbtn" id="btn-gpstoggle" style="${btnSize}width:auto;padding:0 8px;font-size:12px;font-family:var(--font);">GPS</button>`;
   }
-  const expandBtn=isStopsMobile?`<button class="zbtn" id="stops-map-expand" title="${UI.stopsMapExpanded?'Shrink map':'Expand map'}" style="padding:0;overflow:hidden;">${UI.stopsMapExpanded?ICON_COLLAPSE:ICON_EXPAND}</button>`:'';
+  // ── NO GPS BUTTON OUTSIDE THE RIDE MAP (v260e) ────────────────────────────────────
+  // The Stops map used to carry a plain GPS on/off toggle. Removed at Peter's call:
+  // "we should only need FIT ROUTE, MAP TYPE, SURFACE TYPE for the buttons."
+  // Worth recording WHY this is a fair trade, because it isn't free: this was the last
+  // plain GPS toggle in the app — the Ride tab's button starts GPS *and* a recording
+  // (v245), so there is now no way to switch the GPS on without recording a ride.
+  // Peter accepted that deliberately: GPS belongs to the ride. The only stated use for
+  // the position dot on this map was working out a detour mid-ride, and mid-ride you are
+  // already recording, so the dot is there when it's wanted.
+  // NOTE the delegator still has a `UI.tab!=='live'` branch routing #btn-gpstoggle to a
+  // plain GPS toggle. It's now unreachable — left alone rather than surgically removed,
+  // since it's an inert guard and this file is 18k lines. If a plain toggle is ever
+  // wanted again, Settings is the place, not a planning map.
+  // ── NO EXPAND/COLLAPSE BUTTON (v260e) ─────────────────────────────────────────────
+  // Replaced by the grab strip between the map and the list (.stops-drag / _stopsDragInit).
+  // Peter: "a better approach would be to do what we do on the ride tab — have the stops
+  // list drag down so a single small strip is visible at the bottom, and you drag that
+  // strip up… I think that is a more direct control, which is intuitive, and gets rid of
+  // another button on the map."
+  // The button had a deeper problem than being a button: its expanded state hid the list
+  // outright (display:none), so the ONLY way back was the button itself. The handle is
+  // always visible, so the control and the thing it controls are the same object.
+  const expandBtn='';
 
   // ── Fit-route (⛶) and crosshair (recentre) on the RIDE map (v245) ──────────────────
   // These two are coupled. The ride map FOLLOWS GPS continuously, so the crosshair
@@ -10374,9 +10404,18 @@ function mapCtrlHTML(mapId,showGPS){
   // than the 52px record button sitting under it.
   const fitSquare=(mapId==='live-map')?'padding:0;':'width:auto;padding:0 8px;';
   const fitBtn=rideLive?'':`<button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);${fitSquare}">⛶</button>`;
-  // Crosshair: never on the ride map (it follows GPS; nothing to recentre). Still earns its
-  // place on the Stops/desktop maps, where you pan away to look around and want to jump back.
-  const recenterBtn=(mapId!=='live-map'&&showGPS)?`<button class="zbtn" data-recenter="${mapId}" title="Centre on GPS" style="${btnSize}padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>`:'';
+  // ── NO CROSSHAIR HERE ANY MORE (v260e) ────────────────────────────────────────────
+  // v245 gave the Stops map a crosshair on the argument that this map pans freely, so
+  // "jump back to me" is a job fit-route can't do. Peter has now removed it, and the
+  // argument that beats mine is simpler: it only works while GPS is on, and on a PLANNING
+  // tab GPS is off almost always — so it was a dead button nearly all of the time, which
+  // is exactly the clutter he was objecting to. If you do pan away mid-detour, fit-route
+  // still gets you un-lost; it just zooms to the whole route rather than to you.
+  // I offered a middle road (show it only when UI.gpsActive) and he declined it — three
+  // buttons, always, beats a control that appears and disappears. Don't re-add it.
+  // (The DESKTOP map's crosshair is separate — hand-written static HTML near the top of
+  // the file, not built here — and is untouched.)
+  const recenterBtn='';
   // .map-ctrl is a column flex, which defaults to align-items:stretch — so any button with
   // width:auto grows to the width of the WIDEST sibling. With the new wide text buttons
   // ("Start ride" / "Resume ride"), that would drag the ⛶ and tile buttons out to match.
@@ -10392,7 +10431,7 @@ function mapCtrlHTML(mapId,showGPS){
     ${fitBtn}
     <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
     ${recenterBtn}
-    ${(mapId==='live-map'||mapId==='stops-map')?gpsBtn:''}
+    ${gpsBtn}
     ${stopBtn}
     ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:''}
   </div>`;
@@ -13241,7 +13280,8 @@ function tStopsShell(r){
         <div id="mobile-map-legend-r" style="display:none;"></div>`:''}
       </div>
     </div>
-    <div style="height:6px;flex-shrink:0;background:var(--bg);"></div>
+    ${IS_DESKTOP()?`<div style="height:6px;flex-shrink:0;background:var(--bg);"></div>`
+                  :`<div class="stops-drag" id="stops-drag-handle" title="Drag to resize the map"><div class="stops-drag-grip"></div></div>`}
     <div class="stops-scroll">
       <div style="padding:6px 4px 2px;display:flex;flex-direction:column;gap:6px;color:var(--text3);font-size:16px;">
         <div style="display:flex;align-items:center;gap:6px;"><span>👆</span><span>Tap on the map to add a stop</span></div>
@@ -13338,17 +13378,111 @@ function _stopsMapH(fraction){
   return Math.round((viewH-tabsH-headerH)*fraction);
 }
 
-function setStopsMapHeight(fraction,animate,skipRedraw){
+// v260e — the map's height in PIXELS, which is what a drag actually produces. The
+// fraction-based setter below is now a thin wrapper over it, so every existing call site
+// is untouched and there is still one place that writes these three heights.
+function _stopsSetMapPx(h,skipRedraw){
   const panel=document.getElementById('stops-map-panel');
   const wrap=document.getElementById('stops-map-wrap');
   const cvs=document.getElementById('stops-map');
   if(!panel||!wrap||!cvs)return;
-  const h=_stopsMapH(fraction);
   panel.style.height=h+'px';
   wrap.style.height=h+'px';
   cvs.style.height=h+'px';
-  cvs._forcedH=h;
+  cvs._forcedH=h;   // drawMap reads this so it sizes correctly before the reflow lands
   if(!skipRedraw)redrawMap('stops-map');
+}
+function setStopsMapHeight(fraction,animate,skipRedraw){
+  const panel=document.getElementById('stops-map-panel');
+  if(!panel)return;
+  _stopsSetMapPx(_stopsMapH(fraction),skipRedraw);
+}
+
+// ── THE TWO SNAP POSITIONS ────────────────────────────────────────────────────────────
+// UP   = the map at half, list at half. The tab's resting state, unchanged.
+// DOWN = the map as tall as it can be while the list still shows a STRIP at the bottom.
+// That strip is the point of the whole change (Peter): the old "expanded" state set the
+// list to display:none, which is why a button had to exist to bring it back. Leave a strip
+// and the way back is the thing itself.
+const STOPS_LIST_STRIP_PX=92;   // ~ one grab strip + a glimpse of the first tile
+function _stopsMapPxUp(){return _stopsMapH(0.50);}
+function _stopsMapPxDown(){
+  const tabsH=document.getElementById('tabs')?.offsetHeight||0;
+  const headerH=document.querySelector('.header')?.offsetHeight||48;
+  const dragH=document.getElementById('stops-drag-handle')?.offsetHeight||22;
+  const viewH=window.visualViewport?window.visualViewport.height:window.innerHeight;
+  // Never let "down" end up SHORTER than "up" on a tiny screen — that would invert the
+  // gesture (drag down, map shrinks), which is worse than the strip being a bit thin.
+  return Math.max(_stopsMapPxUp(),Math.round(viewH-tabsH-headerH-dragH-STOPS_LIST_STRIP_PX));
+}
+// Apply a snap position and remember it. UI.stopsMapExpanded keeps its old name and old
+// meaning (true = map big) so nothing else in the file has to change.
+function _stopsApplySnap(down,skipRedraw){
+  UI.stopsMapExpanded=!!down;
+  _stopsSetMapPx(down?_stopsMapPxDown():_stopsMapPxUp(),skipRedraw);
+  // The list is never hidden now, so nothing here touches .stops-scroll's display or the
+  // panel's z-index — both were only needed because the old full-screen map covered them.
+}
+
+// ── THE DRAG ──────────────────────────────────────────────────────────────────────────
+// Bespoke, because there was nothing to reuse: the Ride tab's "drag the stops list up" is
+// not a gesture at all, it's native scrolling (.live-outer is the scroller, so the map
+// scrolls up out of view). That trick can't work here — the Stops map must RESIZE, not
+// translate, or fit-route would be fitting the route into a box half of which is off
+// screen. (Vestiges of a scroll-driven resize are still in the file — scrollMapUp,
+// resetMapScroll, handleStopsScroll — all no-ops. It was tried and taken out.)
+// Raw touch events with {passive:false}, matching the elevation strip's swipe-to-zoom,
+// which is the only other custom gesture in the app. Mouse is handled too so the desktop
+// device-emulator is testable.
+let _stopsDrag=null;
+function _stopsDragInit(){
+  const h=document.getElementById('stops-drag-handle');
+  if(!h||h._wired)return;
+  h._wired=true;
+  const begin=y=>{
+    const panel=document.getElementById('stops-map-panel');
+    if(!panel)return;
+    _stopsDrag={y0:y,h0:panel.offsetHeight,moved:false,raf:null,pending:null};
+  };
+  const move=y=>{
+    if(!_stopsDrag)return;
+    const dy=y-_stopsDrag.y0;
+    // 5px dead zone: a TAP on the handle must not nudge the map (same idea as the
+    // elevation strip's 6px). Without it, the snap-on-release would fire on every tap.
+    if(Math.abs(dy)>5)_stopsDrag.moved=true;
+    if(!_stopsDrag.moved)return;
+    const lo=_stopsMapPxUp(),hi=_stopsMapPxDown();
+    _stopsDrag.pending=Math.max(lo,Math.min(hi,_stopsDrag.h0+dy));
+    // One redraw per frame, not one per touchmove — touchmove fires far faster than the
+    // map can draw. attachMap's pan already redraws at gesture rate, so this is proven.
+    if(_stopsDrag.raf===null){
+      _stopsDrag.raf=requestAnimationFrame(()=>{
+        if(!_stopsDrag)return;
+        _stopsDrag.raf=null;
+        _stopsSetMapPx(_stopsDrag.pending,false);
+      });
+    }
+  };
+  const end=()=>{
+    if(!_stopsDrag)return;
+    if(_stopsDrag.raf!==null)cancelAnimationFrame(_stopsDrag.raf);
+    const moved=_stopsDrag.moved,cur=_stopsDrag.pending;
+    _stopsDrag=null;
+    if(!moved)return;   // a tap: leave the map exactly where it was
+    // SNAP TO THE NEARER END, not by direction. Nearest is predictable — wherever you let
+    // go, it goes to the end you're closest to — and it can't strand you mid-way.
+    const lo=_stopsMapPxUp(),hi=_stopsMapPxDown();
+    _stopsApplySnap(Math.abs(cur-hi)<Math.abs(cur-lo),false);
+  };
+  h.addEventListener('touchstart',e=>{begin(e.touches[0].clientY);},{passive:false});
+  h.addEventListener('touchmove',e=>{if(_stopsDrag){e.preventDefault();move(e.touches[0].clientY);}},{passive:false});
+  h.addEventListener('touchend',end);
+  h.addEventListener('touchcancel',end);
+  h.addEventListener('mousedown',e=>{e.preventDefault();begin(e.clientY);
+    const mm=ev=>move(ev.clientY);
+    const mu=()=>{end();window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);};
+    window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);
+  });
 }
 
 function scrollMapUp(px){ /* no-op */ }
@@ -13367,44 +13501,20 @@ function initStopsMap(r){
     const wrap=document.getElementById('stops-map-wrap');
     if(panel&&wrap){panel.style.height='250px';wrap.style.height='250px';cvs.style.height='250px';cvs._forcedH=250;}
   } else {
-    setStopsMapHeight(UI.stopsMapExpanded?1.0:0.50,false);
+    // v260e — the two snap positions, via one authority. Was setStopsMapHeight(1.0) for the
+    // expanded case, which filled the screen and left nothing of the list to grab.
+    _stopsApplySnap(UI.stopsMapExpanded,true);
   }
   drawMap(cvs,r,{anchor:0.5,highlightId:_highlightStopId});
   attachMap(cvs,km=>{
-    if(UI.stopsMapExpanded){
-      // Collapse map first
-      UI.stopsMapExpanded=false;
-      setStopsMapHeight(0.50,false);
-      const btn=document.getElementById('stops-map-expand');
-      if(btn)btn.innerHTML=ICON_EXPAND;
-      const scroll=document.querySelector('.stops-scroll');
-      if(scroll)scroll.style.display='';
-      // This callback fires for route-line taps only (stop dot taps are handled by hitTest)
-      openModal(km);
-    } else {
-      openModal(km);
-    }
+    // Tapping the route line while the map is dragged DOWN pulls it back up first, so the
+    // stop you're about to add is visible in the list. Unchanged in spirit from v165; it
+    // just goes through the snap now instead of poking the (deleted) button's icon.
+    if(UI.stopsMapExpanded)_stopsApplySnap(false,false);
+    // This callback fires for route-line taps only — stop-dot taps are handled by hitTest.
+    openModal(km);
   });
-  // Expand button
-  const expandBtn=document.getElementById('stops-map-expand');
-  if(expandBtn){
-    expandBtn.onclick=e=>{
-      e.stopPropagation();
-      UI.stopsMapExpanded=!UI.stopsMapExpanded;
-      const scroll=document.querySelector('.stops-scroll');
-      const panel=document.getElementById('stops-map-panel');
-      if(UI.stopsMapExpanded){
-        setStopsMapHeight(1.0,false);
-        if(scroll)scroll.style.display='none';
-        if(panel)panel.style.zIndex='50';
-      } else {
-        setStopsMapHeight(0.50,false);
-        if(scroll)scroll.style.display='';
-        if(panel)panel.style.zIndex='';
-      }
-      expandBtn.innerHTML=UI.stopsMapExpanded?`${ICON_COLLAPSE}`:`${ICON_EXPAND}`;
-    };
-  }
+  _stopsDragInit();
 }
 
 // Stops scroll listener — attached to document so it survives re-renders
@@ -13840,6 +13950,28 @@ function tLiveShell(r){
           <span style="font-size:18px;color:rgba(255,255,255,0.5);line-height:1;">+</span>
         </div></div>`;
     }
+    // ── COLOUR ON THE PILLS IS SPOKEN FOR. DON'T ADD MORE. ──────────────────────────
+    // Raised and settled 17 Jul 2026. Peter: "the black and white contrast is good, but I
+    // think colour could be used too. What colour could we use for the time/duration pill?
+    // Something high contrast, but a subtle change?" — then, on the argument below: "ok
+    // that's a good point, let's leave them as they are."
+    // Colour already means exactly TWO things here, and both are load-bearing:
+    //   · WHICH ZONE you're in — power and HR, and only because the colour IS the data
+    //     (Peter's v260 ruling, overturning style to let the zone onto the weighted half).
+    //   · WHICH PRODUCT you're in — green PackTimes / yellow PackRide, one token, which is
+    //     why nothing here hard-codes a hex for the theme (the distance-bar rule: colour =
+    //     product; SIZE and REVERSAL = which number matters).
+    // So the monochrome pills are not an oversight. Power and HR wear colour because they
+    // HAVE zones; speed, stoppage and cadence don't, and a decorative colour on them would
+    // read as a zone that isn't there — with a real zone pill sitting right beside it.
+    // Cadence specifically CANNOT have an honest colour: it needs a good/bad to encode, and
+    // there is no agreed good cadence — inventing bands would be the app passing judgement
+    // with nothing behind it. Same trap as a made-up stoppage threshold (30% is fine on a
+    // tour and terrible on a non-stop ultra).
+    // THE ONE ROUTE THAT WOULD BE HONEST, if this ever comes back: colour stoppage against
+    // the PLAN'S OWN stoppage %. The plan has every stop and duration, so the benchmark is
+    // computable and it's the rider's own — not invented. That's a feature, not a styling
+    // pass, and it has nothing to say on a no-route ride.
     const pillBg='rgba(10,15,10,0.85)';
     const pillBorder='1px solid rgba(255,255,255,0.15)';
     const pillStyle=`${base}top:6px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:4px 8px;min-width:70px;`;
@@ -13896,13 +14028,35 @@ function tLiveShell(r){
       // GEOMETRY IS THE SPEED PILL'S, EXACTLY: 34px figures in a 4ch box, same paddings,
       // same label sizes → same height, which is what Peter spotted was off. Elapsed fits
       // 4ch because past 99h fmtDurPill drops the minutes ("120h"), and "100%" is 4 too.
+      // v260e — NOT RECORDING READS "0h00 / 0.0%", NOT DASHES, and there is no instruction.
+      // Peter, when I offered to give this pill the same "name yourself + tell me what to
+      // do" treatment as the sensor pills: "What is the pill showing really? It is time or
+      // duration, and then a percentage of that as stoppage… Why not just show 0h0m? There
+      // is no pairing going on here, and also show 0% for the stoppage."
+      // He's right, and it dissolves the question instead of answering it. THE SENSOR PILLS
+      // AND THIS ONE ARE NOT THE SAME CASE:
+      //   · A sensor pill is missing HARDWARE. Zero would be a lie (no heart rate is not
+      //     0 bpm), so it dashes, and there IS something to be told — hold to pair.
+      //   · This pill is missing NOTHING. Before you record, elapsed really is nothing and
+      //     stoppage really is nothing, so zero is the plain truth. There is nothing to
+      //     pair, so "record to measure" was an instruction with no mechanism behind it —
+      //     which is exactly why Peter read it as vague ("it could mean anything").
+      // It also makes the idle pill an honest preview: this is precisely how it reads in
+      // the first second of the ride.
+      // NO STOPWATCH ICON either, for a reason worth keeping: the stopwatch is PackTimes'
+      // own logo mark (v257 — PackView has the eye, PackRide the three dots). A brand mark
+      // pressed into service as a UI hint would say "PackTimes" where it needs to say
+      // "press this", and the app already owns the right symbol — the red record dot.
+      // Which zeros need no symbol at all.
       const L=_legVals();
-      const ev=L?fmtDurPill(L.elapsedMs):'—';
-      // The % waits a minute: 3 seconds into a ride, sitting at the lights, "100%" is
-      // true and useless. ONE DECIMAL (Peter, from the ride): "it would just give you a
-      // better idea of what the number's up to, and you've got plenty of space" — and it
-      // is the number he says you actively drive, so it should show movement.
-      const pv=(L&&L.elapsedMs>60000)?fmtStopPct(L.stopPct):'—';
+      const ev=fmtDurPill(L?L.elapsedMs:0);
+      // The % still waits a minute ONCE RECORDING (Peter's v259 rule): 3 s in, sitting at
+      // the lights, "100%" is true and useless. ONE DECIMAL: "it would just give you a
+      // better idea of what the number's up to, and you've got plenty of space" — it's the
+      // number he says you actively drive, so it should show movement.
+      // Idle goes through fmtStopPct too rather than a hard-coded "0%" — one authority for
+      // the format, so the idle figure is exactly the live one's zero.
+      const pv=L?((L.elapsedMs>60000)?fmtStopPct(L.stopPct):'—'):fmtStopPct(0);
       // Says WHICH elapsed. On a fixed-wake plan the clock restarts each morning, so
       // "elapsed" alone would be a lie on day 2.
       const elbl=legHasFixedWake(r)?'leg elapsed':'elapsed';
@@ -13917,15 +14071,70 @@ function tLiveShell(r){
           <!-- min-width: 1dp makes the typical value 5ch ("12.3%") and 6ch at "100.0%",
                so the box has to be allowed to grow — same reasoning as elapsed. -->
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
-          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">${L?'stopped':'record to measure'}</div>
+          <!-- v260e: the label no longer changes. It said "record to measure" when idle;
+               now the figures are honest zeros, so the label just names them, always. -->
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">stoppage</div>
         </div>
       </div>`;
     }
     if(type==='power'){
+      // v260d — THE UNPAIRED PILL IS FULL SIZE, and is the paired pill with dashes.
+      // Peter: "the power, heart rate and cadence pills should be their full size at all
+      // times, not only after they have paired. It makes it easier to press when moving,
+      // and you are not going to leave an unpaired pill there if you don't want it. You
+      // either pair it or cycle through to the small plus." Three things follow:
+      //  · It's a bigger tap target on a vibrating bar — the whole point of the change.
+      //  · PAIRING NO LONGER MOVES THE FURNITURE. The old pair-prompt was ~50px and the
+      //    paired pill ~105px, so connecting a sensor shoved everything below it down the
+      //    column mid-ride. Same height either way = the layout settles in the driveway.
+      //  · The empty state becomes a PREVIEW: dashes sit exactly where the figures will,
+      //    so you learn the pill before it has data.
+      // PETER ALREADY MADE THIS CALL ONCE (v259): he spotted that the stoppage pill's empty
+      // state was short, and the fix was to give it the speed pill's full geometry. An empty
+      // pill is still a pill.
+      // THE EMPTY PILL SAYS ITS NAME — v260e, and it corrects my own v260d mistake.
+      // v260d filled the hero slot with a DASH and let the 11px unit label do the naming.
+      // Peter, first-user test: "is it clear enough what the pills represent when there are
+      // no numbers? The 'hold to pair' text is very small, as is the 'bpm' to suggest heart
+      // rate." He's right, and the cause was mine: I'd spent 34px of hero space on a
+      // character that says nothing, TWICE (top and bottom), which is exactly why the only
+      // meaningful text left had to be small. The dash was defended as a "preview" of where
+      // the figure lands — but a dash teaches you nothing, so it was preview of nothing.
+      // Put the pill's IDENTIFIER in that slot and the whole thing reads at a glance;
+      // dropping the second dash then buys "hold to pair" a readable 13px.
+      // THE HERO SLOT HOLDS THE IDENTIFIER: a glyph where an honest one exists, the word
+      // where it doesn't. ⚡ power · ❤️ heart rate · "Cadence".
+      // I argued for words everywhere on the grounds that a set where two pills get symbols
+      // and the third gets a word isn't a set. PETER OVERRULED IT, having seen all three on
+      // screen: "the words for power and heart rate are clear, but the symbols were also
+      // clear and looked better… for Cadence, I think 'rpm' is probably about as clear as
+      // it can get." He's right on the fact I got wrong: ⚡ and ❤️ are not icons that need
+      // decoding — they're the universal shorthand every bike computer uses, and a rider
+      // knows them before they know this app. 🔄 was never in that class, which is why it
+      // read as a SYNC button — the problem was ALWAYS that CADENCE HAS NO GLYPH, not that
+      // glyphs were wrong. So the rule is: use the symbol where the sport already has one,
+      // and never invent one to fill the slot.
+      // THE STRUCTURE IS STILL IDENTICAL ACROSS THE THREE — identifier on top, unit below —
+      // so the odd one out reads as the same kind of pill, not a different design.
+      // The UNIT STAYS BELOW, and it's the thread: "bpm" sits in the same place unpaired
+      // and paired, so the empty pill teaches you the one you'll ride with.
+      // GEOMETRY: the hero box is pinned to 34px and its contents centred, so the empty
+      // pill is the paired pill's height to the pixel — pairing must not move the furniture
+      // (the whole point of v260d). The glyphs sit at 26px, not the old 20px: the old size
+      // was set by a ~50px pill with no room, and this slot has 34. "Heart rate" measured
+      // ~78px in the 84px slot at 15px/600 — kept for "Cadence", which is shorter still.
+      // Deliberately NO ids: updateLive's patches are all gated on powerConnected/
+      // hrConnected, and _fpillSync swaps the whole element in when the html changes, so
+      // the real ids arrive with the real pill the moment it pairs.
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-power">
-          <div style="font-size:20px;line-height:1;">&#x26A1;</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-power">
+          <div style="padding:5px 8px 3px;">
+            <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x26A1;</span></div>
+            <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">W &middot; 3 sec</div>
+          </div>
+          <div style="background:#eef3ee;padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+          </div>
         </div>`;
       }
       // v257: same treatment as the speed pill — DM Mono figures right-justified in
@@ -13974,9 +14183,29 @@ function tLiveShell(r){
                DECIMAL POINT moving (speed: 9.2 → 18.0). Watts have no decimal, so there was
                nothing to hold still — it was just off-centre for no reason (Peter). -->
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-power-cur">${curVal}</span></div>
-          <div style="font-size:11px;font-weight:400;color:${lblCol};font-family:var(--sans);line-height:1.1;">W · 3 s</div>
+          <div style="font-size:11px;font-weight:400;color:${lblCol};font-family:var(--sans);line-height:1.1;">W · 3 sec</div>
         </div>
-        <div id="live-power-bot" style="background:${npBg};padding:3px 8px 4px;">
+        <!-- v260e — THE HAIRLINE THAT KEEPS THE TWO HALVES TWO. Found the moment all five
+             pills were on screen together: with 136 and 145 bpm in the SAME zone, both
+             halves flood the same yellow and the HR pill reads as one solid slab, the
+             figures and labels running together. The power pill escaped it in that
+             screenshot only because 203 W and 251 W happened to land in different zones —
+             and on a steady ride current and average agree MOST of the time, so this is the
+             normal case, not an edge one.
+             THE CAUSE IS STRUCTURAL, not a bug: the REVERSED half is what separates the two
+             numbers, and zone colour overwrites it. Speed/stoppage/cadence keep their divide
+             for free (dark over light); these two trade it away to carry the colour — which
+             is the right trade (v260: the colour IS the information), it just needs the
+             divide back by another route.
+             1px of the pill's own dark, which is the family's existing language: the outer
+             ring works the same way (overflow:hidden clips the child, so the dark bg shows
+             through and a saturated zone never touches the map). Peter spotted that detail
+             himself on the speed pill.
+             PADDING DROPS 3px → 2px TO PAY FOR IT: a border adds to the box, and these pills
+             are height-matched to the rest of the family to the pixel. 1 + 2 = the 3 it
+             replaces. Only the two ZONE pills get this — the others don't need it, and the
+             unpaired states can't flood either half. -->
+        <div id="live-power-bot" style="background:${npBg};border-top:1px solid rgba(10,15,10,0.85);padding:2px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${npCol};font-family:var(--font);" id="live-power-np">${np}</span></div>
           <div style="font-size:10px;font-weight:500;color:${npCol};font-family:var(--sans);line-height:1.1;" id="live-power-nplbl">W weighted</div>
         </div>
@@ -13986,10 +14215,24 @@ function tLiveShell(r){
       // v260 — cadence + pedal balance, split out of the power pill (see the note there).
       // Same two-half shape as every other pill. Both figures come off the power meter, so
       // the unpaired state is the power meter's.
+      // Empty state — this is the pill with no glyph, so it wears the word (see the power
+      // pill's note: use the symbol the sport already owns, never invent one).
+      // BOTH HALVES USE A 34px FIGURE BOX, paired and empty — that's what holds every pill
+      // in the family to the same height. v260d instead copied the paired half's 28px FONT
+      // in here and Peter caught it on sight ("the RPM pill also seems to not be as high as
+      // the other pills"): 28px exists only to stop the five glyphs of "49/51" bursting the
+      // pill's WIDTH, and an empty pill has no such figure. He then asked the better
+      // question — why should a font size move the pill's height at all? It shouldn't; see
+      // the paired half below.
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-cad">
-          <div style="font-size:20px;line-height:1;">&#x1F504;</div>
-          <div style="font-size:11px;color:var(--text);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-cad">
+          <div style="padding:5px 8px 3px;">
+            <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:15px;font-weight:600;color:var(--text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">Cadence</span></div>
+            <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
+          </div>
+          <div style="background:#eef3ee;padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+          </div>
         </div>`;
       }
       const cadTxt=UI.powerCadence!==null?String(UI.powerCadence):'—';
@@ -14011,20 +14254,36 @@ function tLiveShell(r){
                crops its neighbour. 28px is the LARGEST size that brings it back to exactly
                100px (the family's min-width), so it's the smallest reduction that works —
                and the cadence figure above stays at 34, since "88" is only 41px. -->
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:28px;font-weight:500;color:#101510;font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
+          <!-- v260e — THE FIGURE'S BOX IS 34px; THE FONT SIZE VARIES INSIDE IT. Peter: "why
+               does the cadence pill shrink? I know the font sizes in the bottom half are a
+               little smaller, but why not just make the pill a little larger so it aligns
+               with everything else?" Exactly — v260c's 28px was a WIDTH fix and I let it
+               cost 6px of HEIGHT without ever asking why it should. Nothing links the two.
+               Pinning the box and centring the smaller text inside kills both symptoms at
+               once: the pill matches the family paired, AND it no longer changes height when
+               it pairs (the empty state uses the same 34px box). The rule generalises — the
+               LINE BOX is the family constant, the glyph size is free. -->
+          <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:28px;font-weight:500;color:#101510;font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
           <!-- v260c "L/R" → "Left/Right %" (Peter: "there is plenty of room for it"). Measured:
                58px in an 84px slot, and the 49/51 figure above is 84px, so the label was never
                what governed this pill's width — no cost. "L/R" is bike-computer shorthand that
                assumes you already know; the words don't. -->
-          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">Left/Right %</div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">Left / Right %</div>
         </div>
       </div>`;
     }
     if(type==='hr'){
+      // Empty state — see the note on the power pill for why this one wears a glyph and the
+      // cadence pill wears a word.
       if(!UI.hrConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-hr">
-          <div style="font-size:20px;line-height:1;color:#ef4444;">&#x2764;&#xFE0F;</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-hr">
+          <div style="padding:5px 8px 3px;">
+            <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x2764;&#xFE0F;</span></div>
+            <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">bpm</div>
+          </div>
+          <div style="background:#eef3ee;padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+          </div>
         </div>`;
       }
       // v260b — the HR pill is the LAST one still wearing its pre-v257 clothes, and every
@@ -14051,7 +14310,10 @@ function tLiveShell(r){
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-hr-cur">${val}</span></div>
           <div style="font-size:11px;font-weight:400;color:${col};font-family:var(--sans);line-height:1.1;" id="live-hr-lbl">bpm</div>
         </div>
-        <div id="live-hr-bot" style="background:${aBg};padding:3px 8px 4px;">
+        <!-- Hairline divide + the 3px→2px padding that pays for it — see the power pill's
+             note. This is the pill the problem showed up on: 136 over 145, same zone, one
+             yellow slab. -->
+        <div id="live-hr-bot" style="background:${aBg};border-top:1px solid rgba(10,15,10,0.85);padding:2px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${aCol};font-family:var(--font);" id="live-hr-avg">${avgV}</span></div>
           <div style="font-size:10px;font-weight:500;color:${aCol};font-family:var(--sans);line-height:1.1;" id="live-hr-avglbl">bpm avg</div>
         </div>
@@ -16785,14 +17047,15 @@ function updateLive(){
   const sEla=document.getElementById('live-stop-ela');
   if(sEla){
     const L=_legVals();
-    const ev=L?fmtDurPill(L.elapsedMs):'—';
-    const pv=(L&&L.elapsedMs>60000)?fmtStopPct(L.stopPct):'—';   // 1dp — same as the template
+    // v260e — MUST MATCH THE TEMPLATE EXACTLY (idle = honest zeros, not dashes; see the
+    // reasoning there). These two expressions are the same rule written twice, which is
+    // this file's oldest trap — if one changes, change the other in the same edit.
+    const ev=fmtDurPill(L?L.elapsedMs:0);
+    const pv=L?((L.elapsedMs>60000)?fmtStopPct(L.stopPct):'—'):fmtStopPct(0);
     if(sEla.textContent!==ev)sEla.textContent=ev;
     const sPct=document.getElementById('live-stop-pct');
     if(sPct&&sPct.textContent!==pv)sPct.textContent=pv;
-    const sLbl=document.getElementById('live-stop-lbl');
-    const lv=L?'stopped':'record to measure';
-    if(sLbl&&sLbl.textContent!==lv)sLbl.textContent=lv;
+    // The label is constant now — nothing to patch. (It was "record to measure" when idle.)
   }
   // Update floating HR pill value (if visible)
   // v260b — the HR pill, now the same shape as power. Both halves' zones are patched here
