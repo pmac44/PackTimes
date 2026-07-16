@@ -324,6 +324,53 @@ migration needed).
   90%; non-stop 4 h bivvy = stoppage, overall avg 45 where a moving avg would have flattered at 75;
   live stop counts as it happens; stopped can never exceed elapsed; formats never burst the 5ch box.
 
+## Current status (16 July 2026, v260) — three of the ride-test findings BUILT. NOT ride-tested.
+
+v259 is pushed. v260 clears the ride-test items that were already DECIDED; the ones still needing Peter
+(no-route mode, the distance bar's arrow, the average's wording) are untouched and listed below.
+
+- **ORANGE TRAIL IS SYMMETRIC** — `afterKm = alertM/1000`, replacing the hard-coded 60 m in `_activeTurn`.
+  **The trap I nearly walked into: there were TWO copies of the exit length.** `_activeTurn` decides when
+  the turn hands over; `drawMap` (~9496) had its own hard-coded `0.06` for the line it actually DRAWS.
+  Changing one would have left the drawn orange vanishing at 60 m while the hand-over rule thought it was
+  still lit. `afterKm` is now returned by `_activeTurn` and drawMap uses it — one authority. (Nth
+  occurrence of this file's standing trap.)
+  · Verified 9/9: lit exactly alertM before and after at 20/50/150/250 m; **the v243 demote guard still
+    protects the next turn** — with turns 100 m apart and a 250 m alert it hands over cleanly and turn 1
+    is already lit, so there's no gap in guidance; at 50 m it correctly stays on turn 0 until its exit is
+    spent (turn 1 is 80 m away, not due).
+- **CADENCE + L/R SPLIT OUT INTO THEIR OWN PILL** (`type==='cad'`, cycle now
+  `speed → stop → power → cad → hr → off`). This one change answers all three of Peter's power
+  complaints: **measured, the power pill goes 134px → 100px** — the cad/bal line ("85 rpm · 49/51 L/R",
+  13px, nowrap) was 118px and was the widest thing in the pill, which is exactly why it cropped its
+  neighbours. Splitting it also un-squeezes the figures (13px → 34px, his "very hard to read") and gives
+  the option he wanted ("if they want to see their power, they don't want to see their RPM"). The cad
+  pill is ~118px because "49/51" is 5ch — it has its own slot now, so that's harmless.
+- **ZONE COLOUR ON THE WEIGHTED-POWER HALF.** Peter overruled v257's rule that a reversed half must stay
+  light: *"the weighted power section should be the zone colour… that tells you what zone you're
+  averaging in, because the colour means something."* He's right — when the colour IS the information,
+  style can't outrank it. **The two halves now carry DIFFERENT zones on purpose:** the top is the 3 s
+  zone (flickers as you surge), the bottom the WEIGHTED zone (where you actually live). Patched in BOTH
+  places that repaint the pill — `updateLive` and the BLE `characteristicvaluechanged` handler (~18593,
+  which is where the v257 note's "zone-patch" lives) — and only written when the zone changes, since the
+  BLE one fires ~1/s.
+- Also swept: pill labels off `var(--font)` → `var(--sans)` (v244 rule) and off grey → full contrast,
+  matching the v260 speed/stop change.
+- **STRAVA 404 ON RENAME IS NOW AN ANSWER, NOT A RETRY** (Peter's screenshot: *"Strava rename failed —
+  Strava can't find that activity (404) — was it deleted there?"* on a ride still showing "On Strava ✓ —
+  view activity"). The v205 message was doing its job — it named the cause — but the state behind it was
+  a lie in two directions: `stravaNamePending` stayed set so the queue retried on **every** trigger
+  forever, and the detail modal kept offering a dead link. A 404 is permanent. `stravaSyncName` now
+  intercepts it BEFORE the generic `!res.ok` throw and clears `stravaActivityUrl` / `stravaUploadedAt` /
+  `stravaUploadStatus` / `stravaNamePending`, so the ride honestly reads as not-uploaded and can be sent
+  again by hand. **It deliberately does NOT re-upload** — deleting it on Strava was a deliberate act, and
+  silently resurrecting it would be the app overruling the rider. Re-renders the detail modal if it's the
+  one on screen, or it keeps showing the stale ✓ until closed and reopened.
+- **MOUNT WARNING FOR NEXT SESSION:** bash saw only 18,166 of ~18,700 lines all session — the POWER METER
+  section was invisible, so `grep` "proved" `UI.powerWatts` was never assigned. **A grep that finds
+  nothing may mean the mount is short, not that the code is absent.** Use the Read/Grep tools (they read
+  the real file) whenever a result seems too surprising to be true.
+
 ## RIDE TEST — 16 July 2026, v259 on a real ride. Peter's findings, ALL still to do.
 
 **THE BIG ONE — RIDING WITHOUT A ROUTE. PackTimes cannot do it, and that's a product hole, not a bug.**

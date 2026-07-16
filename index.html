@@ -898,7 +898,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v259';
+window.APP_VERSION='v260';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5474,6 +5474,29 @@ async function stravaSyncName(rec, announce){
       body,
     });
 
+    // v260 — 404 IS NOT A FAILURE TO RETRY, IT'S AN ANSWER. The activity is gone: the
+    // rider deleted it on Strava. The old path threw, so the ride stayed `namePending`
+    // and retried on every trigger forever, while the detail modal still said "On
+    // Strava ✓ — view activity" pointing at a dead link. Both were lies. Let go of it.
+    // Deliberately does NOT re-upload: deleting it there was a deliberate act, and
+    // silently resurrecting it would be the app overruling the rider. It just stops
+    // claiming, so the ride reads as not-uploaded and CAN be sent again by hand.
+    if(res.status === 404){
+      rec.stravaNamePending  = false;
+      rec.stravaNameError    = null;
+      rec.stravaActivityUrl  = null;
+      rec.stravaUploadedAt   = null;
+      rec.stravaUploadStatus = null;
+      await DB.putRecording(rec).catch(()=>{});
+      const j = RECS.findIndex(x => x.id === rec.id);
+      if(j >= 0) RECS[j] = rec;
+      if(announce) _recToast('That ride is no longer on Strava — link cleared');
+      // Refresh the detail modal if it's the one on screen, or it keeps showing the
+      // stale "On Strava ✓" until it's closed and reopened.
+      const dm = document.getElementById('rec-detail-modal');
+      if(dm && dm.style.display === 'flex') _recDetailOpen(rec.id);
+      return;
+    }
     if(!res.ok){
       // Tell the rider WHAT went wrong. The old code swallowed this whole, which is
       // why a failing rename looked like a rename that just never finished.
@@ -5482,7 +5505,6 @@ async function stravaSyncName(rec, announce){
       if(res.status === 401) why = 'Strava login expired — reconnect in Settings';
       if(res.status === 403) why = 'Strava refused it (403). If your rides are set to '
                                  + '"Only Me", Strava needs the read_all permission to rename them.';
-      if(res.status === 404) why = 'Strava can\'t find that activity (404) — was it deleted there?';
       throw new Error(why + (txt ? ' · ' + txt.slice(0, 140) : ''));
     }
 
@@ -9490,8 +9512,10 @@ function drawMap(cvs,r,opts){
   if(id==='live-map'&&UI.gpsActive&&r&&r.turns&&r.turns.length){
     const at=_activeTurn(r,UI.gpsDistKm!=null?UI.gpsDistKm:0);
     if(at&&at.showOrange){
-      // Approach side of the orange = the alert distance (where it appears); exit side = fixed 60 m.
-      const seg=_turnSegPts(r,at.cornerDist,at.alertM/1000,0.06),S=[];
+      // v260 — SYMMETRIC: approach = the alert distance (where it appears), exit = the same
+      // again. Both come from _activeTurn now; this line used to hard-code its own 0.06 and
+      // was the second copy of the rule.
+      const seg=_turnSegPts(r,at.cornerDist,at.alertM/1000,at.afterKm),S=[];
       for(const p of seg){if(p&&p.lat!=null){const x=px(p.lon),y=py(p.lat);if(isFinite(x)&&isFinite(y))S.push([x,y]);}}
       if(S.length>=2){
         // v257: single bold line only — Peter rode both v243 styles and the twin
@@ -12895,7 +12919,7 @@ function sortedLayers(r){
 // ONE cycle, at module scope. There used to be two copies — one in tLiveShell, one in the
 // tap handler — which had to be kept in step by hand. Same drift trap as everything else
 // in this file.
-const PILL_CYCLE=['speed','stop','power','hr','off'];
+const PILL_CYCLE=['speed','stop','power','cad','hr','off'];
 // Assigned by tLiveShell when the live shell is built. It closes over nothing (it reads
 // UI and _legVals only, never the route), so it is safe to call from anywhere once set.
 let _renderFloatingPill=null;
@@ -13715,24 +13739,68 @@ function tLiveShell(r){
       // Zone colour tints the TOP half only (the light half must stay light).
       // Units sit OUTSIDE the patched spans — updateLive/BLE patch textContent, and
       // nested unit spans were being wiped on the first update (old bug).
+      // v260, from Peter's ride test — three fixes, one of which fixes the other two:
+      //  · "The power pill is too wide, and it crops the other pills." It was: a third
+      //    line ("85 rpm · 49/51 L/R", 13px, nowrap) sat inside the light half and forced
+      //    the pill past its 100px min-width.
+      //  · "The RPM and the left and right pedal balance are very hard to read. It's very
+      //    small." Of course — they'd been squeezed into a 13px line to fit.
+      //  · "Should the RPM and the left and right pedal balance have its own pill? Think
+      //    about Wahoo and Garmin. They're all separate data fields… It also gives someone
+      //    the option, if they want to see their power, they don't want to see their RPM."
+      // Splitting them into their own pill type answers all three at once, so that's what
+      // this does. The power pill is now purely power.
       const pw=UI.powerWatts;
       const pz=pw!==null?powerZone(pw,UI.ftp):null;
       const bdr=pz?('2px solid '+pz.border):pillBorder;
       const col=pz?(pz.textDark?'#000':'#fff'):'var(--text)';
-      const lblCol=pz?col:'rgba(255,255,255,0.5)';
+      const lblCol=pz?col:'var(--text)';
       const curVal=pw!==null?pw:'—';
       const np=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):'—';
-      const cadTxt=UI.powerCadence!==null?UI.powerCadence:'—';
-      const balTxt=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
+      // ZONE COLOUR ON THE WEIGHTED HALF (Peter overruling the v257 decision, and he's
+      // right): "the weighted power section should be the zone colour… that tells you what
+      // zone you're AVERAGING in, because the colour means something." The zone of the
+      // WEIGHTED figure, not the 3 s one — so the top half flickers between zones as you
+      // surge and the bottom half tells you where you actually live. v257 kept this half
+      // plain light on the grounds that a reversed half must stay light; that was style
+      // reasoning beating information, which is the wrong way round when the colour IS
+      // the information.
+      const npz=(np!=='—')?powerZone(np,UI.ftp):null;
+      const npBg=npz?npz.bg:'#eef3ee';
+      const npCol=npz?(npz.textDark?'#000':'#fff'):'#101510';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${bdr};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-power">
         <div id="live-power-top" style="padding:5px 8px 3px;${pz?`background:${pz.bg};`:''}">
           <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-power-cur">${curVal}</span></div>
-          <div style="font-size:11px;font-weight:400;color:${lblCol};font-family:var(--font);line-height:1.1;">W · 3 s</div>
+          <div style="font-size:11px;font-weight:400;color:${lblCol};font-family:var(--sans);line-height:1.1;">W · 3 s</div>
+        </div>
+        <div id="live-power-bot" style="background:${npBg};padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:${npCol};font-family:var(--font);" id="live-power-np">${np}</span></div>
+          <div style="font-size:10px;font-weight:500;color:${npCol};font-family:var(--sans);line-height:1.1;" id="live-power-nplbl">W weighted</div>
+        </div>
+      </div>`;
+    }
+    if(type==='cad'){
+      // v260 — cadence + pedal balance, split out of the power pill (see the note there).
+      // Same two-half shape as every other pill. Both figures come off the power meter, so
+      // the unpaired state is the power meter's.
+      if(!UI.powerConnected){
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-cad">
+          <div style="font-size:20px;line-height:1;">&#x1F504;</div>
+          <div style="font-size:11px;color:var(--text);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
+        </div>`;
+      }
+      const cadTxt=UI.powerCadence!==null?String(UI.powerCadence):'—';
+      // "49/51" is 5 chars — min-width so the pill holds the 4ch column when it can and
+      // grows when it must, rather than clipping.
+      const balTxt=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-cad">
+        <div style="padding:5px 8px 3px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-cad-cur">${cadTxt}</span></div>
+          <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
         </div>
         <div style="background:#eef3ee;padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-power-np">${np}</span></div>
-          <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--font);line-height:1.1;">W weighted</div>
-          <div style="line-height:1.2;margin-top:2px;font-family:var(--font);font-size:13px;font-weight:500;color:#101510;white-space:nowrap;"><span id="live-power-cad">${cadTxt}</span><span style="font-size:10px;color:#4a5a4a;"> rpm</span><span style="color:#4a5a4a;"> · </span><span id="live-power-bal">${balTxt}</span><span style="font-size:10px;color:#4a5a4a;"> L/R</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">L/R</div>
         </div>
       </div>`;
     }
@@ -16280,7 +16348,22 @@ function _activeTurn(r,liveDist){
   const simMult=Math.max(1,simSpeed/10),alertM=UI.turnAlertM||50;
   const showM=alertM*simMult,blinkM=Math.min(alertM,50)*simMult;
   const offKm=_markerOffKm(r);   // marker → real corner (auto-detected per route, else the slider)
-  const afterKm=0.06;            // orange runs 60 m past the corner (exit leg + linger) — clearer past the turn
+  // v260 — SYMMETRIC: the orange runs as far PAST the corner as it started BEFORE it.
+  // Was a hard-coded 60 m, and Peter found it too short on a real ride: "I am finding the
+  // orange marker excellent for confidence after a turn, but the ~40 or ~60 m quickly
+  // passes, and then you have a sense of uncertainty again and might go to zoom the map."
+  //
+  // The finding underneath is the important part: AFTER the corner the orange isn't
+  // guidance, it's CONFIRMATION — it answers "did I take the right road?", which the route
+  // line alone can't, because "the route colour matching sky is very good, but at times it
+  // can have minimal contrast". Reaching for the zoom is the proof it ended too early.
+  //
+  // I flagged that on the default (alertM 50) symmetry gives a SHORTER trail than the old
+  // 60 m. Peter's answer, and it's better than the worry: "if you're happy with a short
+  // entry warning, it probably means you're in a city or riding slowly. It's really
+  // probably okay. Both match." The alert distance already encodes speed and context, so
+  // one setting drives both ends — no second slider, no max() fudge.
+  const afterKm=alertM/1000;
   const total=r.totalDist||0;
   const turns=r.turns.filter(t=>!t._dismissed);
   if(!turns.length)return null;
@@ -16305,6 +16388,10 @@ function _activeTurn(r,liveDist){
   const onRoute=UI._snapOffKm!=null&&UI._snapOffKm<0.03;
   const confirmed=past&&alongM<-20&&onRoute;
   return {nt:ot,cornerDist:cd,mode:past?'linger':'approach',remM,alertM,confirmed,
+    afterKm,                                     // v260: ONE authority for the exit length —
+                                                 // drawMap had its own hard-coded 0.06, so a
+                                                 // change here would have left the drawn line
+                                                 // and the hand-over rule disagreeing.
     showOrange:alongM<=showM,                    // on from the alert range → lingers till the corner-end
     blink:!past&&alongM<=blinkM};                // blink only on approach; stops at the corner
 }
@@ -16405,15 +16492,35 @@ function updateLive(){
   }
   const npEl=document.getElementById('live-power-np');
   if(npEl&&UI.powerConnected){
-    const np=_npCount>0?String(Math.round(Math.pow(_npSum4/_npCount,0.25))):'—';
+    const npN=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):null;
+    const np=npN!==null?String(npN):'—';
     if(npEl.textContent!==np)npEl.textContent=np;
+    // v260: repaint the weighted half's ZONE (Peter: "that tells you what zone you're
+    // averaging in"). v257 deliberately skipped this because the half was always light;
+    // now the colour is the information, so it has to track. Cheap: only writes when the
+    // zone actually changes, and weighted power crosses a zone rarely.
+    const bot=document.getElementById('live-power-bot');
+    if(bot){
+      const npz=npN!==null?powerZone(npN,UI.ftp):null;
+      const zk=npz?String(npz.z):'0';
+      if(bot._zk!==zk){
+        bot._zk=zk;
+        const bg=npz?npz.bg:'#eef3ee', col=npz?(npz.textDark?'#000':'#fff'):'#101510';
+        bot.style.background=bg;
+        npEl.style.color=col;
+        const lbl=document.getElementById('live-power-nplbl');
+        if(lbl)lbl.style.color=col;
+      }
+    }
   }
-  const cadEl=document.getElementById('live-power-cad');
+  // v260: cadence + balance moved to their own pill (ids changed from live-power-* to
+  // live-cad-*). The power pill no longer carries them.
+  const cadEl=document.getElementById('live-cad-cur');
   if(cadEl&&UI.powerConnected){
     const v=UI.powerCadence!==null?String(UI.powerCadence):'—';
     if(cadEl.textContent!==v)cadEl.textContent=v;
   }
-  const balEl=document.getElementById('live-power-bal');
+  const balEl=document.getElementById('live-cad-bal');
   if(balEl&&UI.powerConnected){
     const v=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
     if(balEl.textContent!==v)balEl.textContent=v;
@@ -18505,17 +18612,22 @@ async function connectPowerMeter(){
         }
       }
       // Patch floating power pill directly without full re-render.
-      // v257: zone colour goes on the TOP half (live-power-top) + the border — the
-      // reversed light half (weighted power, cad, L/R) keeps its own dark-on-light
-      // colours and must never be repainted by the zone.
+      // v260: BOTH halves now carry a zone colour, and they are DIFFERENT zones on purpose
+      // — the top is the 3 s zone (it flickers as you surge), the bottom is the WEIGHTED
+      // zone (where you actually live). Peter overruled v257's rule that the reversed half
+      // must stay light: "the weighted power section should be the zone colour… that tells
+      // you what zone you're averaging in, because the colour means something." When the
+      // colour IS the information, style can't outrank it.
+      // Cadence and L/R are no longer here — they have their own pill (v260).
       const pill=document.getElementById('live-fpill-power');
       const top=document.getElementById('live-power-top');
       const pwCur=document.getElementById('live-power-cur');
       const npEl=document.getElementById('live-power-np');
       if(pwCur)pwCur.textContent=avg;
+      let npN=null;
       if(npEl){
-        const np=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):'—';
-        npEl.textContent=np;
+        npN=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):null;
+        npEl.textContent=npN!==null?npN:'—';
       }
       const pz=powerZone(avg,UI.ftp);
       if(pill&&pz){
@@ -18529,6 +18641,26 @@ async function connectPowerMeter(){
         if(top)top.style.background='transparent';
         if(pwCur)pwCur.style.color='var(--text)';
       }
+      // The weighted half's own zone. Only written when the zone CHANGES — weighted power
+      // crosses a boundary rarely, and this fires on every BLE notification (~1/s).
+      const bot=document.getElementById('live-power-bot');
+      if(bot){
+        const npz=npN!==null?powerZone(npN,UI.ftp):null;
+        const zk=npz?String(npz.z):'0';
+        if(bot._zk!==zk){
+          bot._zk=zk;
+          const col=npz?(npz.textDark?'#000':'#fff'):'#101510';
+          bot.style.background=npz?npz.bg:'#eef3ee';
+          if(npEl)npEl.style.color=col;
+          const npLbl=document.getElementById('live-power-nplbl');
+          if(npLbl)npLbl.style.color=col;
+        }
+      }
+      // v260: cadence + L/R live in their own pill now.
+      const cadEl=document.getElementById('live-cad-cur');
+      if(cadEl&&UI.powerCadence!==null)cadEl.textContent=UI.powerCadence;
+      const balEl=document.getElementById('live-cad-bal');
+      if(balEl&&UI.powerBalance!==null)balEl.textContent=UI.powerBalance+'/'+(100-UI.powerBalance);
     });
     UI.powerConnected=true;
     UI.powerDeviceName=_powerDevice.name||'Power meter';
