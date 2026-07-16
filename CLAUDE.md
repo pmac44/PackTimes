@@ -329,6 +329,59 @@ migration needed).
 v259 is pushed. v260 clears the ride-test items that were already DECIDED; the ones still needing Peter
 (no-route mode, the distance bar's arrow, the average's wording) are untouched and listed below.
 
+- **DROPBOX'S CONSTANT RE-LOGIN WAS A BUG, NOT A DROPBOX PROBLEM — and it was a one-word answer to a
+  much bigger question.** Peter asked whether Supabase (now that sharing has a backend) could replace
+  Dropbox for plan sync, *"because Dropbox is a bit of a pain… you have to regularly log in."* The
+  honest answer was to check the re-login first, and it was self-inflicted: `dbxAuthURL` correctly asks
+  for `token_access_type:'offline'`, `dbxHandleRedirect` correctly **stored** `data.refresh_token`, and
+  `saveAll`/`loadAll` faithfully persisted it across sessions — **and nothing ever spent it.** All three
+  API call sites treated a 401 as `UI.dbxToken=null` + "reconnect". Dropbox access tokens last ~4 h, so
+  he re-authorised roughly every session while holding the key that would have renewed it silently.
+  **Strava, in the same file, does it correctly (`stravaFreshToken`) — Dropbox was simply never
+  finished.** Standing lesson: when a third-party integration "is a pain", check whether we implemented
+  the boring half of its auth before proposing to replace it.
+- **Built (mirrors the Strava shape):** `dbxRefreshNow` (force refresh) → `dbxFreshToken` (proactive,
+  5-min skew window) → `dbxFetch` (adds the Authorization header + **one** 401 retry). The three call
+  sites — `dbxSave`, `dbxLoad`, `dbxCheckOnFocus` — just swapped `fetch` for `dbxFetch` and dropped their
+  hand-built auth headers; their existing `401` branches now only fire **after** a refresh has already
+  been tried, so nulling the token there is finally honest. New `UI.dbxExpiresAt` persisted beside the
+  other dbx keys.
+- **NO CLIENT SECRET, and there must never be one.** Dropbox uses PKCE, so refresh takes `client_id`
+  only — unlike Strava, which is stuck embedding a secret. Truth-tabled to prove the body stays clean.
+- **The traps, all caught by the truth-table rather than by luck:**
+  · **Offline must not log you out.** A failed refresh keeps the tokens; only an explicit `invalid_grant`
+    (a genuinely revoked grant) drops the refresh token. A dead network throws to the caller's existing
+    `catch` and changes no state.
+  · **Disconnect has to stay disconnected.** `dbxFreshToken` is gated on `if(!UI.dbxToken)return null` —
+    without that gate a lingering refresh token would have *silently revived* a session the user ended.
+    The gate also means every existing `if(!UI.dbxToken)return;` guard keeps working untouched.
+  · **The disconnect handler was leaving the refresh token on disk** (it only cleared `dbxToken`/
+    `dbxSavedAt`) — a live credential surviving "Disconnect". Now clears refresh + expiry, like
+    `stravaDisconnect`.
+  · **Concurrent refreshes.** `dbxSave`'s 5 s debounce and `dbxCheckOnFocus` can fire together, so two
+    callers would each mint a token and the second would invalidate the first. `_dbxRefreshInflight`
+    de-dupes: three simultaneous callers → one refresh.
+  · **Existing installs have a refresh token but no stored expiry.** A strict expiry check would have
+    ignored it; a null expiry deliberately falls through to one refresh, which then learns the real
+    value. **Peter should NOT have to reconnect once** to pick this up — his stored refresh token is
+    almost certainly still good.
+- **Verified: fragment `node --check` + 25/25 truth-table** (silent recovery, upgrade case, no needless
+  refresh on a valid token, the 5-min window, surprise-401 retry, dead grant gives up without looping,
+  offline keeps the session, disconnect stays dead, 3-way race = 1 refresh, no secret in the body).
+  **The whole-file check was skipped on purpose: bash's mount was truncated again** (ends mid-statement,
+  no `</html>`, 18,042 lines) so a whole-file parse would have been a FALSE PASS — the documented
+  gotcha, now at least the third occurrence. **Open `index.html` in a browser once before `push.bat`.**
+- **THE SUPABASE QUESTION IS PARKED, NOT ANSWERED — and it should stay parked until this ride-tests.**
+  The transport is genuinely half-built (`route_ensure` already carries route + ele + stops + pace), but
+  sync ≠ share, and Supabase fixes neither hard part: (1) **identity** — a share link IS the identity,
+  whereas sync needs your phone to know it's *you* on the desktop, and `shareAuth` is one anonymous
+  token per device; you'd need a pairing code or real accounts, the thing Peter has deliberately avoided.
+  (2) **"which end is newer"** — his other Dropbox complaint — is a sync-design problem that would follow
+  us across unchanged (`dbxLoad` already compares timestamps). (3) It makes Peter **custodian of
+  everyone's plans**, and per the freemium sketch server-side sync is the *paid* side of the line. So
+  it's a business decision wearing a bug's clothing. **Ride with the refresh fix first; if Dropbox stops
+  nagging, the question dissolves.**
+
 - **ORANGE TRAIL IS SYMMETRIC** — `afterKm = alertM/1000`, replacing the hard-coded 60 m in `_activeTurn`.
   **The trap I nearly walked into: there were TWO copies of the exit length.** `_activeTurn` decides when
   the turn hands over; `drawMap` (~9496) had its own hard-coded `0.06` for the line it actually DRAWS.
@@ -455,6 +508,22 @@ v259 is pushed. v260 clears the ride-test items that were already DECIDED; the o
   · **"No route" belongs on the RIDE tab, pinned at the TOP of the list** (Peter) — today it's
     Ride → Route → dropdown → pick → Ride. Top of the list = the one entry whose position never changes
     as routes come and go.
+  · **DECIDED — THE v257 "RIDING THIS NOW?" PROMPT COLLAPSES TO ONE QUESTION.** Peter: *"If you ride a
+    planned route outside of your planned start time, I can't see a need to have the planned clock time.
+    That makes no sense. You do want the times to adjust to right now: how far/long is the next stop
+    etc."* So **pressing record on a route always means NOW** — the clock question answers itself, and
+    "Keep planned times" turns out to be a button nobody would ever press with a recording running.
+    The prompt becomes:
+        **You're not near this route.**   `[ Follow the route ]  [ No route — just ride ]`
+    with "Follow the route" quietly meaning *and use today's times*.
+    · **THE TRIGGER THEREFORE BECOMES PLACE-ONLY.** If record-on-a-route always means now, a TIME
+      mismatch needs no question at all (you're at the start of your Grenfell route, three weeks early,
+      recording — nothing is ambiguous). So the sheet fires on `_snapOffKm` only. One prompt, one
+      trigger, one question — and it's exactly Peter's ride and nothing else.
+    · **KEEP THE MACHINERY, DELETE ONLY THE QUESTION.** `planShowsPlanned()` still splits CAPTURE from
+      DISPLAY — even riding the 8 Aug plan today, real times are never written onto it (v189's promise).
+      What goes is the prompt's second button; the answer just becomes automatic. **Do not "simplify" the
+      guard away with it.**
   · **PRESETS ARE OUT OF SCOPE** (Peter: *"that's different about storage and stuff and user profile"*).
   · Second finding: **the stop pill and the speed pill ARE the no-route ride screen and both already
     work** — so the cheapest test is to ride it as-is and see whether map + speed + stop is enough.

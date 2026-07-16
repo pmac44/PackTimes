@@ -921,7 +921,7 @@ const newRoute=name=>({
   adaptiveSpeed:true,baseTimeFactor:1.0,riderPreset:'regular',loadPreset:'moderate',daySplitCount:0,
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxSavedAt:null,
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxExpiresAt:null,dbxSavedAt:null,
   calibRides:[],   // Advanced Calibration sample rides — global (rider property, not route)
   estModeAdv:false, // Basic vs Advanced estimation — global (rider property, not route); syncs via plan.json
   fatigueMode:'off', // Optional fatigue model: off|mild|moderate|strong — global rider setting
@@ -1029,6 +1029,7 @@ async function saveAll(){
   await DB.setKV('cur',CUR>=0?ROUTES[CUR].id:null).catch(()=>{});
   await DB.setKV('dbxToken',UI.dbxToken||null).catch(()=>{});
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
+  await DB.setKV('dbxExpiresAt',UI.dbxExpiresAt||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
   await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
@@ -1042,6 +1043,7 @@ async function loadAll(){
     if(CUR<0&&ROUTES.length)CUR=0;
     UI.dbxToken=await DB.getKV('dbxToken')||null;
     UI.dbxRefreshToken=await DB.getKV('dbxRefreshToken')||null;
+    UI.dbxExpiresAt=await DB.getKV('dbxExpiresAt')||null;
     UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
     const sa=await DB.getKV('stravaAuth').catch(()=>null);
     if(sa){UI.stravaToken=sa.token||null;UI.stravaRefreshToken=sa.refresh||null;UI.stravaExpiresAt=sa.expiresAt||null;UI.stravaAthlete=sa.athlete||null;UI.stravaAutoUpload=sa.autoUpload!==false;}
@@ -11908,7 +11910,9 @@ function renderDesktopMap(){
 const DBX_APP_KEY='5uh7f72xfyv171g';
 const DBX_REDIRECT='https://pmac44.github.io/PackTimes/';
 const DBX_FILE='/plan.json';
+const DBX_TOKEN_TTL_S=14400;   // fallback only — Dropbox tells us the real expires_in (~4h)
 let _dbxSaveTimer=null;
+let _dbxRefreshInflight=null;  // de-dupes concurrent refreshes (save + focus-check can race)
 
 function dbxAuthURL(){
   const verifier=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -11945,6 +11949,7 @@ async function dbxHandleRedirect(){
     if(data.access_token){
       UI.dbxToken=data.access_token;
       if(data.refresh_token)UI.dbxRefreshToken=data.refresh_token;
+      UI.dbxExpiresAt=Date.now()+((data.expires_in||DBX_TOKEN_TTL_S)*1000);
       // Restore the tab the user was on before the auth redirect
       const returnTab=sessionStorage.getItem('dbx_return_tab');
       if(returnTab)UI.tab=returnTab;
@@ -11964,6 +11969,68 @@ function dbxSetStatus(msg,isErr){
   if(el){el.textContent=msg;el.style.color=isErr?'var(--red)':'var(--text3)';}
 }
 
+// ── Token refresh ──────────────────────────────────────────────────────────
+// Dropbox access tokens are SHORT-LIVED (~4h). We ask for offline access at
+// auth (token_access_type:'offline'), so Dropbox hands us a long-lived refresh
+// token — we just never spent it, and every expiry became "reconnect Dropbox".
+// This mirrors stravaFreshToken. NOTE: unlike Strava, the PKCE flow needs NO
+// client secret to refresh — client_id only. Never add a secret here.
+
+// Force a refresh, ignoring any stored expiry. Returns a fresh access token, or
+// null if the refresh itself failed (offline, or the grant is genuinely dead).
+async function dbxRefreshNow(){
+  if(!UI.dbxRefreshToken)return null;
+  if(_dbxRefreshInflight)return _dbxRefreshInflight;   // never run two refreshes at once
+  _dbxRefreshInflight=(async()=>{
+    try{
+      const res=await fetch('https://api.dropboxapi.com/oauth2/token',{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({grant_type:'refresh_token',refresh_token:UI.dbxRefreshToken,client_id:DBX_APP_KEY})
+      });
+      const data=await res.json().catch(()=>({}));
+      if(data.access_token){
+        UI.dbxToken=data.access_token;
+        if(data.refresh_token)UI.dbxRefreshToken=data.refresh_token; // Dropbox usually omits this
+        UI.dbxExpiresAt=Date.now()+((data.expires_in||DBX_TOKEN_TTL_S)*1000);
+        await saveAll();
+        return UI.dbxToken;
+      }
+      // invalid_grant = the refresh token is revoked/dead. Nothing to retry with,
+      // so drop it and let the caller fall through to "reconnect". Any OTHER
+      // failure (network, 5xx) keeps the token so a flaky link can't sign us out.
+      if(data.error==='invalid_grant'){UI.dbxRefreshToken=null;UI.dbxExpiresAt=null;await saveAll();}
+    }catch(e){/* offline — keep the refresh token and try again later */}
+    return null;
+  })();
+  try{ return await _dbxRefreshInflight; } finally { _dbxRefreshInflight=null; }
+}
+
+// Returns a currently-valid access token, refreshing silently if it's near expiry.
+// Gated on dbxToken so that nulling dbxToken still means "disconnected" everywhere
+// (every call site already guards on it) and a refresh token can't revive a
+// session the user deliberately ended.
+async function dbxFreshToken(){
+  if(!UI.dbxToken)return null;
+  if(UI.dbxExpiresAt&&Date.now()<UI.dbxExpiresAt-5*60e3)return UI.dbxToken;
+  if(!UI.dbxRefreshToken)return UI.dbxToken;   // pre-offline-grant session: old behaviour
+  // No stored expiry (an existing install upgrading to this version) also lands
+  // here — we refresh once, learn the real expiry, and short-circuit from then on.
+  return (await dbxRefreshNow())||UI.dbxToken;
+}
+
+// fetch() + a valid token + ONE 401 retry after a forced refresh. Bodies are
+// always strings here, so replaying the request is safe.
+async function dbxFetch(url,opts,_retried){
+  const tok=await dbxFreshToken();
+  if(!tok)return null;
+  const o=Object.assign({},opts);
+  o.headers=Object.assign({},opts.headers,{'Authorization':'Bearer '+tok});
+  const res=await fetch(url,o);
+  if(res.status===401&&!_retried&&await dbxRefreshNow())return dbxFetch(url,opts,true);
+  return res;
+}
+
 function dbxScheduleSave(){
   if(!UI.dbxToken)return;
   if(_dbxSaveTimer)clearTimeout(_dbxSaveTimer);
@@ -11976,15 +12043,15 @@ async function dbxSave(auto){
   try{
     const now=Date.now();
     const data={_v:2,savedAt:now,cur:CUR>=0?ROUTES[CUR].id:null,routes:ROUTES.map(packRoute),calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv};
-    const res=await fetch('https://content.dropboxapi.com/2/files/upload',{
+    const res=await dbxFetch('https://content.dropboxapi.com/2/files/upload',{
       method:'POST',
       headers:{
-        'Authorization':'Bearer '+UI.dbxToken,
         'Dropbox-API-Arg':JSON.stringify({path:DBX_FILE,mode:'overwrite',autorename:false}),
         'Content-Type':'application/octet-stream'
       },
       body:JSON.stringify(data)
     });
+    if(!res){dbxSetStatus('Session expired — reconnect Dropbox','err');return;}
     if(res.ok){
       // Use Dropbox's server_modified timestamp so dbxCheckOnFocus compares
       // the same clock, preventing false "cloud is newer" banners after our own save
@@ -12007,13 +12074,13 @@ async function dbxLoad(force){
   if(!UI.dbxToken)return;
   if(!force)dbxSetStatus('Checking Dropbox…');
   try{
-    const res=await fetch('https://content.dropboxapi.com/2/files/download',{
+    const res=await dbxFetch('https://content.dropboxapi.com/2/files/download',{
       method:'POST',
       headers:{
-        'Authorization':'Bearer '+UI.dbxToken,
         'Dropbox-API-Arg':JSON.stringify({path:DBX_FILE})
       }
     });
+    if(!res){dbxSetStatus('Session expired — reconnect','err');return;}
     if(res.status===409){dbxSetStatus('☁️ Connected — no cloud data yet');return;}
     if(res.status===401){UI.dbxToken=null;await saveAll();dbxSetStatus('Session expired — reconnect','err');if(UI.tab==='settings')render();return;}
     if(!res.ok){dbxSetStatus('Load failed: '+res.status,'err');return;}
@@ -12063,14 +12130,14 @@ async function dbxCheckOnFocus(){
   // Don't interrupt an active GPS session with a potentially disruptive reload
   if(UI.gpsActive)return;
   try{
-    const res=await fetch('https://api.dropboxapi.com/2/files/get_metadata',{
+    const res=await dbxFetch('https://api.dropboxapi.com/2/files/get_metadata',{
       method:'POST',
       headers:{
-        'Authorization':'Bearer '+UI.dbxToken,
         'Content-Type':'application/json'
       },
       body:JSON.stringify({path:DBX_FILE})
     });
+    if(!res)return;
     if(res.status===401){UI.dbxToken=null;await saveAll();if(UI.tab==='settings')render();return;}
     if(res.status===409)return; // file doesn't exist yet
     if(!res.ok)return;
@@ -17883,7 +17950,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-dbx-connect')){sessionStorage.setItem('dbx_return_tab',UI.tab);window.location.href=dbxAuthURL();return;}
   if(e.target.closest('#btn-dbx-save')){dbxSave(false);return;}
   if(e.target.closest('#btn-dbx-load')){dbxLoad(true);return;}
-  if(e.target.closest('#btn-dbx-disconnect')){UI.dbxToken=null;UI.dbxSavedAt=null;saveAll();render();return;}
+  if(e.target.closest('#btn-dbx-disconnect')){UI.dbxToken=null;UI.dbxRefreshToken=null;UI.dbxExpiresAt=null;UI.dbxSavedAt=null;saveAll();render();return;}
   if(e.target.closest('#btn-geoapify-save')){
     const val=(document.getElementById('geoapify-key-input')?.value||'').trim();
     UI.geoapifyKey=val||null;
