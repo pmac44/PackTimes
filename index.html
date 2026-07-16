@@ -13296,6 +13296,18 @@ function tStopsShell(r){
     ${IS_DESKTOP()?`<div style="height:6px;flex-shrink:0;background:var(--bg);"></div>`
                   :`<div class="stops-drag" id="stops-drag-handle" title="Drag to resize the map"><div class="stops-drag-grip"></div></div>`}
     <div class="stops-scroll">
+      ${!IS_DESKTOP()?`
+      <!-- v260e — THE PEEK TITLE. The one line left showing when the list is dragged fully
+           down, so the strip says what's under it instead of showing three lines of hints
+           you've already read. Peter's own placement: "a simple label or indicator… a
+           single line of text perhaps ABOVE the current first 'Tap on the map…'. That new
+           title just scrolls away when you scroll the list up anyway."
+           That last clause is why it's ordinary list content and not a sticky header: it
+           has a job for exactly one state, and in every other state it should get out of
+           the way by itself. Nothing to toggle, nothing to hide.
+           Mobile only — desktop pins the map at 250px and has no drag, so there is no peek
+           for it to label, and it would just be a second title above "All Stops (n)". -->
+      <div class="ctitle" id="stops-peek-title" style="margin:0;">Stops (${r.stops.length})</div>`:''}
       <div style="padding:6px 4px 2px;display:flex;flex-direction:column;gap:6px;color:var(--text3);font-size:16px;">
         <div style="display:flex;align-items:center;gap:6px;"><span>👆</span><span>Tap on the map to add a stop</span></div>
         <div style="display:flex;align-items:center;gap:6px;"><span>👇</span><span>Or search for stops below</span></div>
@@ -13378,17 +13390,36 @@ function tStopsShell(r){
   </div>`;
 }
 
-function _stopsMapH(fraction){
-  const tabsH=document.getElementById('tabs').offsetHeight;
-  const headerH=document.querySelector('.header')?.offsetHeight||48;
+// ── HOW MUCH ROOM THE MAP + HANDLE + LIST ACTUALLY SHARE ─────────────────────────────
+// v260e — MEASURED, NOT COMPUTED, and that fixes a real bug Peter caught on his phone:
+// with the list dragged fully down he was getting ~140px of list, not the 92 I'd asked
+// for. Cause: the old maths was `viewH - tabsH - headerH` with
+//     const headerH = document.querySelector('.header')?.offsetHeight || 48;
+// and `.header{display:none}` on mobile — so offsetHeight is 0, `0||48` is 48, and we
+// subtracted a PHANTOM 48px header that is not on the screen. 92 + 48 = 140. Exactly his
+// screenshot. The `||48` looked like a safe default and was actually a guess that was
+// always wrong on the only device that matters.
+// The honest number was already in this function's OTHER branch: the full-screen case
+// measures the panel's own top, which accounts for the status bar, any header and the tabs
+// without knowing or caring what they are. Now both branches use it.
+// STANDING SHAPE, and it's this file's oldest one: measure with rect maths; a fallback
+// constant standing in for a real measurement is a bug with a long fuse (cf. v258's
+// clientWidth rounding, v255's pill positioning).
+function _stopsAvailPx(){
   const viewH=window.visualViewport?window.visualViewport.height:window.innerHeight;
-  if(fraction>=1.0){
-    // Full screen: fill from map panel top to viewport bottom
-    const panel=document.getElementById('stops-map-panel');
-    if(panel){const top=panel.getBoundingClientRect().top;return Math.round(viewH-top);}
-    return Math.round(viewH-headerH);
+  const panel=document.getElementById('stops-map-panel');
+  if(panel){
+    const top=panel.getBoundingClientRect().top;
+    if(top>0&&top<viewH)return Math.round(viewH-top);
   }
-  return Math.round((viewH-tabsH-headerH)*fraction);
+  // Only before first layout. Measure the tabs — the one thing above the panel that is
+  // actually rendered — and never invent a header.
+  const tabsH=document.getElementById('tabs')?.offsetHeight||0;
+  return Math.round(viewH-tabsH);
+}
+function _stopsMapH(fraction){
+  const avail=_stopsAvailPx();
+  return fraction>=1.0?avail:Math.round(avail*fraction);
 }
 
 // v260e — the map's height in PIXELS, which is what a drag actually produces. The
@@ -13417,16 +13448,22 @@ function setStopsMapHeight(fraction,animate,skipRedraw){
 // That strip is the point of the whole change (Peter): the old "expanded" state set the
 // list to display:none, which is why a button had to exist to bring it back. Leave a strip
 // and the way back is the thing itself.
-const STOPS_LIST_STRIP_PX=92;   // ~ one grab strip + a glimpse of the first tile
+// v260e — ONE LINE OF LIST, not 92px of it. Peter, from the phone: "it still leaves all of
+// those lines showing, which is bad. You want to maximise the map space, but leave enough
+// of the stops list to drag up." Right on both counts, and my 92 was answering the wrong
+// question — I sized the strip to be GRABBABLE, but the grab target is the handle, which is
+// always there regardless. So the strip doesn't need to be big enough to hold; it only
+// needs to be big enough to SAY WHAT'S DOWN THERE. That's one line.
+// 42px = .stops-scroll's 11px top padding + the peek title's line + a little air. What it
+// used to show — three lines of hints and the top of the Search card — was 100px of the map
+// spent on text you've already read.
+const STOPS_LIST_STRIP_PX=42;
 function _stopsMapPxUp(){return _stopsMapH(0.50);}
 function _stopsMapPxDown(){
-  const tabsH=document.getElementById('tabs')?.offsetHeight||0;
-  const headerH=document.querySelector('.header')?.offsetHeight||48;
   const dragH=document.getElementById('stops-drag-handle')?.offsetHeight||22;
-  const viewH=window.visualViewport?window.visualViewport.height:window.innerHeight;
   // Never let "down" end up SHORTER than "up" on a tiny screen — that would invert the
   // gesture (drag down, map shrinks), which is worse than the strip being a bit thin.
-  return Math.max(_stopsMapPxUp(),Math.round(viewH-tabsH-headerH-dragH-STOPS_LIST_STRIP_PX));
+  return Math.max(_stopsMapPxUp(),_stopsAvailPx()-dragH-STOPS_LIST_STRIP_PX);
 }
 // Apply a snap position and remember it. UI.stopsMapExpanded keeps its old name and old
 // meaning (true = map big) so nothing else in the file has to change.
