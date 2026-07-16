@@ -366,6 +366,50 @@ v259 is pushed. v260 clears the ride-test items that were already DECIDED; the o
   again by hand. **It deliberately does NOT re-upload** — deleting it on Strava was a deliberate act, and
   silently resurrecting it would be the app overruling the rider. Re-renders the detail modal if it's the
   one on screen, or it keeps showing the stale ✓ until closed and reopened.
+- **FAKE SENSORS IN THE DESKTOP SIM** (`_simSensorsSet`/`_simSensorTick`, `#desktop-sim-sensors`).
+  Peter: *"Can there be a small dial or something in the simulator near the slider so I can cycle the
+  power and heart rate pills? I can learn a lot on the desktop without riding."* The power/HR pills need
+  a paired BLE sensor, so on a desk they only ever said "hold to pair" and could not be judged at all.
+  A checkbox + a watts slider now drive `UI.powerWatts/powerCadence/powerBalance/hrBpm` **and the same NP
+  accumulator the BLE handler feeds** — that last part matters: without it the weighted half sits on "—"
+  and the zone colour (the thing v260 changed) never appears. Verified 8/8, including the case that IS
+  the v260 point: settle at 150 W then surge to 320 W → **top half Z7, bottom half Z2**. Sim-only, never
+  persisted; a real meter still wins because `connectPowerMeter` owns `powerConnected` and the off-switch
+  only releases what it faked (`if(!_powerChar)`).
+- **THE AVERAGE'S LABELS ARE SETTLED** (build in v261): **both**, switching on the rule —
+  `leg incl. stops` when `legHasFixedWake(r)`, else `avg incl. stops`. Peter asked whether it was one or
+  both; it's both, so the label can never lie about its own scope, and "leg" only ever appears when the
+  leg is genuinely scoped. Measured: both fit the 84px label slot, so the explicit wording costs nothing
+  over the jargon ("overall", 31px) — and "incl. stops" needs no domain knowledge, which matters because
+  the rider who defaults to moving average *because it flatters* is exactly the one who won't decode
+  "overall".
+- **NO-ROUTE MODE — options written up and revised with Peter: `_planning/no-route-mode.md`.**
+  · **THE RULE THAT OUTRANKS EVERYTHING:** *"When you press that record button, you want the recording to
+    start… You might have cold hands, brain fog… The other things from that can be secondary."* Already
+    law (`startRecording` → `render` → `_rideNowMaybeShow`, v257) — **never regress it.** Ignoring any
+    prompt must always leave you with a recording ride.
+  · **MY ERROR, Peter corrected it: *"you still absolutely need distance for a no route ride."*** I'd
+    written distance off entirely. What dies is distance-as-a-PROPORTION (the bar's fill); the
+    **odometer** needs no route and is the number every rider expects. `UI.gpsTravelledKm` already has
+    it — it just has nowhere to live, because the bar is the only place distance is shown and the bar is
+    route-scoped. Leaning: the bar's slot becomes a plain "23.4 km" readout when there's no route (no
+    discovery needed, space already there); a `dist` pill type is the better answer for ROUTE rides that
+    want the odometer too (his 12 Jul scout is the case where route km ≠ ridden km).
+  · **THE TRIGGER — two signals, both already in the app:** wrong TIME (`planStartInFuture`) or wrong
+    PLACE (`snapTo` → `UI._snapOffKm`). So the sheet fires only when **the plan and reality disagree**,
+    not on every record start — which answers the objection to widening it. On Peter's ride the PLACE
+    check would have fired instantly (1.8 km off) and the time check would not have (his plan wasn't
+    future-dated) — which is exactly why the v257 sheet stayed silent.
+  · **The doorway that already exists:** v245's off-route alert already offers *"Stop following this
+    route"* (`_offRouteMode='abandoned'`) — rider-declared, per-ride, already survives the ride, already
+    resets at `stopGPS`. It just doesn't act on it beyond silencing the alarm. Catches the case the
+    record-start check misses: you meant to ride it, then changed your mind 40 km in.
+  · **"No route" belongs on the RIDE tab, pinned at the TOP of the list** (Peter) — today it's
+    Ride → Route → dropdown → pick → Ride. Top of the list = the one entry whose position never changes
+    as routes come and go.
+  · **PRESETS ARE OUT OF SCOPE** (Peter: *"that's different about storage and stuff and user profile"*).
+  · Second finding: **the stop pill and the speed pill ARE the no-route ride screen and both already
+    work** — so the cheapest test is to ride it as-is and see whether map + speed + stop is enough.
 - **MOUNT WARNING FOR NEXT SESSION:** bash saw only 18,166 of ~18,700 lines all session — the POWER METER
   section was invisible, so `grep` "proved" `UI.powerWatts` was never assigned. **A grep that finds
   nothing may mean the mount is short, not that the code is absent.** Use the Read/Grep tools (they read

@@ -332,6 +332,19 @@ select option{background:var(--bg3);}
         </div>
       </div>
       <div id="desktop-legend" style="position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:3px;z-index:20;"></div>
+      <!-- v260 — FAKE SENSORS. The power/HR pills need a paired BLE sensor to show
+           anything, so on the desktop they only ever say "hold to pair" and could not be
+           judged without going for a ride (Peter). This drives UI.powerWatts / hrBpm from
+           a slider so the pills, their zone colours and their widths can all be seen at a
+           desk. Sim-only: it never touches the recording path, and disconnecting a real
+           sensor still wins because connectPowerMeter sets powerConnected itself. -->
+      <div id="desktop-sim-sensors" style="position:absolute;bottom:166px;left:16px;z-index:20;display:none;flex-direction:row;gap:8px;align-items:center;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
+          <label style="font-size:12px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;cursor:pointer;display:flex;align-items:center;gap:5px;">
+            <input type="checkbox" id="sim-sensors-on" style="accent-color:var(--accent);cursor:pointer;">Fake sensors
+          </label>
+          <input type="range" id="sim-sensors-w" min="0" max="450" step="5" value="200" style="width:130px;accent-color:var(--accent);height:14px;">
+          <span id="sim-sensors-val" style="font-size:12px;color:var(--text);font-family:var(--font);white-space:nowrap;min-width:96px;">200 W · 138 bpm</span>
+      </div>
       <div id="desktop-sim-ctrl" style="position:absolute;bottom:130px;left:16px;z-index:20;display:none;flex-direction:row;gap:6px;align-items:center;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
           <span style="font-size:12px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">Sim</span>
           <select id="sim-speed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 4px;font-family:var(--font);font-size:13px;">
@@ -924,7 +937,8 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,turnAlertM:50,turnMarkerOffsetM:30,
   settingsExp:{sharing:false,packride:false,strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
-  powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,foodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
+  powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,
+  simSensors:false,   // v260: desktop sim fake power/HR — never persisted, never on a phonefoodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
   // Recording state
   recId:null,recMinMoveM:null,recStopDetectMs:null,
   // v257 "Riding this now?" — the rider pressed record on a plan dated for a future
@@ -8033,6 +8047,60 @@ function simLoadGPX(txt){
   return pts;
 }
 
+// ── FAKE SENSORS (v260, desktop sim only) ───────────────────────────────────
+// The power and HR pills are unreachable without a paired BLE sensor, so they could only
+// ever be judged mid-ride. This drives them from a slider instead. Peter: "Can there be a
+// small dial or something in the simulator near the slider so I can cycle the power and
+// heart rate pills? I can learn a lot on the desktop without riding."
+//
+// It feeds the SAME state the real meter writes (UI.powerWatts / powerCadence /
+// powerBalance / hrBpm) and the SAME NP accumulator, so weighted power really does build
+// and cross zones — otherwise the reversed half would sit on "—" and the thing Peter most
+// wants to look at (the zone colour) would never appear.
+let _simSensorTimer=null;
+function _simSensorsSet(on){
+  UI.simSensors=!!on;
+  if(_simSensorTimer){clearInterval(_simSensorTimer);_simSensorTimer=null;}
+  if(!on){
+    // Only let go of what we faked. A real meter connected in the meantime owns these.
+    if(!_powerChar){UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;}
+    if(!_hrChar){UI.hrConnected=false;UI.hrBpm=null;}
+    renderKeepScroll();
+    return;
+  }
+  UI.powerConnected=true; UI.hrConnected=true;
+  _simSensorTick();
+  // 1 s — the cadence a real power meter notifies at, so NP builds at the right rate.
+  _simSensorTimer=setInterval(_simSensorTick,1000);
+  renderKeepScroll();
+}
+function _simSensorTick(){
+  if(!UI.simSensors)return;
+  const base=+(document.getElementById('sim-sensors-w')?.value)||0;
+  // A little wobble so the 3 s figure behaves like a real one and the two halves of the
+  // power pill can drift into different zones — which is the whole point of v260's change.
+  const w=Math.max(0,Math.round(base+(Math.random()*30-15)));
+  UI.powerWatts=w;
+  UI.powerCadence=base>0?Math.round(78+Math.random()*8):0;
+  UI.powerBalance=Math.round(48+Math.random()*4);
+  // HR lags power and saturates — good enough to exercise the zones, not a physiology model.
+  UI.hrBpm=Math.round(Math.min(190,95+base*0.21));
+  // Same NP maths as the BLE handler, so the weighted half is real.
+  const now=Date.now();
+  if(now-_npLastSampleTs>=950){
+    _npLastSampleTs=now;
+    _npRawBuffer.push(w);
+    if(_npRawBuffer.length>=NP_WINDOW_S){
+      const sum=_npRawBuffer.slice(-NP_WINDOW_S).reduce((a,b)=>a+b,0);
+      _npSum4+=Math.pow(sum/NP_WINDOW_S,4); _npCount++;
+      if(_npRawBuffer.length>NP_WINDOW_S*2)_npRawBuffer.splice(0,_npRawBuffer.length-NP_WINDOW_S);
+    }
+  }
+  const vEl=document.getElementById('sim-sensors-val');
+  if(vEl)vEl.textContent=w+' W · '+UI.hrBpm+' bpm';
+  updateLive();   // patches the pills in place, exactly as a real notification would
+}
+
 // v259 — what the sim's clock SHOULD read at a given distance along the route.
 // The slider teleports: it moves you 60 km down the road in one drag, adding distance with
 // no time. Every time-based figure then disagrees with every distance-based one (Peter's
@@ -11144,6 +11212,10 @@ document.addEventListener('click',e=>{
   }
 });
 document.addEventListener('input',e=>{
+  // v260 fake sensors (desktop sim). Bound here with the other desktop-map controls,
+  // which live outside #content-wrap and so can't use the main delegator.
+  if(e.target.id==='sim-sensors-on'){ _simSensorsSet(e.target.checked); return; }
+  if(e.target.id==='sim-sensors-w'){ _simSensorTick(); return; }
   if(e.target.id==='sim-sl'&&e.target.closest('#desktop-sim-slider')){
     const dist=+e.target.value;
     const r=cur();
@@ -11511,6 +11583,13 @@ function renderDesktopMap(){
     if(stopBtn){stopBtn.disabled=(!UI.simRunning&&!UI.simPaused);stopBtn.style.display='block';}
     const sliderWrap=document.getElementById('desktop-sim-slider');
     if(sliderWrap)sliderWrap.style.display=show?'block':'none';
+    // v260 fake sensors — shown with the rest of the sim furniture.
+    const sens=document.getElementById('desktop-sim-sensors');
+    if(sens){
+      sens.style.display=show?'flex':'none';
+      const cb=document.getElementById('sim-sensors-on');
+      if(cb&&cb.checked!==!!UI.simSensors)cb.checked=!!UI.simSensors;
+    }
     const sl=document.getElementById('sim-sl');
     const slVal=document.getElementById('sim-sl-val');
     if(sl&&r&&document.activeElement!==sl){
