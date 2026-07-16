@@ -231,6 +231,75 @@ radio, the `turn-ind-opt` change listener, and `UI.turnIndicator` (STATE + uiPre
 save/load — a stale `turnIndicator` key in old saved prefs is simply ignored, no
 migration needed).
 
+## Current status (16 July 2026, v259) — THE LEG CLOCK + STOPPAGE PILL. NOT ride-tested.
+
+**v258 is pushed and being ride-tested. v259 is unpushed.**
+
+**The design conversation is the valuable part — read this before touching any time/average code.**
+- Peter: *"stoppage is a big issue in bikepacking… % stoppage is a real number that you monitor and try
+  to keep low. I think it is actually quite important."* And: *"on a non stop ultra you can have a great
+  moving average, but your stops might be too long, so your overall speed is not great. That's why an
+  overall average is a better truth. On a multi day with planned sleeps and defined wake ups, you
+  actually aren't riding against the clock as such, because the clock effectively stops each day."*
+- **THE APP HAS THREE DIFFERENT TIME CLOCKS, and the live average runs on one nobody chose:**
+  · `_rideAvgMsAccum` — moving **+ up to 5 min of every stop** (`GPS_IDLE_STOP_MS`). Drives the speed
+    pill's "avg". That 5 minutes is a battery constant that accidentally became a definition.
+  · `_recMovingH` — moving **+ stops under 15 min** (`REC_CALIB_BREAK_MS`, the v179 faff rule). Drives
+    CALIBRATION, i.e. the plan's pace.
+  · `endTS-startTS` — true elapsed.
+  **So the plan is calibrated on clock 2 and the live average is computed on clock 1: they are not
+  comparable, and the live avg reads optimistically fast against its own plan.** Unfixed — see below.
+- **THE TRAP, and the reason stoppage is measured from the RECORDING:** the obvious source is the avg
+  clock, and it would LIE. It forgives 5 minutes per stop, so **twenty 4-minute stops = 80 minutes gone,
+  reported as 0% stoppage** — exactly backwards for bikepacking, where the damage is death by a thousand
+  stops. The recording detects a stop in **5 SECONDS** (`REC_STOP_DETECT_MS_DEFAULT`) and marks it. Sixty
+  times finer. Truth-tabled: that exact scenario now reads 17%.
+- **PETER'S RULE (`legHasFixedWake`) — do NOT merge this with legEnd's predicate.** They look alike and
+  aren't: a sleep with a **fixed wake (`departTime`)** absorbs variance (arrive 2 h late, still leave at
+  07:00) so the clock stops and each day stands alone → leg-scoped. A sleep with only a **duration
+  (`sleepH`)** carries variance forward (arrive late, leave late, the plan slides) → you ARE racing the
+  clock → one leg, and the long stop must hurt. `legEnd` keys off ANY sleep because "what time do I get
+  in tonight" is fair at either kind.
+- **THE SPLIT (same one that made "Riding this now?" work): the PLAN decides the meaning, the RECORDING
+  supplies the measurement.** Peter wondered *"maybe the line in the sand is if you are recording or
+  not.. Hmm, not sure"* — **it isn't. Recording is the CLOCK, not the RULE.** It's the only thing with an
+  honest start, end and pause. Whether you pressed record cannot decide what an average means.
+- **REJECTED (built, then reasoned away — don't rebuild it):** a pill showing time ridden + ETA. Peter:
+  *"mixing duration with clock time, a poor mix."* Right, and **the tell was in my own code** — I'd
+  formatted it "5h23" instead of "5:23" specifically so it wouldn't be mistaken for a clock. **If two
+  numbers need a format hack to stay apart, they don't belong in one pill.** The speed pill works because
+  both halves are km/h. Also rejected: elapsed as the top half — it fails Peter's *"what are you going to
+  do about it?"* test (only answer: maybe sleep, which the plan already models).
+- **REJECTED: three values in one pill** (moving/stopped/%) — stop% is derived from the other two, so it
+  would spend a third of the pill on a number carrying no new information.
+
+**What's built (v259):**
+- `LEG_SLEEP_MS` (2 h), `_legStopT`, `_legReset`, `_legVals` in RECORDING (a measurement);
+  `legHasFixedWake` + `fmtDurPill` in TIME CALC (a plan question). Hooks: `startRecording` starts the
+  leg; the `_stop` marker records `_recStop.t` — **the stop's TRUE start, not the marker's own time,
+  which is written `stopDetectMs` later and would discount 5 s from every stop**; the `_resume` marker
+  either ends the leg (long stop + fixed-wake plan) or banks the stoppage — never both.
+- `UI.legStartTS/legStartKm/legStoppedMs` persisted in uiPrefs beside `recId`, so a crash recovery
+  doesn't restart the leg and report 0% on a ride that already lost an hour. `_legStopT` is deliberately
+  not persisted (a reload mid-stop loses that one stop's start — same as `_recStop`).
+- **The STOPPAGE pill** (`type==='stop'`, cycle is now `speed → stop → power → hr → off`): stopped
+  duration over **stop% in the REVERSED half** (the half you act on, same reasoning as the speed pill's
+  average). Both halves are the same kind of number — a quantity and its ratio. Shows dashes + "record to
+  measure" when not recording; the % waits 60 s (3 s into a ride at the lights, "100%" is true and useless).
+- **Verified:** fragment `node --check` + **26/26 truth-table** — the 20×4-min trap reads 17% not 0%;
+  fixed-wake sleep starts a new leg and is not stoppage; duration-only sleep does NOT split and reads
+  90%; non-stop 4 h bivvy = stoppage, overall avg 45 where a moving avg would have flattered at 75;
+  live stop counts as it happens; stopped can never exceed elapsed; formats never burst the 5ch box.
+
+**STILL TO DO (v260) — the speed pill's average:**
+- Peter's decision: *"I'd opt for the average to show the current leg only, if there is a sleep with a
+  fixed wake up."* The leg clock now computes exactly that (`_legVals().distKm / elapsedMs`), so the
+  switch is small. **Deliberately NOT done in v259:** the average currently works without recording, the
+  leg clock does not, and the clock is the risky new measurement. Prove it on a ride first, then rewire
+  something that already works — one step, one version.
+- Open with it: what the average does when NOT recording (fall back to today's clock, or show dashes),
+  and that the speed pill's "avg" label should say WHICH average it is.
+
 ## Current status (16 July 2026, v258) — THE DISTANCE BAR IS BUILT (migrate). NOT ride-tested.
 
 The design agreed below (round 5) is now code. **v258, unpushed at time of writing.**

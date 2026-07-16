@@ -898,7 +898,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v258';
+window.APP_VERSION='v259';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -935,6 +935,11 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   // writing a thing to the plan. Persisted so a mid-ride reload/crash-recovery keeps
   // today's clock; cleared when the ride ends (see finaliseRecording).
   rideNowId:null,rideNowTs:null,
+  // v259 leg clock — what the stoppage figures are measured from. Persisted alongside
+  // recId so a mid-ride reload or crash recovery doesn't silently restart the leg (and
+  // report 0% stoppage on a ride where you'd already lost an hour). _legStopT is NOT
+  // persisted: a reload during a stop loses that one stop's start, same as _recStop.
+  legStartTS:null,legStartKm:null,legStoppedMs:0,
   // Location sharing (Phase 2). shareToken is the SECRET write token — it lives in
   // its own `shareAuth` KV row, NOT in uiPrefs, so it never syncs out to Dropbox.
   // No token = never opted in = no code path can transmit a position. That's the
@@ -1012,7 +1017,7 @@ async function saveAll(){
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -1059,6 +1064,9 @@ async function loadAll(){
       if(prefs.recId)UI.recId=prefs.recId;
       if(prefs.rideNowId)UI.rideNowId=prefs.rideNowId;
       if(prefs.rideNowTs)UI.rideNowTs=prefs.rideNowTs;
+      if(prefs.legStartTS)UI.legStartTS=prefs.legStartTS;
+      if(prefs.legStartKm!=null)UI.legStartKm=prefs.legStartKm;
+      if(prefs.legStoppedMs)UI.legStoppedMs=prefs.legStoppedMs;
       if(prefs.recMinMoveM)UI.recMinMoveM=prefs.recMinMoveM;
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
       if(Array.isArray(prefs.calibRides))UI.calibRides=prefs.calibRides;
@@ -2342,30 +2350,13 @@ function legEnd(r,liveDist){
   if(!s)return{dist:r.totalDist,eta:etaAt(r.totalDist,r),name:null,isFinish:true};
   return{dist:s.dist,eta:etaAt(s.dist,r),name:s.name||'Sleep',isFinish:false};
 }
-// Chequered flag = the finish. Crescent moon = tonight's bed. Two DIFFERENT
-// destinations, so they must never wear the same icon — the icon is what tells the
-// rider at a glance which question the time is answering.
-const LEG_FLAG_SVG='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
-const LEG_MOON_SVG='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><path d="M13.6 10.3A6.2 6.2 0 0 1 5.7 2.4a6.2 6.2 0 1 0 7.9 7.9z" fill="currentColor"/></svg>';
-// CURRENTLY UNREFERENCED, KEPT ON PURPOSE (v258). The distance bar dropped its centre
-// slot, which was this function's only caller. It is kept because the TIME PILL (next
-// job) shows "time ridden + estimated time to the leg or total finish" — which is this
-// exact rule, including the flag-vs-moon distinction. If the time pill is abandoned,
-// delete legEndTxt + LEG_FLAG_SVG + LEG_MOON_SVG; legEnd/legToGoKm stay either way
-// (legToGoKm is the bar's "to go" figure).
-// No weekday on a leg end: the next sleep ahead of you IS tonight, by definition.
-// The finish keeps its weekday — it can be days out.
-function legEndTxt(r,liveDist,sdt){
-  const leg=legEnd(r,liveDist);
-  if(leg.isFinish){
-    const d=sdt&&leg.eta?dayOff(leg.eta,sdt):'';
-    return LEG_FLAG_SVG+(d?d.trim()+' ':'')+fmtT(leg.eta);
-  }
-  // The bar is 34px in a moving frame — a long motel name would run under the
-  // distance figures either side (they sit at a higher z-index and would win).
-  const nm=leg.name.length>12?leg.name.slice(0,11).trim()+'…':leg.name;
-  return LEG_MOON_SVG+nm+' '+fmtT(leg.eta);
-}
+// v259: legEndTxt + LEG_FLAG_SVG + LEG_MOON_SVG are DELETED. v258 kept them on the
+// explicit condition that the time pill would need the flag-vs-moon rule — it doesn't.
+// The pill names the destination in words ("Grenfell" / "finish"), which does the same
+// job as the two icons and reads better at 10px than a 14px SVG would. legEnd and
+// legToGoKm stay: they are the shared rule behind BOTH the bar's "to go" and the pill's
+// ETA, which is why those two can never disagree about where you're heading.
+//
 // The "to go" figure has to point at the SAME place the ETA does, or the bar names
 // two different destinations at once ("32.1 km" beside "Grenfell 21:00" where the
 // 32.1 was to a finish three days away). On a plan with no sleeps this is exactly
@@ -2373,6 +2364,29 @@ function legEndTxt(r,liveDist,sdt){
 // The bar's FILL is deliberately still whole-route: left figure + fill = where you
 // are in the whole ride; centre + right = tonight's target. Two honest scopes.
 function legToGoKm(r,liveDist){return Math.max(0,legEnd(r,liveDist).dist-liveDist);}
+
+// ── Does this plan stop the clock at night? (v259) ───────────────────────────
+// Peter's rule for the leg-scoped average, and the distinction is a real one that must
+// NOT be "tidied" into legEnd's predicate — they look alike and aren't:
+//   · a sleep with a FIXED WAKE (departTime) absorbs variance. Arrive two hours late and
+//     you still leave at 07:00, so the clock genuinely stops and each day stands alone.
+//     "You aren't riding against the clock as such, because the clock effectively stops
+//     each day" — so what you want is an average of your RIDING, this leg.
+//   · a sleep with only a DURATION (sleepH) carries variance forward: arrive two hours
+//     late, leave two hours late, the whole plan slides. You ARE still racing the clock,
+//     so the honest number is the overall average and long stops must hurt it.
+// legEnd deliberately keys off ANY sleep, because "what time do I get in tonight" is a
+// fair question at either kind of stop. This keys off departTime only.
+function legHasFixedWake(r){
+  return !!(r&&(r.stops||[]).some(s=>isSleepStop(s)&&s.departTime));
+}
+// Format a duration for a pill: "1h42" / "23m" / "120h" (minutes are noise past 99h, and
+// "120h34" would burst the 5ch box). Deliberately NOT "1:42" — that reads as a clock time.
+function fmtDurPill(ms){
+  if(!(ms>=1000))return'—';
+  const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
+  return h>=100?h+'h':h>0?h+'h'+String(m).padStart(2,'0'):m+'m';
+}
 
 // ── The distance bar's geometry (v258) ───────────────────────────────────────
 // ONE authority for where the two figures sit. Called by _distBarSync only, but kept
@@ -3699,6 +3713,55 @@ const GAP_AUTOFILL_MS  = 120000;   // gaps up to 2 min fill silently; longer one
 const GAP_MIN_MOVE_M   = 100;      // rider must have moved this far for it to count as a gap
                                    // (a stationary blackout is already covered by stop/resume markers)
 
+// ── THE LEG CLOCK (v259) ─────────────────────────────────────────────────────
+// Stoppage is the number Peter wants to watch: "% stoppage is a real number that you
+// monitor and try to keep low… in an ultra, stoppage is a key feature and is INSIDE the
+// ride."
+//
+// THE TRAP THIS AVOIDS. The obvious source is UI._rideAvgMsAccum, which already tracks
+// "moving". It would LIE. That clock stops only after GPS_IDLE_STOP_MS = 5 MINUTES, so it
+// counts the first five minutes of every stop as riding: twenty 4-minute stops = 80
+// minutes gone, reported as 0% stoppage. Exactly backwards for bikepacking, where the
+// damage is death by a thousand stops, not one long lunch. The RECORDING already detects
+// a stop in 5 SECONDS (REC_STOP_DETECT_MS_DEFAULT) and marks it — sixty times finer. So
+// stoppage is measured from the recording's own _stop/_resume markers, and this only runs
+// while recording. That is correct rather than a limitation: it's a ride metric, and the
+// recording is the only thing with an honest start, end and pause.
+//
+// THE SPLIT, which is the same one that made "Riding this now?" work: the PLAN decides
+// the meaning (legHasFixedWake — does the clock stop at night?), the RECORDING supplies
+// the measurement (when did you actually roll?). Neither does the other's job. Peter's
+// "maybe the line in the sand is if you are recording or not… not sure" — it isn't:
+// recording is the clock, not the rule.
+const LEG_SLEEP_MS = 2 * 3600000;   // a stop this long, on a fixed-wake plan, ends the leg
+let _legStopT = null;               // when the CURRENT stop began (null = moving)
+
+// A leg begins when you actually roll. Snapshots the two things every leg figure is
+// measured from — never the planned wake time, which is a promise, not a measurement
+// (leave at 07:30 against a planned 07:00 and the plan would flatter your average by
+// half an hour of riding you didn't do).
+function _legReset(ts, km){
+  UI.legStartTS  = ts;
+  UI.legStartKm  = (km !== undefined && km !== null) ? km : (UI.gpsTravelledKm || 0);
+  UI.legStoppedMs = 0;
+  _legStopT = null;
+}
+// Every leg figure, from one authority. Null when there's no ride to measure.
+function _legVals(){
+  if(!_rec || !UI.legStartTS) return null;
+  const now = Date.now();
+  const elapsedMs = Math.max(0, now - UI.legStartTS);
+  let stoppedMs = UI.legStoppedMs || 0;
+  if(_legStopT !== null) stoppedMs += Math.max(0, now - _legStopT);   // stopped right now
+  stoppedMs = Math.min(stoppedMs, elapsedMs);                          // can't exceed the leg
+  const distKm  = Math.max(0, (UI.gpsTravelledKm || 0) - (UI.legStartKm || 0));
+  const movingMs = Math.max(0, elapsedMs - stoppedMs);
+  // Elapsed INCLUDES stops on purpose — that's the whole point. Peter: "stops still matter
+  // and affect you, but the sleep is sort of independent", and a sleep starts a new leg.
+  return {elapsedMs, stoppedMs, movingMs, distKm,
+          stopPct: elapsedMs > 0 ? (stoppedMs / elapsedMs) * 100 : 0};
+}
+
 // Active-recording state (module-local, mirrors the IDB row)
 let _rec        = null;          // the active recording, or null
 let _recMode    = 'active';      // 'active' | 'stationary'
@@ -3742,6 +3805,7 @@ async function startRecording(routeId){
   _recLastFix = null;
   _recStop = null;
   _recStored = null;
+  _legReset(_rec.startTS, UI.gpsTravelledKm);   // v259: the leg clock starts with the ride
   _shareLastPos = null;    // new ride = push immediately, don't wait out the interval
   if(UI.shareNextRideId){ UI.shareNextRideId = null; _shareSaveAuth(); }  // consumed
   UI.recId = _rec.id;
@@ -3895,6 +3959,10 @@ function _appendPoint(lat, lon, ele, t, accuracy){
       else if((t - _recStop.t) >= stopDetectMs){
         // Enter stationary mode. Mark a stop point at the current location.
         _rec.points.push(_recPt(lat, lon, ele, t, accuracy, {_stop: true}));
+        // v259: the leg clock times the stop from when it ACTUALLY began (_recStop.t),
+        // not from this marker — the marker is written stopDetectMs later, so keying off
+        // it would silently discount 5 seconds from every stop in the ride.
+        _legStopT = _recStop.t;
         _recStored = fix;
         _recMode = 'stationary';
         DB.putRecording(_rec).catch(()=>{});
@@ -3912,6 +3980,18 @@ function _appendPoint(lat, lon, ele, t, accuracy){
     // Movement resumed. Mark a resume point and return to active mode.
     _rec.points.push(_recPt(lat, lon, ele, t, accuracy, {_resume: true}));
     _rec.totalDist += distFromStored / 1000;  // store in km, _recDist returns metres
+    // v259 — the leg clock. The stop that just ended either ENDED THE LEG or counts as
+    // stoppage; it can never be both. A long stop only starts a new leg on a plan whose
+    // clock actually stops at night (a fixed wake time). On a non-stop plan there are no
+    // legs, so even a four-hour bivvy is stoppage — and it should hurt, because there you
+    // really are racing the clock. That is Peter's rule exactly, and it self-solves: no
+    // fixed-wake sleep in the plan → one leg → the overall average.
+    if(_legStopT !== null){
+      const stoppedFor = Math.max(0, t - _legStopT);
+      if(stoppedFor >= LEG_SLEEP_MS && legHasFixedWake(cur())) _legReset(t, UI.gpsTravelledKm);
+      else UI.legStoppedMs = (UI.legStoppedMs || 0) + stoppedFor;
+      _legStopT = null;
+    }
     _recStored = fix;
     _recStop = null;
     _recMode = 'active';
@@ -13463,7 +13543,10 @@ function tLiveShell(r){
   </div>`;
   // ── Floating ride pills (overlay on map) ──
   // Each of 3 slots cycles: speed → power → hr → off → speed...
-  const PILL_CYCLE=['speed','power','hr','off'];
+  // v259: 'time' sits straight after 'speed' — it needs no sensor, so it's the one most
+  // riders can actually use, and it's one tap away. Must match the cycle in the tap
+  // handler (grep PILL_CYCLE — there are two, and they have to agree).
+  const PILL_CYCLE=['speed','stop','power','hr','off'];
   const _renderFloatingPill=(slotIdx)=>{
     const type=(UI.livePills||['speed','off','off'])[slotIdx]||'off';
     const base='position:absolute;z-index:12;cursor:pointer;-webkit-tap-highlight-color:transparent;';
@@ -13502,6 +13585,33 @@ function tLiveShell(r){
         <div style="background:#eef3ee;padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
           <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--font);line-height:1.1;">km/h avg</div>
+        </div>
+      </div>`;
+    }
+    if(type==='stop'){
+      // v259 — the STOPPAGE pill. Peter: "% stoppage is a real number that you monitor and
+      // try to keep low. I think it is actually quite important."
+      //
+      // The two halves are the SAME KIND of number — a quantity and its ratio, both about
+      // stoppage. That matters: the pill this replaced showed a duration over a clock time
+      // ("5h23" over "15:57"), which Peter rightly called "a poor mix". The tell was that I
+      // had to format the duration as "5h23" rather than "5:23" purely so it wouldn't be
+      // mistaken for a clock — if two numbers need a format hack to stay apart, they don't
+      // belong in one pill. The speed pill works because both halves are km/h.
+      //
+      // The % is the REVERSED half because it's the one you act on. Same shape, same
+      // reasoning as the speed pill putting the average there.
+      const L=_legVals();
+      const sv=L?fmtDurPill(L.stoppedMs):'—';
+      const pv=(L&&L.elapsedMs>60000)?Math.round(L.stopPct)+'%':'—';
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-stop">
+        <div style="padding:5px 8px 3px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:5ch;text-align:right;font-size:30px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-stop-dur">${sv}</span></div>
+          <div style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.1;">stopped</div>
+        </div>
+        <div style="background:#eef3ee;padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:5ch;text-align:right;font-size:30px;font-weight:500;color:#101510;font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">${L?'of this leg':'record to measure'}</div>
         </div>
       </div>`;
     }
@@ -16221,6 +16331,21 @@ function updateLive(){
     const v=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
     if(balEl.textContent!==v)balEl.textContent=v;
   }
+  // v259: the STOPPAGE pill. Same authority as the template (_legVals) — never a second
+  // copy of the maths. The % waits for a minute of ride before showing: 3 seconds into a
+  // ride, standing at the lights, "100%" is true and useless.
+  const sDur=document.getElementById('live-stop-dur');
+  if(sDur){
+    const L=_legVals();
+    const sv=L?fmtDurPill(L.stoppedMs):'—';
+    const pv=(L&&L.elapsedMs>60000)?Math.round(L.stopPct)+'%':'—';
+    if(sDur.textContent!==sv)sDur.textContent=sv;
+    const sPct=document.getElementById('live-stop-pct');
+    if(sPct&&sPct.textContent!==pv)sPct.textContent=pv;
+    const sLbl=document.getElementById('live-stop-lbl');
+    const lv=L?'of this leg':'record to measure';
+    if(sLbl&&sLbl.textContent!==lv)sLbl.textContent=lv;
+  }
   // Update floating HR pill value (if visible)
   const hrEl=document.getElementById('live-hr-cur');
   if(hrEl&&UI.hrConnected&&UI.hrBpm!==null){
@@ -17052,12 +17177,13 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     updateLive();
     return;
   }
-  // Floating pill tap → cycle through: speed → power → hr → off → speed...
+  // Floating pill tap → cycle through: speed → time → power → hr → off → speed...
   // (Long-press on unpaired power/hr pill triggers BLE pairing — see _fpillLP handler below)
   const fpill=e.target.closest('.live-fpill');
   if(fpill&&UI.tab==='live'){
     if(_fpillLP.fired){_fpillLP.fired=false;return;} // suppress click after long-press
-    const PILL_CYCLE=['speed','power','hr','off'];
+    // MUST match the PILL_CYCLE in tLiveShell's _renderFloatingPill (v259 added 'time').
+    const PILL_CYCLE=['speed','stop','power','hr','off'];
     const slot=+fpill.dataset.slot;
     const pills=UI.livePills||['speed','off','off'];
     const cur=pills[slot]||'off';
