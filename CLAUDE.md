@@ -324,6 +324,77 @@ migration needed).
   90%; non-stop 4 h bivvy = stoppage, overall avg 45 where a moving avg would have flattered at 75;
   live stop counts as it happens; stopped can never exceed elapsed; formats never burst the 5ch box.
 
+## RIDE TEST — 16 July 2026, v259 on a real ride. Peter's findings, ALL still to do.
+
+**THE BIG ONE — RIDING WITHOUT A ROUTE. PackTimes cannot do it, and that's a product hole, not a bug.**
+Peter rode a training loop he does regularly and has no route for. A route was loaded (a different one),
+so: *"the distance bar didn't work. It never changed. It sat on 1.8 km, which is probably the nearest
+point to the route I was on."* Exactly — `snapTo` found the nearest point on a route he wasn't riding and
+he never moved along it, so every downstream figure was faithfully reporting a fiction. **Nothing is
+broken; the app has no concept of "I'm just going for a ride."**
+- Irrelevant without a route: distance bar, elevation graph, turn directions, next-stops strip, ETAs.
+- **Peter: *"There needs to be the option of just doing a ride without a route, and that fits in with our
+  scenario of this being usable for someone on an everyday basis, just as a go-to riding tool."***
+- **His proposed doorway: the record-start prompt.** *"Maybe in the same window as when you start
+  recording… 'Hey, this is not the time you've set in this route. Do you want to follow that route, or do
+  you want to just do your own thing without a route?'"* — i.e. **extend the v257 "Riding this now?"
+  sheet**, which already fires at exactly that moment and already asks a question of the same shape
+  (which plan does this ride belong to?). Do NOT build a second prompt.
+- *"If it's without a route, then obviously a lot of things should hide. Somewhere there needs to be a
+  preset."* This is the same preset idea as §3.6/§3.7 and the two-markets point below — the doorway sets
+  what you see.
+- **Connects to the two markets (Peter, same day):** *"PackTimes is for ultra and long-distance riders,
+  but PackRide could just be for someone doing one social ride on a weekend for one hour… they ride hard,
+  they might stop for a coffee halfway, and they're ended. There are two different markets there."* The
+  no-route ride and the social ride are the same customer. This is the strongest argument yet that the
+  preset — not a settings toggle — is what should decide the ride screen's contents AND the average's
+  definition (moving for the social rider, overall for the ultra).
+
+**WHAT WORKED — the stoppage pill.** *"The percentage of stoppage was excellent… it's actually a number
+you can drive. If you want to change your average speed, you can change it a bit by going harder or
+softer, that's true, but the stoppage is really relevant in ultra. That's a really good measure, and I'm
+really happy with that."* Elapsed worked too. The leg clock is proven on a real ride.
+
+**SMALL FIXES PETER ASKED FOR (clear enough to just do):**
+- **"4m" READS AS METRES.** It's minutes, but `m` is the SI symbol for metre (min is minutes). His fix:
+  always lead with the hours — **"0h04"** — so the `h` disambiguates and the shape never changes. Also
+  keeps 4ch.
+- **The grey labels are unreadable.** *"We actually can't read that grey km/h in the current speed pill.
+  It should be white, with full contrast. I think for all those pills, I'd just use black and white. I
+  wouldn't use the grey. I don't think it really works."* → kill `rgba(255,255,255,0.5)` / `#4a5a4a` on
+  every pill label.
+- **Stop % to ONE DECIMAL** — *"1.1, 1.2… it would just give you a better idea of what the number's up
+  to, and you've got plenty of space."*
+- **Unit placement is inconsistent**: the speed pill puts its unit UNDERNEATH the figure; the time pill
+  has it inline ("8h04"). Peter: *"we need to be trying to be consistent."* Not yet resolved which wins.
+
+**THE POWER PILL (Peter's list):**
+- **Too wide — it crops the other pills.** Must not.
+- **RPM and L/R balance are very hard to read** (too small). *"Should the RPM and the left and right
+  pedal balance have its own pill? Think about Wahoo and Garmin. They're all separate data fields… It
+  also gives someone the option, if they want to see their power, they don't want to see their RPM."*
+  → likely a separate `cadence` pill type in the cycle.
+- **The weighted-power half should carry the ZONE COLOUR.** *"It really should be because that tells you
+  what zone you're averaging in, because the colour means something."* Currently the v257 BLE zone-patch
+  deliberately does NOT repaint the np/label colours (they live on the light half). Peter is overruling
+  that: the zone colour is information, and the averaged number is where it means most.
+
+**THE DISTANCE BAR — STILL NOT RIGHT. Peter: *"I'm still not happy… It's lacking an impression of
+movement, of dynamics. It's just this bland bar."*** Round 6, and the diagnosis is new: every previous
+round argued about TEXT PLACEMENT. This one says the graphic itself is inert — it shows a proportion but
+not a direction. His sketch:
+- **Full width, NO radius, edge to edge** — not an inset pill floating on the map.
+- **A small dividing line between it and the tab bar** above (route/stops/supplies/mission…).
+- **Back to a RESERVED section** (his earlier idea, which we rejected as "fudging" — he's revisiting):
+  the white done-zone at the left is always big enough to hold "0.0 km".
+- **THE MISSING THING IS AN ARROW.** *"It's got an arrow. It's just simply 45° lines going into the
+  black."* — i.e. the fill's leading edge becomes a **chevron/arrowhead pointing forward** instead of a
+  flat divide. That is what supplies the direction and the movement the flat edge can't.
+- At the finish end, *"maybe it has a receiving arrow"* — a notch that the advancing arrow eventually
+  mates with. Peter: *"I don't quite understand the second part, but something needs to change."*
+- **Worth noting the arrow may also solve the old problem for free**: an arrowhead is a much more legible
+  divide than a straight edge, so the done/to-go boundary reads at a glance even in peripheral vision.
+
 **PARKED — the orange turn highlight should trail LONGER (Peter, from real riding, 16 Jul):** *"the orange
 turn marker should extend PAST the turn as much as it started BEFORE the turn. I am finding the orange
 marker excellent for confidence after a turn, but the ~40 or ~60 m quickly passes, and then you have a
@@ -333,12 +404,13 @@ sense of uncertainty again and might go to zoom the map to make sure."*
   evidence is that when it ends too early he reaches for the zoom. That's a job the route line alone
   can't do: *"the route colour matching sky is very good, but at times it can have minimal contrast."*
   So the approach length and the exit length serve different purposes and needn't be equal.
-- **THE TRAP — do not implement "symmetric" literally without checking Peter's setting first.** Today:
-  approach = `UI.turnAlertM` (**default 50 m**), exit = `const afterKm=0.06` (**60 m**, `_activeTurn`).
-  So on the default, symmetry gives a **50 m** trail — SHORTER than the 60 m he already has, i.e. the
-  opposite of what he's asking for. Symmetry only lengthens the trail if his alert distance is above
-  60 m. **Ask what `turnAlertM` is set to before choosing the rule.** Candidates: `after = max(alertM,
-  60)`, `after = alertM` only once the alert is known to be long, or simply a longer fixed exit.
+- **DECIDED: symmetric. `after = UI.turnAlertM`, replacing the hard-coded `afterKm=0.06`.** I flagged
+  that on the default (alert 50 m) symmetry gives a 50 m trail — SHORTER than today's 60 m, the opposite
+  of the ask. **Peter's answer resolves it and is better than my worry:** *"the same exit length as entry
+  might actually still be good, because if you're happy with a short entry warning, it probably means
+  you're in a city or riding slowly. It's really probably okay. Both match."* The alert distance already
+  encodes speed and context — a rider who wants 50 m of warning is moving slowly enough that 50 m of
+  reassurance lasts the same time. **One setting drives both ends; no second slider, no max() fudge.**
 - Related, already known: the v243 demote guard means a long exit can't strand the next turn — if the
   next turn's window opens while the orange is still lit, it hands straight over.
 

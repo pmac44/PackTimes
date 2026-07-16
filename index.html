@@ -2390,7 +2390,11 @@ function legHasFixedWake(r){
 function fmtDurPill(ms){
   if(!(ms>=1000))return'—';
   const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
-  return h>0?h+'h'+String(m).padStart(2,'0'):m+'m';
+  // ALWAYS lead with the hours, even at zero. "4m" was a real error, not a style choice:
+  // m is the SI symbol for METRE (minutes are min), so on a ride screen full of distances
+  // "4m" reads as four metres — Peter hit it on the first ride. "0h04" can't be misread,
+  // the 'h' does the disambiguating, and the shape never changes as the ride grows.
+  return h+'h'+String(m).padStart(2,'0');
 }
 
 // ── The distance bar's geometry (v258) ───────────────────────────────────────
@@ -13640,11 +13644,16 @@ function tLiveShell(r){
           <!-- numbers RIGHT-JUSTIFIED in a fixed 4-character box (DM Mono = equal
                widths), so the decimal point never moves between 9.2 and 18.0 -->
           <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-speed-cur">${curSpd}</span></div>
-          <div style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.5);font-family:var(--font);line-height:1.1;">km/h</div>
+          <!-- v260 (Peter, from the ride): "we actually can't read that grey km/h… it should be
+               white, with full contrast. I think for all those pills, I'd just use black and
+               white." Right — SIZE carries the hierarchy here (34px vs 11px), so the colour
+               doesn't need to as well, and grey on a moving map at arm's length is unreadable.
+               Also moved off var(--font): these are WORDS, and mono is for figures (v244). -->
+          <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">km/h</div>
         </div>
         <div style="background:#eef3ee;padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
-          <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--font);line-height:1.1;">km/h avg</div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">km/h avg</div>
         </div>
       </div>`;
     }
@@ -13671,8 +13680,10 @@ function tLiveShell(r){
       const L=_legVals();
       const ev=L?fmtDurPill(L.elapsedMs):'—';
       // The % waits a minute: 3 seconds into a ride, sitting at the lights, "100%" is
-      // true and useless.
-      const pv=(L&&L.elapsedMs>60000)?Math.round(L.stopPct)+'%':'—';
+      // true and useless. ONE DECIMAL (Peter, from the ride): "it would just give you a
+      // better idea of what the number's up to, and you've got plenty of space" — and it
+      // is the number he says you actively drive, so it should show movement.
+      const pv=(L&&L.elapsedMs>60000)?L.stopPct.toFixed(1)+'%':'—';
       // Says WHICH elapsed. On a fixed-wake plan the clock restarts each morning, so
       // "elapsed" alone would be a lie on day 2.
       const elbl=legHasFixedWake(r)?'leg elapsed':'elapsed';
@@ -13681,11 +13692,13 @@ function tLiveShell(r){
           <!-- min-width, not width: holds the 4ch column like the speed pill for any
                normal ride, and simply grows past 99h ("120h34") rather than clipping. -->
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-stop-ela">${ev}</span></div>
-          <div style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.1;" id="live-stop-elbl">${elbl}</div>
+          <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;" id="live-stop-elbl">${elbl}</div>
         </div>
         <div style="background:#eef3ee;padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
-          <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">${L?'stopped':'record to measure'}</div>
+          <!-- min-width: 1dp makes the typical value 5ch ("12.3%") and 6ch at "100.0%",
+               so the box has to be allowed to grow — same reasoning as elapsed. -->
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">${L?'stopped':'record to measure'}</div>
         </div>
       </div>`;
     }
@@ -16412,7 +16425,7 @@ function updateLive(){
   if(sEla){
     const L=_legVals();
     const ev=L?fmtDurPill(L.elapsedMs):'—';
-    const pv=(L&&L.elapsedMs>60000)?Math.round(L.stopPct)+'%':'—';
+    const pv=(L&&L.elapsedMs>60000)?L.stopPct.toFixed(1)+'%':'—';   // 1dp — same as the template
     if(sEla.textContent!==ev)sEla.textContent=ev;
     const sPct=document.getElementById('live-stop-pct');
     if(sPct&&sPct.textContent!==pv)sPct.textContent=pv;
