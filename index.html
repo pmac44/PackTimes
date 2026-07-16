@@ -165,12 +165,33 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .tc-box .tc-dist .tc-unit{font-size:16px;color:#c2c8ce;font-weight:500;margin-left:3px;}
 .tc-box .tc-road{font-family:var(--sans);font-weight:500;color:#ccd2d8;font-size:14px;margin-top:2px;}
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
-.live-dist-bar{position:absolute;top:6px;left:6px;right:6px;height:34px;background:rgba(10,15,10,0.88);border-radius:6px;overflow:hidden;z-index:10;}
-.live-dist-fill{position:absolute;top:0;left:0;bottom:0;background:var(--accent3);}
-.live-dist-done{position:absolute;top:0;bottom:0;display:flex;align-items:center;padding-left:8px;font-family:var(--font);font-weight:500;font-size:16px;color:var(--text);white-space:nowrap;z-index:2;}
-.live-dist-finish{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;font-family:var(--font);font-weight:500;font-size:16px;color:var(--text);white-space:nowrap;pointer-events:none;z-index:1;}
-.live-dist-left{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-family:var(--font);font-weight:500;font-size:16px;color:var(--text);white-space:nowrap;z-index:2;}
-.live-dist-unit{font-size:14px;color:var(--text3);font-weight:400;}
+/* v258 — the distance bar. It is a GRAPHIC with two numbers in it, nothing else.
+   The old bar swept a fill UNDER three text layers, so a label rode over dark, then
+   fill, then half-and-half; by 89% the whole bar was a bright --accent3 slab with
+   white text on it. Two rules fix it and must not be undone:
+     1. NO TEXT EVER STRADDLES THE DIVIDE. Each figure sits wholly on one colour and
+        migrates to the other side when its own side runs out of room (_distBarGeom).
+     2. The fill lives INSIDE the casing, inset by a 1px hairline, so it never touches
+        the map. Same trick as the speed pill's reversed half — that hairline is why
+        white/accent panels read as objects instead of glare (Peter's note).
+   Radius 8px = the speed pill's, which is the style reference for the whole app. */
+.live-dist-bar{position:absolute;top:6px;left:6px;right:6px;height:34px;background:rgba(10,15,10,0.88);border-radius:8px;overflow:hidden;z-index:10;}
+/* Left corners rounded, RIGHT EDGE SQUARE: the right edge is the done/to-go dividing
+   line, and a boundary between two values is square. Radius means "outside edge". */
+.live-dist-fill{position:absolute;top:1px;left:1px;bottom:1px;background:var(--accent);border-radius:7px 0 0 7px;}
+/* Both figures are absolutely positioned by _distBarGeom — never by a flex rule, since
+   which side they sit on depends on the fill. */
+.live-dist-done,.live-dist-left{position:absolute;top:0;bottom:0;display:flex;align-items:center;
+  font-family:var(--font);font-weight:500;font-size:16px;color:var(--text);white-space:nowrap;z-index:2;}
+/* The figure and its unit are two flex items, so align-items:center on the row above
+   centres them SEPARATELY and their baselines miss. This inner wrapper sits them on one
+   baseline (the unit "km" bottom-justified to the figure); the row still centres the
+   pair as a whole in the bar. */
+.live-dist-fig{display:inline-flex;align-items:baseline;}
+/* On the fill, the figure reverses to dark — the fill is bright, so white would vanish. */
+.live-dist-done.on-fill,.live-dist-left.on-fill{color:#0f160f;}
+.live-dist-unit{font-size:12px;color:var(--text3);font-weight:400;font-family:var(--sans);margin-left:3px;}
+.on-fill .live-dist-unit{color:#3d4a3d;}
 .live-elev-strip{position:absolute;bottom:0;left:0;right:0;z-index:10;background:transparent;cursor:pointer;user-select:none;border-radius:0;}
 .live-elev-bar{background:rgba(10,15,10,0.88);}
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
@@ -304,7 +325,10 @@ select option{background:var(--bg3);}
       <div id="desktop-sim-slider" style="position:absolute;bottom:100px;left:16px;right:16px;display:none;z-index:20;pointer-events:all;">
         <div id="sim-sl-val" style="position:absolute;bottom:calc(100% + 4px);right:0;font-size:12px;color:var(--text3);font-family:var(--font);background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;white-space:nowrap;">0.0km</div>
         <div style="background:rgba(10,15,10,0.7);border-radius:6px;padding:3px 8px;">
-          <input type="range" id="sim-sl" min="0" max="100" step="0.5" value="0" style="width:100%;accent-color:var(--accent);height:16px;display:block;">
+          <!-- step="any" (was 0.5): a range input can only take min+step*n, so a 0.5 step
+               could never reach a max like 137.2 — it stopped at 137.0 and stranded the
+               last 200 m, which is why the sim could never ride to the finish. -->
+          <input type="range" id="sim-sl" min="0" max="100" step="any" value="0" style="width:100%;accent-color:var(--accent);height:16px;display:block;">
         </div>
       </div>
       <div id="desktop-legend" style="position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:3px;z-index:20;"></div>
@@ -874,7 +898,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v257';
+window.APP_VERSION='v258';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2323,10 +2347,12 @@ function legEnd(r,liveDist){
 // rider at a glance which question the time is answering.
 const LEG_FLAG_SVG='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><rect x="0" y="0" width="4" height="4" fill="currentColor"/><rect x="8" y="0" width="4" height="4" fill="currentColor"/><rect x="4" y="4" width="4" height="4" fill="currentColor"/><rect x="12" y="4" width="4" height="4" fill="currentColor"/><rect x="0" y="8" width="4" height="4" fill="currentColor"/><rect x="8" y="8" width="4" height="4" fill="currentColor"/><rect x="4" y="12" width="4" height="4" fill="currentColor"/><rect x="12" y="12" width="4" height="4" fill="currentColor"/></svg>';
 const LEG_MOON_SVG='<svg width="14" height="14" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><path d="M13.6 10.3A6.2 6.2 0 0 1 5.7 2.4a6.2 6.2 0 1 0 7.9 7.9z" fill="currentColor"/></svg>';
-// ONE authority for the distance bar's centre text. Both the template and
-// updateLive's patch call THIS — they must never each compute it, because two
-// copies of the same rule is exactly how this file has drifted before (v252's
-// rotation fight, v257's peek-anchor jitter: same lesson, three times).
+// CURRENTLY UNREFERENCED, KEPT ON PURPOSE (v258). The distance bar dropped its centre
+// slot, which was this function's only caller. It is kept because the TIME PILL (next
+// job) shows "time ridden + estimated time to the leg or total finish" — which is this
+// exact rule, including the flag-vs-moon distinction. If the time pill is abandoned,
+// delete legEndTxt + LEG_FLAG_SVG + LEG_MOON_SVG; legEnd/legToGoKm stay either way
+// (legToGoKm is the bar's "to go" figure).
 // No weekday on a leg end: the next sleep ahead of you IS tonight, by definition.
 // The finish keeps its weekday — it can be days out.
 function legEndTxt(r,liveDist,sdt){
@@ -2347,6 +2373,136 @@ function legEndTxt(r,liveDist,sdt){
 // The bar's FILL is deliberately still whole-route: left figure + fill = where you
 // are in the whole ride; centre + right = tonight's target. Two honest scopes.
 function legToGoKm(r,liveDist){return Math.max(0,legEnd(r,liveDist).dist-liveDist);}
+
+// ── The distance bar's geometry (v258) ───────────────────────────────────────
+// ONE authority for where the two figures sit. Called by _distBarSync only, but kept
+// pure and beside legEnd/legToGoKm because it is the same kind of thing: a rule about
+// the plan, not a rendering trick.
+//
+// THE RULE: a figure may never sit on both colours at once. So each one has a side it
+// prefers and a side it retreats to:
+//   · DONE prefers the fill (left). Until the fill is wide enough to hold it, it waits
+//     out on the dark, just right of the divide — which means it rides slowly along
+//     ahead of the fill and then flips left, ONCE, when it fits.
+//   · TO GO prefers the dark (right). When the dark runs out near the finish it flips
+//     into the fill, right-aligned to the divide.
+// Peter accepted the creep with eyes open: on a 300 km ride the divide moves ~1px/min,
+// and it flips once. "Undesirable, but probably the lesser of all evils… it is not like
+// a speed number, constantly changing." A fixed-two-position variant was offered and
+// declined — do not re-litigate.
+//
+// Paints the bar from _distBarGeom. Called from updateLive (every live tick) AND from
+// initLiveMap (first paint / after a resize), exactly like _shareBtnSync — the template
+// can't do it because the flip needs the bar's measured width.
+function _distBarSync(){
+  const bar=document.getElementById('live-dist-bar');if(!bar)return;
+  const r=cur();if(!r)return;
+  const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
+  // SNAP THE BAR'S BOX TO WHOLE PIXELS FIRST.
+  // The hairline is 1 CSS px on all four sides by construction — the maths is right. What
+  // was wrong is where it LANDS. The bar is left:6/right:6 inside the map section; on
+  // desktop the section's left comes from the sidebar (integral), so the bar's left edge
+  // sits on a whole pixel and its hairline is drawn crisp — but the section's WIDTH is
+  // viewport-derived and fractional, so the bar's right edge sits mid-pixel and its
+  // identical 1px hairline is anti-aliased across two device pixels, reading as thicker.
+  // That asymmetry is what Peter saw: "the green is offset too much to the left… the black
+  // border on the right is slightly thicker". Pin both edges to integers and both
+  // hairlines render the same. (Cheap: only touches the DOM when the width actually
+  // changes, so no layout thrash on the per-tick call.)
+  const sec=bar.offsetParent;
+  if(sec){
+    const sr=sec.getBoundingClientRect();
+    const L=Math.round(sr.left+6), R=Math.round(sr.right-6);
+    if(R-L>40&&(bar._snapL!==L-sr.left||bar._snapW!==R-L)){
+      bar._snapL=L-sr.left; bar._snapW=R-L;
+      bar.style.left=bar._snapL+'px'; bar.style.right='auto'; bar.style.width=bar._snapW+'px';
+    }
+  }
+  // getBoundingClientRect, NOT clientWidth: clientWidth is an INTEGER and would re-round
+  // whatever we just snapped (and on mobile, where the bar is NOT snapped to the sidebar,
+  // its width can still be fractional). Measure with rect maths, never rounded box
+  // metrics — same lesson as v255's pill positioning, now three occurrences.
+  const barW=bar.getBoundingClientRect().width;
+  const g=_distBarGeom(r,liveDist,barW);
+  const fill=document.getElementById('live-dist-fill');
+  if(fill){
+    // Width in PX, not %, so the fill stops 1px short of the casing on the right exactly
+    // as it does on the left — a % width resolves against the whole bar and pushes the
+    // fill past the right edge, killing the hairline on that side only.
+    const inner=Math.max(0,barW-2);
+    let fw=inner*g.pct;
+    // A sub-pixel remainder can't be drawn as "road left" — it renders as a grey smudge
+    // on the corner instead, which is what made the end of the fill look broken. Below
+    // ~1.5px there is nothing honest to show, so snap to full. On a 137 km route that's
+    // the last ~500 m of a 379px bar; the figures still read the truth.
+    if(inner-fw<1.5)fw=inner;
+    fill.style.width=fw.toFixed(2)+'px';   // 2dp: 1dp would re-introduce up to 0.05px of
+                                           // the very rounding error this measure removes
+    // The rule is "radius = outside edge, square = this divides" — and the fill's right
+    // edge is BOTH, at different times. It divides while there's road left; at the finish
+    // it becomes the bar's own outside edge. So it must round as it arrives, or the last
+    // few pixels show a square green edge inside a rounded black corner.
+    const rr=Math.max(0,Math.min(7,7-(inner-fw)));
+    fill.style.borderRadius='7px '+rr.toFixed(1)+'px '+rr.toFixed(1)+'px 7px';
+  }
+  const set=(el,n,u,left,onFill)=>{
+    if(!el)return;
+    const html='<span class="live-dist-fig">'+n+'<span class="live-dist-unit">'+u+'</span></span>';
+    if(el._lv!==html){el._lv=html;el.innerHTML=html;}
+    if(left!==null)el.style.left=left.toFixed(1)+'px';
+    el.classList.toggle('on-fill',!!onFill);
+  };
+  set(document.getElementById('live-dist-done'),g.doneN,g.doneU,g.doneLeft,g.doneOnFill);
+  set(document.getElementById('live-dist-left'),g.togoN,g.togoU,g.togoLeft,g.togoOnFill);
+}
+
+// Text is measured on a CANVAS, not the DOM: no layout flush on every live tick, and the
+// width is available before the element exists. Fonts must track the CSS above.
+let _distMeasCvs=null;
+function _distTextW(num,unit){
+  if(!_distMeasCvs)_distMeasCvs=document.createElement('canvas');
+  const c=_distMeasCvs.getContext('2d');
+  c.font="500 16px 'DM Mono',monospace";
+  let w=c.measureText(num).width+3;          // +3 = the unit's margin-left
+  c.font="400 12px 'DM Sans',sans-serif";
+  return w+c.measureText(unit).width;
+}
+const DIST_PAD=8;   // breathing room each side of a figure
+// v258: was 'km/route'. Dropped, and it is ONE STRING to put back if Peter disagrees.
+// The label existed to say "this is measured along the route, not your odometer" — a real
+// distinction (his 12 Jul scout ride rode part of the route and turned around, so route
+// distance fell while ridden distance climbed). But it is now defending against a
+// comparison the bar no longer invites: GPS distance was removed from the bar this same
+// version ("a fringe measurement… two distance bars would be stupid"), so every figure on
+// the bar is route-scoped and there is nothing here to confuse it with. It also cost 36px
+// of the done figure's flip — a third of the jump — for a label that doesn't self-explain.
+// If the route-vs-ridden difference needs saying, it belongs on the pill that shows RIDDEN
+// distance ("actual"), where both numbers are visible at once and the difference means
+// something.
+const DIST_DONE_UNIT='km';
+function _distBarGeom(r,liveDist,barW){
+  const total=Math.max(1,r.totalDist||1);
+  const pct=Math.max(0,Math.min(1,liveDist/total));
+  const doneN=liveDist.toFixed(1), togoN=legToGoKm(r,liveDist).toFixed(1);
+  const g={pct,doneN,doneU:DIST_DONE_UNIT,togoN,togoU:'km'};
+  // barW unknown (first paint) → fall back to the old flush-left/right placement; the
+  // next live tick positions it properly. Never guess a width: a wrong flip is worse
+  // than a plain one.
+  if(!barW||barW<40){g.doneLeft=DIST_PAD;g.doneOnFill=false;g.togoLeft=null;g.togoOnFill=false;return g;}
+  const inner=barW-2;                        // the 1px hairline each side
+  const fillW=inner*pct;
+  const wDone=_distTextW(doneN,DIST_DONE_UNIT), wTogo=_distTextW(togoN,'km');
+  // DONE: inside the fill once it fits, else parked just right of the divide.
+  if(fillW>=wDone+2*DIST_PAD){g.doneLeft=1+DIST_PAD;g.doneOnFill=true;}
+  else                      {g.doneLeft=1+fillW+DIST_PAD;g.doneOnFill=false;}
+  // TO GO: on the dark, right-aligned, until the dark can't hold it; then it flips
+  // inside the fill, right-aligned to the divide.
+  if(inner-fillW>=wTogo+2*DIST_PAD){g.togoLeft=1+inner-DIST_PAD-wTogo;g.togoOnFill=false;}
+  else                             {g.togoLeft=1+fillW-DIST_PAD-wTogo;g.togoOnFill=true;}
+  // Pathological narrow bar: never let them collide or leave the casing.
+  g.togoLeft=Math.max(g.togoLeft,g.doneLeft+wDone+DIST_PAD);
+  return g;
+}
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
 function fmtDT(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
 function fmtDTY(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
@@ -11217,7 +11373,15 @@ function renderDesktopMap(){
     const sl=document.getElementById('sim-sl');
     const slVal=document.getElementById('sim-sl-val');
     if(sl&&r&&document.activeElement!==sl){
-      sl.max=r.totalDist.toFixed(0);
+      // v258 — was r.totalDist.toFixed(0), and that rounding was a real bug in BOTH
+      // directions: a 137.2 km route got max=137, stranding the last 200 m so the sim
+      // could never reach the finish (Peter found it — the fill stopped 0.2 km short and
+      // left a smudge on the bar's end); a 300.6 km route got max=301, letting you scrub
+      // 400 m PAST the finish. The slider's max is a distance, not a display string —
+      // don't round it. Paired with step="any" on the input, so any max is reachable
+      // (a range input can only land on min+step*n, which is why step="0.5" would still
+      // have stopped at 137.0 even with the max fixed).
+      sl.max=r.totalDist;
       sl.value=(UI.gpsDistKm||0).toFixed(1);
     }
     if(slVal)slVal.textContent=(UI.gpsDistKm||0).toFixed(1)+'km';
@@ -13281,15 +13445,21 @@ function tLiveShell(r){
       <div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${stat.unit}</span>`:''}</div>
     </div>`;
   };
-  const doneTxt='<span style="display:inline-flex;align-items:baseline;">'+liveDist.toFixed(1)+'<span class="live-dist-unit"> km/route</span></span>';
-  const leftTxt='<span style="display:inline-flex;align-items:baseline;">'+legToGoKm(r,liveDist).toFixed(1)+'<span class="live-dist-unit"> km</span></span>';
-  const pct=Math.max(0,Math.min(100,prog*100));
-  const finTxt=legEndTxt(r,liveDist,sdt);
+  // v258: the bar is a GRAPHIC plus two figures. The old centre slot — which rotated
+  // leg ETA / ride time / GPS distance every 4s — is GONE, and its removal is what makes
+  // the migrating figures possible: the centre is exactly where the divide lives, so
+  // nothing can sit there without being straddled by the fill.
+  //   · leg ETA — already on the Next Strip and the draggable stops list (Peter).
+  //   · GPS distance — "a fringe measurement… often near identical to distance along the
+  //     route. Two distance bars would be stupid." (Peter)
+  //   · ride time + ETA — headed for their own two-half pill, like the speed pill.
+  // Contents are positioned by _distBarSync, NOT here: the flip depends on the bar's
+  // pixel width, which the template can't know. Same reason the sharing/pack buttons
+  // are built from updateLive (v257).
   const distBar=`<div class="live-dist-bar" id="live-dist-bar">
-    <div class="live-dist-fill" id="live-dist-fill" style="width:${pct.toFixed(1)}%"></div>
-    <div class="live-dist-done" id="live-dist-done">${doneTxt}</div>
-    <div class="live-dist-finish" id="live-dist-finish">${finTxt}</div>
-    <div class="live-dist-left" id="live-dist-left">${leftTxt}</div>
+    <div class="live-dist-fill" id="live-dist-fill"></div>
+    <div class="live-dist-done" id="live-dist-done"></div>
+    <div class="live-dist-left" id="live-dist-left"></div>
   </div>`;
   // ── Floating ride pills (overlay on map) ──
   // Each of 3 slots cycles: speed → power → hr → off → speed...
@@ -13518,12 +13688,14 @@ function initLiveMap(r){
     // reflow) fought the eased route-aligned orientation and twitched the map.
     // redrawMap('live-map') already handles peek / follow / fitted correctly.
     redrawMap('live-map');
+    _distBarSync();   // v258: the bar's width just changed, so its flip points did too
   };
   // Call immediately, then again after layout settles (sidebar/strips may not have final dimensions yet)
   sizeLiveMap();
   _adjustWeatherForElev();
   _shareBtnSync();   // idle Ride tab too (updateLive only runs during GPS/sim)
-  setTimeout(()=>{sizeLiveMap();_adjustWeatherForElev();_shareBtnSync();}, 200);
+  _distBarSync();    // ditto (v258) — the template leaves the bar empty on purpose
+  setTimeout(()=>{sizeLiveMap();_adjustWeatherForElev();_shareBtnSync();_distBarSync();}, 200);
   // Re-size when address bar retracts/appears — debounced to prevent rapid iOS resize loops
   let _sizeDebounce=null;
   const debouncedSize=()=>{if(_sizeDebounce)clearTimeout(_sizeDebounce);_sizeDebounce=setTimeout(sizeLiveMap,150);};
@@ -15996,6 +16168,7 @@ function updateLive(){
   const r=cur();if(!r)return;
   _packBtnSync();    // built here, not in the template — see the note on _packBtnSync
   _shareBtnSync();   // ditto (v257) — state + position tracked every live tick
+  _distBarSync();    // ditto (v258) — the figures' flip needs the bar's measured width
   const sdt=startDT(r),liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
   const prog=liveDist/Math.max(1,r.totalDist);
   const starred=s=>s.starred!==false||s.type==='sleep'||s.type==='stop'||s.sleepAt;
@@ -16055,33 +16228,10 @@ function updateLive(){
     if(!hrEl.textContent.startsWith(v))hrEl.textContent=v+' bpm';
   }
   const pf=document.getElementById('live-progf');if(pf)pf.style.width=(prog*100).toFixed(1)+'%';
-  // Update distance bar
-  const distFill=document.getElementById('live-dist-fill');
-  const distDone=document.getElementById('live-dist-done');
-  const distLeft=document.getElementById('live-dist-left');
-  if(distFill)distFill.style.width=(prog*100).toFixed(1)+'%';
-  if(distDone){const h='<span style="display:inline-flex;align-items:baseline;">'+liveDist.toFixed(1)+'<span class="live-dist-unit"> km/route</span></span>';if(distDone._lastVal!==h){distDone._lastVal=h;distDone.innerHTML=h;}}
-  if(distLeft){const h='<span style="display:inline-flex;align-items:baseline;">'+legToGoKm(r,liveDist).toFixed(1)+'<span class="live-dist-unit"> km</span></span>';if(distLeft._lastVal!==h){distLeft._lastVal=h;distLeft.innerHTML=h;}}
-  const distFinish=document.getElementById('live-dist-finish');
-  if(distFinish){
-    // Rotate between: leg-end ETA, ride time, GPS distance travelled
-    const phase=Math.floor(Date.now()/4000)%3;
-    let h='';
-    if(phase===0){
-      h=legEndTxt(r,liveDist,startDT(r));   // v257: same authority as the template
-    } else if(phase===1){
-      // Ride time
-      const accumMs=UI._rideAvgMsAccum||0;
-      const sessMs=UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0;
-      const totalMs=accumMs+sessMs;
-      const hrs=Math.floor(totalMs/3600000);
-      const mins=Math.floor((totalMs%3600000)/60000);
-      h='<span style="display:inline-flex;align-items:baseline;">&#x23F1; '+(hrs>0?hrs+'<span class="live-dist-unit">h </span>'+mins+'<span class="live-dist-unit">m mov.</span>':mins+'<span class="live-dist-unit">m mov.</span>')+'</span>';
-    } else {
-      h='<span style="display:inline-flex;align-items:baseline;">'+UI.gpsTravelledKm.toFixed(1)+'<span class="live-dist-unit"> km actual</span></span>';
-    }
-    if(distFinish._lastVal!==h){distFinish._lastVal=h;distFinish.innerHTML=h;}
-  }
+  // The distance bar is painted by _distBarSync() at the top of this function — one
+  // authority, called from here and initLiveMap. The old block that lived here patched
+  // the fill and both figures itself AND ran the 4-second centre rotation; all of it is
+  // gone with the centre slot (v258).
 
   const patchCard=(s,idSuffix)=>{
     // Legacy no-op — strip is rebuilt wholesale below

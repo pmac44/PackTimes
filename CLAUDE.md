@@ -231,7 +231,251 @@ radio, the `turn-ind-opt` change listener, and `UI.turnIndicator` (STATE + uiPre
 save/load — a stale `turnIndicator` key in old saved prefs is simply ignored, no
 migration needed).
 
-## Session — 16 July 2026 (still v257, unpushed) — leg ETAs · "Riding this now?" · PackRide carries the plan
+## Current status (16 July 2026, v258) — THE DISTANCE BAR IS BUILT (migrate). NOT ride-tested.
+
+The design agreed below (round 5) is now code. **v258, unpushed at time of writing.**
+
+- **The bar is now: casing · fill · done left · to-go right. No centre text.** Dropping the centre
+  slot is what makes the migrating figures possible — the centre is exactly where the divide lives.
+- **CSS** (`.live-dist-bar` and friends, ~line 168): radius 6 → **8px** (the speed pill's, now the app's
+  style reference); fill inset by a **1px hairline** and `border-radius:7px 0 0 7px` — **left corners
+  rounded, right edge SQUARE** because that edge is the done/to-go divide (radius = outside edge, square =
+  "this divides"); fill is `var(--accent)` not `--accent3` (a PackRide theme overrides the token — that's
+  the whole theming mechanism, don't hard-code yellow); units are **DM Sans 12px muted** (`--font` → mono
+  was a live v244 violation); `.on-fill` reverses a figure to dark.
+- **`_distBarGeom(r,liveDist,barW)`** (TIME CALC, after `legToGoKm`) is the ONE authority for where the
+  figures sit. `_distBarSync()` paints it. **The template renders the bar EMPTY on purpose** — the flip
+  depends on the bar's measured width, which a template string cannot know. Same reason the sharing/pack
+  buttons are built from updateLive (v257 lesson, now three occurrences).
+  · Call sites, mirroring `_shareBtnSync` exactly: `updateLive` (every tick), end of `sizeLiveMap`
+    (resize changes the flip points), after `sizeLiveMap()` in initLiveMap, and the 200 ms settle timeout.
+  · Text is measured on a **canvas**, not the DOM — no layout flush per tick, and the width is known
+    before the element exists. **The canvas fonts must track the CSS**; if the CSS sizes change, change
+    `_distTextW` too.
+  · `barW` unknown (first paint) → safe flush-left fallback, positioned properly on the next tick. Never
+    guess a width: a wrong flip is worse than a plain one.
+- **DELETED**: the 4-second centre rotation (`Math.floor(Date.now()/4000)%3`), `.live-dist-finish`, and
+  updateLive's old patch block which computed the fill + both figures itself.
+- **`legEndTxt` + `LEG_FLAG_SVG` + `LEG_MOON_SVG` are now UNREFERENCED but deliberately kept** — the time
+  pill (next job) shows "time to the leg or total finish", which is that exact rule incl. flag-vs-moon.
+  If the time pill is abandoned, delete all three. `legEnd`/`legToGoKm` stay regardless (`legToGoKm` is
+  the bar's "to go").
+**Two fixes from Peter's first desktop look at v258 (same version, still unpushed):**
+- **THE CORNER NOTCH (a real bug, mine).** I applied only half my own rule. The fill's right edge is a
+  DIVIDE while there's road left, but at the finish it becomes the bar's **own outside edge** — I left it
+  square always, so the last ~7px showed a square green edge inside a rounded black corner. The right
+  corners now round progressively over the final 7px (`rr = clamp(7-(inner-fillW),0,7)`, set in
+  `_distBarSync`). At Peter's exact screenshot state (99.85%) the radius is 6.45px and the notch is gone.
+- **The fill's width is now PX, not %.** A `%` width resolves against the whole bar, so with the fill
+  inset `left:1px` it overshot the right edge and the 1px hairline existed on the left only. Now
+  `width = (barW-2)*pct` px → symmetric hairline both ends.
+- **THE SIM SLIDER COULD NEVER REACH THE FINISH — the actual cause of the "not quite right" end fill,
+  and a real bug in its own right (Peter's instinct: "there's probably some rounding going on"). He was
+  right.** `renderDesktopMap` set `sl.max = r.totalDist.toFixed(0)`, rounding a DISTANCE as if it were a
+  display string. Wrong in BOTH directions: a 137.2 km route → max 137, so the last 200 m were
+  unreachable and the sim could never ride to the finish; a 300.6 km route → max 301, letting you scrub
+  **400 m past the finish**. Compounded by `step="0.5"` on the input — a range input can only take
+  `min+step*n`, so even with the max fixed it would have stopped at 137.0. **Fixed both:** `sl.max =
+  r.totalDist` (no rounding) and `step="any"`. Verified across 137.2/300.6/137.6/166.4/99.9/42.5/1.9 km —
+  every one now lands exactly on the finish.
+  · **The distance bar was never at fault here.** On a real ride `gpsDistKm` comes from `snapTo`, which
+    reaches `totalDist` fine. This only ever bit the simulator — but it meant the last 200 m of any route
+    (finish arrival, final turn, the `0.0 km` state) could not be sim-tested at all.
+- **Sub-pixel snap (2nd look — "the end green fill is not quite right").** At Peter's 137.0/137.2 km the
+  remainder is **0.55px**. The progressive radius was geometrically right there (6.45px, concentric with
+  the casing) but a half-pixel of dark doesn't read as "road left" — it anti-aliases to a grey smudge on
+  the corner. Now: `if(inner-fw<1.5)fw=inner` → snaps to full over the last **~410 m of a 137 km route**.
+  Below a pixel there is nothing honest to draw, and the figures still read the truth.
+- **THE HAIRLINE'S SUB-PIXEL ASYMMETRY (4th look) — the bar's BOX is now snapped to whole pixels.**
+  Peter: *"the green on the left is bleeding over the black border… on the right the black is slightly
+  thicker… the length of the green and the length of the black are correct. The green is offset too much
+  to the left, probably a little bit of a pixel."* Exactly right, and the maths was never wrong — the
+  hairline is 1 CSS px on all four sides by construction. What was wrong is where it LANDS: the bar is
+  `left:6/right:6` inside the map section; on desktop the section's left comes from the sidebar (an
+  integer) so the bar's LEFT edge sits on a whole pixel and renders crisp, but the section's WIDTH is
+  viewport-derived and fractional, so the bar's RIGHT edge sits mid-pixel and the identical 1px hairline
+  is anti-aliased across two device pixels — reading as thicker. `_distBarSync` now pins the bar's box to
+  integers (`Math.round(sec.left+6)` / `Math.round(sec.right-6)`, written only when the width actually
+  changes, so no per-tick layout thrash). Modelled across real geometries: before = crisp/smeared on every
+  case; after = 1.00px both sides. **Desktop-only symptom** — at DPR 2–3 the smear is half a device pixel.
+  Cost: the bar's outer margin can be 6.0 vs 6.33 — invisible, unlike a fuzzy hairline.
+- **THE RIGHT HAIRLINE WAS FAT — `clientWidth` ROUNDS (3rd look).** Peter: *"the final black border on the
+  right seems slightly too big compared to the black borders on the top, bottom, and left side."* Correct.
+  `clientWidth` returns an **integer**, and this bar is `left:6/right:6` off a viewport-derived map
+  section, so its real width is nearly always fractional. Rounding it left the fill short and dumped the
+  remainder onto the right edge — measured up to **1.4px against the 1px hairline** on the other three
+  sides. **The left/top/bottom are CSS `1px` insets the browser places exactly; only the right edge is
+  COMPUTED, so only the right edge inherits the error.** Now `bar.getBoundingClientRect().width` (and the
+  fill's width at 2dp, since 1dp would re-introduce 0.05px of the same error). Verified: 1.00px on all
+  four sides at every fractional bar width tried. **Same lesson as v255's pill positioning — measure with
+  rect maths, never with rounded box metrics.** Now three occurrences; treat rounded box metrics as a
+  smell anywhere pixel alignment matters.
+- **The unit is baseline-aligned to the figure** ("can the km be bottom justified to match the text?").
+  The row is `display:flex;align-items:center`, so the figure and its unit were two flex items centred
+  SEPARATELY and their baselines missed. New `.live-dist-fig{display:inline-flex;align-items:baseline}`
+  wrapper sits them on one baseline while the row still centres the pair — this is exactly what the old
+  bar's inline `display:inline-flex;align-items:baseline` span did, and I dropped it in the rewrite.
+- **'km/route' → 'km'** (`DIST_DONE_UNIT`, one string to revert). **NOTE: I did not add '/route' — it was
+  in the bar all along.** Peter asked whether to drop it or let it flip separately from the figure.
+  Measured: keeping it flips the done figure at 30.3% with a 107px jump; dropping it → 20.8% / 71px (a
+  third smaller). **His "flip the unit later" idea gives the best flip (17.7% / 59px) but was rejected:**
+  the unit is 48px wide, so the divide takes **12.7% of the ride** to cross it — "km/route" would sit
+  two-tone for that whole span, which is the exact straddle this version exists to remove (and the reason
+  he rejected INVERT). Dropped instead because the bar no longer shows GPS distance (removed this same
+  version), so every figure on it is route-scoped and there is nothing to disambiguate from. **If the
+  route-vs-ridden distinction needs saying, it belongs on the pill showing RIDDEN distance ("actual"),
+  where both numbers are visible at once.** Peter's counter-argument on the record: *"route km is not the
+  same as km ridden"* — true, and his 12 Jul scout ride is the case where it bites.
+- **Verified**: new fragment `node --check` clean + **21/21 truth-table** — the invariant (**zero straddles
+  across 1,000 samples of the whole ride**), colour always matches the side, **each figure flips exactly
+  ONCE** (done 18.4%, to-go 81.7% on a 300.6 km route at 381 CSS px), ends read `0.0/300.6` → `300.6/0.0`,
+  figures never overlap, never escape the casing, no NaN on a zero/absurd width, the v257 leg-scoped
+  "to go" still honoured (fill stays whole-route), and the fill's right corner is square mid-ride but
+  rounded at the finish.
+- **NOT VERIFIED: no whole-file `node --check` this session.** The bash mount was stuck on a stale,
+  truncated replica (the documented Dropbox gotcha) and never caught up, so a whole-file parse would have
+  been vacuous — it reported "0 script blocks" and passed, which is a FALSE PASS worth remembering. Every
+  edited region was instead read back via the Read tool and confirmed balanced. **Open index.html in a
+  browser once before `push.bat`.**
+- **STILL TO DO:** the **TIME PILL** (v259) — Peter's design: a two-half pill like the speed pill showing
+  **time ridden + estimated time to the leg or total finish**, optional, in one of the three floating slots.
+
+## Design session — 16 July 2026 — the distance bar, mocked (v257 IS NOW PUSHED; schema v9 IS RUN)
+
+**Peter has run `schema-v9.sql` and pushed v257. So v257 is live and the next code change is v258.**
+Everything in the 16 July build session below is now on a phone but still **not ride-tested**.
+
+Mockups: **`_planning/distance-bar-mockups.html`** + `_planning/distance-bar/*.png`, and a reusable
+clean plate at `_planning/GPS Screens/ride-clean-plate.png` (the real screenshot with the baked-in bar
+painted out, so lighter designs can be judged — map texture borrowed from lower down; ignore the seam).
+Scope was Peter's: **graphics only** — content, the 4 s centre rotation and the whole-route fill untouched.
+
+- **Measured, don't guess:** the bar is `x 16–1064, y 360–456` in the 1080×2424 screenshot = CSS 34px at
+  **2.748×**. Mockups were rendered with **Pillow using the repo's real DM Sans/DM Mono** (woff2 → ttf via
+  fontTools) at true size, because **the sandbox cannot render HTML** — no sudo, so Playwright's chromium
+  has no deps. Lesson: render mockups as PNGs and LOOK at them; don't hand Peter a CSS page never seen.
+- **THE FINDING — the bar is worst exactly when it matters most.** `--accent3` is `#16a34a` (bright, not the
+  dark green I assumed). At 89% the whole bar is a **green slab with white text on it** — on the last 30 km
+  of a long day. Early on it's a 6px nub that reads as an artefact; mid-ride the left figure sits on green.
+  This isn't styling to tolerate: it's why the bar feels wrong, and it degrades as the ride goes on.
+- **Four problems named:** (1) text layers sit ON TOP of the sweeping fill — **structural, no restyle fixes
+  it**; (2) the 0.6% nub; (3) **units inherit DM Mono** (the bar sets `font-family:var(--font)`), which is a
+  live **v244 rule violation** — mono is for figures, DM Sans for words; (4) no hierarchy + the 8-rect flag
+  dithers to mush at 14px.
+- **ROUND 1 (rail) — REJECTED by Peter, and he was right.** I proposed shrinking the fill to an 8px rail so
+  text could sit on solid dark. His objection: *"the rail is too small. The whole idea of a distance bar is
+  that it is a full bar so there is something of a clear size to look at… We are complicating it by trying to
+  show text in there."* I had fixed the symptom by damaging the thing that matters — the graphic. **Standing
+  lesson: when a component has two jobs that fight, take one job OUT; don't shrink the important one.**
+
+**ROUND 2 — THE AGREED DESIGN (Peter's concept, mocked, NOT BUILT):** bar + travelling pill.
+- **The bar is ONLY a graphic** — full width, **HALF height (CSS 34 → 17px, Peter's call to save real
+  estate)**, no text in it at all.
+- **The pill is the playhead**: sits at your position, split side-to-side (done left / to-go right), black &
+  white like the speed pill — it reads as a magnified slice of the bar at the point you're at.
+- **The caret keeps it honest**: near the ends the pill clamps to the screen, so the caret slides WITHIN the
+  pill to keep pointing at the true position on the bar. The pill may be approximate about its x; the caret
+  may not.
+- **The rotating info flips to whichever side the pill isn't.**
+- **PETER'S BORDER NOTE IS THE KEY DETAIL** — *"a subtle thing about the speed pill is the black border on
+  the white part of the fill."* So the fill lives INSIDE a black casing and never touches the map. That is
+  precisely what stops a full-width fill glaring at night, and it's the flaw today's wash has. It's why a
+  full bar is now viable when I'd assumed it wasn't.
+- **COLOUR — the rule that fell out of Peter's theming point** (*"green for PackTimes, yellow for
+  PackRide"*): **the graphic carries the product colour; the numbers stay black and white.** Bar = accent
+  (green / PackRide yellow, one token); pill = monochrome, matching the speed pill. Colour means WHICH
+  PRODUCT; size and reversal mean WHICH NUMBER MATTERS. Don't overload colour with importance.
+- **THE ONE REAL FLAW, found by rendering it:** mid-bar, "flip to unoccupied space" has nowhere to flip —
+  at 48% both side gaps are too narrow for "Grenfell 21:00" and the ETA silently VANISHED. Fix: the ETA pill
+  is **adaptive** — full name when it fits, `21:00` when it doesn't. Measured across the whole ride, **only
+  the ~40–55% band needs the short form**, and it degrades to the more useful half (the strip below already
+  names the place).
+- **COST: ~+16 CSS px of map.** Bar halves (−17) but the pill row adds ~30, so the zone goes `6–40` → `6–58`
+  and the floating pills must move `top:48` → `~64` (mocked with the speed pill redrawn there, and it fits).
+  **Offered alternative if that's too much: the pill STRADDLES the bar** (≈cost-neutral — the pill's split
+  point already IS the fill edge). Not yet mocked.
+- **ROUND 3 — Peter's corrections, all applied and mocked:**
+  · **The speed pill's "black border" is ~1px and is NOT DRAWN.** Ground truth from the code:
+    `border:1px solid rgba(255,255,255,0.15)` + `overflow:hidden`, and the white `#eef3ee` child stops at the
+    padding box — so the pill's own dark bg shows through that 1px ring. That's why it's visible only against
+    the white and invisible on the dark half. My round-2 mock drew a ~2px black band: far too thick.
+  · **Radius 8px (the speed pill's) on both bar and pill** — not stadium/half-height.
+  · **The white fill is rounded LEFT ONLY**; its right edge is the done/to-go dividing line, so square.
+    General rule: radius = outside edge; square = "this divides".
+  · **The pointer is a STRAIGHT LINE, not an arrowhead.** Cased (white line, thin dark outline) so it
+    survives light terrain — bare white vanishes on pale map at 89%.
+- **THE ROTATING CONTENT FITS — measured, not guessed** (Peter's worry). The rotating pill's space is worst
+  when the travelling pill is dead centre: **112 CSS px at 50%**. Long forms: `5h 23m mov.` fits ALWAYS;
+  `Grenfell 21:00` and `145.2 km actual` don't. Short forms all fit (`21:00`, `5h 23m`, `145.2 km`). So each
+  rotating item needs a short form, used only in the ~40–55% band, each degrading to its more useful half.
+- **THE FALLBACK Peter raised: distance as a 4th pill TYPE in the existing speed/power/HR slots**, deleting
+  the bar. Parked, not chosen — **his own earlier argument is the counter**: a bar is understood without
+  reading; two numbers must be read and compared. Deleting the graphic solves the layout by removing the
+  feature. Cheap to reach later (the pill is already speed-pill-shaped). If it ever happens, his 4th-slot
+  idea is right: below an existing slot, LEFT or RIGHT, never centre — the route line runs up the centre
+  column on a heading-up map.
+- Peter's wider point, recorded: *"PackTimes has evolved rapidly and the graphics have been neglected. I think
+  the speed pill is a big improvement and could be a good reference for the overall style of the app."*
+  **The style reference, now that the speed pill has been pulled apart:** figures DM Mono / words DM Sans
+  small+muted; white panels sit inside black via a 1px hairline (never a band) so they never touch the map;
+  radius 8px everywhere; a boundary between two values is square, an outside edge is rounded; one hero number
+  per component; colour = product, not importance.
+**ROUND 4 — THE TRAVELLING PILL IS OFF. Peter: the pill mockup "just doesn't strike me as 'great'."**
+Back to first principles at his direction: **full-height bar, numbers stay INSIDE it**, done left / to-go
+right, always far apart. Rotating ETA/ride-time/GPS-distance deliberately parked ("one step at a time").
+- **THE REFRAME THAT CRACKED IT (Peter's):** the problem was never *text in the bar* — it was **text
+  STRADDLING the divide**. So don't remove the text; just never let a number sit on both colours at once.
+  Everything since had been solving the wrong problem (my rail shrank the graphic; the travelling pill
+  evicted the text).
+- **RECOMMENDED — "RESERVED ENDS", and it is Peter's OWN earlier idea** (*"reserve a space on the left for the
+  smallest number (0.0km) that is always the done colour… the bar doesn't start far left… same for the
+  finish"*). Neither of us spotted at the time that it solves the straddle, not just the nub. **Left zone is
+  ALWAYS the done colour, right zone ALWAYS the to-go colour, the variable fill lives only in the MIDDLE** →
+  nothing moves, nothing jumps, no glyph is ever cut, both figures sit permanently on solid colour at full
+  size. **And it costs ZERO extra height** (unlike the travelling pill's +16px) — the floating pills don't move.
+  · Honest cost: zones are 200px each → **the variable middle is 62% of the bar**; at 0% it already shows ~19%
+    done-colour, at 100% ~19% to-go. Peter accepted that trade when he proposed it. Smaller figures shrink it.
+- **REJECTED "MIGRATE"** (his other idea, mocked): numbers hop to whichever side has room. Full-width graphic
+  and no straddle, but the done figure **creeps right with the fill then jumps ~200px left at ~21%** — motion
+  in a number whose whole point is being read without effort.
+- **REJECTED "INVERT"** (my alternative, mocked): numbers never move; drawn twice and clipped at the divide so
+  glyphs flip colour exactly at the boundary. Elegant, and it *realises Peter's hunch* about the digits going
+  in first while "km" stays behind — that falls out naturally and reads fine. **But it loses on the to-go
+  number:** right-aligned, so the divide crosses it for the **last ~24% of the ride** — `33|.1 km`, cut
+  mid-digit, as a sustained phase not a moment. (The done number's crossing is short and lands on the small
+  muted "km".)
+- **STILL OPEN:** the rotating ETA/ride-time/GPS-distance has nowhere to live under reserved-ends — the middle
+  is the fill. Likely answers: a chip with its own dark casing sitting on the fill (a cased chip may straddle;
+  a bare label may not), or the row below. Peter parked it deliberately.
+**ROUND 5 — DECIDED. Peter picked MIGRATE. The bar is now settled; NOT BUILT (next job = v258).**
+- **RESERVED ENDS rejected** despite being close: *"I like a lot of the RESERVED concept, except that
+  graphically it is fudging."* Correct — its 62% dynamic range means the bar lies about its own scale.
+- **INVERT rejected** — *"a lesser choice"* (the to-go figure stays cut mid-digit for the last ~24%).
+- **MIGRATE chosen, and the CREEP is accepted with eyes open.** I flagged that the done figure doesn't just
+  flip once — it rides just ahead of the fill, then jumps. Peter's ruling: *"it is happening so slowly that I
+  don't really think it is a big problem. Undesirable, but probably the lesser of all evils… it is not like a
+  speed number, constantly changing."* (~1px/min on a 300 km ride.) **Don't re-litigate this; a fixed
+  two-position variant was offered and declined.**
+- **THE BAR IS NOW JUST: full-height casing · fill (accent = product colour) · done left · to-go right.**
+  No centre text — which is what finally makes migrate work, since the centre is where the divide lives.
+- **GPS distance: DROPPED from the bar.** Peter: *"a fringe measurement… often near identical to distance
+  along the route… Two distance bars would be stupid."*
+- **Leg ETA: not needed in the bar** — *"partly visible in the Next Strip, and the extended stops list which
+  can be dragged up."*
+- **NEW — the TIME PILL (Peter's idea, not yet mocked properly):** a pill *"like the speed pill"* showing
+  **time ridden + estimated time to the leg or total finish**, i.e. the same two-half shape (dark over
+  reversed light). **Optional, in one of the existing floating pill slots** — *"less important than distance,
+  and somewhat optional."* This is the home for the rotating content the bar gives up.
+- **THE ELEVATION-STRIP QUESTION, answered from the code** (Peter mused: *"should the distance bar be a
+  corollary of the elevation strip and profile, but on top?"*). **No — they are different SCOPES and must not
+  be merged.** `drawElev` uses `elevZoomKm` = `min(totalDist*0.2, 30)` by default, with the rider pinned at
+  `gpsFrac=0.15` from the left and `distMin=liveDist-0.15*visSpan` — i.e. a **moving ~30 km window**,
+  swipe-zoomable 2 km→full. It answers "what's the next hill like?"; the distance bar answers "how far
+  through the whole ride am I?" on a fixed whole-route axis. Squeeze 300 km of profile into 393 px and the
+  next climb is invisible; keep the window and it isn't a distance bar. **The distance bar is the only
+  whole-route view on the ride screen** — an argument for keeping it separate, and at the top.
+
+## Session — 16 July 2026 (built as v257, now PUSHED) — leg ETAs · "Riding this now?" · PackRide carries the plan
 
 Three builds off Peter's questions. **None ride-tested; desktop reasoning + node truth-tables
 only (18/18, 25/25, 22/22). Still v257 — it has never been pushed, so a v258 label would name
