@@ -282,14 +282,78 @@ migration needed).
 - `UI.legStartTS/legStartKm/legStoppedMs` persisted in uiPrefs beside `recId`, so a crash recovery
   doesn't restart the leg and report 0% on a ride that already lost an hour. `_legStopT` is deliberately
   not persisted (a reload mid-stop loses that one stop's start — same as `_recStop`).
-- **The STOPPAGE pill** (`type==='stop'`, cycle is now `speed → stop → power → hr → off`): stopped
-  duration over **stop% in the REVERSED half** (the half you act on, same reasoning as the speed pill's
-  average). Both halves are the same kind of number — a quantity and its ratio. Shows dashes + "record to
-  measure" when not recording; the % waits 60 s (3 s into a ride at the lights, "100%" is true and useless).
+- **The STOPPAGE pill** (`type==='stop'`, cycle is now `speed → stop → power → hr → off`): **elapsed**
+  over **stop % in the REVERSED half**. Peter: *"I think we need an elapsed time with a stoppage % on
+  it."* He's right and my first cut (stopped duration + %) was weaker: the % is a ratio OF the number
+  above it, so stopped duration falls out and doesn't need a slot. Elapsed alone fails his "what would
+  you do about it?" test — paired with the %, it's the denominator that makes the % mean anything.
+  Top label says **"leg elapsed"** on a fixed-wake plan, because the clock restarts each morning and
+  "elapsed" would be a lie on day 2. Dashes + "record to measure" when not recording; the % waits 60 s
+  (3 s into a ride at the lights, "100%" is true and useless).
+- **Geometry is the speed pill's, verified property-by-property** (34px figures, 4ch box, both paddings,
+  both label sizes, min-width 100, #eef3ee) — Peter spotted the pill was short; the cause was my 30px/5ch,
+  not the empty state.
+- **`fmtDurPill` keeps the minutes at any length and lets the pill GROW** (`min-width:4ch`, not `width`).
+  Peter: *"It's okay if it did get wider because it doesn't fluctuate like speed… duration is just very
+  gradual."* The 4ch box exists to stop a WOBBLING figure shifting its decimal; a number that ticks once
+  a minute doesn't need it. **NOTE: "10h00" is FIVE characters** — the pill grows at **10 h**, not 100 h
+  as first assumed, i.e. on most ultras. It grows again at 100 h ("120h34"). Height is unaffected.
+- **THE SIM SLIDER TELEPORTS — `_simClockAt` (Peter: "66.8 km. It's only taken 41 minutes. That's not
+  really possible for a bicycle").** He diagnosed it himself: *"it is the scrubbing that is doing it."*
+  A scrub moves you 60 km down the road and adds NO time, so every time-based figure disagrees with every
+  distance-based one. `simStart` made it worse: it starts `_simIdx` from the slider position but zeroed
+  `_simElapsedMs`, so play-from-a-scrub reported only the part it watched. **The plan is the authority on
+  how long a distance takes, so scrubbing now asks it:** `_simClockAt(dist,r)` = `cumRidingAt × timeFactor`
+  — the same expression `etaAt` uses (after rebuildPace `estDuration === crTot`, so its scale reduces to
+  timeFactor). Wired into `simStart` and BOTH slider handlers (there are two — they must agree).
+  Verified: Peter's exact frame goes from an implied **98 km/h → 20.0 km/h**, and a scrub to any distance
+  now implies the plan's own speed. **Pause/resume was never at fault** (`if(!resuming)` guards the reset)
+  — Peter confirmed that independently.
+  · Note this also improves the speed pill, whose sim average was built on `_rideAvgMsAccum` + a zeroed
+    sim clock. That accumulator still accrues REAL time on each `stopGPS` and can be restored from a
+    previous session (`lastGps.rideAvgMs`), so in a sim it mixes real minutes with sim minutes. Not
+    touched here — it's part of the v260 average job.
+- **THE SIM CLOCK — 4th occurrence of the same lesson.** `_legVals` read `Date.now()`, so the sim showed
+  real seconds against simulated kilometres ("12 minutes elapsed but I've done 50 km" — Peter). The sim
+  has its OWN clock: `_simElapsedMs` accrues the ride-world time each step would really have taken, so
+  it's independent of 1×/2×/5× playback, and the speed pill already guards this exact way. **ANY
+  ride-time measurement must ask the sim for the time** (v257 rotation → peek anchor → paused-sim average
+  → this).
 - **Verified:** fragment `node --check` + **26/26 truth-table** — the 20×4-min trap reads 17% not 0%;
   fixed-wake sleep starts a new leg and is not stoppage; duration-only sleep does NOT split and reads
   90%; non-stop 4 h bivvy = stoppage, overall avg 45 where a moving avg would have flattered at 75;
   live stop counts as it happens; stopped can never exceed elapsed; formats never burst the 5ch box.
+
+**PARKED — the orange turn highlight should trail LONGER (Peter, from real riding, 16 Jul):** *"the orange
+turn marker should extend PAST the turn as much as it started BEFORE the turn. I am finding the orange
+marker excellent for confidence after a turn, but the ~40 or ~60 m quickly passes, and then you have a
+sense of uncertainty again and might go to zoom the map to make sure."*
+- **The finding is the valuable part: the orange's job after the corner is CONFIDENCE, not guidance.** It
+  answers "did I take the right road?", which is a different question from "a turn is coming" — and the
+  evidence is that when it ends too early he reaches for the zoom. That's a job the route line alone
+  can't do: *"the route colour matching sky is very good, but at times it can have minimal contrast."*
+  So the approach length and the exit length serve different purposes and needn't be equal.
+- **THE TRAP — do not implement "symmetric" literally without checking Peter's setting first.** Today:
+  approach = `UI.turnAlertM` (**default 50 m**), exit = `const afterKm=0.06` (**60 m**, `_activeTurn`).
+  So on the default, symmetry gives a **50 m** trail — SHORTER than the 60 m he already has, i.e. the
+  opposite of what he's asking for. Symmetry only lengthens the trail if his alert distance is above
+  60 m. **Ask what `turnAlertM` is set to before choosing the rule.** Candidates: `after = max(alertM,
+  60)`, `after = alertM` only once the alert is known to be long, or simply a longer fixed exit.
+- Related, already known: the v243 demote guard means a long exit can't strand the next turn — if the
+  next turn's window opens while the orange is still lit, it hands straight over.
+
+**PARKED — distance bar tick marks (Peter's idea, 16 Jul):** *"some minor lines in the opposing colour in
+the distance bar — indicating every 10 km, or maybe half, quarter, 1/8 distance. They would have to stay
+clear of the text of course."*
+- **The "opposing colour" is the good part**: a tick drawn dark on the fill and light on the to-go side
+  flips at the divide and stays visible on both — the same trick the migrating figures use.
+- **Fractions, not 10 km.** Absolute marks degrade exactly where the bar matters most: 13 ticks on a
+  137 km route, 30 on a 300, ~100 on a 1000 km event. Quarters (3) or eighths (7) are scale-free and match
+  what the bar is FOR — proportion. Absolute distance is already the elevation strip's job.
+- Dodging the figures is cheap: `_distBarGeom` already knows both figures' boxes, so a tick just skips
+  when it would land under one.
+- Not built. Judge it at true size before committing — the v258 lesson was that a 3px tick vanished on a
+  phone and only looked right at 2×.
 
 **STILL TO DO (v260) — the speed pill's average:**
 - Peter's decision: *"I'd opt for the average to show the current leg only, if there is a sleep with a

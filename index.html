@@ -2380,12 +2380,17 @@ function legToGoKm(r,liveDist){return Math.max(0,legEnd(r,liveDist).dist-liveDis
 function legHasFixedWake(r){
   return !!(r&&(r.stops||[]).some(s=>isSleepStop(s)&&s.departTime));
 }
-// Format a duration for a pill: "1h42" / "23m" / "120h" (minutes are noise past 99h, and
-// "120h34" would burst the 5ch box). Deliberately NOT "1:42" — that reads as a clock time.
+// Format a duration for a pill: "45m" / "8h04" / "120h34". Deliberately NOT "8:04" — that
+// reads as a clock time, and a duration next to a clock time is the mix Peter rejected.
+// It keeps the minutes past 99h and simply grows the pill (Peter: "It's okay if it did get
+// wider because it doesn't fluctuate like speed. Speed's always up and down, but duration
+// is just very gradual"). The 4ch box exists to stop a WOBBLING number shifting its
+// decimal point; a figure that ticks once a minute doesn't need protecting from itself,
+// and a 5-day event is exactly when you'd want the minutes rather than a rounded "120h".
 function fmtDurPill(ms){
   if(!(ms>=1000))return'—';
   const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
-  return h>=100?h+'h':h>0?h+'h'+String(m).padStart(2,'0'):m+'m';
+  return h>0?h+'h'+String(m).padStart(2,'0'):m+'m';
 }
 
 // ── The distance bar's geometry (v258) ───────────────────────────────────────
@@ -3750,7 +3755,14 @@ function _legReset(ts, km){
 function _legVals(){
   if(!_rec || !UI.legStartTS) return null;
   const now = Date.now();
-  const elapsedMs = Math.max(0, now - UI.legStartTS);
+  // THE SIM RUNS ON ITS OWN CLOCK. _simElapsedMs accrues the ride-world time each step
+  // would really have taken, so it's independent of 1×/2×/5× playback. Reading the wall
+  // clock here reported real seconds against simulated kilometres — 50 km covered in "12
+  // minutes" at 5× (Peter spotted it). The speed pill already guards this exact way; this
+  // is the same lesson for the fourth time (v257 rotation, peek anchor, the paused-sim
+  // average, now here): ANY ride-time measurement must ask the sim for the time.
+  const elapsedMs = (UI.simRunning || UI.simPaused) ? _simElapsedMs
+                                                    : Math.max(0, now - UI.legStartTS);
   let stoppedMs = UI.legStoppedMs || 0;
   if(_legStopT !== null) stoppedMs += Math.max(0, now - _legStopT);   // stopped right now
   stoppedMs = Math.min(stoppedMs, elapsedMs);                          // can't exceed the leg
@@ -7995,6 +8007,19 @@ function simLoadGPX(txt){
   return pts;
 }
 
+// v259 — what the sim's clock SHOULD read at a given distance along the route.
+// The slider teleports: it moves you 60 km down the road in one drag, adding distance with
+// no time. Every time-based figure then disagrees with every distance-based one (Peter's
+// "66.8 km in 41 minutes"). The plan is the authority on how long that distance takes, so
+// scrubbing asks it. This is the same expression etaAt uses: after rebuildPace,
+// estDuration === crTot, so its scale factor reduces to timeFactor.
+function _simClockAt(distKm,r){
+  if(!r||!distKm||distKm<=0)return 0;
+  const cr=cumRidingAt(distKm,r);
+  if(cr==null||!isFinite(cr))return 0;
+  return Math.max(0,cr*(r.timeFactor||1)*3600000);
+}
+
 function simStart(){
   if(Date.now()-_simStoppedAt<800){return;} // ignore accidental re-trigger after stop
   const r=cur();
@@ -8006,7 +8031,13 @@ function simStart(){
     // Start from current slider position if set, otherwise from beginning
     const startDist=UI.gpsDistKm||0;
     _simIdx=startDist>0?Math.max(0,r.points.findIndex(p=>p.dist>=startDist)):0;
-    _simElapsedMs=0;
+    // v259: SEED THE SIM CLOCK FROM THE PLAN. Starting from a scrubbed slider teleports
+    // you down the road, and a zeroed clock then reported only the part it watched —
+    // Peter: "I've done 66.8 km. It's only taken 41 minutes. That's not really possible
+    // for a bicycle." The plan already knows how long 66.8 km takes, so ask it.
+    // cumRidingAt × timeFactor is exactly what etaAt uses (estDuration === crTot after
+    // rebuildPace, so its scale factor reduces to timeFactor).
+    _simElapsedMs=_simClockAt(startDist,r);
     UI.alertedStops=new Set();
     _offRouteReset(true);   // fresh sim run — re-arm off-route alerts
   }
@@ -11089,6 +11120,8 @@ document.addEventListener('input',e=>{
     const dist=+e.target.value;
     const r=cur();
     UI.gpsDistKm=dist;
+    _simElapsedMs=_simClockAt(dist,r);   // v259: scrubbing moves the clock too, or time
+                                         // and distance stop agreeing (see _simClockAt)
     _turnCuesFired.clear(); // scrubbing repositions — let upcoming turn cues fire fresh
     if(r&&r.points.length){
       const pt=r.points[cidx(r,dist)];
@@ -12854,6 +12887,37 @@ function sortedLayers(r){
   });
 }
 
+// ── The floating pills (v259) ────────────────────────────────────────────────
+// ONE cycle, at module scope. There used to be two copies — one in tLiveShell, one in the
+// tap handler — which had to be kept in step by hand. Same drift trap as everything else
+// in this file.
+const PILL_CYCLE=['speed','stop','power','hr','off'];
+// Assigned by tLiveShell when the live shell is built. It closes over nothing (it reads
+// UI and _legVals only, never the route), so it is safe to call from anywhere once set.
+let _renderFloatingPill=null;
+// THE BUG THIS EXISTS FOR (Peter: "on the desktop simulator, the pills don't really
+// cycle"). The tap handler changed UI.livePills and called renderKeepScroll() — but on
+// DESKTOP during a sim/GPS, _render() short-circuits to updateLive() and returns WITHOUT
+// rebuilding the live shell (the anti-flash guard). So the setting changed and the pill
+// never redrew. It worked on mobile, which is why it survived.
+// This is the v238 gotcha for the THIRD time (turn popup → sharing button → these pills):
+// **anything that only exists in the live template is never rebuilt mid-ride on desktop.**
+// If a thing can change while riding, it needs a sync function like this one.
+// Called only when a pill's TYPE changes — updateLive already patches the values by id,
+// so there is no per-tick DOM churn here.
+function _fpillsSync(){
+  const sec=document.getElementById('live-map-section');
+  if(!sec||!_renderFloatingPill)return;
+  for(let i=0;i<3;i++){
+    const html=_renderFloatingPill(i);
+    const el=sec.querySelector('.live-fpill[data-slot="'+i+'"]');
+    if(!el){ if(html)sec.insertAdjacentHTML('beforeend',html); continue; }
+    const tmp=document.createElement('div');tmp.innerHTML=html;
+    const fresh=tmp.firstElementChild;
+    if(fresh)el.replaceWith(fresh); else el.remove();
+  }
+}
+
 function _render(){
   // PackView and the join screen have torn the app shell out — there are no tabs and
   // no content-wrap to render into. Any stray render() call would throw, so bail.
@@ -13543,11 +13607,7 @@ function tLiveShell(r){
   </div>`;
   // ── Floating ride pills (overlay on map) ──
   // Each of 3 slots cycles: speed → power → hr → off → speed...
-  // v259: 'time' sits straight after 'speed' — it needs no sensor, so it's the one most
-  // riders can actually use, and it's one tap away. Must match the cycle in the tap
-  // handler (grep PILL_CYCLE — there are two, and they have to agree).
-  const PILL_CYCLE=['speed','stop','power','hr','off'];
-  const _renderFloatingPill=(slotIdx)=>{
+  _renderFloatingPill=(slotIdx)=>{
     const type=(UI.livePills||['speed','off','off'])[slotIdx]||'off';
     const base='position:absolute;z-index:12;cursor:pointer;-webkit-tap-highlight-color:transparent;';
     const pos=slotIdx===0?'left:6px;':slotIdx===1?'left:50%;transform:translateX(-50%);':'right:6px;';
@@ -13599,19 +13659,33 @@ function tLiveShell(r){
       // mistaken for a clock — if two numbers need a format hack to stay apart, they don't
       // belong in one pill. The speed pill works because both halves are km/h.
       //
-      // The % is the REVERSED half because it's the one you act on. Same shape, same
-      // reasoning as the speed pill putting the average there.
+      // TOP = elapsed, BOTTOM (reversed) = the % of it you spent stopped. Peter: "I think
+      // we need an elapsed time with a stoppage % on it." The two are the same kind of
+      // thing — a quantity and its own ratio — so stopped duration falls out and doesn't
+      // need a slot. The % is reversed because it's the half you act on, same reasoning as
+      // the speed pill's average.
+      //
+      // GEOMETRY IS THE SPEED PILL'S, EXACTLY: 34px figures in a 4ch box, same paddings,
+      // same label sizes → same height, which is what Peter spotted was off. Elapsed fits
+      // 4ch because past 99h fmtDurPill drops the minutes ("120h"), and "100%" is 4 too.
       const L=_legVals();
-      const sv=L?fmtDurPill(L.stoppedMs):'—';
+      const ev=L?fmtDurPill(L.elapsedMs):'—';
+      // The % waits a minute: 3 seconds into a ride, sitting at the lights, "100%" is
+      // true and useless.
       const pv=(L&&L.elapsedMs>60000)?Math.round(L.stopPct)+'%':'—';
+      // Says WHICH elapsed. On a fixed-wake plan the clock restarts each morning, so
+      // "elapsed" alone would be a lie on day 2.
+      const elbl=legHasFixedWake(r)?'leg elapsed':'elapsed';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-stop">
         <div style="padding:5px 8px 3px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:5ch;text-align:right;font-size:30px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-stop-dur">${sv}</span></div>
-          <div style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.1;">stopped</div>
+          <!-- min-width, not width: holds the 4ch column like the speed pill for any
+               normal ride, and simply grows past 99h ("120h34") rather than clipping. -->
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-stop-ela">${ev}</span></div>
+          <div style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.1;" id="live-stop-elbl">${elbl}</div>
         </div>
         <div style="background:#eef3ee;padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:5ch;text-align:right;font-size:30px;font-weight:500;color:#101510;font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
-          <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">${L?'of this leg':'record to measure'}</div>
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#4a5a4a;font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">${L?'stopped':'record to measure'}</div>
         </div>
       </div>`;
     }
@@ -16334,16 +16408,16 @@ function updateLive(){
   // v259: the STOPPAGE pill. Same authority as the template (_legVals) — never a second
   // copy of the maths. The % waits for a minute of ride before showing: 3 seconds into a
   // ride, standing at the lights, "100%" is true and useless.
-  const sDur=document.getElementById('live-stop-dur');
-  if(sDur){
+  const sEla=document.getElementById('live-stop-ela');
+  if(sEla){
     const L=_legVals();
-    const sv=L?fmtDurPill(L.stoppedMs):'—';
+    const ev=L?fmtDurPill(L.elapsedMs):'—';
     const pv=(L&&L.elapsedMs>60000)?Math.round(L.stopPct)+'%':'—';
-    if(sDur.textContent!==sv)sDur.textContent=sv;
+    if(sEla.textContent!==ev)sEla.textContent=ev;
     const sPct=document.getElementById('live-stop-pct');
     if(sPct&&sPct.textContent!==pv)sPct.textContent=pv;
     const sLbl=document.getElementById('live-stop-lbl');
-    const lv=L?'of this leg':'record to measure';
+    const lv=L?'stopped':'record to measure';
     if(sLbl&&sLbl.textContent!==lv)sLbl.textContent=lv;
   }
   // Update floating HR pill value (if visible)
@@ -17182,15 +17256,16 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   const fpill=e.target.closest('.live-fpill');
   if(fpill&&UI.tab==='live'){
     if(_fpillLP.fired){_fpillLP.fired=false;return;} // suppress click after long-press
-    // MUST match the PILL_CYCLE in tLiveShell's _renderFloatingPill (v259 added 'time').
-    const PILL_CYCLE=['speed','stop','power','hr','off'];
     const slot=+fpill.dataset.slot;
     const pills=UI.livePills||['speed','off','off'];
     const cur=pills[slot]||'off';
     const next=PILL_CYCLE[(PILL_CYCLE.indexOf(cur)+1)%PILL_CYCLE.length];
     pills[slot]=next;
     UI.livePills=pills;
-    saveAll();renderKeepScroll();
+    saveAll();
+    // NOT renderKeepScroll(): on desktop mid-sim/ride that short-circuits to updateLive()
+    // and the pill never redraws (v259 — the bug Peter found). Rebuild it directly.
+    _fpillsSync();
     return;
   }
   if(e.target.closest('#live-weather-bar')&&UI.tab==='live'){
@@ -17950,6 +18025,8 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     const dist=+e.target.value;
     const r=cur();
     UI.gpsDistKm=dist;
+    _simElapsedMs=_simClockAt(dist,r);   // v259: ditto — the other slider handler. Both
+                                         // must move the clock, or one of them teleports.
     _turnCuesFired.clear(); // scrubbing repositions — let upcoming turn cues fire fresh
     if(r&&r.points.length){
       const pt=r.points[cidx(r,dist)];
