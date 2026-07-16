@@ -366,6 +366,54 @@ v259 is pushed. v260 clears the ride-test items that were already DECIDED; the o
   again by hand. **It deliberately does NOT re-upload** — deleting it on Strava was a deliberate act, and
   silently resurrecting it would be the app overruling the rider. Re-renders the detail modal if it's the
   one on screen, or it keeps showing the stale ✓ until closed and reopened.
+- **FIVE PILL SLOTS, IN THREE COLUMNS** (Peter: *"we now have more pills than spots, can we add some
+  spots below the current ones, on left and right, perhaps not centre as it blocks the route line"*).
+  `0` top-left · `1` top-centre · `2` top-right · `3` below-left · `4` below-right. **He's right about
+  the centre** — the live map is heading-up, so the route runs straight up the middle column and a second
+  pill there would sit on the line. Now there are exactly as many slots as data pills (speed · stop ·
+  power · cad · hr), so all five can be on at once.
+  · **The columns are FLEX, not computed tops.** Pill heights vary from 28px ("off") to ~105px (two
+    halves), so any fixed `top` for row 2 would break the moment a slot changed. `_renderFloatingPill`
+    no longer positions anything — the column does (`FPILL_COLS`). `align-items` per column keeps each
+    pill hugging its own edge, so a wide one grows inward rather than off screen.
+  · **THE MIGRATION TRAP, caught by the truth-table:** the old load guard was
+    `prefs.livePills.length===3`, and every saved layout in existence holds 3 — so a strict check would
+    have **silently discarded Peter's pill choices** the first time v260 opened. It now pads instead:
+    old three kept exactly, two new slots start empty. Verified 11/11.
+- **THE HR PILL JOINS THE FAMILY — it was the last one still in its pre-v257 clothes**, and every
+  difference Peter spotted came from that one fact. It had: units INLINE ("137 bpm") where every other
+  pill puts them below · figures at 32/26px where the family is 34 · **DM Sans weight 800, i.e.
+  PROPORTIONAL digits that jiggle on every beat** (the v244 rule is figures = DM Mono) · the whole pill
+  flooded with one zone colour instead of two halves · a 2px zone border · and an **average hardcoded to
+  "—" in the template** even though the BLE handler computes it (`UI._hrSum/_hrCount`). Now mirrors the
+  power pill exactly: top = current bpm in the CURRENT zone, bottom = average bpm in the AVERAGE's zone,
+  34px DM Mono centred, unit below. Verified 6/6.
+- **THE STALE-ZONE BUG (Peter found it: "the colours are wrong for the zones").** `live-power-top`'s
+  background was painted ONLY by the template and the BLE handler — `updateLive` never touched it. So
+  anything driving power through updateLive (the new fake sensors) left the top's colour frozen at the
+  last render while the bottom updated live. The tell was arithmetic, not taste: **362 W showed a LOWER
+  zone than 290 W, which no single FTP can produce.** Both halves of both pills are now patched in
+  updateLive AND the BLE handler. **Standing shape: if a pill can change mid-ride, every path that
+  changes it must repaint it — the template is not one of those paths on desktop (v238).**
+- **NO ZONE-COLOURED BORDER on power or HR** (Peter: *"the border around the bottom half in the same
+  colour as the top half is weird"* — it was). It used the TOP half's zone and wrapped the whole pill, so
+  the bottom half sat inside a ring belonging to neither zone. The halves carry the zone; the border is
+  just the pill's border. **But the border itself STAYS** — Peter asked whether the power pill needs one
+  at all: yes, and it's the same mechanism he admired on the speed pill. The pill's dark bg shows through
+  the 1px `rgba(255,255,255,0.15)` ring, which is the only thing stopping a saturated zone colour
+  touching the map — and Z4 green sits on a green map.
+- **Power/cadence figures CENTRED, not right-justified** (Peter). The 4ch right-aligned box exists to stop
+  a DECIMAL POINT moving (speed 9.2 → 18.0); watts and rpm have no decimal, so there was nothing to hold
+  still. **Rule: right-align when there's a decimal to anchor, centre when there isn't.**
+- **The "dirty green" is probably the DISPLAY, not the palette.** Peter: *"that green doesn't look like
+  the green on my phone… it looks a dirty green"*, then *"I could have sworn it was much brighter and
+  more saturated on my phone."* Measured: the zone palette is Material Design — Z4 is Green 600
+  (`#43A047`, brightness 63%) next to the app's mint `--accent` (`#4ade80`, brightness 87%). On a desktop
+  LCD it reads muddy; his phone is OLED and renders it far more vividly. **Judge the zone palette on the
+  PHONE — that's where it's ridden.** If it still looks wrong there, the honest fix is a palette pass
+  (the zone colours belong to Material, not to this app), not nudging one swatch. Also measured, for
+  whoever does that pass: white text FAILS on Z1 grey (1.88) and Z5 yellow (1.40), so an all-white
+  palette is not available while yellow is a zone — the mixed black/white treatment is forced.
 - **FAKE SENSORS IN THE DESKTOP SIM** (`_simSensorsSet`/`_simSensorTick`, `#desktop-sim-sensors`).
   Peter: *"Can there be a small dial or something in the simulator near the slider so I can cycle the
   power and heart rate pills? I can learn a lot on the desktop without riding."* The power/HR pills need
@@ -454,8 +502,23 @@ really happy with that."* Elapsed worked too. The leg clock is proven on a real 
   It should be white, with full contrast. I think for all those pills, I'd just use black and white. I
   wouldn't use the grey. I don't think it really works."* → kill `rgba(255,255,255,0.5)` / `#4a5a4a` on
   every pill label.
-- **Stop % to ONE DECIMAL** — *"1.1, 1.2… it would just give you a better idea of what the number's up
-  to, and you've got plenty of space."*
+- **Stop % — ADAPTIVE precision (`fmtStopPct`), which is better than either option on the table.** Peter
+  asked for one decimal (*"1.1, 1.2… it would just give you a better idea of what the number's up to, and
+  you've got plenty of space"*), then spotted the cost himself — *"it will get worse when it is 10 or
+  above"* — and offered to drop the decimal entirely. **His own example is the rule**: he said "1.1, 1.2",
+  i.e. LOW numbers, which is exactly where a decimal carries information. At 15% the `.3` is noise.
+  · `<10%` → `1.2%` (4ch) · `≥10%` → `12%` (3–4ch). Never over 4ch, so the pill holds the family's
+    100px (was 118) AND the figure stays at the family's 34px — the hero never shrinks, which is why the
+    cad pill's 28px fix was wrong here (the % IS the hero).
+  · **It gets NARROWER at 10, never wider** — so the pill can't grow mid-ride.
+  · **Bug the truth-table caught in my own rule:** `p<10 ? p.toFixed(1) : …` emits **"10.0%" (5ch)** at
+    p=9.96 — under 10 raw, but toFixed rounds it up. Test the ROUNDED value (`+p.toFixed(1) < 10`), not
+    the raw one. 17/17.
+- **The cad pill's balance figure is 28px, not 34** — "49/51" is 5 glyphs and 5 glyphs at 34px is 102px,
+  forcing the pill to 118 and cropping its neighbour. 28px is the LARGEST size that returns it to exactly
+  100px, so it's the smallest reduction that works; the cadence figure above stays at 34 ("88" is 41px).
+  Peter: *"I don't see a way of reducing that except for reducing the font size for the left right. The
+  RPM font can stay the same size."* Correct — there is no other lever.
 - **Unit placement is inconsistent**: the speed pill puts its unit UNDERNEATH the figure; the time pill
   has it inline ("8h04"). Peter: *"we need to be trying to be consistent."* Not yet resolved which wins.
 

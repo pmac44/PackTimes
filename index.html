@@ -338,7 +338,7 @@ select option{background:var(--bg3);}
            a slider so the pills, their zone colours and their widths can all be seen at a
            desk. Sim-only: it never touches the recording path, and disconnecting a real
            sensor still wins because connectPowerMeter sets powerConnected itself. -->
-      <div id="desktop-sim-sensors" style="position:absolute;bottom:166px;left:16px;z-index:20;display:none;flex-direction:row;gap:8px;align-items:center;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
+      <div id="desktop-sim-sensors" style="position:absolute;bottom:180px;left:16px;z-index:20;display:none;flex-direction:row;gap:8px;align-items:center;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
           <label style="font-size:12px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;cursor:pointer;display:flex;align-items:center;gap:5px;">
             <input type="checkbox" id="sim-sensors-on" style="accent-color:var(--accent);cursor:pointer;">Fake sensors
           </label>
@@ -966,7 +966,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   sharePendingRide:null,shareRideSent:null,shareRideEvent:null,shareRides:[],
   // PackRide events (§3.7). eventCode = the event this rider is currently riding in.
   eventCode:null,eventRouteKey:null,events:[],
-  livePills:['speed','off','off']};
+  livePills:['speed','off','off','off','off']};   // v260c: 5 slots (see FPILL_COLS)
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -1074,7 +1074,12 @@ async function loadAll(){
       if(prefs.elevExpanded!==undefined)UI.elevExpanded=prefs.elevExpanded;
       if(prefs.routeOverlay)UI.routeOverlay=prefs.routeOverlay;
       if(prefs.elevZoomKm)UI.elevZoomKm=prefs.elevZoomKm;
-      if(Array.isArray(prefs.livePills)&&prefs.livePills.length===3)UI.livePills=prefs.livePills;
+      // v260c: was `length===3`. Everyone's saved prefs hold 3, and a strict length check
+      // would have silently thrown their pill choices away the first time they opened v260.
+      // Pad instead: the two new slots start empty, the old three are kept exactly.
+      if(Array.isArray(prefs.livePills)&&prefs.livePills.length>=3){
+        UI.livePills=[0,1,2,3,4].map(i=>prefs.livePills[i]||'off');
+      }
       if(prefs.recId)UI.recId=prefs.recId;
       if(prefs.rideNowId)UI.rideNowId=prefs.rideNowId;
       if(prefs.rideNowTs)UI.rideNowTs=prefs.rideNowTs;
@@ -2393,6 +2398,23 @@ function legToGoKm(r,liveDist){return Math.max(0,legEnd(r,liveDist).dist-liveDis
 // fair question at either kind of stop. This keys off departTime only.
 function legHasFixedWake(r){
   return !!(r&&(r.stops||[]).some(s=>isSleepStop(s)&&s.departTime));
+}
+// v260c — stop % with ADAPTIVE precision, and the rule is Peter's own example.
+// He asked for one decimal ("1.1, 1.2… it would just give you a better idea of what the
+// number's up to, and you've got plenty of space") — but the space wasn't there: "12.3%" is
+// 5 characters, which pushed the pill to 118px, and it would have JUMPED wider the moment
+// stoppage crossed 10%. He offered to drop the decimal entirely; this keeps it where it
+// works instead.
+//   under 10%  -> "1.2%" — a decimal is real information when you're barely stopping
+//   10% and up -> "12%"  — at 15% the .3 is noise, and nobody rides to a tenth of a percent
+// Both are ≤4ch, so the pill holds the family's 100px AND the figure stays at the family's
+// 34px. Precision where it carries information; the hero never shrinks.
+function fmtStopPct(p){
+  if(!isFinite(p))return'—';
+  // Test the ROUNDED value, not the raw one: 9.96 is under 10, but toFixed(1) makes it
+  // "10.0" — five characters, which is the exact overflow this function exists to prevent.
+  const d1=+p.toFixed(1);
+  return (d1<10 ? d1.toFixed(1) : String(Math.round(p)))+'%';
 }
 // Format a duration for a pill: "45m" / "8h04" / "120h34". Deliberately NOT "8:04" — that
 // reads as a clock time, and a duration next to a clock time is the mix Peter rejected.
@@ -8085,6 +8107,11 @@ function _simSensorTick(){
   UI.powerBalance=Math.round(48+Math.random()*4);
   // HR lags power and saturates — good enough to exercise the zones, not a physiology model.
   UI.hrBpm=Math.round(Math.min(190,95+base*0.21));
+  // Feed the SAME average accumulator the BLE handler uses, or the HR pill's reversed half
+  // sits on "—" on the desktop and the thing you're trying to look at never appears —
+  // exactly the trap the NP accumulator would have been.
+  if(!UI._hrSum){UI._hrSum=0;UI._hrCount=0;}
+  UI._hrSum+=UI.hrBpm; UI._hrCount++;
   // Same NP maths as the BLE handler, so the weighted half is real.
   const now=Date.now();
   if(now-_npLastSampleTs>=950){
@@ -12999,6 +13026,17 @@ function sortedLayers(r){
 // tap handler — which had to be kept in step by hand. Same drift trap as everything else
 // in this file.
 const PILL_CYCLE=['speed','stop','power','cad','hr','off'];
+// v260c — FIVE slots, in three columns. Peter: "we now have more pills than spots, can we
+// add some spots below the current ones, on left and right, perhaps not centre as it blocks
+// the route line." Right on the centre: the live map is heading-up, so the route runs
+// straight up the middle column — a second pill there would sit on the line.
+//   0 = top-left     1 = top-centre    2 = top-right
+//   3 = below-left                     4 = below-right
+// The columns are flex, so a second-row pill sits under whatever the first row's height
+// turns out to be. That matters: pill heights vary from 28px (off) to ~105px (two halves),
+// so any fixed top for row 2 would break the moment a slot changed.
+const FPILL_DEFAULT=['speed','off','off','off','off'];
+const FPILL_COLS={0:'fpill-col-l',1:'fpill-col-c',2:'fpill-col-r',3:'fpill-col-l',4:'fpill-col-r'};
 // Assigned by tLiveShell when the live shell is built. It closes over nothing (it reads
 // UI and _legVals only, never the route), so it is safe to call from anywhere once set.
 let _renderFloatingPill=null;
@@ -13015,10 +13053,16 @@ let _renderFloatingPill=null;
 function _fpillsSync(){
   const sec=document.getElementById('live-map-section');
   if(!sec||!_renderFloatingPill)return;
-  for(let i=0;i<3;i++){
+  for(let i=0;i<5;i++){
     const html=_renderFloatingPill(i);
     const el=sec.querySelector('.live-fpill[data-slot="'+i+'"]');
-    if(!el){ if(html)sec.insertAdjacentHTML('beforeend',html); continue; }
+    if(!el){
+      // v260c: a missing pill must land in ITS OWN column, not loose in the map section —
+      // the columns are what position it now.
+      const col=document.getElementById(FPILL_COLS[i]);
+      if(col&&html)col.insertAdjacentHTML('beforeend',html);
+      continue;
+    }
     const tmp=document.createElement('div');tmp.innerHTML=html;
     const fresh=tmp.firstElementChild;
     if(fresh)el.replaceWith(fresh); else el.remove();
@@ -13715,11 +13759,16 @@ function tLiveShell(r){
   // ── Floating ride pills (overlay on map) ──
   // Each of 3 slots cycles: speed → power → hr → off → speed...
   _renderFloatingPill=(slotIdx)=>{
-    const type=(UI.livePills||['speed','off','off'])[slotIdx]||'off';
-    const base='position:absolute;z-index:12;cursor:pointer;-webkit-tap-highlight-color:transparent;';
-    const pos=slotIdx===0?'left:6px;':slotIdx===1?'left:50%;transform:translateX(-50%);':'right:6px;';
+    const type=(UI.livePills||FPILL_DEFAULT)[slotIdx]||'off';
+    // v260c — the pills no longer position themselves. Their COLUMN does (see FPILL_COLS):
+    // a flex column stacks them, so a second row sits under the first whatever height the
+    // first happens to be — and they vary a lot (an "off" pill is 28px, a two-half pill is
+    // ~105px). Computing a fixed top for row 2 would have been wrong the moment a slot was
+    // switched off.
+    const base='cursor:pointer;-webkit-tap-highlight-color:transparent;';
+    const pos='';
     if(type==='off'){
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}">
         <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:rgba(10,15,10,0.7);border:1px solid rgba(255,255,255,0.15);border-radius:7px;">
           <span style="font-size:18px;color:rgba(255,255,255,0.5);line-height:1;">+</span>
         </div></div>`;
@@ -13742,7 +13791,7 @@ function tLiveShell(r){
       // steady for "88.8" (2 digits + point + 1 — Peter: >100 km/h can fend for
       // itself). The AVERAGE half is REVERSED (light bg, dark figures) — on a long
       // ride the average is the number that matters; current speed wobbles.
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-speed">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-speed">
         <div style="padding:5px 8px 3px;">
           <!-- numbers RIGHT-JUSTIFIED in a fixed 4-character box (DM Mono = equal
                widths), so the decimal point never moves between 9.2 and 18.0 -->
@@ -13786,11 +13835,11 @@ function tLiveShell(r){
       // true and useless. ONE DECIMAL (Peter, from the ride): "it would just give you a
       // better idea of what the number's up to, and you've got plenty of space" — and it
       // is the number he says you actively drive, so it should show movement.
-      const pv=(L&&L.elapsedMs>60000)?L.stopPct.toFixed(1)+'%':'—';
+      const pv=(L&&L.elapsedMs>60000)?fmtStopPct(L.stopPct):'—';
       // Says WHICH elapsed. On a fixed-wake plan the clock restarts each morning, so
       // "elapsed" alone would be a lie on day 2.
       const elbl=legHasFixedWake(r)?'leg elapsed':'elapsed';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-stop">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-stop">
         <div style="padding:5px 8px 3px;">
           <!-- min-width, not width: holds the 4ch column like the speed pill for any
                normal ride, and simply grows past 99h ("120h34") rather than clipping. -->
@@ -13807,7 +13856,7 @@ function tLiveShell(r){
     }
     if(type==='power'){
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-power">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-power">
           <div style="font-size:20px;line-height:1;">&#x26A1;</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
         </div>`;
@@ -13831,7 +13880,12 @@ function tLiveShell(r){
       // this does. The power pill is now purely power.
       const pw=UI.powerWatts;
       const pz=pw!==null?powerZone(pw,UI.ftp):null;
-      const bdr=pz?('2px solid '+pz.border):pillBorder;
+      // v260b — NO zone-coloured border. It was 2px of the TOP half's zone wrapped around
+      // a bottom half that is a DIFFERENT zone, so the pill wore a third colour belonging
+      // to neither (Peter: "the border around the bottom half in the same colour as the
+      // top half is weird" — it was). Now the two halves ARE the zones and the border is
+      // just the pill's border, like every other pill.
+      const bdr=pillBorder;
       const col=pz?(pz.textDark?'#000':'#fff'):'var(--text)';
       const lblCol=pz?col:'var(--text)';
       const curVal=pw!==null?pw:'—';
@@ -13847,13 +13901,16 @@ function tLiveShell(r){
       const npz=(np!=='—')?powerZone(np,UI.ftp):null;
       const npBg=npz?npz.bg:'#eef3ee';
       const npCol=npz?(npz.textDark?'#000':'#fff'):'#101510';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${bdr};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-power">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${bdr};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-power">
         <div id="live-power-top" style="padding:5px 8px 3px;${pz?`background:${pz.bg};`:''}">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-power-cur">${curVal}</span></div>
+          <!-- v260b CENTRED, not right-justified. The 4ch right-aligned box exists to stop a
+               DECIMAL POINT moving (speed: 9.2 → 18.0). Watts have no decimal, so there was
+               nothing to hold still — it was just off-centre for no reason (Peter). -->
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-power-cur">${curVal}</span></div>
           <div style="font-size:11px;font-weight:400;color:${lblCol};font-family:var(--sans);line-height:1.1;">W · 3 s</div>
         </div>
         <div id="live-power-bot" style="background:${npBg};padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:${npCol};font-family:var(--font);" id="live-power-np">${np}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${npCol};font-family:var(--font);" id="live-power-np">${np}</span></div>
           <div style="font-size:10px;font-weight:500;color:${npCol};font-family:var(--sans);line-height:1.1;" id="live-power-nplbl">W weighted</div>
         </div>
       </div>`;
@@ -13863,7 +13920,7 @@ function tLiveShell(r){
       // Same two-half shape as every other pill. Both figures come off the power meter, so
       // the unpaired state is the power meter's.
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-cad">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-cad">
           <div style="font-size:20px;line-height:1;">&#x1F504;</div>
           <div style="font-size:11px;color:var(--text);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
         </div>`;
@@ -13872,42 +13929,76 @@ function tLiveShell(r){
       // "49/51" is 5 chars — min-width so the pill holds the 4ch column when it can and
       // grows when it must, rather than clipping.
       const balTxt=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-cad">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-cad">
         <div style="padding:5px 8px 3px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-cad-cur">${cadTxt}</span></div>
+          <!-- centred: no decimal point to hold still (same rule as the power pill) -->
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-cad-cur">${cadTxt}</span></div>
           <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
         </div>
         <div style="background:#eef3ee;padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
-          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">L/R</div>
+          <!-- v260c — the balance figure is 28px, not the family's 34px. Peter: "the left
+               right pedalling percentage pill is very wide. I don't see a way of reducing
+               that except for reducing the font size for the left right. The RPM font can
+               stay the same size." He's right that there's no other lever: "49/51" is five
+               glyphs and five glyphs at 34px is 102px, which forces the pill to 118 and
+               crops its neighbour. 28px is the LARGEST size that brings it back to exactly
+               100px (the family's min-width), so it's the smallest reduction that works —
+               and the cadence figure above stays at 34, since "88" is only 41px. -->
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:28px;font-weight:500;color:#101510;font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
+          <!-- v260c "L/R" → "Left/Right %" (Peter: "there is plenty of room for it"). Measured:
+               58px in an 84px slot, and the 49/51 figure above is 84px, so the label was never
+               what governed this pill's width — no cost. "L/R" is bike-computer shorthand that
+               assumes you already know; the words don't. -->
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">Left/Right %</div>
         </div>
       </div>`;
     }
     if(type==='hr'){
       if(!UI.hrConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}top:48px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-hr">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;padding:6px 6px;text-align:center;" id="live-fpill-hr">
           <div style="font-size:20px;line-height:1;color:#ef4444;">&#x2764;&#xFE0F;</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--sans);line-height:1.3;margin-top:2px;">hold to pair</div>
         </div>`;
       }
+      // v260b — the HR pill is the LAST one still wearing its pre-v257 clothes, and every
+      // difference Peter spotted came from that. It was: units inline ("137 bpm") where
+      // every other pill puts them below · figures at 32/26px where the family is 34 ·
+      // DM Sans weight 800, so PROPORTIONAL digits that jiggle on every beat (the v244 rule
+      // is figures = DM Mono) · the whole pill flooded with one zone colour instead of two
+      // halves · an average hardcoded to "—" in the template even though the BLE handler
+      // computes it. Now it mirrors the power pill exactly, for the same reasons:
+      //   top    = current bpm, in the CURRENT zone's colour (flickers as you surge)
+      //   bottom = average bpm, in the AVERAGE's zone (where you actually live)
+      // Centred, because bpm has no decimal point to hold still.
       const bpm=UI.hrBpm;
       const hz=bpm!==null?hrZone(bpm,UI.maxHr):null;
-      const bg=hz?hz.bg:pillBg;
-      const bdr=hz?('2px solid '+hz.border):pillBorder;
-      const col=hz?(hz.textDark?'#000':'#fff'):'#ef4444';
-      const lbl=hz?hz.label:'bpm';
+      const col=hz?(hz.textDark?'#000':'#fff'):'var(--text)';
       const val=bpm!==null?bpm:'—';
-      const subCol=hz?col:'rgba(255,255,255,0.55)';
-      const lblCol=hz?col:'rgba(255,255,255,0.35)';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}top:48px;${pos}background:${bg};border:${bdr};border-radius:8px;padding:4px 6px;text-align:center;" id="live-fpill-hr">
-        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:32px;font-weight:800;color:${col};font-family:var(--sans);" id="live-hr-cur">${val}</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">bpm</span></div>
-        <div style="white-space:nowrap;line-height:1.15;"><span style="font-size:26px;font-weight:400;color:${subCol};font-family:var(--sans);" id="live-hr-avg">—</span><span style="font-size:13px;font-weight:400;color:${lblCol};margin-left:2px;">bpm</span></div>
-        <div style="font-size:11px;color:${lblCol};font-family:var(--font);line-height:1.2;">avg</div>
+      const avgN=UI._hrCount>0?Math.round(UI._hrSum/UI._hrCount):null;
+      const avgV=avgN!==null?avgN:'—';
+      const az=avgN!==null?hrZone(avgN,UI.maxHr):null;
+      const aBg=az?az.bg:'#eef3ee';
+      const aCol=az?(az.textDark?'#000':'#fff'):'#101510';
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-hr">
+        <div id="live-hr-top" style="padding:5px 8px 3px;${hz?`background:${hz.bg};`:''}">
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-hr-cur">${val}</span></div>
+          <div style="font-size:11px;font-weight:400;color:${col};font-family:var(--sans);line-height:1.1;" id="live-hr-lbl">bpm</div>
+        </div>
+        <div id="live-hr-bot" style="background:${aBg};padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${aCol};font-family:var(--font);" id="live-hr-avg">${avgV}</span></div>
+          <div style="font-size:10px;font-weight:500;color:${aCol};font-family:var(--sans);line-height:1.1;" id="live-hr-avglbl">bpm avg</div>
+        </div>
       </div>`;
     }
     return'';
   };
-  const floatingPills=_renderFloatingPill(0)+_renderFloatingPill(1)+_renderFloatingPill(2);
+  // v260c — three columns. align-items keeps each column's pills hugging their own edge,
+  // so a wide pill grows inward (away from the screen edge) instead of off it.
+  const colBase='position:absolute;top:48px;z-index:12;display:flex;flex-direction:column;gap:6px;';
+  const floatingPills=
+     `<div id="fpill-col-l" style="${colBase}left:6px;align-items:flex-start;">${_renderFloatingPill(0)}${_renderFloatingPill(3)}</div>`
+    +`<div id="fpill-col-c" style="${colBase}left:50%;transform:translateX(-50%);align-items:center;">${_renderFloatingPill(1)}</div>`
+    +`<div id="fpill-col-r" style="${colBase}right:6px;align-items:flex-end;">${_renderFloatingPill(2)}${_renderFloatingPill(4)}</div>`;
 
   return`
   <div class="live-outer" id="live-scroller">
@@ -16568,6 +16659,23 @@ function updateLive(){
   if(pwCurEl&&UI.powerConnected&&UI.powerWatts!==null){
     const v=String(UI.powerWatts);
     if(pwCurEl.textContent!==v)pwCurEl.textContent=v;
+    // v260b — patch the TOP half's zone here too. It was only ever painted by the template
+    // and the BLE handler, so anything driving power through updateLive (the v260 fake
+    // sensors) left the colour frozen at whatever the last render happened to show. Peter
+    // caught it: 362 W wearing Z2 navy while 290 W weighted wore Z4 green — a bigger number
+    // in a smaller zone, which is impossible with one FTP. The top was stale, not wrong.
+    const top=document.getElementById('live-power-top');
+    if(top){
+      const pz=powerZone(UI.powerWatts,UI.ftp);
+      const zk=pz?String(pz.z):'0';
+      if(top._zk!==zk){
+        top._zk=zk;
+        top.style.background=pz?pz.bg:'transparent';
+        pwCurEl.style.color=pz?(pz.textDark?'#000':'#fff'):'var(--text)';
+        const tl=top.querySelector('div:last-child');
+        if(tl)tl.style.color=pz?(pz.textDark?'#000':'#fff'):'var(--text)';
+      }
+    }
   }
   const npEl=document.getElementById('live-power-np');
   if(npEl&&UI.powerConnected){
@@ -16611,7 +16719,7 @@ function updateLive(){
   if(sEla){
     const L=_legVals();
     const ev=L?fmtDurPill(L.elapsedMs):'—';
-    const pv=(L&&L.elapsedMs>60000)?L.stopPct.toFixed(1)+'%':'—';   // 1dp — same as the template
+    const pv=(L&&L.elapsedMs>60000)?fmtStopPct(L.stopPct):'—';   // 1dp — same as the template
     if(sEla.textContent!==ev)sEla.textContent=ev;
     const sPct=document.getElementById('live-stop-pct');
     if(sPct&&sPct.textContent!==pv)sPct.textContent=pv;
@@ -16620,10 +16728,43 @@ function updateLive(){
     if(sLbl&&sLbl.textContent!==lv)sLbl.textContent=lv;
   }
   // Update floating HR pill value (if visible)
+  // v260b — the HR pill, now the same shape as power. Both halves' zones are patched here
+  // as well as in the BLE handler, or anything driving HR through updateLive (the fake
+  // sensors) leaves the colours frozen at the last render — the bug Peter found on power.
   const hrEl=document.getElementById('live-hr-cur');
   if(hrEl&&UI.hrConnected&&UI.hrBpm!==null){
     const v=String(UI.hrBpm);
-    if(!hrEl.textContent.startsWith(v))hrEl.textContent=v+' bpm';
+    if(hrEl.textContent!==v)hrEl.textContent=v;
+    const top=document.getElementById('live-hr-top');
+    if(top){
+      const hz=hrZone(UI.hrBpm,UI.maxHr);
+      const zk=hz?String(hz.z):'0';
+      if(top._zk!==zk){
+        top._zk=zk;
+        const c=hz?(hz.textDark?'#000':'#fff'):'var(--text)';
+        top.style.background=hz?hz.bg:'transparent';
+        hrEl.style.color=c;
+        const l=document.getElementById('live-hr-lbl'); if(l)l.style.color=c;
+      }
+    }
+    const avgN=UI._hrCount>0?Math.round(UI._hrSum/UI._hrCount):null;
+    const avgEl=document.getElementById('live-hr-avg');
+    if(avgEl){
+      const av=avgN!==null?String(avgN):'—';
+      if(avgEl.textContent!==av)avgEl.textContent=av;
+      const bot=document.getElementById('live-hr-bot');
+      if(bot){
+        const az=avgN!==null?hrZone(avgN,UI.maxHr):null;
+        const zk=az?String(az.z):'0';
+        if(bot._zk!==zk){
+          bot._zk=zk;
+          const c=az?(az.textDark?'#000':'#fff'):'#101510';
+          bot.style.background=az?az.bg:'#eef3ee';
+          avgEl.style.color=c;
+          const l=document.getElementById('live-hr-avglbl'); if(l)l.style.color=c;
+        }
+      }
+    }
   }
   const pf=document.getElementById('live-progf');if(pf)pf.style.width=(prog*100).toFixed(1)+'%';
   // The distance bar is painted by _distBarSync() at the top of this function — one
@@ -17456,7 +17597,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(fpill&&UI.tab==='live'){
     if(_fpillLP.fired){_fpillLP.fired=false;return;} // suppress click after long-press
     const slot=+fpill.dataset.slot;
-    const pills=UI.livePills||['speed','off','off'];
+    const pills=UI.livePills||FPILL_DEFAULT.slice();
     const cur=pills[slot]||'off';
     const next=PILL_CYCLE[(PILL_CYCLE.indexOf(cur)+1)%PILL_CYCLE.length];
     pills[slot]=next;
@@ -18698,7 +18839,7 @@ async function connectPowerMeter(){
       // you what zone you're averaging in, because the colour means something." When the
       // colour IS the information, style can't outrank it.
       // Cadence and L/R are no longer here — they have their own pill (v260).
-      const pill=document.getElementById('live-fpill-power');
+      // (the pill element itself is no longer touched — v260b dropped the zone border)
       const top=document.getElementById('live-power-top');
       const pwCur=document.getElementById('live-power-cur');
       const npEl=document.getElementById('live-power-np');
@@ -18708,15 +18849,14 @@ async function connectPowerMeter(){
         npN=_npCount>0?Math.round(Math.pow(_npSum4/_npCount,0.25)):null;
         npEl.textContent=npN!==null?npN:'—';
       }
+      // v260b: NO zone-coloured border. It used the TOP half's zone and wrapped the whole
+      // pill, so the bottom half (a different zone) sat inside a ring belonging to neither.
+      // The halves carry the zone now; the border is just the pill's border.
       const pz=powerZone(avg,UI.ftp);
-      if(pill&&pz){
-        pill.style.borderColor=pz.border;
-        pill.style.borderWidth='2px';
+      if(pz){
         if(top)top.style.background=pz.bg;
         if(pwCur)pwCur.style.color=pz.textDark?'#000':'#fff';
-      } else if(pill&&!pz){
-        pill.style.borderColor='rgba(255,255,255,0.15)';
-        pill.style.borderWidth='1px';
+      } else {
         if(top)top.style.background='transparent';
         if(pwCur)pwCur.style.color='var(--text)';
       }
@@ -18788,23 +18928,37 @@ async function connectHRMonitor(){
       if(!UI._hrSum){UI._hrSum=0;UI._hrCount=0;}
       UI._hrSum+=bpm;UI._hrCount++;
       const hrAvg=Math.round(UI._hrSum/UI._hrCount);
-      // Update floating HR pill if visible
+      // v260b — two halves, each with its OWN zone (current on top, average below), and no
+      // zone-coloured border. Was: the whole pill flooded with the current zone and a 2px
+      // ring of it, which is what made the HR pill look like a different app.
       const hz=hrZone(bpm,UI.maxHr);
       const hrCur=document.getElementById('live-hr-cur');
-      if(hrCur){
-        const col=hz?(hz.textDark?'#000':'#fff'):'#ef4444';
-        hrCur.textContent=bpm;
-        hrCur.style.color=col;
+      const hrTop=document.getElementById('live-hr-top');
+      if(hrCur)hrCur.textContent=bpm;
+      if(hrTop){
+        const zk=hz?String(hz.z):'0';
+        if(hrTop._zk!==zk){
+          hrTop._zk=zk;
+          const c=hz?(hz.textDark?'#000':'#fff'):'var(--text)';
+          hrTop.style.background=hz?hz.bg:'transparent';
+          if(hrCur)hrCur.style.color=c;
+          const l=document.getElementById('live-hr-lbl'); if(l)l.style.color=c;
+        }
       }
       const hrAvgEl=document.getElementById('live-hr-avg');
-      if(hrAvgEl){
-        const col=hz?(hz.textDark?'#000':'#fff'):'rgba(255,255,255,0.55)';
-        hrAvgEl.textContent=hrAvg;
-        hrAvgEl.style.color=col;
+      const hrBot=document.getElementById('live-hr-bot');
+      if(hrAvgEl)hrAvgEl.textContent=hrAvg;
+      if(hrBot){
+        const az=hrZone(hrAvg,UI.maxHr);
+        const zk=az?String(az.z):'0';
+        if(hrBot._zk!==zk){
+          hrBot._zk=zk;
+          const c=az?(az.textDark?'#000':'#fff'):'#101510';
+          hrBot.style.background=az?az.bg:'#eef3ee';
+          if(hrAvgEl)hrAvgEl.style.color=c;
+          const l=document.getElementById('live-hr-avglbl'); if(l)l.style.color=c;
+        }
       }
-      const hrPill=document.getElementById('live-fpill-hr');
-      if(hrPill&&hz){hrPill.style.background=hz.bg;hrPill.style.borderColor=hz.border;hrPill.style.borderWidth='2px';}
-      else if(hrPill){hrPill.style.background='rgba(10,15,10,0.85)';hrPill.style.borderColor='rgba(255,255,255,0.15)';hrPill.style.borderWidth='1px';}
     });
     UI.hrConnected=true;UI.hrDeviceName=_hrDevice.name||'HR monitor';
     if(UI.tab==='live')renderKeepScroll();
