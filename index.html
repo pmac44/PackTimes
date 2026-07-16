@@ -10449,12 +10449,25 @@ document.addEventListener('click',e=>{
     const id=rc.dataset.recenter;
     const state=ms(id);
     const r=cur();
-    if(UI.gpsDistKm!==null&&r){
-      // GPS active — centre on current position
-      const gp=r.points[cidx(r,UI.gpsDistKm)];
-      state.cx=gp.lon;state.cy=gp.lat;
+    // v260e — "CENTRE ON GPS" NOW CENTRES ON GPS. Peter found this on his phone, testing
+    // the Stops tab while recording a training loop hundreds of km from the loaded route:
+    // "the crosshair button just zooms to the route start… so that button doesn't even
+    // work in this scenario." Exactly right, and the cause was that it never looked at the
+    // GPS at all. It read UI.gpsDistKm — your distance ALONG THE ROUTE — and then centred
+    // on `r.points[cidx(r,gpsDistKm)]`, i.e. the ROUTE'S point at that distance. So:
+    //   · Far from the loaded route, gpsDistKm is null → it fell into the branch below,
+    //     commented "No GPS", and flew to the route start. The GPS was working fine; the
+    //     condition means "not near THIS route", which is how it lied so convincingly.
+    //   · Even when it did fire, it centred on the ROUTE, not on YOU — 1.8 km off route,
+    //     you'd land on the route.
+    // UI.gpsPos is the actual fix ({lat,lon,acc,speed,ts}), written on every GPS callback
+    // and owing nothing to any route. It is what this button always meant.
+    // WORTH CARRYING INTO NO-ROUTE MODE: a control that only works when a route happens to
+    // be underneath you is exactly the wrong shape for "I'm just going for a ride".
+    if(UI.gpsPos&&UI.gpsPos.lat!=null){
+      state.cx=UI.gpsPos.lon;state.cy=UI.gpsPos.lat;
     } else if(r&&r.points.length){
-      // No GPS — snap to start point
+      // No GPS fix at all (not merely "off this route") — the start is the honest fallback.
       state.cx=r.points[0].lon;state.cy=r.points[0].lat;
     } else {
       state.cx=null;state.cy=null;
