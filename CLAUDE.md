@@ -15,6 +15,142 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (17 July 2026, v263) — THE OUT-AND-BACK BUG IS FIXED. v261 pushed, v262/263 not.
+
+**Peter's 17 July ride test found the biggest bug in months, and the direction detector was
+innocent.** He rode a 30 km out-and-back he does regularly: *"it thought I was at the end when I
+was actually starting… the distance started off as if I'd done the whole 30 km, and then it just
+went in reverse."* Every turn cue was wrong for the same reason.
+
+### THE ROOT CAUSE WAS A STALE INDEX, NOT THE DIRECTION DETECTOR
+
+- `UI._lastSnapIdx` is **persisted to `lastGps` (~3752) and restored on app load (~1206)** — that
+  restore is legitimate, it's there so a mid-ride reload doesn't lose your place.
+- **`startGPS` reset `_snapDir` but never reset `_lastSnapIdx`.** So a NEW ride inherited the route
+  position of the LAST one. On a loop he rides regularly and FINISHES, that index is the finish —
+  so the first fix of the next ride went straight down the window path anchored at the end of the
+  route. **No coin toss was involved: it was simply told where it had been last time.**
+- **The direction detector then made it permanent, exactly as the v257 note warns.** The votes saw
+  him leaving the finish, latched `_snapDir=-1`, and a backward-biased window is self-reinforcing.
+  He thought the detector was broken. It was being fed a lie. **Don't "fix" the detector.**
+- **Fix 1:** `startGPS` clears `UI._lastSnapIdx` unless we're resuming a recording that already has
+  history (`_rec.points.length>1`) — that IS the crash-recovery case the restore exists for; a
+  fresh `startRecording` has `points:[]`. `simStart` had the same hole and now clears it too.
+
+### FIX 2 — PETER'S RULE FOR WHICH END YOU'RE AT
+
+- Clearing the index isn't enough: the first fix then does a full search, which takes **the nearest
+  VERTEX by raw distance**, and where start and finish sit metres apart that's a coin toss decided
+  by GPS noise. **Truth-tabled: fix 1 alone still picks the finish.**
+- **IT CANNOT BE SETTLED FROM GEOMETRY, and that's the load-bearing part.** Peter: *"this GPS route
+  is a hard one to tell just from the GPS because it's a bike path… literally a 2- or 3-metre-wide
+  path in both directions, which is identical."* There is no signal in the shape to find, and no
+  amount of bearing cleverness invents one.
+- **His rule, which needs no map data at all: "if you're just starting out, you're probably at the
+  start rather than the finish."** Right essentially always, and the alternative is a ride that
+  opens at 30 km and counts down. Implemented as: ends within `SNAP_ENDS_MEET_KM` (250 m) **and**
+  you're at them **and** the search chose the far half → force idx 0.
+- **Gated on a new `liveFix` argument + `lastIdx==null`** = the rider's own FIRST fix of a session.
+  This matters: the POI/stop searches (~3179/3333/3423) and the gap-fill snaps (~4347) also omit
+  `lastIdx` and are emphatically NOT starting a ride — forcing a café at a loop's start/finish to
+  dist 0 would silently move a stop. Only the GPS callback and the two sim paths pass `true`.
+- **At the FINISH the rule can't misfire**: by then `lastIdx` has tracked you the whole way round,
+  so the window path answers and the fallback never runs. Truth-tabled.
+- **Verified: whole-file `node --check` + 11/11 truth-table** on a faithful model (asymmetric
+  `_snapDir`-biased window + full-search fallback; return leg offset 2 m, as a real bike path is).
+  **It reproduces Peter's ride first** — stale index → reads 30.0 km at the trailhead, 29.0 km at
+  1 km out — then proves the fix: 0.0 km at the start, **zero reversals across the whole 30 km**,
+  finish still reads 30, POI snaps unchanged, A-to-B routes never engage the rule.
+  ⚠ **My first harness was wrong** (symmetric window, both legs the identical line). A degenerate
+  out-and-back is ambiguous everywhere and proves nothing — model the 2 m offset.
+
+### v264 — "FOLLOWING THIS ROUTE?" IS BUILT. The app stops guessing.
+
+**Peter's argument killed the v260 design, and it's decisive. Keep it verbatim:** *"I set a lot of
+routes. And a lot of them start from my house, and a lot of them I ride regularly. I don't follow a
+route on a GPS or a phone, so I just know them in my head… I don't think there's enough information
+that an app can make that decision for you."*
+- **v260's trigger was PLACE-only** — fire the prompt when you're NOT near the route. It rested on
+  the assumption that standing at the start means you intend to ride it. **Peter's ride disproved
+  that**: same route, same start, same time of day, opposite intent. **The two cases are physically
+  identical. There is no signal. Don't build a cleverer trigger — build the question.**
+- **So it ALWAYS asks**, whenever a route is loaded and you press record. Never when one isn't.
+- **THE CLOCK QUESTION IS GONE.** v257's "Riding this now?" is replaced. v260 had already ruled that
+  pressing record on a route always means NOW, so `_rideNowAuto` just sets it. ⚠ **DISPLAY only —
+  `planStartInFuture` still gates CAPTURE, so a future-dated plan is still never stamped (v189).
+  Truth-tabled explicitly; do not "simplify" that guard away.**
+- **THE TIMEOUT (8 s) CHANGES NOTHING** — it closes the sheet and leaves the state alone. So the
+  effective default is "follow" (what a fresh ride already is) without the sheet being able to
+  **overwrite a choice already made**: a destructive default would undo a freestyle set from the
+  bar seconds earlier. Truth-tabled as its own case.
+- **"Just ride" reuses `_offRouteMode='abandoned'` — no new state.** It's v245's flag: already
+  per-ride, already survives the ride, already resets at `stopGPS`, and **v263's distance bar
+  already reads it**, so the chevrons and "to go" vanish and the odometer takes the slot for free.
+- **TAP THE DISTANCE BAR TO CHANGE YOUR MIND — and it isn't a nicety, it closes a real hole.**
+  Peter: *"how would you get out of that?"* Today you couldn't. The only exit was the v245
+  off-route alert's "Stop following this route", **which only fires when you're actually off the
+  route** — and freestyling out of his house along a road he has a route for, he never is. So the
+  alert never appears and there is no exit at all.
+  · The bar is the right switch: it IS the object that means "following a route", it's the thing
+    visibly lying to you when you aren't, and it's already big and always there — no new furniture.
+  · **It opens the SAME sheet rather than toggling.** A stray tap on something that size must cost
+    a glance, not your turn cues. One sheet, two doorways; symmetric both ways.
+  · Peter on this: *"I'm not sure about tapping the distance bar to toggle it, but happy to try."*
+    **So it's on probation — if it doesn't land, the sheet still needs some permanent doorway.**
+- **Rejected: a "no route" entry in the Route tab dropdown** (Peter's own alternative, and he
+  rejected it himself — *"that sounds like more steps"*). Note v260's list still carries the same
+  idea; the popup supersedes it as the primary path.
+- **Verified: whole-file `node --check` + 17/17 truth-table** — record never waits on the question
+  (v257's law); "Just ride" flips v263's bar to the odometer; the timeout can't undo a pre-set
+  freestyle; the bar round-trips both ways; a future-dated plan runs on today's clock while
+  `planStartInFuture` stays true so CAPTURE is still blocked; a today-dated plan is unaffected;
+  no route or a zero-length route raises nothing. Zero orphan refs to the v257 sheet.
+
+### STILL TO DO from the 17 July ride (Peter's list, in his words)
+
+1. ~~No "follow the route / just ride" prompt at ride start.~~ **BUILT — v264 above.**
+2. **The weather pill flashes constantly** — a warning always on; possibly tonight's temperature
+   drop.
+3. **The weather pill's temperature is in the wrong font** — *"reads like Courier"*, which is what
+   `monospace` falls back to when DM Mono isn't applied. Everything else numeric renders fine, so
+   suspect that pill's own font stack, not a font-loading failure.
+4. **Notification layering is inverted** — a base-speed drift warning was masked by the info pills.
+   **Notifications must be the top layer**, above everything.
+5. **L/R balance reads 0/100 when coasting.** BLE reports ONE pedal's percentage; the meter sends 0
+   with no power, so we render maximum-right. It's measuring nothing and displaying it. Peter:
+   *"when you stop pedaling, it goes 100% right… I wonder if when I coast, that actually affects
+   it."* Kill the reading when there's no power.
+6. **The pills should be SET SLOTS in a solid band, not floating over the map** (Peter). *"You just
+   can't really see much of the map, and it's actually eating some pixels."* The argument: you pay
+   for that map twice — it's unreadable behind them anyway, and the pills must be opaque to sit on
+   it. The pixels come from the gaps and margins, not the map; it helps small screens most; and the
+   distance bar is the precedent — *"that distance bar with no gap works, so we shouldn't put too
+   much thought into map padding."* Also dissolves the fit-button masking.
+7. **Start ride → bottom-left; Resume/Stop → a popup** (see v262 below).
+
+### Answered, not built (17 July)
+
+- **CRANK LENGTH: no input needed, and don't add one.** Peter asked where to enter it. Pedal-based
+  meters compute watts INSIDE the pedal (force × crank length) and crank length is a setting in the
+  pedal's own app (Favero/Assioma, Garmin Connect). What arrives over BLE is finished watts, which
+  is all `_parsePowerMeasurement` reads. If it's wrong it's wrong in the pedal's app and every head
+  unit inherits it — Garmin and Strava included. Nothing for us to calculate.
+- **L/R balance stays NEAR-INSTANTANEOUS — Peter talked himself out of his own complaint.** He
+  expected a ride average, then: *"I actually found that was good because I have trouble balancing
+  my leg power left to right, and that near-instantaneous reading actually gave me great feedback
+  for changing my pedal stroke."* It's also consistent with cadence being instantaneous. **Leave
+  it.**
+- **The stoppage pill widening past 9h59** — he re-noticed it; it's v259's recorded, accepted
+  behaviour (`fmtDurPill` + `min-width:4ch`, grows at 10 h, not 100 h). Not a surprise, not a bug.
+
+### The distance bar is DONE (Peter, after the ride)
+
+*"Distance bar, I think, is basically excellent… it's there. It's good. It works."* And the ridden
+figure I argued against is validated twice over: it was **the only honest number on the screen**
+while everything route-scoped was lying, and his second case is the one to remember — *"with 10 km
+along the route, I just happen to have ridden 30 km because I rode 20 km from home"*, which is the
+same shape as joining a group ride partway.
+
 ## Current status (17 July 2026, v262) — the Stops map's white hint DELETED. v261 IS PUSHED.
 
 **v261 is pushed and Peter is ride-testing it.** On the phone: *"the chevrons look very good along
@@ -22,6 +158,76 @@ the top. Such a big improvement."* **His screenshot answers the one open worry f
 build — the 2.51px chevron gaps ARE legible on his OLED**, so `DIST_CHEV_N` stays at 24 and the
 "drop to 22" fallback is not needed. That was the only number in v261 that came from my estimate
 rather than a measurement.
+
+### v262 — three small fixes off Peter's phone. NOT pushed at time of writing.
+
+**(1) THE SHARING BUTTON STOPPED TRACKING THE WEATHER PILL — a real bug, and the 4th occurrence
+of this file's most persistent shape.** Peter: *"the weather pill jumps up when the elevation
+graph is shown, but the location share one does not… the sharing button has lost its ability to
+jump up."*
+- The share/pack button is not positioned by CSS — `_shareBtnSync` **measures the weather bar's
+  top** with rect maths and sits 6px above it. So the moment `_adjustWeatherForElev` moves the
+  weather bar, that measurement is stale.
+- **Of its five callers, only `initLiveMap` re-synced the button.** The two elevation-toggle
+  handlers and `updateLive`'s own call did not.
+- **Why it hid for so long:** on a LIVE ride `updateLive` calls `_shareBtnSync` every tick, so it
+  self-corrected within a frame. On an **idle** Ride tab `updateLive` never runs — so it stayed
+  wrong. Peter's case exactly: parked, tapping the elevation strip open.
+- **Fixed at the CAUSE, not the call sites:** `_adjustWeatherForElev` now ends by calling
+  `_shareBtnSync()` + `_packBtnSync()`. Patching the three callers would have left the same trap
+  for the fourth. **The thing that MOVES an anchor is the thing that must re-anchor whatever
+  hangs off it** — same lesson as v252's rotation, v257's peek anchor, v260's `afterKm`.
+  Verified non-recursive (neither sync calls back into it) and both are hoisted declarations.
+
+**(2) Map-control padding 12 → 6** (Peter, on the fit button being masked). **Worth recording what
+this is NOT:** there was no big unmeasured gap to reclaim. `h` is the strip's REAL measured
+height and the padding on it was already 12px — the weather bar beside it has none at all. So it
+buys **six pixels**, and only helps because the overlap Peter is seeing is "a pixel or two". It is
+not a fix for a crowded column.
+
+**(3) `.mhint` deleted** — see below.
+
+### THE RIGHT COLUMN IS OVER-SUBSCRIBED — the real problem behind (2). Not fixed.
+
+- **This PREDATES v261.** Modelled at v260's `top:48` the pre-ride column was already overlapping;
+  v261's 16px took it past the point where you can see it. **v261 exposed it, it didn't cause it.**
+- ⚠ **DON'T TRUST MY GEOMETRY MODELS HERE.** I modelled this off Peter's screenshot three times
+  and got the section height wrong every time (last model said 40px of clearance; his crop showed
+  them touching). Measure in the DOM or ask him — do not compute it from constants.
+- **Peter's plan, agreed, NOT yet built:** (a) move **"Start ride" to the bottom-left** — a wide
+  left-to-right button belongs on the left, and it belongs beside the sharing button because
+  sharing only happens while recording, which is a coupling v257 said the UI must EXPLAIN and
+  currently doesn't; (b) **Resume/Stop become a popup** — they're a transient state you're actively
+  resolving, so sizing the permanent layout around them is backwards. **The popup already exists**
+  (`rec-stop-confirm`, the v245 panel — and its "Back to ride" already means resume), so this is
+  cheaper than it sounds. It also removes the 3-button paused case, which is what breaks first.
+- **Deferred deliberately:** moving the record button means pulling it out of `mapCtrlHTML`,
+  chaining a new bottom-left sync off the sharing button's rect maths, and rewiring its rebuild in
+  `updateLive` — a refactor of the recording control, which this file calls sacred and which I
+  cannot press from here. Not worth doing the evening before a ride test.
+- **Nothing saves a small screen or a taller Next strip** — two pills need ~280px from the top.
+  Peter's answer is right for a rider (*"that is the beauty of the pills — you don't have to show
+  them all"*) but it isn't an answer for the app, which currently fails by silently overlapping.
+  That's the standing RIDE-SCREEN CONSOLIDATION item.
+
+### OPEN BUG — the map paints BLACK until you touch it (Peter, desktop small map AND mobile)
+
+*"I've always got to sort of touch it and maybe trigger a slight pan for it to draw… as soon as
+you touch or move anything, it just appears."* **Not diagnosed — hypothesis only, do not "fix"
+this blind.**
+- What's ruled out: the tile→redraw plumbing is intact (`drawMap` passes `cvs.id` → `drawTiles` →
+  `getTile(z,x,y,cvsId)` → `img.onload` → `redrawMap(cvsId)`), and `redrawMap` handles every id.
+- **The suspect, and it's this file's favourite shape:** `drawMap` line 1 is
+  `W=cvs.offsetWidth, H=cvs._forcedH||cvs.offsetHeight||220`. **H has a fallback; W has none, and
+  there is no zero-guard.** If the first draw runs before layout, `W=0` → `kx`/`scale` go to 0 or
+  NaN → the tile loop's bounds are NaN → **the loop never runs, so no tile is ever REQUESTED** →
+  no `onload` → no redraw. Nothing schedules another draw, so it stays black until a gesture
+  redraws it with a real width. That the `||220` exists on H at all suggests someone already hit
+  this class of bug on the height and patched only that side.
+- **To confirm before building anything:** when the map is black on the desktop, RESIZE the window
+  without touching the map. If it paints, it's layout/width. If not, look elsewhere.
+- Likely fix if confirmed: bail out and retry on rAF (capped, so a hidden tab can't spin) rather
+  than drawing into an unlaid-out canvas.
 
 ### v262 — `.mhint` deleted (one CSS rule + one usage, Stops map only)
 

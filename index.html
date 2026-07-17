@@ -994,7 +994,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v262';
+window.APP_VERSION='v264';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3492,7 +3492,11 @@ function _snapRefine(r,lat,lon,best){
   return best;
 }
 
-function snapTo(r,lat,lon,lastIdx){
+// liveFix — true ONLY for the rider's own position (the GPS callback and the sim). It
+// gates the out-and-back start preference below. The POI/stop searches and the gap-fill
+// snaps also omit lastIdx, and they are emphatically NOT "starting a ride".
+const SNAP_ENDS_MEET_KM=0.25;   // start and finish this close = the route doubles back
+function snapTo(r,lat,lon,lastIdx,liveFix){
   if(!r.points.length)return null;
   let best=null,bd=Infinity;
 
@@ -3540,6 +3544,29 @@ function snapTo(r,lat,lon,lastIdx){
   // Fallback: full search (first fix, or rider far from expected window)
   best=null;bd=Infinity;
   r.points.forEach((p,i)=>{const d=Math.sqrt((p.lat-lat)**2+(p.lon-lon)**2);if(d<bd){bd=d;best={idx:i,dist:p.dist,off:hav({lat,lon},p)};}});
+  // ── v263: WHICH END OF AN OUT-AND-BACK ARE YOU AT? (Peter, 17 Jul) ──────────────────
+  // The search above takes the nearest VERTEX by raw distance. Where a route's start and
+  // finish sit metres apart, that is a coin toss decided by GPS noise.
+  // IT CANNOT BE SETTLED FROM GEOMETRY, and that is the important part: Peter's loop is a
+  // 2–3 m bike path, so the outbound and the return are literally the same line. There is
+  // no signal in the shape to find, and no amount of bearing cleverness invents one.
+  // HIS RULE, which needs no map data at all: "if you're just starting out, you're
+  // probably at the start rather than the finish." Right essentially always — and the
+  // alternative is a ride that opens at 30 km and counts down.
+  // Gated on liveFix + lastIdx==null = the rider's FIRST fix of a GPS session (startGPS
+  // now clears _lastSnapIdx, so this is exactly once per ride). At the FINISH of the loop
+  // you are near both ends too — but by then lastIdx has tracked you the whole way round,
+  // so the window path handles it and this never runs.
+  if(best&&liveFix&&lastIdx==null&&r.points.length>2){
+    const p0=r.points[0],pN=r.points[r.points.length-1];
+    // Ends meet AND you're at them AND the search chose the far end → it chose wrong.
+    if(hav(p0,pN)<SNAP_ENDS_MEET_KM){
+      const dStart=hav({lat,lon},p0);
+      if(dStart<SNAP_ENDS_MEET_KM&&best.idx>r.points.length/2){
+        best={idx:0,dist:r.points[0].dist,off:dStart};
+      }
+    }
+  }
   // First-fix direction guess — now gated on _snapDir===0 (v257). This block used
   // to run on EVERY call that omitted lastIdx — and checkAlerts' off-route check is
   // exactly such a call, every tick — so it kept OVERWRITING _snapDir mid-ride with
@@ -3641,6 +3668,20 @@ function _doStartGPS(){
   UI._gpsAutoPaused=false;
   UI._lastMovedTs=Date.now();
   _snapDir=0;_snapDirAccum=0; // reset direction detection on GPS start
+  // ── v263: RESET THE SNAP INDEX TOO. This is the bug behind Peter's 17 Jul ride. ──────
+  // UI._lastSnapIdx is persisted to lastGps (~3752) and restored on app load (~1206).
+  // That restore is legitimate — it exists so a mid-ride reload doesn't lose your place.
+  // But startGPS reset _snapDir and NOT this, so a NEW ride inherited the route position
+  // of the LAST one. On a loop he rides regularly and FINISHES, that index is the finish:
+  // the first fix of the next ride went straight down the window path anchored at the end
+  // of the route, and the ride opened reading the full 30 km and counted DOWN as he rode
+  // out. No coin toss was involved — it was simply told where it had been last time.
+  // The direction detector then made it permanent exactly as the v257 note warns: the
+  // votes saw him leaving the finish, latched backwards, and a backward-biased window is
+  // self-reinforcing. The detector wasn't broken. It was being fed a lie.
+  // KEEP the index only when resuming a recording that already has history — that IS the
+  // crash-recovery case the restore was built for. A fresh startRecording has points:[].
+  if(!(_rec && _rec.points && _rec.points.length > 1)) UI._lastSnapIdx = null;
   const liveState=ms('live-map');
   liveState._userZoomed=false;liveState._autoZoomed=false;
   liveState._fitted=false; // exit fitted/overview mode so GPS handler follows the dot
@@ -3689,7 +3730,7 @@ function _doStartGPS(){
       if(step/dt<0.2)UI.gpsTravelledKm+=step;
     }
     const r=cur();
-    if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;UI._snapOffKm=snap.off;}}
+    if(r){const snap=snapTo(r,UI.gpsPos.lat,UI.gpsPos.lon,UI._lastSnapIdx,true);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;UI._snapOffKm=snap.off;}}
     // Phase 1a Step 3: feed every real GPS fix into the recording sampler.
     // _appendPoint guards on _rec internally — safe to call when no recording is active.
     _appendPoint(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude, pos.timestamp, pos.coords.accuracy);
@@ -5926,47 +5967,81 @@ function _recShowUndoStrip(show){
 // the prompt appears over the top. Pressing record must never wait on a question —
 // if the rider ignores it, they get today's ride recorded and yesterday's clock,
 // which is exactly what happens today. The prompt can only improve things.
-function _rideNowClose(){const ov=document.getElementById('ridenow-ov');if(ov)ov.remove();}
-function _rideNowMaybeShow(r){
-  if(!r||!planStartInFuture(r))return;   // dated today or past = nothing to ask
-  if(rideNowOn(r))return;                // already answered yes for this ride
-  _rideNowClose();
-  const planned=new Date(`${r.startDate}T${r.startTime}:00`);
-  const when=planned.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+// ═══ v264 — "FOLLOW THE ROUTE, OR JUST RIDE?" ════════════════════════════════════════
+// Replaces v257's "Riding this now?" sheet. Two changes, and the second is Peter's.
+//
+// 1. THE CLOCK QUESTION IS GONE — it answered itself (v260's ruling): "If you ride a
+//    planned route outside of your planned start time, I can't see a need to have the
+//    planned clock time. That makes no sense." So pressing record on a route always means
+//    NOW, and rideNow is simply set below rather than asked about. **This only touches
+//    DISPLAY. planStartInFuture still gates CAPTURE, so a future-dated plan is never
+//    stamped with real times — v189's promise is intact. Do NOT simplify that guard away.**
+//
+// 2. THE PROMPT ALWAYS ASKS, and no longer tries to infer. The v260 design fired only when
+//    plan and reality disagreed (you're not near the route). **Peter's ride killed that:**
+//    he was standing at the start and still didn't want to follow it. His case is decisive
+//    and worth keeping verbatim — *"I set a lot of routes. And a lot of them start from my
+//    house, and a lot of them I ride regularly. I don't follow a route on a GPS or a
+//    phone, so I just know them in my head… I don't think there's enough information that
+//    an app can make that decision for you."* Same place, same route, same time of day,
+//    opposite intent. **There is no signal. Only the rider knows. Don't build a cleverer
+//    trigger — build the question.**
+//
+// THE TIMEOUT CHANGES NOTHING. It closes the sheet and leaves the state alone, so the
+// effective default is "follow" (that's what a fresh ride already is) WITHOUT the sheet
+// being able to overwrite a choice the rider already made. A destructive default would
+// undo a freestyle set from the bar seconds earlier.
+// Ignoring it always leaves you with a recording ride — v257's law, never regress it.
+let _rideModeTimer=null;
+function _rideModeClose(){
+  if(_rideModeTimer){clearTimeout(_rideModeTimer);_rideModeTimer=null;}
+  const ov=document.getElementById('ridemode-ov');if(ov)ov.remove();
+}
+// autoMs>0 = the app raised this itself (record start), so it must get out of the way.
+// 0 = the rider tapped the distance bar to open it; they asked, so it waits.
+function _rideModeShow(r,autoMs){
+  if(!r||!r.totalDist)return;   // no route loaded → nothing to ask; freestyle is the only option
+  _rideModeClose();
+  const free=_offRouteMode==='abandoned';
   const ov=document.createElement('div');
-  ov.id='ridenow-ov';
+  ov.id='ridemode-ov';
   ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(5,8,5,.6);'
     +'display:flex;align-items:center;justify-content:center;padding:var(--sp-4);';
   ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);max-width:340px;width:100%;">
-    <div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-2);">Riding this now?</div>
+    <div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-2);">Following ${(r.label||r.name||'this route').replace(/</g,'&lt;')}?</div>
     <div style="font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-4);">
-      This plan is set for ${when}. Times can run from now instead — ETAs, daylight and weather.<br><br>Either way your saved plan keeps its ${when} times.
+      Your ride is recording either way.
     </div>
-    <button class="btn btn-p" id="ridenow-yes" style="width:100%;margin-bottom:var(--sp-2);">Ride now</button>
-    <button class="btn" id="ridenow-no" style="width:100%;">Keep planned times</button>
+    <button class="btn ${free?'':'btn-p'}" id="ridemode-follow" style="width:100%;height:52px;margin-bottom:var(--sp-2);">Follow the route</button>
+    <button class="btn ${free?'btn-p':''}" id="ridemode-free" style="width:100%;height:52px;">Just ride — no route</button>
   </div>`;
-  // Direct listener on the overlay — it hangs off document.body, where the
-  // content-wrap delegator cannot hear it (the v257 standing gotcha).
-  ov.addEventListener('click',_rideNowOnClick);
+  // Direct listener: this hangs off document.body, where the content-wrap delegator
+  // cannot hear it (the v257 standing gotcha).
+  ov.addEventListener('click',_rideModeOnClick);
   document.body.appendChild(ov);
+  if(autoMs>0)_rideModeTimer=setTimeout(_rideModeClose,autoMs);
 }
-function _rideNowOnClick(e){
-  const yes=e.target.closest('#ridenow-yes'), no=e.target.closest('#ridenow-no');
-  if(!yes&&!no)return;   // taps on the scrim do nothing: this is a real either/or
-  if(yes){
-    const r=cur();
-    if(r){
-      UI.rideNowId=r.id;
-      // The ride's real start is when the RECORDING started, not when the rider got
-      // round to answering — they may have rolled a minute before tapping. Falls back
-      // to now if there's somehow no recording.
-      UI.rideNowTs=_rec&&_rec.startTS?_rec.startTS:Date.now();
-      saveAll().catch(()=>{});
-    }
-  }
-  _rideNowClose();
+function _rideModeOnClick(e){
+  const follow=e.target.closest('#ridemode-follow'), free=e.target.closest('#ridemode-free');
+  if(!follow&&!free)return;   // scrim taps do nothing: this is a real either/or
+  // FREESTYLE REUSES v245's _offRouteMode='abandoned' — the flag the off-route alert's
+  // "Stop following this route" already sets. It is already per-ride, already survives the
+  // ride, already resets at stopGPS, and v263's distance bar already reads it (chevrons
+  // and "to go" hide, the odometer takes the slot). So this button sets a flag that the
+  // whole app already respects — no new state, no new plumbing.
+  if(free){_offRouteMode='abandoned';}
+  else if(_offRouteMode==='abandoned'){_offRouteReset(true);}
+  _rideModeClose();
   render();
-  if(yes)_recToast("Times are running from now");
+  _recToast(free?'Just riding — route hidden':'Following the route');
+}
+// The app decides the clock, and never asks (see the note above).
+function _rideNowAuto(r){
+  if(!r||!planStartInFuture(r)||rideNowOn(r))return;
+  UI.rideNowId=r.id;
+  // The ride's real start is when the RECORDING started, not when this ran.
+  UI.rideNowTs=_rec&&_rec.startTS?_rec.startTS:Date.now();
+  saveAll().catch(()=>{});
 }
 
 async function _recControlTap(){
@@ -5978,8 +6053,12 @@ async function _recControlTap(){
     if(!UI.gpsActive) startGPS();
     const r = cur();
     await startRecording(r ? r.id : null);
+    _rideNowAuto(r);        // v264 — the clock is decided, not asked (v260's ruling)
     render();
-    _rideNowMaybeShow(r);   // v257 — after the ride is safely started, never before
+    // v264 — after the ride is safely started, never before (v257's law: pressing record
+    // must never wait on a question). 8 s is a glance, not a decision point — the bar is
+    // the switch if you miss it.
+    _rideModeShow(r,8000);
     return;
   }
   if(_rec.status === 'active'){
@@ -8371,6 +8450,13 @@ function simStart(){
     _simElapsedMs=_simClockAt(startDist,r);
     UI.alertedStops=new Set();
     _offRouteReset(true);   // fresh sim run — re-arm off-route alerts
+    // v263: the sim had the same stale-index bug as startGPS — UI._lastSnapIdx survives
+    // from the last real ride (it's persisted in lastGps), so a fresh sim run could snap
+    // to wherever that left off. null forces a full search on the first step, which is
+    // both correct here and what lets the out-and-back start rule fire. Deliberately NOT
+    // seeded from _simIdx: that indexes _simPts, which is not necessarily r.points.
+    UI._lastSnapIdx=null;
+    _snapDir=0;_snapDirAccum=0;   // and the direction latch, exactly as startGPS does
   }
   UI.simPaused=false;
   UI.gpsActive=true;
@@ -8428,7 +8514,7 @@ function simStart(){
     }
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
     const r=cur();
-    if(r){const snap=snapTo(r,p.lat,p.lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;UI._snapOffKm=snap.off;}}
+    if(r){const snap=snapTo(r,p.lat,p.lon,UI._lastSnapIdx,true);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;UI._snapOffKm=snap.off;}}
     // Phase 1a Step 3: feed simulated fixes into the recording sampler too,
     // so the simulator is a real test bed for the recording engine.
     _appendPoint(p.lat, p.lon, p.ele==null?null:p.ele, Date.now(), 5);
@@ -8485,7 +8571,7 @@ function simStart(){
       const lat=a.lat+(b.lat-a.lat)*f,lon=a.lon+(b.lon-a.lon)*f;
       if(UI.gpsPos){UI.gpsPos.lat=lat;UI.gpsPos.lon=lon;UI.gpsPos.ts=Date.now();}
       const rr=cur();
-      if(rr){const snap=snapTo(rr,lat,lon,UI._lastSnapIdx);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;UI._snapOffKm=snap.off;}}
+      if(rr){const snap=snapTo(rr,lat,lon,UI._lastSnapIdx,true);if(snap){UI.gpsDistKm=snap.dist;UI._lastSnapIdx=snap.idx;UI._snapOffKm=snap.off;}}
       if(UI.tab==='live'){updateLive();if(document.getElementById('live-map'))redrawMap('live-map');}
       if(IS_DESKTOP())renderDesktopMap();
       if(f>=1)_simTimer=setTimeout(step,0);        // arrived → run the real per-point step
@@ -10631,6 +10717,22 @@ function zoomBtnsHTML(mapId){return mapCtrlHTML(mapId,false);}
 
 // Global map control handler
 document.addEventListener('click',e=>{
+  // ── v264: TAP THE DISTANCE BAR TO CHANGE YOUR MIND ─────────────────────────────────
+  // The record-start sheet times out after 8 s, so there has to be a way back that does
+  // NOT depend on straying off the route. Today there isn't one: the v245 off-route
+  // alert's "Stop following this route" only fires when you're genuinely off it, and
+  // Peter's own case defeats that — freestyling out of his house along the same road he
+  // has a route for, he is never off-route, so the alert never appears and there is no
+  // exit at all.
+  // The bar is the right switch: it IS the object that means "following a route", it is
+  // the thing visibly lying to you when you aren't, and it's already big and always there
+  // — no new furniture, which is Peter's standing instinct.
+  // It opens the SAME sheet rather than toggling directly: a stray tap on a bar that size
+  // must cost you a glance, not your turn cues.
+  if(e.target.closest('#live-dist-bar')){
+    const r=cur(); if(r&&r.totalDist)_rideModeShow(r,0);   // 0 = they asked; it waits
+    return;
+  }
   const zi=e.target.closest('[data-zoom-in]');
   if(zi){zoomMap(zi.dataset.zoomIn,1.6);return;}
   const zo=e.target.closest('[data-zoom-out]');
@@ -13077,6 +13179,22 @@ function _adjustWeatherForElev(){
   if(sc) sc.style.bottom=(h+82)+'px';   // sits above the map controls
   const us=document.getElementById('rec-undo-strip');
   if(us) us.style.bottom=(h+82)+'px';   // sits above the map controls
+  // ── v262: ONE AUTHORITY. Anything anchored to the weather bar re-syncs HERE. ──────────
+  // Peter: "the weather pill jumps up when the elevation graph is shown, but the location
+  // share one does not… the sharing button has lost its ability to jump up."
+  // Exactly right. The share/pack button isn't positioned by CSS — _shareBtnSync measures
+  // the weather bar's TOP with rect maths and sits 6px above it. So the instant this
+  // function moves the weather bar, that measurement is stale. Of the five callers, only
+  // initLiveMap re-synced the button; the two elevation-toggle handlers and updateLive's
+  // own call did not. On a LIVE ride it self-corrected on the next tick (updateLive calls
+  // _shareBtnSync every pass, which is why this hid for so long) — but on an IDLE Ride tab
+  // updateLive never runs, so it stayed wrong until something else redrew. That's Peter's
+  // case: parked, tapping the elevation strip open.
+  // Fixing it at the three call sites would leave the same trap for the fourth. The thing
+  // that MOVES the anchor is the thing that must re-anchor what hangs off it — same lesson
+  // as v252's rotation, v257's peek anchor and v260's afterKm, now the fourth occurrence.
+  _shareBtnSync();
+  _packBtnSync();
 }
 
 // Draw the expanded elevation profile on canvas
