@@ -15,6 +15,528 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+## Current status (17 July 2026, v261) — THE DISTANCE BAR IS A CHEVRON RULER. NOT phone-tested.
+
+**v261 is unpushed.** It closes the v260 label mess: v260 had been pushed several times with
+different code under one label, so a phone reporting "v260" could be any of several builds. That
+is now behind us — **one step = one version bump = one push, and never re-push a version.**
+
+**Round 7 of the distance bar, and it's Peter's design. The six rounds before it all argued about
+TEXT PLACEMENT; none of them touched the thing he kept complaining about.** *"I'm still not happy…
+It's lacking an impression of movement, of dynamics. It's just this bland bar."*
+
+- **THE BAR IS NOW 24 CHEVRONS, EDGE TO EDGE** — ghosted ahead of you, accent behind. Full width,
+  no radius, no map showing around it, numbers in their own row underneath.
+- **THE MOVE THAT UNSTUCK IT, and it was Peter's: the chevrons are the RULER as well as the fill.**
+  He asked for ruler marks at 10–20% intervals *and* a chevron fill, then spotted himself that the
+  second might negate the first. It does — each chevron IS 1/24th of the ride. Fractions, not
+  10 km: absolute marks degrade exactly where the bar matters most (~100 ticks on a 1000 km event),
+  and absolute distance is already the elevation strip's job.
+- **THE SIX-PIXEL FINDING — the one nobody checked in six rounds.** Moving the numbers OUT of the
+  bar kills the whole straddle/flip/creep/reserved-ends problem class outright, and it costs
+  **34px → 40px. Six pixels.** Every earlier round (the rail, the travelling pill, reserved ends,
+  migrate) assumed taking the text out was expensive and designed around that assumption. It was
+  only ever expensive while the bar was an inset pill floating on the map; once Peter gave it its
+  own full-width band, the row below was nearly free. **Standing lesson: when four designs in a row
+  are all working around the same constraint, price the constraint before you design round it again.**
+  Floating pills stay at `top:48px` and do not move.
+- **NO PARTIAL FILL — A WHOLE CHEVRON TURNS GREEN OR IT DOESN'T (Peter's rule).** *"My idea is that
+  there is no vertical colour line. The progress is when another grey chevron turns green."* The
+  vertical cut in the first mockups was **my** decision, not a mockup limitation — I clipped the
+  fill to a rect assuming he'd want continuous motion. His is better: **the chevron is the unit of
+  progress, the numbers below are the precise truth. The bar is the gauge, the numbers are the
+  reading.** A leading chevron that fills as you ride it was mocked (`quantised.png`, bottom row):
+  it is indistinguishable from the plain version at every real state. **Don't rebuild it.**
+- **WAHOO — Peter caught this and he was right: *"chevrons are a large part of the Wahoo identity,
+  so they should be visually different to avoid seeming to mimic."*** What is theirs is the **weight
+  and packing** — fat, tightly-stacked symmetric V's with gaps as wide as the mark, stacked ACROSS
+  the direction of travel on hardware (his reference images: KICKR flywheel decals). A horizontal
+  row in a progress bar is road-sign/escalator idiom, not theirs. Ours is a **fine scale, not a
+  slab**: same shape, opposite character. If this is ever restyled, weight and packing carry the
+  association — not the chevron as such.
+- **WHY 24, AND THE TRADE THAT DECIDES IT — the two forces pull AGAINST each other.** Quantised
+  ticks want MANY chevrons; every gap must survive a phone. The gap is **diagonal**, so what you see
+  is `gap·cos(40°) ≈ 0.77` of the horizontal gap, and below ~2.5 CSS px it mushes into the solid
+  slab this version exists to kill (v258's lesson: a 3px tick vanished on Peter's phone). On a 393px
+  bar:
+
+  | gap (% of mark) | max chevrons | km per tick, 300 km route |
+  |---|---|---|
+  | 10% | 11 | 27.8 |
+  | 15% | 16 | 19.4 |
+  | 25% | 24 | 12.6 |
+
+  **Counterintuitive and load-bearing: a WIDER gap ratio buys MORE chevrons**, because a fat mark
+  spends its width getting to a gap you can see. So Peter's "gap no more than 10–25% of the chevron
+  width" and his need for many chevrons meet at the TOP of his band. **Don't raise `DIST_CHEV_N`
+  without widening the gap, and don't narrow the gap to fit more in — that's the intuition the
+  table refutes.**
+- **⚠ THE ONE THING TO WATCH ON THE PHONE: the gap has almost no margin.** 24 chevrons gives a
+  perpendicular gap of **2.51 CSS px against a 2.5 floor** — and that floor is *my estimate*, not a
+  measurement. At DPR 2.75 that's ~6.9 device px, so resolution isn't the risk; diagonal
+  anti-aliasing is. **If the chevrons mush together on Peter's OLED, drop `DIST_CHEV_N` to 22**
+  (gap 2.74px, ticks every 13.7 km) — one constant, no other change.
+- **The tick rate scales with the ride ON PURPOSE**: a chevron is always ~4% of the day — 1.7 km on
+  a 40 km ride, 12.5 km on Grenfell, **42 km (≈2 h) on a 1000 km ultra**. Peter accepted the ultra
+  case with that number in front of him. It IS the opposite of "impression of movement" in the short
+  term, which was his original complaint — the argument that carried it is that the km figures below
+  do the second-by-second work. **Watch this on a long ride; it's the one decision made on reasoning
+  rather than on a phone.**
+- **`floor`, not `round`**: a chevron lights once its slice has been RIDDEN. Rounding would light
+  the last one before the finish — the one moment the bar must not lie. Consequence accepted: the
+  bar is all-grey for the first 1/24th.
+- **DELETED with the flip they served**: `_distBarGeom`, `_distTextW`, `_distMeasCvs`, `DIST_PAD`,
+  `.live-dist-fill`, the `on-fill` reversal, and v258's whole-pixel box SNAP (the bar is edge to
+  edge now and has no side hairlines for it to fix). `legToGoKm` STAYS — it is the "to go" figure and
+  the v257 leg-scoping rule still applies. Grep confirms zero orphan references.
+### v261b — Peter's three notes off the first build ("a clear advancement")
+
+- **BOTH ENDS ARE NOW DELIBERATE, AND ONE EXPRESSION DOES IT.** `left = (i+1)·pitch − th`
+  (was `(i+1)·pitch − (pitch−th)/2 − depth`) puts the LAST chevron's front outer corners exactly
+  on the bar's right edge, so **only its point is cropped** — it had been losing 11.5px of a
+  21.5px body ("at the moment it is cropped too much"). That same expression is a pure 3.06px
+  **translation** of the whole row, so it fixes the left end too and **cannot** disturb the ruler:
+  a translation can't change a gap. Truth-tabled all 23 inter-chevron gaps identical after it.
+- **THE FIRST CHEVRON HAS A FLAT BACK AT x=0** — Peter: *"the first chevron can be filled right
+  to the left edge, which means there is no small black triangle left over."* The leftover was the
+  rear notch, half off-screen. Chevron 0 is now a pentagon (flat back, same tip, same front face,
+  longer tail). **He predicted the consequence before seeing it — "that is a big chevron. That's
+  ok" — and it is: 24.77px against the others' 21.50.** The **gap to chevron 1 is unchanged**,
+  because the gap is set by the FRONT face and only the tail grew. That's why this is safe.
+- **THE FIGURES WERE TOO SMALL, and that one was mine.** Peter: *"the distance km numbers are
+  still very small relative to the speed and other data pills. Distance is an important
+  measurement."* Correct — 15px was me sizing the row to be **cheap** (to protect the "six pixels"
+  headline) rather than sizing it to be **read**. Now **24px** (unit 13px), numbers row 20→30px,
+  band **40→50px**, and **the floating pills moved `top:48px` → `56px`** — the first time this
+  band has cost anything beyond the six pixels, and the pills are the only thing in the app keyed
+  to it. **24, not the pills' 34px hero:** a pill's figure IS its pill's whole point, whereas here
+  the chevrons carry the glance-read and the figures are the precise backup — so they rank below a
+  hero and well above a caption. Options if he wants to trade: **20px keeps the pills at 48** (band
+  47, nothing else moves); **28px** needs pills at 62. Two constants.
+- **Wahoo, settled:** *"I think it is different enough that it does not look like the wahoo ones."*
+- **Verified: honest WHOLE-FILE `node --check` — the mount finally caught up mid-session** (19,588
+  lines, ends `</html>`, 2 script blocks, both clean; the `</html>` assert ran first, per the
+  standing rule) **+ 16/16 truth-table** (first chevron flat at 0 with its tip on the same ruler
+  and its gap identical to a normal one; last chevron's front corners exactly on the right edge
+  with only the 8.4px point cropped; visible body 10.0px → 13.1px; the 3.06px shift is uniform;
+  all 23 gaps equal; perpendicular gap still 2.51px; both clip-paths well-formed; "300.6 km" at
+  24px fits both ends of a 393px bar with 189px of middle to spare).
+- **STILL NOT PHONE-TESTED.** Open `index.html` in a browser once before `push.bat`.
+
+### v261c — the ends, settled: SAME SIZE, SAME TREATMENT, NOTHING CROPPED
+
+**Peter caught the inconsistency in v261b immediately and there was no principle in it:**
+*"the first chevron has its tail FILLED (as I requested) but the last chevron has its point
+CROPPED. I think both need to be treated the same — either fill the tail on the first and fill
+the point on the last, or crop the tail on the first and crop the point on the last."* One end
+was being completed, the other truncated. Built his **option 1 (fill both)**.
+
+- **THE FIX WAS TO STOP ASSUMING THE PITCH.** Every version until now took `pitch = barW/N` as
+  given and then paid for it at the ends (v261's over-cropped last chevron; v261b's 24.77px first
+  against a 21.50px normal). **Solve for the ends instead** — let the 24 tips be evenly spaced by
+  `p`, the first tip at `B`, the last tip exactly at `barW`:
+  `B + (N−1)·p = barW`, `B = depth + th`, `p = (1+GAP)·th` ⇒ **`th = (barW − depth) / (1 + (N−1)(1+GAP))`**.
+  Everything falls out: **all 24 chevrons are exactly 21.33px**, the first's flat back sits on
+  x=0, the last's **point lands on 393.000 of 393** — whole, not cropped, not blunted — and
+  nothing overhangs either edge. Truth-tabled at 320/393/780/1200px: ends flush at every width.
+- **The first chevron now differs from the others by ONE VERTEX** — the rear notch is dropped so
+  the back runs straight down. Same width, same tip, same front face, same `T`, so **all 23 gaps
+  stay identical** and the gap is still exactly 25% of the mark. Cost: gap 3.28 → 3.23 CSS px
+  (perpendicular 2.51 → 2.47). Immaterial — both sit on the same *estimated* floor.
+- **CROP-BOTH was the other coherent option and was mocked (`ends-symmetry.png`, row C).** It is
+  genuinely symmetric, but it brings back the left-edge black triangle Peter objected to — the
+  chevron's own rear notch, biting into the edge. Rejected for that.
+- **~~BLUNTING the last chevron's point is wrong: it kills the point at the finish, the one
+  moment the arrow should land hardest.~~ WRONG — REVERSED IN v261g. See below.**
+- **THE CHEQUERED LAST CHEVRON: tried, and it's a no** (`ends-symmetry.png` row D,
+  `zoom-right.png` at 3×). Peter floated it himself — *"Nice idea, but could be terrible"* — and
+  it's terrible. The chevron body is **13.1px wide, which buys about two and a half squares**: it
+  doesn't read as a chequer, it reads as damage, and it eats the chevron's shape exactly where
+  the shape matters most. **This is the SECOND time this file has found it** — v258 recorded that
+  "the 8-rect flag dithers to mush at 14px". A chequered flag needs a slot far bigger than one
+  chevron; if the finish ever wants marking, that's where to look.
+- **Verified: whole-file `node --check` (19,592 lines, ends `</html>`, both blocks clean) +
+  15/15 truth-table** (all 24 the same size; first at x=0; last tip exactly on the edge; nothing
+  overhangs either end; all 23 gaps identical and still 25% of the mark; clip-paths well-formed;
+  ends flush at four bar widths; the quantised ticks unchanged).
+
+### v261d — the chequer, the figure size, and no-route. Peter on the desktop build: *"it looks pretty good… a really big advance."*
+
+- **THE LAST CHEVRON IS CHEQUERED — and v261c's "don't rebuild it" was MY error, now reversed.**
+  I judged the chequer at **3× zoom**, where it reads as damage, and called it terrible. Peter
+  judged it at true size: *"I actually like the chequer… It's subtle but a nice little touch."*
+  **Nobody rides at 3×.** Subtlety is a true-size property and I destroyed the very thing being
+  judged by magnifying it. **STANDING LESSON, and this file already had it: JUDGE AT TRUE SIZE.**
+  · v258's opposite finding (*"the 8-rect flag dithers to mush at 14px"*) is still true and is not
+    a contradiction: **that flag had to be READ, this one only has to be FELT.** A mark that must
+    be decoded needs resolution; a mark that only has to register a mood doesn't.
+  · Built as `.live-dist-chev.fin` — styling only. Same shape, size, clip-path and tick rule, so
+    it ghosts and lights exactly like its neighbours and the point stays a point. `currentColor`
+    + a `conic-gradient` lets one rule serve both the ghost and the done state.
+    **`background-color`, never the `background` shorthand — the shorthand would wipe
+    the chequer's background-image.** (Checked by the verifier; keep checking it.)
+  · **v261f — THE GRAIN, and it is NOT a CSS constant. Peter: *"the finish chequer needs another
+    square or two filled in."* A chequer is always 50% ink, so this was never about coverage —
+    it was GRAIN.** At the shipped 5px cell, one square was **39% of the mark's 12.93px body**, so
+    a single transparent cell ATE THE POINT and the chevron read broken. **Rule: the cell must be
+    small relative to the feature it textures.**
+  · **And it must scale with the chevron, because the chevron isn't a fixed size.** `pitch =
+    barW/24`, so the mark is ~26px on desktop against ~13px on a phone — a fixed cell would be a
+    *different mark on each screen*. So the tile is set INLINE by `_distBarSync` as `th/2` →
+    **exactly four cells across the mark at every width** (verified at 320/393/780/1200px). Phone
+    cell 3.23px, desktop 6.48px, same mark. Floor of a 5px tile so a freakish width can't dither
+    it to mush (v258). The `6px` in the CSS is only a first-paint fallback.
+
+### v261g — THE LAST CHEVRON IS SQUARE-ENDED. My v261c ruling reversed, and Peter diagnosed why.
+
+**Peter: *"the end chequer needs a square end. It needs to butt up fully on the right side. It
+doesn't have to fit into a chevron shape… that gives us more chequer. I think my original point
+was actually probably correct. But it was caused by the chequer not filling in the arrow head."***
+He's right on both counts, and his diagnosis is the better one — the grain fix (v261f) treated a
+symptom.
+
+- **`clipN` = the exact mirror of `clip0`:** rear notch kept, front SQUARED against the bar's
+  right edge. `polygon(0 0, D% 50%, 0 100%, 100% 100%, 100% 0)`.
+- **MY v261c OBJECTION WAS WRONG.** I ruled that blunting "kills the point at the finish, the one
+  moment the arrow should land hardest." **The finish is a DESTINATION, not a "keep going"
+  signal.** The arrow points AT it; the flag doesn't need to point. I'd reasoned about the mark in
+  isolation instead of about what it means.
+- **AND THE POINT IS WHAT BROKE THE CHEQUER — a chequered flag is a rectangle.** A point and a
+  chequer were never going to share a 13px mark; v261f's finer grain made that survivable, but
+  Peter's fix removes the cause. Both changes stay: the grain rule is right independently.
+- **Truth-tabled 10/10, and the symmetry is now exact rather than approximate: the first and last
+  chevrons have IDENTICAL area (342.6px² each).** The first fills in its rear notch, the last
+  fills in its point — the same 84px² at each end, off the same 258.6px² normal chevron. All 24
+  still occupy the same 21.33px box, and **all 23 gaps are untouched** because a gap is set by the
+  FRONT face of the chevron behind it, and only the last chevron's front changed.
+- **+32% area is what makes the chequer legible**: 6.6 cells across the flag, against 4 across the
+  old pointed mark, with one cell still only 25% of the mark.
+- **THE FIGURES ARE 34px = THE SPEED PILL'S, and it took Peter saying it twice.** My 15px then
+  24px were both me protecting map real estate and dressing it up as hierarchy. **My reasoning was
+  upside down:** I argued distance ranks below a pill's hero because the chevrons carry the
+  glance-read — but the chevrons are a GAUGE and carry no number at all, so that row is the ONLY
+  place distance is ever stated. That makes it a **peer of speed, not its subordinate.** Band
+  20+38 = **58px**; pills `top:48 → 64`. **Watch: that is 24px of map gone versus v258's bar.**
+- **PETER'S "NUMBERS ON THE CHEVRONS" GUT FEEL — mocked (`pills-on-ruler.png`) and it is
+  ARITHMETICALLY reserved ends.** He wondered whether the figures should sit on/над the chevrons as
+  a pill in a fixed location, killing the blank centre. The idea is coherent — a **cased pill
+  can't straddle, it occludes** (v258 said as much) — but the numbers eat the ruler:
+
+  | figure size | pill width | ruler still visible |
+  |---|---|---|
+  | 34px (what he asked for) | 151px | **23%** |
+  | 24px | 113px | 43% |
+  | 15px (the size he rejected) | 78px | **61%** |
+
+  **61% IS the 62% he twice rejected as "fudging".** So the two asks are in direct conflict: **the
+  numbers being BELOW is what makes the big numbers possible.** The current layout isn't a
+  compromise en route to the gut feel — it's what the gut feel would have to collapse into.
+  **Don't rebuild this.**
+- **THE BLANK CENTRE: still open, but it must NOT be a distance.** Mocked ridden-km in the centre
+  (`centre-and-noroute.png`, row B) and it fails on **Peter's own v258 ruling** — route-done 150.3
+  beside ridden 152.9 are near-identical on 95% of rides, and *"two distance bars would be
+  stupid"* applies just as hard side by side as stacked. It invites a comparison that means
+  nothing. Blank is more honest than that. Any future tenant needs to be a NON-distance field.
+- **NO-ROUTE: the chevrons and "to go" now hide.** Peter: *"these chevrons are only relevant when
+  you're following a route. Otherwise they need to be hidden."* Sharper than it sounds — on his
+  16 July ride a route WAS loaded and he rode a training loop 1.8 km away, so `snapTo` faithfully
+  reported a fiction and the bar sat frozen all ride.
+  · **THE RULE: one number, one meaning — route distance while following, RIDDEN distance when
+    not. Never both** (same v258 ruling as above).
+  · `_distFollowing(r)` = route exists && `totalDist>0` && `_offRouteMode!=='abandoned'`.
+    **Trigger is Peter's call: only signals that already exist.** No second prompt invented —
+    no-route mode's designed record-start place-check will feed this same gate when it lands.
+    **Deliberately NOT gated on `_snapOffKm`**: it's live, so it would flicker on a detour where
+    you ARE still following. `'detour'` and `'ack'` both still count as following, per v245.
+  · Band collapses 58 → 38, chevrons + to-go hide, the left figure becomes `UI.gpsTravelledKm`.
+    **The pills' `top` is a CSS var (`--fpill-top`, 64/44) precisely so one line can move them** —
+    an inline literal couldn't. The 6px clearance is identical in both states.
+  · Verified **14/14** incl. the 16 July case (reads 23.4 km ridden, not the frozen 1.8 km snap).
+- **Verified: whole-file `node --check` (19,657 lines, ends `</html>`, both blocks clean)**, plus
+  the `--fpill-top` wiring checked in all three places it must agree, and the `background-color`
+  shorthand check.
+
+### v261e — the blank centre is filled: RIDDEN distance. And I had to retract twice.
+
+**Peter, on the mockup: *"You've shown a 3rd distance… is that the actual distance, as against
+the route distance? If so, that is a good place to put it."* He's right and my v261d objection was
+wrong.** I invoked his own v258 ruling ("two distance bars would be stupid") against him and
+**misread it**: that killed a second BAR, and the 4-second rotation where you'd never see both at
+once. The same note ends *"if the route-vs-ridden distinction needs saying, it belongs on the pill
+showing RIDDEN distance ('actual'), **where both numbers are visible at once and the difference
+means something**"* — which is precisely this. **Standing lesson: before wielding a note against
+Peter, read the whole note.** (Second occurrence — v260 recorded the same shape with the crosshair
+buttons.)
+- **My "near-identical, so meaningless" argument was also backwards.** When 150.3 and 152.9 agree
+  that IS information (you're on route, nothing odd); when they diverge — his 12 July scout, where
+  he rode part of the route and turned back — it's telling you something no other figure can.
+  Cheap, usually boring, occasionally the only number that matters.
+- **IT MUST BE LABELLED, and the evidence is that PETER had to ask what it was.** He designed the
+  bar and still couldn't tell. So it ships as a stacked `20px figure` over an `11px "km ridden"`.
+- **STACKED, while the two ends are inline — deliberate, and measured.** The stack is **60px**
+  wide; an inline "152.9 ridden" is **98px**. Swept across the whole ride at 137/300/600/1024 km,
+  the worst-case centre gap is **109px**, so the stack has margin everywhere and the inline gets
+  tight. It also matches the pills' own unit-below language.
+- **Centred by `translateX(-50%)`, NOT as a third flex item.** The two end figures are different
+  widths (100.1 vs 200.5 at the worst point), so `space-between` would push the centre off-centre
+  and it would drift all ride.
+- **Hidden when there's no route** — it's a comparison, and there's nothing to compare against;
+  the left figure has already become the odometer, so it would just be the same number twice.
+  **Same value, two homes: centre when there's a route, left when there isn't.**
+- **⚠ THE DECIMAL RULE: I claimed it, retracted it, and PETER supplied the case that reinstates
+  it. `fmtDistKm` — ≥1000 km loses the decimal.** The sequence is worth keeping because the error
+  is instructive. I first claimed the figures collide on a 1000 km ultra; the table was wrong
+  (it assumed both ends could read 1024.7 at once — they can't, done + to go = total). I then
+  retracted the rule entirely, having swept only up to ~1000 km and concluded "three figures fit
+  everywhere". **They don't. Peter: *"I've done a 4,000 km ride… Tour Divide is 4,500 km long.
+  Anything over 2,000 km, you can have four digits either side."*** Both ends CAN be four digits —
+  on a **≥2000 km** route, which he has ridden and I had written off as unreal. Measured: 4000 km
+  worst case leaves **68px for a 72px centre stack — a 3.7px collision.** Dropping the decimal
+  at ≥1000 km restores 129px. **Lesson: I bounded the problem by my own imagination of the routes
+  rather than by his.**
+  · Same reasoning as v260's `fmtStopPct`: precision where it carries information, dropped where
+    it's noise. 100 m on a 4,500 km ride is noise. Grenfell keeps its decimal.
+  · **It gets NARROWER at 1000** ("999.9" → "1000"), so no figure can grow mid-ride and shove a
+    neighbour — the property Peter required of `fmtStopPct`.
+  · **THE TRUTH-TABLE CAUGHT THE SAME BUG v260 HAD, THIRD OCCURRENCE:** `v>=1000 ? … :
+    v.toFixed(1)` emits **"1000.0" (6 glyphs)** at v=999.96 — under 1000 raw, but toFixed rounds
+    it up. **When a format switches on a threshold, test the threshold against the FORMATTED
+    output, not the raw value:** `+v.toFixed(1) >= 1000`. Verified every 10 m from 0 to 4600 km:
+    nothing ever exceeds 6 glyphs and nothing ever widens across the boundary. 8/8.
+- **Verified: whole-file `node --check` (19,693 lines, ends `</html>`, both blocks clean)** + the
+  third figure checked in all five places it must agree (template, CSS, no-route hide, sync paint,
+  odometer source), the transform-centring, and the no-grey caption rule.
+
+- **OPEN — Peter: "when there is no route to follow that black strip has space for some other
+  things. What could we put in there?"** Answered, not built. The strip's job on a route ride is
+  ORIENTATION — how far through am I. Without a route the equivalent question is "how far can I go
+  before I have to be back?", so the recommendation is **time to sunset** (or the sunset clock
+  time): PackTimes already computes sun times (`sunCache`), nothing else on the ride screen says
+  it, and it passes Peter's own *"what would you do about it?"* test hardest of any candidate —
+  you turn around. Second candidate: **the clock**, which the ride screen simply doesn't have.
+  **Rejected: total ascent** (interesting, not actionable) and **anything distance-shaped** (the
+  v258 rule). **Don't let this become a dumping ground** — the five pill slots already carry the
+  sensor and ride data; the strip should only hold what the ROUTE would otherwise have told you.
+  · **RETURN ETA / "double back time" — Peter raised it, then killed it himself. Don't build it.**
+    The idea: if you turned round now and rode back at the same pace, when would you get home?
+    My objection was weak (it's ~`now + elapsed`, and the stoppage pill already shows elapsed).
+    **His is decisive: elevation breaks the assumption.** *"If you've just been climbing a big
+    hill for an hour, it's not going to take you an hour to get back. If you've gone down into a
+    valley for an hour, it might take you many hours to get back."* And the failure is
+    **asymmetric in the dangerous direction** — the valley case UNDER-estimates the return and
+    tells you you're fine when you're hours from home in the dark. Same asymmetry as v245's faff
+    uplift (15% not 10%, because erring slow is the safe way to be wrong). A metric that is
+    confidently wrong in the direction that hurts you is worse than no metric.
+  · So the strip states a FACT (sunset is at 17:42) and lets the rider do the arithmetic. Peter:
+    *"You can do your own math if you need to, and this is not a planned ride, so you're probably
+    not that fatigued."*
+- **VERIFIED THAT THE THREE FIGURES FIT PETER'S REAL ROUTES**, sweeping every 0.05% of the ride
+  with the shipped `fmtDistKm`: worst-case centre gap vs the 60px stack is **+49px on Grenfell,
+  +70px on a 4000 km ride, +70px on Tour Divide (4500)**. Tour Divide at halfway reads
+  `2250 km | 2295 km ridden | 2250 km`. **Counterintuitive and worth keeping: the ULTRA is the
+  roomiest case, not the tightest** — the ≥1000 km decimal rule makes those figures narrower than
+  a 300 km route's, so the rule that exists for the long rides is what makes them the easy ones.
+- **Verified: fragment `node --check` clean + 19/19 truth-table** (gap is exactly 25% of the mark;
+  perpendicular gap clears the floor; 25 chevrons provably would NOT, so 24 is the real ceiling;
+  whole-chevron ticks at 0/12.0/12.6/150.3/299.1/300.6 km; clamped past the finish and below zero;
+  per-tick distances match the numbers quoted to Peter; resize changes the pitch and the rebuild
+  guard is stable; clip-path percentages well-formed).
+- **NO whole-file check — the bash mount was truncated AGAIN** (19,439 lines, ends mid-statement in
+  the SW's font block, no `</html>`), so a whole-file parse would have been a FALSE PASS. It *had*
+  picked up the edits (v261 at line 932), so the regions were extracted from it and checked as
+  fragments, and every edited region was read back via the Read tool. **Open `index.html` in a
+  browser once before `push.bat`.**
+- Mockups (true size, 2.748×, on Peter's real screenshot): `_planning/distance-bar-chevron/` —
+  `var-A/B/C/D.png` (layout), `marks.png` + `marks-thin.png` + `marks-tight.png` (the Wahoo
+  question), `quantised.png` (the chosen build). Generated with Pillow + the repo's real DM
+  Sans/DM Mono; the sandbox still can't render HTML.
+
+### Rejected on the way (don't rebuild these)
+
+- **Reserved ends** (`var-A.png`) — Peter's own earlier idea, revisited and rejected again, and the
+  chevrons are what killed it: with a visible ruler it becomes *obvious* the scale doesn't span the
+  bar. His v258 word for it was "fudging", and the marks make the fudge legible.
+- **RAKE / MTN / PENNANT / DART** (`marks.png`, `marks-thin.png`) — non-chevron marks tried to dodge
+  Wahoo. RAKE (leaning stripes) was my recommendation until the tight-packing render; it gives up
+  the point, and a lean *implies* direction where a point *states* it. PENNANT's point doesn't
+  survive at true size (reads as a parallelogram). MTN is noise. DART still reads as a chevron.
+- **THIN-10 / THIN-20** (thin marks, wide gaps) — a scale with no mass; you can't read proportion at
+  a glance, which is the bar's whole job.
+- **TICK** (plain vertical marks, same pitch) — built as the CONTROL and it earned its place: same
+  ruler, no chevron, and it reads **inert**. That is the direct evidence that the chevron is
+  carrying information rather than decorating, and it's today's bar with lines on it.
+
+## Current status (17 July 2026, v260 — PUSHED and phone-tested by Peter)
+
+A UI session, driven almost entirely by Peter putting builds on his phone. **Three of the four
+real bugs found this session were invisible from the desktop**, and one of them would have been
+*hidden rather than fixed* if I'd done as asked without looking. Recorded because the pattern is
+the lesson: this file's remaining bugs live where the geometry meets a real device.
+
+### THE FLOATING PILL FAMILY — the empty states are now first-class
+
+- **EMPTY PILLS ARE FULL SIZE (Peter's rule).** *"The power, heart rate, and now this cadence pill
+  should be their full size at all times, not only after they have paired. It makes it easier to
+  press when moving, and you are not going to leave an unpaired pill there if you don't want it.
+  You either pair it or cycle through to the small plus."* He'd **already made this call once**
+  (v259, the stoppage pill's short empty state) — an empty pill is still a pill. Two things fall
+  out beyond the tap target: **pairing no longer moves the furniture** (the old prompt was ~50px
+  vs ~105px paired, so connecting a sensor shoved the column below it down mid-ride), and the
+  empty pill becomes a preview of the paired one.
+- **THE IDENTIFIER RULE: use the symbol the sport already owns; NEVER invent one to fill the slot.**
+  The hero slot holds ⚡ / ❤️ / the word "Cadence", unit below, `hold to pair` in the reversed half
+  at a readable 13px. I argued for words everywhere ("a set where two get symbols and one gets a
+  word isn't a set"); **Peter overruled it having seen all three**: *"the words for power and heart
+  rate are clear, but the symbols were also clear and looked better… for Cadence, I think 'rpm' is
+  probably about as clear as it can get."* He's right on the fact I had wrong — ⚡ and ❤️ aren't
+  icons anyone decodes, they're what every bike computer uses. 🔄 never was in that class, which is
+  exactly why he read it as a **sync button** (*"what is that symbol for? I think it is separate to
+  heart rate or power meter"*) — it also ships with its own blue rounded-square background. **The
+  problem was always that CADENCE HAS NO GLYPH, not that glyphs were wrong.**
+  · My v260d mistake, for the record: I filled the hero slot with a DASH and let the 11px unit do
+    the naming, defending the dash as a "preview". A dash teaches you nothing — it was a preview of
+    nothing, and it's why the only readable text had to be small.
+- **THE FIGURE'S LINE BOX IS 34px; THE FONT SIZE VARIES INSIDE IT.** Peter: *"why does the cadence
+  pill shrink? I know the font sizes in the bottom half are a little smaller, but why not just make
+  the pill a little larger so it aligns with everything else?"* Exactly — v260c's 28px was a
+  **width** fix (five glyphs of "49/51" burst the pill) and I let it cost 6px of **height** without
+  asking why the two should be linked. They aren't. Pinning the box fixed the family alignment AND
+  killed the "shrinks when it pairs" wart in one change. Every pill — speed, stoppage, power,
+  cadence, HR — is now the same height, paired or empty.
+- **THE HAIRLINE BETWEEN THE HALVES (power + HR only).** Found the instant all five pills were on
+  screen together with real numbers: 136 and 145 bpm in the SAME zone flood both halves the same
+  yellow, and the pill reads as **one solid slab**. The power pill escaped it in that screenshot
+  only because 203 W and 251 W happened to differ. **On a steady ride current and average agree
+  most of the time, so this is the normal case, not an edge one.** Cause is structural: the
+  REVERSED half is what separates the two numbers, and zone colour overwrites it. Fix is 1px of the
+  pill's own dark showing through — the family's existing language (the outer ring works the same
+  way), and the detail Peter himself spotted on the speed pill. Padding drops 3px→2px to pay for
+  the border so the height still matches.
+- **THE STOPPAGE PILL SHOWS `0h00` / `0.0%` WHEN NOT RECORDING — no dashes, no instruction.** I
+  offered it the sensor pills' "name yourself + tell me what to do" treatment; Peter dissolved the
+  question instead: *"What is the pill showing really? It is time or duration, and then a percentage
+  of that as stoppage… Why not just show 0h0m? There is no pairing going on here, and also show 0%
+  for the stoppage."* **THE DISTINCTION, and it's the keeper: for a SENSOR zero would be a lie (no
+  heart rate is not 0 bpm) — for a CLOCK zero is simply true.** A sensor pill is missing hardware
+  and has something to tell you; this pill is missing nothing, so "record to measure" was an
+  instruction with no mechanism behind it, which is why he read it as vague (*"it could mean
+  anything"*). `fmtDurPill` now formats 0 rather than dashing it; the bottom label is a constant
+  `stoppage`. **NO STOPWATCH ICON — the stopwatch is PackTimes' own logo mark** (v257: PackView has
+  the eye, PackRide the dots); a brand mark used as a UI hint says "PackTimes" where it needs to say
+  "press this". The app already owns the right symbol (the red record dot) — and honest zeros need
+  no symbol at all.
+  · **Known 60-second wobble, deliberately not "fixed":** idle reads `0.0%`, then goes to `—` for
+    the first minute of recording (Peter's own v259 rule: 100% at the lights is true and useless),
+    then to a real number. Flagged to him rather than silently overturning his rule.
+- Copy: `stopped` → `stoppage`; `W · 3 s` → `W · 3 sec` (**two copies** — paired and empty);
+  `L/R` → `Left / Right %`.
+
+### COLOUR ON THE PILLS IS SPOKEN FOR — SETTLED, DON'T RE-OPEN
+
+Peter asked for a subtle colour on the stoppage and cadence pills; the argument below persuaded him
+(*"ok that's a good point, let's leave them as they are"*). Recorded in the code beside `pillBg` too.
+- Colour already means exactly two things here, both load-bearing: **which ZONE** (power/HR — only
+  because the colour IS the data, his own v260 ruling) and **which PRODUCT** (green PackTimes /
+  yellow PackRide, one token — the distance-bar rule: colour = product, SIZE and REVERSAL = which
+  number matters).
+- So the monochrome pills aren't an oversight: power and HR wear colour because they HAVE zones. A
+  decorative colour elsewhere would read as a zone that isn't there, with a real zone pill beside it.
+- **Cadence cannot have an honest colour**: it needs a good/bad to encode and there is no agreed good
+  cadence. Inventing bands = the app passing judgement with nothing behind it. Same trap as a made-up
+  stoppage threshold (30% is fine on a tour, terrible on a non-stop ultra).
+- **THE ONE ROUTE THAT WOULD BE HONEST, if it ever comes back:** colour stoppage against **the PLAN'S
+  OWN stoppage %**. The plan has every stop and duration, so the benchmark is computable and it's the
+  rider's own, not invented. That's a feature, not a styling pass, and it says nothing on a no-route ride.
+
+### THE STOPS TAB — three buttons and a drag handle
+
+- **Crosshair + GPS toggle DELETED from the Stops map.** Peter: *"we should only need FIT ROUTE, MAP
+  TYPE, SURFACE TYPE."*
+  · **HISTORY CORRECTION — I got this wrong and he was right.** I told him v245 added them "at your
+    request". It didn't: he asked for the **position dot** after his ride test; *I* bolted the two
+    buttons on alongside. And v245's note "**both stay** on the Stops/desktop maps" was written in the
+    same version that had just put them there — "stay" implied a history they never had. He said
+    *"the note suggests both STAY on the stops screen but they weren't there?"* and his memory beat my
+    note. **Don't wield a note against Peter's recollection without re-reading what it actually says.**
+  · Consequence he accepted with eyes open: **there is now no plain GPS toggle anywhere in the app** —
+    the Ride tab's button starts GPS *and* a recording (v245). GPS belongs to the ride. If "show me
+    where I am without recording" is ever wanted again, **Settings**, not a planning map. (The
+    delegator still has an unreachable `UI.tab!=='live'` branch for `#btn-gpstoggle`; inert, left.)
+- **THE CROSSHAIR BUG — Peter found it on the phone, and it's the valuable half.** Recording a
+  training loop hundreds of km from the loaded route: *"the crosshair button just zooms to the route
+  start… so that button doesn't even work in this scenario."* It **never looked at the GPS**: it read
+  `UI.gpsDistKm` (your distance ALONG THE ROUTE) and centred on `r.points[cidx(r,gpsDistKm)]` — the
+  ROUTE's point at that distance. Far from the route that's null, so it fell into a branch commented
+  *"No GPS"* and flew to the start; his GPS was working perfectly, the condition really meant "not near
+  THIS route". Even when it did fire it centred on the ROUTE, not on him (1.8 km off route → lands on
+  the route). Now uses `UI.gpsPos` (the actual fix, `{lat,lon,acc,speed,ts}`, owing nothing to any
+  route). **THE DESKTOP MAP'S CROSSHAIR SHARED THE HANDLER AND THE BUG** — deleting the Stops buttons
+  would have hidden it, not fixed it. Also a preview of no-route mode: *a control that only works when
+  a route happens to be under you is the wrong shape for "I'm just going for a ride."*
+- **The expand/collapse button is gone, replaced by a DRAG HANDLE** (`.stops-drag` / `_stopsDragInit`,
+  mobile only — desktop pins the map at 250px and never had the button). Peter: *"a better approach
+  would be to do what we do on the ride tab — have the stops list drag down so a single small strip is
+  visible at the bottom, and you drag that strip up… a more direct control, which is intuitive, and
+  gets rid of another button."* Verdict after riding the phone build: *"efficient and intuitive, and
+  only 3 buttons."*
+  · The button had a deeper problem than being a button: **its expanded state hid the list outright**
+    (`display:none`), so the only way back was the button itself. Leave a strip and the control and the
+    thing it controls are the same object.
+  · **THE RIDE TAB'S "DRAG THE LIST UP" IS NOT A GESTURE — IT'S NATIVE SCROLLING** (`.live-outer` is
+    the scroller, so the map scrolls up out of view). **Nothing to reuse**, and the cheap move of making
+    Stops scroll the same way does NOT work: scrolling *translates* the map, it doesn't *resize* it —
+    you'd be looking at the bottom half of a full-height map with fit-route fitting the route into a box
+    half off screen. (Dead stubs `scrollMapUp` / `resetMapScroll` / `handleStopsScroll` are the remains
+    of a scroll-driven resize that was built and taken out. It's been tried.)
+  · Two snap positions via `_stopsApplySnap`; **nearest-end snapping, not direction** (predictable, and
+    can't strand you mid-way); 5px dead zone so a tap doesn't nudge the map; one redraw per frame via
+    rAF (attachMap's pan already redraws at gesture rate, so it's proven). `UI.stopsMapExpanded` keeps
+    its old name and meaning so nothing else changed.
+- **THE PHANTOM 48px HEADER — a real bug, and the best find of the session.** Peter, with the list
+  dragged fully down: *"it still leaves all of those lines showing, which is bad."* He was getting
+  ~140px of list where the code asked for 92. Cause:
+  `const headerH = document.querySelector('.header')?.offsetHeight || 48;` — and **`.header{display:none}`**
+  on mobile, so `offsetHeight` is **0** and `0||48` is **48**. It subtracted a header that is not on the
+  screen; 92 + 48 = 140, exactly his screenshot. **The honest number was already in the same function's
+  OTHER branch** — the full-screen case measures `panel.getBoundingClientRect().top`, which absorbs the
+  status bar, any header and the tabs without knowing what they are. Now `_stopsAvailPx()` is the one
+  authority and both branches use it. Map went 665 → **763px (92% of the tab)**; the resting half also
+  gained 24px, having been quietly short by the same phantom all along.
+  · **STANDING SHAPE, now at least four occurrences: MEASURE WITH RECT MATHS. A fallback constant
+    standing in for a real measurement is a bug with a long fuse.** (cf. v258's `clientWidth` rounding,
+    v255's pill positioning, v258's bar-box snapping.) `||48` looked like a safe default and was a guess
+    that was always wrong on the only device that matters.
+- **The strip is ONE LINE (42px) + a peek title**, not 92px. My 92 answered the wrong question: I sized
+  the strip to be **grabbable**, but the grab target is the handle, which is always there. The strip only
+  needs to be big enough to **say what's under it**. `#stops-peek-title` reads `Stops (n)` and sits where
+  Peter put it — *"a single line of text perhaps ABOVE the current first 'Tap on the map…'. That new title
+  just scrolls away when you scroll the list up anyway."* That last clause is why it's ordinary list
+  content and not a sticky header: it has a job in exactly one state and gets out of the way by itself.
+
+### Answered, not built
+
+- **Electronic drivetrains (Di2 / AXS): parked, and I'd advise against it.** Recording gear is the easy
+  half — FIT already has it (`front_gear_change` / `rear_gear_change`, four 8-bit values packed into the
+  event message's 32-bit data field). **Getting** the data is where it dies: shifting has no public BLE
+  service (unlike HR 0x180D / power 0x1818); Shimano broadcasts over **private ANT** (D-Fly) and phones
+  have **no ANT radio** — that's why Garmin/Wahoo can and a PWA can't; SRAM's own AXS Web doesn't read
+  the bike, it pulls the FIT out of Garmin Connect. Three brittle reverse-engineered integrations, per
+  brand, breakable by any firmware update. **And it fails Peter's own test — "what would you do about
+  it?"** You can see your chain and feel your gear; gear stats are post-ride analysis, which Strava
+  already has. The one genuinely actionable bit for an ultra is **Di2 battery on day 3**, behind the
+  same locked door.
+
+### Verification notes for this session
+
+- One **honest** whole-file `node --check` got through mid-session (both script blocks clean, 18,473
+  lines, file ended `</html>`). The mount then went stale/truncated and stayed there, so the crosshair
+  fix and the strip fix are verified by **reading the regions back**, not by parsing. Truth-tables:
+  32/32 on the drag gesture, 15/15 on the geometry (**the 140px bug was reproduced in the model first,
+  so the fix was proven against a known-bad baseline**).
+- **The mount lies by going SHORT, and a whole-file parse of a truncated file is a FALSE PASS** (it
+  finds 0 script blocks and "passes"). Always assert `</html>` before trusting a check. Open
+  `index.html` in a browser once before `push.bat`.
+
 ## Current status (15 July 2026, v257) — SLICE 1 BUILT: the sharing button + sheets (solo)
 
 First build slice of the ride-screen consolidation (design below). **NOT ride-tested, NOT

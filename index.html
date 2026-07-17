@@ -165,33 +165,97 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .tc-box .tc-dist .tc-unit{font-size:16px;color:#c2c8ce;font-weight:500;margin-left:3px;}
 .tc-box .tc-road{font-family:var(--sans);font-weight:500;color:#ccd2d8;font-size:14px;margin-top:2px;}
 .live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
-/* v258 — the distance bar. It is a GRAPHIC with two numbers in it, nothing else.
-   The old bar swept a fill UNDER three text layers, so a label rode over dark, then
-   fill, then half-and-half; by 89% the whole bar was a bright --accent3 slab with
-   white text on it. Two rules fix it and must not be undone:
-     1. NO TEXT EVER STRADDLES THE DIVIDE. Each figure sits wholly on one colour and
-        migrates to the other side when its own side runs out of room (_distBarGeom).
-     2. The fill lives INSIDE the casing, inset by a 1px hairline, so it never touches
-        the map. Same trick as the speed pill's reversed half — that hairline is why
-        white/accent panels read as objects instead of glare (Peter's note).
-   Radius 8px = the speed pill's, which is the style reference for the whole app. */
-.live-dist-bar{position:absolute;top:6px;left:6px;right:6px;height:34px;background:rgba(10,15,10,0.88);border-radius:8px;overflow:hidden;z-index:10;}
-/* Left corners rounded, RIGHT EDGE SQUARE: the right edge is the done/to-go dividing
-   line, and a boundary between two values is square. Radius means "outside edge". */
-.live-dist-fill{position:absolute;top:1px;left:1px;bottom:1px;background:var(--accent);border-radius:7px 0 0 7px;}
-/* Both figures are absolutely positioned by _distBarGeom — never by a flex rule, since
-   which side they sit on depends on the fill. */
-.live-dist-done,.live-dist-left{position:absolute;top:0;bottom:0;display:flex;align-items:center;
-  font-family:var(--font);font-weight:500;font-size:16px;color:var(--text);white-space:nowrap;z-index:2;}
+/* v261 — the distance bar: a CHEVRON RULER, edge to edge, with its numbers in their
+   own row BELOW it. Full width, no radius, no map showing around it (Peter).
+   The geometry (chevron count, pitch, gap, clip-path) is computed in _distBarSync —
+   see the long note there for WHY 24 and why the gap is as wide as it is. Two numbers
+   here must track that code: the graphic's height (20px) and the band's total (40px).
+     · The band is 58px against v258's 34px. 40 of that was the six-pixel win for moving
+       the text OUT of the bar; the other 18 is the figures reaching the size Peter asked
+       for TWICE — "the distance km numbers are still very small relative to the speed and
+       other data pills. Distance is an important measurement." He was right both times,
+       and my 15px then 24px were me protecting map real estate instead of answering him.
+     · SO THE FLOATING PILLS MOVED: top:48px → 64px (see colBase). That is the entire cost
+       of the readable figures, and the pills are the only thing keyed to this band. */
+.live-dist-bar{position:absolute;top:0;left:0;right:0;height:58px;background:rgba(10,15,10,0.92);border-top:1px solid rgba(255,255,255,0.10);z-index:10;}
+/* v261c: the row no longer runs off either end — the pitch is solved so the first
+   chevron's flat back sits on x=0 and the last one's point lands on the right edge.
+   overflow:hidden stays as a guard against a sub-pixel rounding overshoot; it is no
+   longer doing design work. */
+.live-dist-chevs{position:absolute;top:0;left:0;right:0;height:20px;overflow:hidden;}
+/* Ghost ahead / accent behind. The chevron's SHAPE is a clip-path set per element by
+   _distBarSync (it depends on the measured bar width); only the colour lives here, so
+   a live tick is one class toggle and no layout.
+   background-COLOR, never the `background` shorthand — the shorthand would wipe the
+   chequer's background-image on the last chevron below. */
+.live-dist-chev{position:absolute;top:0;height:20px;background-color:rgba(255,255,255,0.24);}
+.live-dist-chev.done{background-color:var(--accent);}
+/* THE LAST CHEVRON IS CHEQUERED — the finish (Peter's idea, and I was wrong about it: I
+   judged it at 3× zoom and called it damage. Nobody rides at 3×. At TRUE SIZE it reads as
+   a small chequered flag, which is the whole point — "subtle but a nice little touch".
+   Standing lesson, and this file already had it: JUDGE AT TRUE SIZE. Note v258 found the
+   opposite for a chequered flag as an ICON ("the 8-rect flag dithers to mush at 14px") —
+   both are true, because that one had to be READ and this one only has to be FELT.
+   It rides the chevron's own clip-path, so the point stays a point. currentColor is what
+   lets one rule serve both the ghost and the done state.
+   THE TILE IS SET INLINE BY _distBarSync, NOT HERE — it scales with the chevron. See the
+   note there; the value below is only a fallback for the first paint. */
+.live-dist-chev.fin{background-color:transparent;color:rgba(255,255,255,0.24);
+  background-image:conic-gradient(currentColor 0 25%,transparent 0 50%,currentColor 0 75%,transparent 0);
+  background-size:6px 6px;}
+.live-dist-chev.fin.done{background-color:transparent;color:var(--accent);}
+/* The numbers are a plain flex row — no absolute positioning, because nothing about
+   where they sit depends on the fill any more. That is the whole point of v261. */
+.live-dist-nums{position:absolute;left:0;right:0;top:20px;height:38px;display:flex;
+  align-items:center;justify-content:space-between;padding:0 8px;}
+/* v261e — the third figure: RIDDEN distance, filling the gap Peter flagged.
+   Absolutely positioned at the true centre, NOT a third flex item: the two end figures are
+   different widths (100.1 vs 200.5), so space-between would push this off-centre and it
+   would drift all ride.
+   IT IS STACKED (figure over caption) while the ends are inline. That's deliberate: at 60px
+   it clears the ends at every route length, where an inline "152.9 ridden" is 98px and gets
+   tight on a long ultra — measured across the whole ride at 137/300/600/1024 km.
+   IT MUST BE LABELLED. Peter designed this bar and still had to ask what the third number
+   was ("is that the actual distance, as against the route distance?") — that settles it. */
+.live-dist-actual{position:absolute;left:50%;transform:translateX(-50%);text-align:center;
+  line-height:1;pointer-events:none;}
+.live-dist-actual .v{display:block;font-family:var(--font);font-weight:500;font-size:20px;color:var(--text);}
+/* No grey (v260, Peter: "I'd just use black and white. I wouldn't use the grey"). SIZE does
+   the ranking here — 20px against the ends' 34px — so the caption can be full contrast. */
+.live-dist-actual .c{display:block;font-size:11px;font-family:var(--sans);color:var(--text);margin-top:2px;}
+/* 34px — THE SPEED PILL'S FIGURE SIZE, deliberately. I twice argued distance should rank
+   below a pill's hero because the chevrons carry the glance-read; Peter twice said it was
+   too small next to speed. He's right and my reasoning was upside down: the chevrons are a
+   GAUGE, they don't carry a number at all, so the figure below is the only place distance
+   is ever stated — which makes it a peer of speed, not its subordinate. Distance = speed
+   = 34px. A 38px row holds it because these glyphs have no descenders.
+   "300.6 km" at 34px is ~131px, so both ends fit a 393px bar with ~130px of middle spare
+   — see the note at the template about that gap. */
+.live-dist-done,.live-dist-left{font-family:var(--font);font-weight:500;font-size:34px;white-space:nowrap;}
+/* Colour says which side of the ruler the figure belongs to — done is the accent the
+   ridden chevrons wear, to go is the plain text colour. */
+.live-dist-done{color:var(--accent);}
+.live-dist-left{color:var(--text);}
 /* The figure and its unit are two flex items, so align-items:center on the row above
    centres them SEPARATELY and their baselines miss. This inner wrapper sits them on one
-   baseline (the unit "km" bottom-justified to the figure); the row still centres the
-   pair as a whole in the bar. */
+   baseline (the unit "km" bottom-justified to the figure). */
 .live-dist-fig{display:inline-flex;align-items:baseline;}
-/* On the fill, the figure reverses to dark — the fill is bright, so white would vanish. */
-.live-dist-done.on-fill,.live-dist-left.on-fill{color:#0f160f;}
-.live-dist-unit{font-size:12px;color:var(--text3);font-weight:400;font-family:var(--sans);margin-left:3px;}
-.on-fill .live-dist-unit{color:#3d4a3d;}
+/* NO GREY on the unit (v260, Peter: "we actually can't read that grey km/h… I'd just
+   use black and white. I wouldn't use the grey."). It inherits its figure's colour. */
+.live-dist-unit{font-size:15px;font-weight:400;font-family:var(--sans);margin-left:5px;}
+/* NOT FOLLOWING A ROUTE (no route loaded, or the rider tapped "Stop following this route").
+   The chevrons and the "to go" figure are route-scoped fictions here, so both go; the band
+   collapses to its numbers row and the left figure becomes the odometer. Driven by
+   _distFollowing() — see the note there for why the trigger is what it is.
+   The pills ride up via --fpill-top, set in the same place. */
+.live-dist-bar.no-route{height:38px;}
+.live-dist-bar.no-route .live-dist-chevs{display:none;}
+.live-dist-bar.no-route .live-dist-nums{top:0;}
+.live-dist-bar.no-route .live-dist-left{display:none;}
+/* The centre figure is a COMPARISON against route distance. With no route there is nothing
+   to compare it to — and the left figure has become the odometer itself, so showing it twice
+   would be daft. Same value, two homes: centre when there's a route, left when there isn't. */
+.live-dist-bar.no-route .live-dist-actual{display:none;}
 .live-elev-strip{position:absolute;bottom:0;left:0;right:0;z-index:10;background:transparent;cursor:pointer;user-select:none;border-radius:0;}
 .live-elev-bar{background:rgba(10,15,10,0.88);}
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
@@ -922,7 +986,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v260';
+window.APP_VERSION='v261';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2452,100 +2516,225 @@ function fmtDurPill(ms){
   return h+'h'+String(m).padStart(2,'0');
 }
 
-// ── The distance bar's geometry (v258) ───────────────────────────────────────
-// ONE authority for where the two figures sit. Called by _distBarSync only, but kept
-// pure and beside legEnd/legToGoKm because it is the same kind of thing: a rule about
-// the plan, not a rendering trick.
+// ── The distance bar (v261) ──────────────────────────────────────────────────
+// Peter's design, and it settles six rounds that all argued about TEXT PLACEMENT and
+// never touched the thing he was actually complaining about: "I'm still not happy… It's
+// lacking an impression of movement, of dynamics. It's just this bland bar."
 //
-// THE RULE: a figure may never sit on both colours at once. So each one has a side it
-// prefers and a side it retreats to:
-//   · DONE prefers the fill (left). Until the fill is wide enough to hold it, it waits
-//     out on the dark, just right of the divide — which means it rides slowly along
-//     ahead of the fill and then flips left, ONCE, when it fits.
-//   · TO GO prefers the dark (right). When the dark runs out near the finish it flips
-//     into the fill, right-aligned to the divide.
-// Peter accepted the creep with eyes open: on a 300 km ride the divide moves ~1px/min,
-// and it flips once. "Undesirable, but probably the lesser of all evils… it is not like
-// a speed number, constantly changing." A fixed-two-position variant was offered and
-// declined — do not re-litigate.
+// THE BAR IS A CHEVRON RULER, EDGE TO EDGE. 24 chevrons span the whole route; the ones
+// behind you are accent, the ones ahead are ghosted. Three problems die at once:
+//   1. DIRECTION. A flat fill edge states a proportion but not a way to go. A chevron
+//      points. Mocked against a plain vertical TICK of the same pitch as a control: same
+//      ruler, and it reads inert — which is the evidence that the chevron is carrying
+//      information rather than decorating.
+//   2. THE RULER. The chevrons ARE the tick marks (each = 1/24th of the ride), so the
+//      separate marks Peter floated aren't needed — he called this himself. Fractions,
+//      not 10 km: absolute marks degrade exactly where the bar matters most (~100 ticks
+//      on a 1000 km event), and absolute distance is already the elevation strip's job.
+//   3. THE TEXT. The numbers moved OUT of the bar into their own row below. That kills
+//      the whole problem class the v258 flip existed to manage — no straddle, no creep,
+//      no reserved-end fudge — and it costs SIX pixels (34px bar → 20px bar + 20px row).
+//      Every earlier round assumed moving the text out was expensive. It wasn't, once the
+//      bar was given its own full-width band. THAT was the thing nobody checked.
 //
-// Paints the bar from _distBarGeom. Called from updateLive (every live tick) AND from
-// initLiveMap (first paint / after a resize), exactly like _shareBtnSync — the template
-// can't do it because the flip needs the bar's measured width.
+// NO PARTIAL FILL — A WHOLE CHEVRON TURNS GREEN OR IT DOESN'T (Peter's rule, and why the
+// vertical divide is gone). The chevron is the unit of progress; the numbers below carry
+// the precise truth. The bar is the gauge, the numbers are the reading. A leading chevron
+// that filled as you rode it WAS mocked: it is indistinguishable from the plain version at
+// any real state. Don't rebuild it.
+//
+// WHY 24, AND WHY THE GAP IS AS WIDE AS IT IS — these two pull AGAINST each other, and
+// that tension is the whole design. Quantised ticks want MANY chevrons; every gap must
+// survive a phone. The gap is DIAGONAL, so what you see is gap·cos(40°) ≈ 0.77 of the
+// horizontal gap, and below ~2.5 CSS px it mushes — at which point the bar is the solid
+// slab this version exists to kill. (v258's lesson: a 3px tick vanished on Peter's phone
+// and only looked right at 2×.) Solving for that floor on a 393px bar:
+//     gap 10% of the mark → max 11 chevrons → 27.8 km per tick on a 300 km route
+//     gap 15%             → max 16          → 19.4 km
+//     gap 25%             → max 24          → 12.6 km
+// Counterintuitive and load-bearing: a WIDER gap ratio buys MORE chevrons, because a fat
+// mark spends its width getting to a gap you can see. 24 @ 25% is the finest ticking that
+// stays legible. DON'T raise DIST_CHEV_N without widening the gap — and don't narrow the
+// gap to "fit more in", which is the intuition the table above refutes.
+//
+// The count is a FRACTION of the ride, so the tick rate scales with it: a chevron is
+// always ~4% of the day, whether that is 1.7 km or 42 km. Peter accepted the long-ultra
+// case with the number in front of him (42 km ≈ 2 h per tick on a 1000 km event) — the
+// argument being that the km figures below do the second-by-second work.
+//
+// THE MARK IS DELIBERATELY NOT WAHOO'S (Peter: "chevrons are a large part of the Wahoo
+// identity, so they should be visually different to avoid seeming to mimic"). What is
+// theirs is the WEIGHT AND PACKING — fat, tightly-stacked symmetric V's with gaps as wide
+// as the mark, stacked ACROSS the direction of travel on hardware. A horizontal row in a
+// progress bar is road-sign/escalator idiom, not theirs. Ours is a fine scale, not a slab:
+// same shape, opposite character. If this is ever restyled, weight and packing are what
+// carry the association — not the chevron as such.
+//
+// Called from updateLive (every live tick) AND from initLiveMap / sizeLiveMap (first
+// paint, and after a resize — which changes the pitch of every chevron), exactly like
+// _shareBtnSync. The template renders the bar EMPTY on purpose: the chevron geometry
+// depends on the bar's measured width, which a template string cannot know (v257's lesson,
+// now four occurrences).
+const DIST_CHEV_N=24;        // chevrons across the whole route (see the maths above)
+const DIST_CHEV_GAP=0.25;    // gap as a fraction of the chevron's OWN width
+const DIST_CHEV_DEPTH=0.42;  // the V's reach, as a fraction of the graphic's height
+const DIST_BAR_H=20;         // the graphic's height — MUST match .live-dist-chevs in CSS
+// THE CHEVRONS ONLY MEAN ANYTHING WHILE YOU'RE FOLLOWING A ROUTE (Peter, v261d): "these
+// chevrons are only relevant when you're following a route. Otherwise they need to be
+// hidden." Sharper than it sounds — on his 16 July ride a route WAS loaded and he was
+// riding a training loop 1.8 km away from it, so snapTo faithfully reported a fiction and
+// the bar sat frozen all ride. The chevrons and the "to go" figure are both route-scoped;
+// the odometer is not.
+//
+// TRIGGER: only signals that already exist (Peter's call). No new trigger is invented here
+// — no-route mode's designed place-check at record start will feed this same gate when it
+// lands, and this file's standing rule is "do NOT build a second prompt". Deliberately NOT
+// gated on _snapOffKm: that's live, so it would flicker on a detour where you ARE still
+// following the route.
+function _distFollowing(r){
+  return !!(r && r.totalDist>0 && _offRouteMode!=='abandoned');
+}
 function _distBarSync(){
   const bar=document.getElementById('live-dist-bar');if(!bar)return;
-  const r=cur();if(!r)return;
-  const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
-  // SNAP THE BAR'S BOX TO WHOLE PIXELS FIRST.
-  // The hairline is 1 CSS px on all four sides by construction — the maths is right. What
-  // was wrong is where it LANDS. The bar is left:6/right:6 inside the map section; on
-  // desktop the section's left comes from the sidebar (integral), so the bar's left edge
-  // sits on a whole pixel and its hairline is drawn crisp — but the section's WIDTH is
-  // viewport-derived and fractional, so the bar's right edge sits mid-pixel and its
-  // identical 1px hairline is anti-aliased across two device pixels, reading as thicker.
-  // That asymmetry is what Peter saw: "the green is offset too much to the left… the black
-  // border on the right is slightly thicker". Pin both edges to integers and both
-  // hairlines render the same. (Cheap: only touches the DOM when the width actually
-  // changes, so no layout thrash on the per-tick call.)
-  const sec=bar.offsetParent;
-  if(sec){
-    const sr=sec.getBoundingClientRect();
-    const L=Math.round(sr.left+6), R=Math.round(sr.right-6);
-    if(R-L>40&&(bar._snapL!==L-sr.left||bar._snapW!==R-L)){
-      bar._snapL=L-sr.left; bar._snapW=R-L;
-      bar.style.left=bar._snapL+'px'; bar.style.right='auto'; bar.style.width=bar._snapW+'px';
-    }
-  }
-  // getBoundingClientRect, NOT clientWidth: clientWidth is an INTEGER and would re-round
-  // whatever we just snapped (and on mobile, where the bar is NOT snapped to the sidebar,
-  // its width can still be fractional). Measure with rect maths, never rounded box
-  // metrics — same lesson as v255's pill positioning, now three occurrences.
-  const barW=bar.getBoundingClientRect().width;
-  const g=_distBarGeom(r,liveDist,barW);
-  const fill=document.getElementById('live-dist-fill');
-  if(fill){
-    // Width in PX, not %, so the fill stops 1px short of the casing on the right exactly
-    // as it does on the left — a % width resolves against the whole bar and pushes the
-    // fill past the right edge, killing the hairline on that side only.
-    const inner=Math.max(0,barW-2);
-    let fw=inner*g.pct;
-    // A sub-pixel remainder can't be drawn as "road left" — it renders as a grey smudge
-    // on the corner instead, which is what made the end of the fill look broken. Below
-    // ~1.5px there is nothing honest to show, so snap to full. On a 137 km route that's
-    // the last ~500 m of a 379px bar; the figures still read the truth.
-    if(inner-fw<1.5)fw=inner;
-    fill.style.width=fw.toFixed(2)+'px';   // 2dp: 1dp would re-introduce up to 0.05px of
-                                           // the very rounding error this measure removes
-    // The rule is "radius = outside edge, square = this divides" — and the fill's right
-    // edge is BOTH, at different times. It divides while there's road left; at the finish
-    // it becomes the bar's own outside edge. So it must round as it arrives, or the last
-    // few pixels show a square green edge inside a rounded black corner.
-    const rr=Math.max(0,Math.min(7,7-(inner-fw)));
-    fill.style.borderRadius='7px '+rr.toFixed(1)+'px '+rr.toFixed(1)+'px 7px';
-  }
-  const set=(el,n,u,left,onFill)=>{
+  const set=(el,n,u)=>{
     if(!el)return;
     const html='<span class="live-dist-fig">'+n+'<span class="live-dist-unit">'+u+'</span></span>';
     if(el._lv!==html){el._lv=html;el.innerHTML=html;}
-    if(left!==null)el.style.left=left.toFixed(1)+'px';
-    el.classList.toggle('on-fill',!!onFill);
   };
-  set(document.getElementById('live-dist-done'),g.doneN,g.doneU,g.doneLeft,g.doneOnFill);
-  set(document.getElementById('live-dist-left'),g.togoN,g.togoU,g.togoLeft,g.togoOnFill);
+  const r=cur();
+  const following=_distFollowing(r);
+  bar.classList.toggle('no-route',!following);
+  // The pills' top is a CSS var, not a hard-coded inline px, precisely so this one line can
+  // move them when the band collapses. colBase reads var(--fpill-top).
+  document.documentElement.style.setProperty('--fpill-top',following?'64px':'44px');
+  if(!following){
+    // ONE NUMBER, ONE MEANING: the slot shows route distance while you're following a
+    // route and RIDDEN distance when you aren't. Never both — Peter's v258 ruling stands
+    // ("a fringe measurement… often near identical to distance along the route. Two
+    // distance bars would be stupid"), and it applies just as hard to showing them side by
+    // side as it did to two bars. The odometer owes nothing to any route, which is exactly
+    // why it's the honest number here ("you still absolutely need distance for a no route
+    // ride" — Peter, 16 July).
+    set(document.getElementById('live-dist-done'),fmtDistKm(UI.gpsTravelledKm||0),DIST_DONE_UNIT);
+    return;
+  }
+  const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
+  const wrap=document.getElementById('live-dist-chevs');
+  // getBoundingClientRect, NOT clientWidth. clientWidth is an INTEGER and this bar's width
+  // is viewport-derived and fractional, so rounding it would bias the pitch of all 24
+  // chevrons at once. Measure with rect maths, never rounded box metrics — v255, v258,
+  // v260, now four occurrences. (v258's whole-pixel SNAP of the bar's box is gone with the
+  // side hairlines it existed to fix: the bar is now edge to edge and has none.)
+  const barW=bar.getBoundingClientRect().width;
+  if(wrap&&barW>40){
+    // Rebuild only when the width actually CHANGES — a resize moves every chevron, a live
+    // tick moves none of them. So the per-tick cost below is one class toggle, no layout.
+    if(wrap._chevW!==barW){
+      wrap._chevW=barW;
+      // v261c — BOTH ENDS GET THE SAME TREATMENT, AND EVERY CHEVRON IS THE SAME SIZE.
+      // Peter, on v261b: "the first chevron has its tail FILLED (as I requested) but the
+      // last chevron has its point CROPPED. I think both need to be treated the same."
+      // He's right and there was no principle in it — one end got completed, the other
+      // truncated. Of his two coherent options (fill both / crop both) this is FILL BOTH:
+      // the first chevron's tail is filled to x=0, and the last chevron's POINT lands
+      // exactly on the right edge, whole. Nothing is cropped at either end.
+      //
+      // The trick is that the pitch is SOLVED for that, not assumed. Let the 24 tips be
+      // evenly spaced by p, with the first tip at B (so chevron 0 fits between x=0 and its
+      // own point) and the last tip exactly at barW:
+      //     B + (N−1)·p = barW,  where B = depth + th  and  p = (1+GAP)·th
+      //  ⇒  th·(1 + (N−1)(1+GAP)) = barW − depth
+      // Every chevron is then B wide — including the flat-backed first, which is why they
+      // finally match. (v261b's `(i+1)·pitch − th` assumed pitch = barW/N and had to pay
+      // for it at the ends; this drops that assumption and the ends come out free.)
+      // Cost: the gap moves 3.28 → 3.23 CSS px (perpendicular 2.51 → 2.48). Immaterial,
+      // and both sit on the same estimated floor — see the ⚠ note above.
+      const depth=DIST_BAR_H*DIST_CHEV_DEPTH;  // how far the V reaches forward
+      const th=(barW-depth)/(1+(DIST_CHEV_N-1)*(1+DIST_CHEV_GAP));   // the mark itself
+      const pitch=(1+DIST_CHEV_GAP)*th;        // tip-to-tip
+      const B=depth+th;                        // every chevron's box, first one included
+      const D=(depth/B*100).toFixed(2), T=(th/B*100).toFixed(2);
+      const clip='polygon(0 0,'+D+'% 50%,0 100%,'+T+'% 100%,100% 50%,'+T+'% 0)';
+      // The first chevron differs by ONE vertex: the rear notch (D% 50%) is dropped, so the
+      // back runs straight down and the tail is solid. Same width, same tip, same front
+      // face, so the gap to chevron 1 is identical to every other gap.
+      const clip0='polygon(0 0,0 100%,'+T+'% 100%,100% 50%,'+T+'% 0)';
+      // v261g — THE LAST ONE IS THE EXACT MIRROR: rear notch kept, front SQUARED against the
+      // right edge. Peter: "the end chequer needs a square end. It needs to butt up fully on
+      // the right side. It doesn't have to fit into a chevron shape… that gives us more
+      // chequer." He's right and my v261c objection ("blunting kills the point at the finish,
+      // the one moment the arrow should land hardest") was wrong: **the finish is a
+      // DESTINATION, not a "keep going" signal.** The arrow points AT it; the flag doesn't
+      // need to point. And it was the point that broke the chequer — a chequered flag is a
+      // rectangle, so a point and a chequer were never going to share 13px.
+      // Also the symmetry he asked for two rounds ago, properly: first fills back to the left
+      // edge, last fills forward to the right. Same box (B) for both, so all 24 are still the
+      // same size, and the +32% area is what makes the chequer legible.
+      const clipN='polygon(0 0,'+D+'% 50%,0 100%,100% 100%,100% 0)';
+      let h='';
+      for(let i=0;i<DIST_CHEV_N;i++){
+        const left=i*pitch;                    // tip_i = B + i·pitch, box = tip − B
+        // v261d: the LAST chevron is chequered — the finish. It is the only chevron with a
+        // meaning of its own, and it earns it: nothing else on the ride screen says "this
+        // is the end". Styling only (see .live-dist-chev.fin) — same shape, same size, same
+        // clip-path, same tick rule, so it ghosts and lights exactly like its neighbours.
+        if(i===DIST_CHEV_N-1){
+          // v261f — THE TILE SCALES WITH THE CHEVRON, and that's why it isn't a CSS constant.
+          // Peter, on the first build: "the finish chequer needs another square or two filled
+          // in." A chequer is always 50% ink, so this was never about coverage — it was GRAIN.
+          // At a fixed 5px cell one square is ~40% of the mark's 12.93px body, so a single
+          // transparent cell ate the POINT and the chevron read broken. Cell must be small
+          // relative to the feature it textures.
+          // And the bar is WIDER on desktop, so pitch (= barW/24) makes the chevron ~26px
+          // there against ~13px on a phone — a fixed cell would be a different mark on each
+          // screen. Tie it to the mark instead: tile = th/2 gives FOUR cells across the body
+          // at every width. Floor of 5px (2.5px cells) so a freakishly narrow bar can't
+          // dither it to mush (v258's lesson).
+          const tile=Math.max(5,th/2);
+          h+='<i class="live-dist-chev fin" style="left:'+left.toFixed(2)+'px;width:'+B.toFixed(2)+'px;clip-path:'+clipN+';background-size:'+tile.toFixed(2)+'px '+tile.toFixed(2)+'px;"></i>';
+          continue;
+        }
+        h+='<i class="live-dist-chev" style="left:'+left.toFixed(2)+'px;width:'+B.toFixed(2)+'px;clip-path:'+(i?clip:clip0)+';"></i>';
+      }
+      wrap.innerHTML=h; wrap._chevs=null; wrap._nDone=-1;
+    }
+    if(!wrap._chevs)wrap._chevs=wrap.querySelectorAll('.live-dist-chev');
+    const total=Math.max(1,r.totalDist||1);
+    const pct=Math.max(0,Math.min(1,liveDist/total));
+    // FLOOR, not round: a chevron lights once its slice has actually been RIDDEN. Rounding
+    // would light the last one before the finish — the one moment the bar must not lie.
+    // It also means the bar is all-grey for the first 1/24th, which is honest.
+    const nDone=Math.floor(pct*DIST_CHEV_N);
+    if(wrap._nDone!==nDone){
+      wrap._nDone=nDone;
+      wrap._chevs.forEach((el,i)=>el.classList.toggle('done',i<nDone));
+    }
+  }
+  // No geometry left to compute: the numbers are a plain flex row, pinned to the ends.
+  set(document.getElementById('live-dist-done'),fmtDistKm(liveDist),DIST_DONE_UNIT);
+  set(document.getElementById('live-dist-left'),fmtDistKm(legToGoKm(r,liveDist)),'km');
+  // v261e — RIDDEN distance in the centre. This is the ONE place the route-vs-ridden
+  // difference is legible, and v258 called it: "if the route-vs-ridden distinction needs
+  // saying, it belongs where both numbers are visible at once and the difference means
+  // something." That is exactly here. It reads boring on a clean ride (150.3 / 152.9) and
+  // that itself is information — you're on route; when it diverges (Peter's 12 Jul scout,
+  // where he rode part of the route and turned back) it is telling you something no other
+  // figure on the screen can.
+  //   · This does NOT contradict "two distance bars would be stupid" — that killed a second
+  //     BAR, and the 4-second rotation where you'd never see both at once. Two figures side
+  //     by side is the case v258 explicitly endorsed. (I got this backwards first and used
+  //     Peter's own rule against him; he was right.)
+  const act=document.getElementById('live-dist-actual');
+  if(act){
+    const html='<span class="v">'+fmtDistKm(UI.gpsTravelledKm||0)+'</span><span class="c">km ridden</span>';
+    if(act._lv!==html){act._lv=html;act.innerHTML=html;}
+  }
 }
-
-// Text is measured on a CANVAS, not the DOM: no layout flush on every live tick, and the
-// width is available before the element exists. Fonts must track the CSS above.
-let _distMeasCvs=null;
-function _distTextW(num,unit){
-  if(!_distMeasCvs)_distMeasCvs=document.createElement('canvas');
-  const c=_distMeasCvs.getContext('2d');
-  c.font="500 16px 'DM Mono',monospace";
-  let w=c.measureText(num).width+3;          // +3 = the unit's margin-left
-  c.font="400 12px 'DM Sans',sans-serif";
-  return w+c.measureText(unit).width;
-}
-const DIST_PAD=8;   // breathing room each side of a figure
+// v261 DELETED with the flip they served: _distBarGeom, _distTextW, _distMeasCvs, DIST_PAD.
+// They existed only to keep a figure from straddling the divide. There is no divide now,
+// and the figures are outside the bar — so leaving them would tell the next session that a
+// mechanism still exists when it doesn't. legToGoKm STAYS (it is the "to go" figure, and
+// the v257 leg-scoping rule still applies to it).
 // v258: was 'km/route'. Dropped, and it is ONE STRING to put back if Peter disagrees.
 // The label existed to say "this is measured along the route, not your odometer" — a real
 // distinction (his 12 Jul scout ride rode part of the route and turned around, so route
@@ -2558,29 +2747,23 @@ const DIST_PAD=8;   // breathing room each side of a figure
 // distance ("actual"), where both numbers are visible at once and the difference means
 // something.
 const DIST_DONE_UNIT='km';
-function _distBarGeom(r,liveDist,barW){
-  const total=Math.max(1,r.totalDist||1);
-  const pct=Math.max(0,Math.min(1,liveDist/total));
-  const doneN=liveDist.toFixed(1), togoN=legToGoKm(r,liveDist).toFixed(1);
-  const g={pct,doneN,doneU:DIST_DONE_UNIT,togoN,togoU:'km'};
-  // barW unknown (first paint) → fall back to the old flush-left/right placement; the
-  // next live tick positions it properly. Never guess a width: a wrong flip is worse
-  // than a plain one.
-  if(!barW||barW<40){g.doneLeft=DIST_PAD;g.doneOnFill=false;g.togoLeft=null;g.togoOnFill=false;return g;}
-  const inner=barW-2;                        // the 1px hairline each side
-  const fillW=inner*pct;
-  const wDone=_distTextW(doneN,DIST_DONE_UNIT), wTogo=_distTextW(togoN,'km');
-  // DONE: inside the fill once it fits, else parked just right of the divide.
-  if(fillW>=wDone+2*DIST_PAD){g.doneLeft=1+DIST_PAD;g.doneOnFill=true;}
-  else                      {g.doneLeft=1+fillW+DIST_PAD;g.doneOnFill=false;}
-  // TO GO: on the dark, right-aligned, until the dark can't hold it; then it flips
-  // inside the fill, right-aligned to the divide.
-  if(inner-fillW>=wTogo+2*DIST_PAD){g.togoLeft=1+inner-DIST_PAD-wTogo;g.togoOnFill=false;}
-  else                             {g.togoLeft=1+fillW-DIST_PAD-wTogo;g.togoOnFill=true;}
-  // Pathological narrow bar: never let them collide or leave the casing.
-  g.togoLeft=Math.max(g.togoLeft,g.doneLeft+wDone+DIST_PAD);
-  return g;
-}
+// ADAPTIVE PRECISION — the same rule as v260's fmtStopPct, and it exists for Peter's own
+// counter-example. I had measured the three figures against a 1024.7 km route, found they
+// fit, and declared no rule was needed. Wrong: on a route of 2000 km or more BOTH ends can
+// read four digits at once (his 4,000 km ride; Tour Divide is 4,500), which costs 41px and
+// leaves 68px for a 72px centre stack — a 3.7px collision.
+//   · >=1000 km -> no decimal. At that distance 100 m of precision is noise, exactly as
+//     0.1% is noise on a 15% stoppage figure. The information is in the kilometres.
+//   · It gets NARROWER at 1000, never wider ("999.9" is 5 glyphs, "1000" is 4), so no
+//     figure can grow mid-ride and shove its neighbour. Same property Peter required of
+//     fmtStopPct.
+//   · TEST THE ROUNDED VALUE, NOT THE RAW ONE. `v>=1000 ? … : v.toFixed(1)` looks right and
+//     is wrong: 999.96 is under 1000 raw, takes the decimal branch, and toFixed rounds it to
+//     "1000.0" — SIX glyphs, wider than either neighbour, which is the one thing this rule
+//     exists to prevent. v260's fmtStopPct had this exact bug at 9.96 and the truth-table
+//     caught it there too. THIRD occurrence in this file: when a format switches on a
+//     threshold, the threshold must be tested against the formatted output.
+function fmtDistKm(v){ const d=v.toFixed(1); return +d>=1000 ? v.toFixed(0) : d; }
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
 function fmtDT(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
 function fmtDTY(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
@@ -13967,21 +14150,28 @@ function tLiveShell(r){
       <div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${stat.unit}</span>`:''}</div>
     </div>`;
   };
-  // v258: the bar is a GRAPHIC plus two figures. The old centre slot — which rotated
-  // leg ETA / ride time / GPS distance every 4s — is GONE, and its removal is what makes
-  // the migrating figures possible: the centre is exactly where the divide lives, so
-  // nothing can sit there without being straddled by the fill.
+  // v261: the bar is a CHEVRON RULER with its two figures in a row BELOW it. The centre
+  // slot that rotated leg ETA / ride time / GPS distance every 4s went in v258 and stays
+  // gone:
   //   · leg ETA — already on the Next Strip and the draggable stops list (Peter).
   //   · GPS distance — "a fringe measurement… often near identical to distance along the
   //     route. Two distance bars would be stupid." (Peter)
-  //   · ride time + ETA — headed for their own two-half pill, like the speed pill.
-  // Contents are positioned by _distBarSync, NOT here: the flip depends on the bar's
-  // pixel width, which the template can't know. Same reason the sharing/pack buttons
-  // are built from updateLive (v257).
+  //   · ride time + ETA — now live in the stoppage pill (v259).
+  // OPEN, Peter's own note on seeing v261: the numbers row leaves a permanent gap between
+  // the two figures, and one of the retired info boxes could go back in there. He called
+  // it secondary. If it happens, note that the centre of the ROW is now safe ground —
+  // it was only ever the centre of the BAR that the divide made unusable.
+  //
+  // The chevrons are built by _distBarSync, NOT here: their pitch depends on the bar's
+  // measured pixel width, which the template can't know. Same reason the sharing/pack
+  // buttons are built from updateLive (v257).
   const distBar=`<div class="live-dist-bar" id="live-dist-bar">
-    <div class="live-dist-fill" id="live-dist-fill"></div>
-    <div class="live-dist-done" id="live-dist-done"></div>
-    <div class="live-dist-left" id="live-dist-left"></div>
+    <div class="live-dist-chevs" id="live-dist-chevs"></div>
+    <div class="live-dist-nums">
+      <div class="live-dist-done" id="live-dist-done"></div>
+      <div class="live-dist-actual" id="live-dist-actual"></div>
+      <div class="live-dist-left" id="live-dist-left"></div>
+    </div>
   </div>`;
   // ── Floating ride pills (overlay on map) ──
   // Each of 3 slots cycles: speed → power → hr → off → speed...
@@ -14373,7 +14563,13 @@ function tLiveShell(r){
   };
   // v260c — three columns. align-items keeps each column's pills hugging their own edge,
   // so a wide pill grows inward (away from the screen edge) instead of off it.
-  const colBase='position:absolute;top:48px;z-index:12;display:flex;flex-direction:column;gap:6px;';
+  // The distance bar's band is 58px (20px chevrons + 38px numbers row), because its figures
+  // now match the speed pill at 34px (Peter, twice: "distance is an important measurement").
+  // The pills clear it by 6px. This is the ONLY thing in the app keyed to that band.
+  // It is a CSS VAR, not a literal, because the band COLLAPSES to 38px when there's no route
+  // to follow — _distBarSync sets --fpill-top (64px following / 44px not). The 64px fallback
+  // is what paints before the first sync.
+  const colBase='position:absolute;top:var(--fpill-top,64px);z-index:12;display:flex;flex-direction:column;gap:6px;';
   const floatingPills=
      `<div id="fpill-col-l" style="${colBase}left:6px;align-items:flex-start;">${_renderFloatingPill(0)}${_renderFloatingPill(3)}</div>`
     +`<div id="fpill-col-c" style="${colBase}left:50%;transform:translateX(-50%);align-items:center;">${_renderFloatingPill(1)}</div>`
