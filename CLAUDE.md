@@ -142,6 +142,43 @@ recurs.**
 - Verified: whole-file `node --check` + 7/7 truth-table; zero weight-600 left on `--font` in the
   weather code.
 
+### v268 — "km ridden" WAS A LIFETIME ODOMETER. Peter asked me to double-check it; he was right to.
+
+*"Can we double check that the distance that is left in the distance bar is the distance ridden,
+not the route distance."* It was ridden distance, not route distance — but it was **the wrong
+ridden distance**, and the bug is mine (v261e's centre figure + v263's no-route figure).
+- **`UI.gpsTravelledKm` is only ever `+=`'d.** It's restored from `lastGps` on boot and **NOTHING
+  resets it — not `startGPS`, not `stopGPS`.** It is a CUMULATIVE odometer across every ride.
+- **The tell was in plain sight:** `_rideAvgSessionKm` and `legStartKm` both exist for no other
+  reason than to be subtracted from it. Two baselines against one counter is the app telling you
+  the counter is cumulative. I used it raw anyway.
+- **It read 0.0 on his phone BY ACCIDENT.** INIT nulls `lastGpsState`, so the odometer resets
+  depending on how many times the app happened to be opened between rides. Ride twice without a
+  reboot in between and the figure would have shown both rides added together.
+- **Fixed with `_riddenKm()` = `_rec ? _rec.totalDist : 0`** — one authority, two call sites. Right
+  by construction: per-ride, persisted with the recording (a mid-ride reload keeps it), fed by the
+  sim too (the sim calls `_appendPoint`), and it is the very number that goes to Strava, so the bar
+  agrees with the ride you end up with. Not recording → 0.0, which is honest.
+- `gpsTravelledKm` is untouched everywhere it is legitimately a cumulative counter (ride average,
+  leg clock, gap bridging).
+- **Same class as v263's stale `_lastSnapIdx`: state persisted for crash recovery, then read as if
+  it were per-ride.** If a third one turns up, look for `lastGps` restores with no reset.
+
+### OPEN — Peter's idea for the no-route strip (17 July, not built)
+
+*"There is the option for a non-chevron distance bar to also show the average speed and the ride
+time — basic measurements that might save a dedicated pill. Maybe that would help on a small basic
+phone that a social rider might have… they are just a basic rider, and as a default they get the
+basic numbers — distance, time, maybe speed."*
+- **This is the two-markets argument again** (v260: PackTimes for ultras, PackRide for the weekend
+  social ride) and it's the strongest version of it yet: the no-route band is 38px of dead space
+  holding one number, and a basic rider needs exactly three — distance, time, speed.
+- It also answers the small-screen problem from the other end: if the band carries the basics, the
+  floating pills can all be OFF by default and the map stays clear.
+- ⚠ Note it competes with the **sunset** idea for the same slot (see above). Sunset answers "how
+  far can I go?"; speed/time answer "what am I doing?". Both are defensible; they are not both
+  going in a 38px strip. **Decide, don't stack.**
+
 ### STILL TO DO from the 17 July ride (Peter's list, in his words)
 
 1. ~~No "follow the route / just ride" prompt at ride start.~~ **BUILT — v264.**
@@ -166,10 +203,21 @@ recurs.**
    · **NOT changed: the banner's `top:140px`.** It's a hard-coded constant that now lands mid-pill
      — the v260 "measure, don't guess" smell — but with the z fixed it reads correctly over them,
      which is what a notification should do. Flag if it looks wrong on the phone.
-5. **L/R balance reads 0/100 when coasting.** BLE reports ONE pedal's percentage; the meter sends 0
-   with no power, so we render maximum-right. It's measuring nothing and displaying it. Peter:
-   *"when you stop pedaling, it goes 100% right… I wonder if when I coast, that actually affects
-   it."* Kill the reading when there's no power.
+5. ~~L/R balance reads 0/100 when coasting.~~ **BUILT — v267.**
+   · `_powerBalTxt()` is now the ONE authority — three sites render this (template, `updateLive`,
+     the BLE handler's own patch) and they must agree.
+   · **`0/0`, which is Peter's call and is honest:** coasting, there is no force on either pedal,
+     so neither leg contributes. It matches cadence reading 0 rpm when the cranks aren't turning
+     — v260's rule, the other way up: for a sensor a zero can be a lie (no heart rate is not
+     0 bpm), but here zero is simply true. **Not paired still shows `—`**, because THAT zero
+     would be the lie.
+   · **A genuine 0/100 under power still shows.** The suppression is gated on `powerWatts>0`, not
+     on the balance value, so a real all-right-leg reading is never hidden.
+   · **The recording had the same lie and it's fixed too** (`_recPt`): balance is only stored when
+     `powerWatts>0`. It was writing 0 every coast, which FIT/Strava could average into a phantom
+     right-leg bias. Omitting it is exactly what v247's builder already does for a missing sensor,
+     and every decoder treats an absent field as no-data.
+   · Verified: whole-file `node --check` + 9/9.
 6. **The pills should be SET SLOTS in a solid band, not floating over the map** (Peter). *"You just
    can't really see much of the map, and it's actually eating some pixels."* The argument: you pay
    for that map twice — it's unreadable behind them anyway, and the pills must be opaque to sit on
@@ -180,11 +228,27 @@ recurs.**
 
 ### Answered, not built (17 July)
 
-- **CRANK LENGTH: no input needed, and don't add one.** Peter asked where to enter it. Pedal-based
-  meters compute watts INSIDE the pedal (force × crank length) and crank length is a setting in the
-  pedal's own app (Favero/Assioma, Garmin Connect). What arrives over BLE is finished watts, which
-  is all `_parsePowerMeasurement` reads. If it's wrong it's wrong in the pedal's app and every head
-  unit inherits it — Garmin and Strava included. Nothing for us to calculate.
+- **CRANK LENGTH — I WAS HALF WRONG AND PETER CORRECTED ME. IT IS A REAL TO-DO.**
+  · What I had right: the pedal does `force × crank length × angular velocity` INTERNALLY and sends
+    finished watts, so **PackTimes never calculates power** and needs no crank length to display or
+    record it. `_parsePowerMeasurement` just reads the watts.
+  · What I had wrong: *"nothing to enter"*. **The PEDAL needs the right value**, and Peter's point
+    is unanswerable — *"the Assioma pedals have to know the crank length… They only measure force
+    and rpm which alone are not enough. So they get that crank length from something. I usually use
+    my Wahoo… and that definitely has a crank length setting."* Exactly: the BLE Cycling Power
+    Service has a **Control Point (0x2A66)** with **Set Crank Length (0x04)** and **Request Crank
+    Length (0x05)**. That is how his Wahoo does it.
+  · **So if PackTimes is to replace the Wahoo, it needs the setting** — otherwise he must keep a
+    Wahoo or the Favero app around just to move the pedals between bikes. **He has a real case:
+    *"All my bikes are 175mm, but one is 172.5mm. 165mm are becoming popular."***
+  · **Peter's design call: a simple dropdown in Settings.** *"There's only a handful of crank
+    settings. You only need a simple dropdown list and pick one."* (165 / 170 / 172.5 / 175 /
+    177.5 / 180.)
+  · Build notes for whoever does it: this is a WRITE to the pedal, not a local preference — a
+    setting that doesn't reach the pedal would be a lie. Read the current value back with 0x05 and
+    show it, so the rider can verify rather than trust. The Control Point uses indications and a
+    response opcode, so it's a small protocol, not a characteristic write. **Untested against real
+    Assiomas — do not assume the write is permitted until it's tried on his pedals.**
 - **L/R balance stays NEAR-INSTANTANEOUS — Peter talked himself out of his own complaint.** He
   expected a ride average, then: *"I actually found that was good because I have trouble balancing
   my leg power left to right, and that near-instantaneous reading actually gave me great feedback

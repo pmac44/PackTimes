@@ -994,7 +994,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v266';
+window.APP_VERSION='v268';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2623,7 +2623,7 @@ function _distBarSync(){
     // side as it did to two bars. The odometer owes nothing to any route, which is exactly
     // why it's the honest number here ("you still absolutely need distance for a no route
     // ride" — Peter, 16 July).
-    set(document.getElementById('live-dist-done'),fmtDistKm(UI.gpsTravelledKm||0),DIST_DONE_UNIT);
+    set(document.getElementById('live-dist-done'),fmtDistKm(_riddenKm()),DIST_DONE_UNIT);
     return;
   }
   const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
@@ -2734,7 +2734,7 @@ function _distBarSync(){
   //     Peter's own rule against him; he was right.)
   const act=document.getElementById('live-dist-actual');
   if(act){
-    const html='<span class="v">'+fmtDistKm(UI.gpsTravelledKm||0)+'</span><span class="c">km ridden</span>';
+    const html='<span class="v">'+fmtDistKm(_riddenKm())+'</span><span class="c">km ridden</span>';
     if(act._lv!==html){act._lv=html;act.innerHTML=html;}
   }
 }
@@ -2755,6 +2755,22 @@ function _distBarSync(){
 // distance ("actual"), where both numbers are visible at once and the difference means
 // something.
 const DIST_DONE_UNIT='km';
+// ── v268: "RIDDEN" IS THE RECORDING'S DISTANCE, NOT THE ODOMETER'S ───────────────────
+// Peter asked me to double-check this figure and he was right to. It IS ridden distance
+// rather than route distance — but it was the WRONG ridden distance.
+// UI.gpsTravelledKm looks like the right source and isn't: it is only ever +='d, it is
+// restored from lastGps on boot, and NOTHING resets it — not startGPS, not stopGPS. It is
+// a CUMULATIVE odometer across every ride. The tell was in plain sight the whole time:
+// _rideAvgSessionKm and legStartKm BOTH exist purely as baselines to subtract from it.
+// It read 0.0 on his phone only because INIT nulls lastGpsState — so it resets BY ACCIDENT,
+// depending on how many times the app happened to be opened between rides. Ride twice
+// without a reboot in between and the figure would have shown both rides added together.
+// _rec.totalDist is right by construction: per-ride, persisted with the recording (so a
+// mid-ride reload keeps it), fed by the sim too (the sim calls _appendPoint), and it is the
+// very number that goes to Strava — so the bar agrees with the ride you end up with.
+// Not recording = you haven't ridden anything yet, and 0.0 says exactly that.
+// ONE authority: two places show this (the centre figure and the no-route left figure).
+function _riddenKm(){ return _rec ? _rec.totalDist : 0; }
 // ADAPTIVE PRECISION — the same rule as v260's fmtStopPct, and it exists for Peter's own
 // counter-example. I had measured the three figures against a 1024.7 km route, found they
 // fit, and declared no rule was needed. Wrong: on a route of 2000 km or more BOTH ends can
@@ -4190,7 +4206,12 @@ function _recPt(lat, lon, ele, t, accuracy, extra){
   if(UI.hrConnected    && UI.hrBpm        != null) p.hr    = UI.hrBpm;
   if(UI.powerConnected && UI.powerWatts   != null) p.pw    = UI.powerWatts;
   if(UI.powerConnected && UI.powerCadence != null) p.cad   = UI.powerCadence;
-  if(UI.powerConnected && UI.powerBalance != null) p.bal   = UI.powerBalance;
+  // v267 — BALANCE IS ONLY RECORDED WHEN THERE'S POWER TO BALANCE. Coasting, the meter
+  // sends 0, which we'd store as "0% left / 100% right" — not a measurement, the absence of
+  // one written down as a fact. Omitting it is exactly what this builder already does for a
+  // missing sensor (see the note above), and FIT/GPX treat an absent field as no-data, so
+  // every decoder skips it rather than averaging a phantom right-leg bias into the ride.
+  if(UI.powerConnected && UI.powerBalance != null && UI.powerWatts > 0) p.bal = UI.powerBalance;
   if(extra) Object.assign(p, extra);
   return p;
 }
@@ -14610,7 +14631,7 @@ function tLiveShell(r){
       const cadTxt=UI.powerCadence!==null?String(UI.powerCadence):'—';
       // "49/51" is 5 chars — min-width so the pill holds the 4ch column when it can and
       // grows when it must, rather than clipping.
-      const balTxt=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
+      const balTxt=_powerBalTxt();   // v267 — one authority, see _powerBalTxt
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-cad">
         <div style="padding:5px 8px 3px;">
           <!-- centred: no decimal point to hold still (same rule as the power pill) -->
@@ -17456,7 +17477,7 @@ function updateLive(){
   }
   const balEl=document.getElementById('live-cad-bal');
   if(balEl&&UI.powerConnected){
-    const v=UI.powerBalance!==null?UI.powerBalance+'/'+(100-UI.powerBalance):'—';
+    const v=_powerBalTxt();   // v267 — one authority, see _powerBalTxt
     if(balEl.textContent!==v)balEl.textContent=v;
   }
   // v259: the STOPPAGE pill. Same authority as the template (_legVals) — never a second
@@ -19497,6 +19518,24 @@ let _npSum4=0;               // sum of (30s_avg)^4 values
 let _npCount=0;              // number of 30s_avg samples
 let _npLastSampleTs=0;       // timestamp of last 1s sample to avoid duplicates
 
+// ── v267: NO POWER, NO BALANCE. ONE authority — three places render this and they must
+// agree (template, updateLive, and the BLE handler's own patch).
+// BLE reports ONE pedal's share (the left, per the reference flag) and we derive the right
+// as 100−left. Freewheeling, the meter sends 0, so we rendered "0/100" — maximum right.
+// It isn't measuring a lopsided stroke; it's measuring NOTHING and displaying it as a lie.
+// Peter: "when you stop pedaling, it goes 100% right… I wonder if when I coast, that
+// actually affects it." It doesn't corrupt the reading — it's near-instantaneous by design
+// (v260, and he likes it that way) — but it is wrong on screen every time you stop pedalling,
+// which is enough to skew what you believe your balance is.
+// 0/0 IS PETER'S CALL AND IT IS HONEST: coasting, there is no force on either pedal, so
+// neither leg is contributing anything. It also matches cadence, which correctly reads 0 rpm
+// when the cranks aren't turning — v260's rule: for a sensor a zero can be a lie (no heart
+// rate is not 0 bpm), but here zero is simply true.
+function _powerBalTxt(){
+  if(UI.powerBalance===null)return '—';          // no sensor / not paired
+  if(!(UI.powerWatts>0))return '0/0';            // coasting — nothing on either side
+  return UI.powerBalance+'/'+(100-UI.powerBalance);
+}
 function _parsePowerMeasurement(buf){
   const view=new DataView(buf);
   const flags=view.getUint16(0,true);
@@ -19627,7 +19666,7 @@ async function connectPowerMeter(){
       const cadEl=document.getElementById('live-cad-cur');
       if(cadEl&&UI.powerCadence!==null)cadEl.textContent=UI.powerCadence;
       const balEl=document.getElementById('live-cad-bal');
-      if(balEl&&UI.powerBalance!==null)balEl.textContent=UI.powerBalance+'/'+(100-UI.powerBalance);
+      if(balEl)balEl.textContent=_powerBalTxt();   // v267 — one authority, see _powerBalTxt
     });
     UI.powerConnected=true;
     UI.powerDeviceName=_powerDevice.name||'Power meter';
