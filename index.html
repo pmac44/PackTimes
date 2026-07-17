@@ -994,7 +994,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v264';
+window.APP_VERSION='v266';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -14731,7 +14731,7 @@ function tLiveShell(r){
           // target with cold hands in gloves. Order is deliberate — the safe, expected
           // action (Stop & save) is the biggest and first; the destructive one is last.
           // Panel font is var(--sans); only the pts/km readout stays var(--font) (numbers).
-          return `<div id="rec-stop-confirm" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:var(--r-card);padding:16px;font-family:var(--sans);box-shadow:0 6px 24px rgba(0,0,0,0.6);flex-direction:column;gap:10px;width:min(300px,calc(100vw - 32px));box-sizing:border-box;">
+          return `<div id="rec-stop-confirm" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:41;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:var(--r-card);padding:16px;font-family:var(--sans);box-shadow:0 6px 24px rgba(0,0,0,0.6);flex-direction:column;gap:10px;width:min(300px,calc(100vw - 32px));box-sizing:border-box;">
             <div style="text-align:center;color:var(--text);line-height:1.3;">
               <div style="font-weight:700;font-size:17px;margin-bottom:3px;">Stop ride?</div>
               <div style="font-size:13px;color:var(--text3);font-family:var(--font);">${ptsStr}${ptsStr&&distStr?' · ':''}${distStr}</div>
@@ -14747,7 +14747,7 @@ function tLiveShell(r){
         ${(()=>{
           // 5-second Undo strip — only visible right after a recording is finalised.
           // Sits at the bottom-centre. _recStopConfirm shows it; the undo timer hides it.
-          return `<div id="rec-undo-strip" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;font-family:var(--sans);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:14px;">
+          return `<div id="rec-undo-strip" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:40;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;font-family:var(--sans);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:14px;">
             <span style="font-size:15px;font-weight:600;color:var(--text);">Recording saved</span>
             <button class="btn btn-sm" id="btn-recstop-undo" style="flex-shrink:0;">Undo</button>
           </div>`;
@@ -14755,7 +14755,27 @@ function tLiveShell(r){
         ${floatingPills}
         ${buildElevStrip(r,liveDist)}
         <div id="live-weather-bar-wrap" style="position:absolute;bottom:0;left:0;right:0;z-index:30;pointer-events:none;">${weatherBarHTML()}</div>
-        <div id="adaptive-msg-bar-wrap" style="position:absolute;top:140px;left:8px;right:8px;z-index:11;">
+        <!-- ── v266: THE RIDE SCREEN'S LAYER LADDER — keep it here, in one place ────────
+             Peter's 17 Jul ride: "there's a number of notifications that came up, and the
+             info pills are all above them… the base speed came up as a warning… but it was
+             masked by all those pills. All notifications need to be at the highest level."
+             He is right, and the cause was that the ladder had never been written down, so
+             every new overlay picked a number that looked free. The drift banner lost to
+             the pills BY ONE (11 vs 12).
+               5   map controls
+               10  distance bar
+               12  floating pills          <- these were burying the notifications
+               20  turn cue (guidance)
+               22  sharing / pack button
+               30  weather bar
+               ── everything above is FURNITURE. Everything below is a MESSAGE. ──
+               40  notifications: drift banner, undo strip
+               41  decisions: rec-stop-confirm (must clear the notification too)
+               9998/9999 modal sheets (pack peek, sharing, ride mode)
+               10001 toasts — feedback on YOUR action, outranks every overlay (v257)
+               99999 off-route takeover — the one thing that outranks everything
+             ADD NEW OVERLAYS TO THIS LIST. A number that "looks free" is how this broke. -->
+        <div id="adaptive-msg-bar-wrap" style="position:absolute;top:140px;left:8px;right:8px;z-index:40;">
         ${(()=>{
           if(!UI._adaptiveMsg)return'';
           const age=Date.now()-UI._adaptiveMsg.ts;
@@ -15807,6 +15827,21 @@ async function fetchWeather(lat,lon,days){
     const times=j.hourly.time;
     const nowISO=cw.time;
     const idx=Math.max(0,times.findIndex(t=>t===nowISO));
+    // ── v265: THE HOURLY ARRAY NOW STARTS AT *NOW*. One bug, both of Peter's complaints. ──
+    // idx was computed right here and then used for curFeelsLike ONLY — the array itself was
+    // stored whole, from MIDNIGHT of day 1. Everything downstream read the wrong hours:
+    //   · The expanded chips (slice(0,8)) showed midnight → 07:00. Peter: "always have 00:00
+    //     then 01:00 then 02:00 under them… I literally don't know what they mean." They were
+    //     real clock times all along — just the wrong ones, which is exactly why they read
+    //     like offsets from now.
+    //   · next3h (slice(1,4)) was 01:00–03:00 — THE COLDEST HOURS OF THE NIGHT. So
+    //     `minTemp < current.temp-6` was true on essentially every ride, which is why the
+    //     pill has been flashing constantly and nagging about a drop "in a few hours".
+    //     **The alert threshold was never too sensitive. It was reading the wrong window.**
+    //     Don't tune the threshold without riding this first.
+    //   · Tonight's low included this morning's already-past hours.
+    // weatherAtEta is unaffected — it searches by TIME for the entry nearest an ETA, and an
+    // ETA is never in the past, so dropping past hours cannot change its answer.
     const hourly=(j.hourly.time||[]).map((t,i)=>({
       time:t,
       temp:j.hourly.temperature_2m[i],
@@ -15815,7 +15850,7 @@ async function fetchWeather(lat,lon,days){
       winddeg:j.hourly.winddirection_10m[i],
       code:j.hourly.weathercode[i],
       precip:j.hourly.precipitation_probability[i]
-    }));
+    })).slice(idx);
     // Current feels-like: use the hourly value at the current time index
     const curFeelsLike=j.hourly.apparent_temperature?j.hourly.apparent_temperature[idx]:null;
     const result={
@@ -15958,7 +15993,12 @@ function weatherPillHTML(code,temp,label){
   const tc=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fefce8';
   return`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
     <div style="background:${bg};border-radius:6px;padding:5px 10px;min-width:48px;text-align:center;">
-      <span style="font-size:17px;font-weight:600;color:${tc};">${Math.round(temp)}°</span>
+      <!-- v265: 600 → 500. --font is DM Mono, which SHIPS 400/500 ONLY (v244's rule: "DM
+           Mono only ships 400/500 — don't ask it for 600"). At 600 the browser synthesises
+           a fake bold, and a fake-bolded monospace is precisely Peter's "reads like Courier
+           or something". Note the stack is 'DM Mono','Courier New',monospace — so Courier
+           is genuinely one step away if the font ever fails to load. -->
+      <span style="font-size:17px;font-weight:500;color:${tc};">${Math.round(temp)}°</span>
     </div>
     <div style="font-size:13px;color:var(--text2);font-family:var(--font);font-weight:500;">${label}</div>
   </div>`;
@@ -16063,7 +16103,7 @@ function weatherBarHTML(){
   if(!_weatherExpanded){
     return`<div id="live-weather-bar" style="position:absolute;bottom:8px;left:8px;z-index:10;cursor:pointer;-webkit-tap-highlight-color:transparent;pointer-events:auto;">
       <div style="display:inline-flex;align-items:center;gap:5px;background:${condBg};border:2px solid rgba(255,255,255,0.15);border-radius:8px;padding:4px 10px;font-family:var(--font);box-shadow:0 2px 8px rgba(0,0,0,0.4);${alertBorder}">
-        <span style="font-size:16px;font-weight:600;color:${condText};">${Math.round(c.temp)}°</span>
+        <span style="font-size:16px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
         ${alert?'<span style="font-size:13px;color:#f97316;">⚠</span>':''}
       </div>
     </div>`;
@@ -16071,7 +16111,7 @@ function weatherBarHTML(){
   return`<div id="live-weather-bar" style="position:absolute;bottom:0;left:0;right:0;z-index:10;background:var(--bg2);border-top:1px solid var(--border);font-family:var(--font);cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 -4px 20px rgba(0,0,0,0.4);pointer-events:auto;">
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;">
       <div style="background:${condBg};border-radius:5px;padding:3px 8px;flex-shrink:0;">
-        <span style="font-size:15px;font-weight:600;color:${condText};">${Math.round(c.temp)}°</span>
+        <span style="font-size:15px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
       </div>
       <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
       ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}

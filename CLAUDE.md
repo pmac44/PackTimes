@@ -106,16 +106,66 @@ that an app can make that decision for you."*
   `planStartInFuture` stays true so CAPTURE is still blocked; a today-dated plan is unaffected;
   no route or a zero-length route raises nothing. Zero orphan refs to the v257 sheet.
 
+### v265 — THE WEATHER PILL. One bug caused BOTH complaints. v261–264 are pushed.
+
+**`fetchWeather` computed `idx` (the hour index of NOW) and then used it for `curFeelsLike` ONLY —
+the `hourly` array itself was stored WHOLE, from MIDNIGHT of day 1.** Everything downstream read
+the wrong hours. Fixed with `.slice(idx)`, which corrects every consumer at once.
+- **The chips.** Peter: *"the series of temperature pills… always have 00:00 then 01:00 then 02:00
+  under them… I literally don't know what they mean."* **They were real clock times all along —
+  just midnight onward**, which is exactly why they read like offsets from now. `slice(0,8)` was
+  showing 00:00–07:00 regardless of the time of day.
+- **THE FLASHING, and this is the good bit: the threshold was never too sensitive.** `next3h` was
+  `hourly.slice(1,4)` = **01:00–03:00, the coldest hours of the night**. So
+  `minTemp < current.temp-6` was true on essentially every daytime ride. Truth-tabled against a
+  real NSW winter curve (8° at 3am, 19° mid-afternoon): the old window fires at **9 of 15 daytime
+  hours**; the fixed window fires at **0** — and still fires on a genuine front (19° → 9° in 3h).
+  Peter's *"it's flashing at me now that the temperature will drop to 12° in a few hours. So what.
+  It's winter"* was the app comparing 10am against 1am. **Don't tune `isSignificantWeatherChange`
+  without riding this first — the rule is probably fine.**
+- Tonight's low also stops counting this morning's already-past hours.
+- **`weatherAtEta` is unaffected** — it searches by TIME for the entry nearest an ETA, and an ETA
+  is never in the past, so dropping past hours can't change its answer. Truth-tabled.
+- **THE 12-HOUR LABEL QUESTION IS DELIBERATELY NOT BUILT.** Peter asked for *"1pm 2pm, 9pm, 3am"* —
+  but that ask was based on the misdiagnosis: he thought 00:00 meant "now". With the window fixed
+  the chips read 10:00, 11:00, 12:00 and are unambiguous, and the rest of the app is 24h
+  (sunrise/sunset, `fmtT`, every ETA). Switching just these to am/pm would be the only 12-hour
+  clock in the app. **Ask him before doing it.**
+
+**THE FONT — v244's rule broken in three places, and the fallback stack is the tell.**
+`--font:'DM Mono','Courier New',monospace` and the repo ships **400/500 only**. The weather pill
+and its chips asked for `font-weight:600`, so the browser synthesised a fake bold off DM Mono 500 —
+and a fake-bolded monospace is exactly Peter's *"reads like Courier or something"*. Now 500 in all
+three places (collapsed pill, expanded pill, hour chips). **v244 says it explicitly: "DM Mono only
+ships 400/500 — don't ask it for 600." Grep for `font-weight:600` near `var(--font)` if this
+recurs.**
+- Verified: whole-file `node --check` + 7/7 truth-table; zero weight-600 left on `--font` in the
+  weather code.
+
 ### STILL TO DO from the 17 July ride (Peter's list, in his words)
 
-1. ~~No "follow the route / just ride" prompt at ride start.~~ **BUILT — v264 above.**
-2. **The weather pill flashes constantly** — a warning always on; possibly tonight's temperature
-   drop.
-3. **The weather pill's temperature is in the wrong font** — *"reads like Courier"*, which is what
-   `monospace` falls back to when DM Mono isn't applied. Everything else numeric renders fine, so
-   suspect that pill's own font stack, not a font-loading failure.
-4. **Notification layering is inverted** — a base-speed drift warning was masked by the info pills.
-   **Notifications must be the top layer**, above everything.
+1. ~~No "follow the route / just ride" prompt at ride start.~~ **BUILT — v264.**
+2. ~~The weather pill flashes constantly.~~ **BUILT — v265.**
+3. ~~The weather pill's temperature is in the wrong font.~~ **BUILT — v265.**
+4. ~~Notification layering is inverted.~~ **BUILT — v266, and it found two more.**
+   · Peter saw the base-speed drift banner masked by the pills. Cause: `#adaptive-msg-bar-wrap`
+     was **z-index:11 and the pills are 12 — it lost by ONE.**
+   · **`rec-stop-confirm` and `rec-undo-strip` were at z-index:6** — under the pills, the turn cue
+     and the weather bar. He hadn't hit those yet; the undo strip is a notification and the
+     stop-confirm is a decision panel, so both were bugs of the same class.
+   · **THE REAL CAUSE IS THAT THE LADDER WAS NEVER WRITTEN DOWN**, so every new overlay picked a
+     number that looked free. It is now documented in ONE place, in the live shell beside
+     `#adaptive-msg-bar-wrap`. **Add new overlays to that list.**
+     `5` map ctrl · `10` dist bar · `12` pills · `20` turn cue · `22` share · `30` weather
+     — furniture ends at 30 —
+     `40` notifications (drift banner, undo strip) · `41` decisions (stop-confirm) ·
+     `9998/9999` modal sheets · `10001` toasts (v257) · `99999` off-route takeover.
+   · **The invariant, machine-checked:** every MESSAGE outranks every piece of FURNITURE
+     (30 < 40); stop-confirm clears the notifications; messages stay below toasts and the
+     off-route takeover. Whole-file `node --check` clean.
+   · **NOT changed: the banner's `top:140px`.** It's a hard-coded constant that now lands mid-pill
+     — the v260 "measure, don't guess" smell — but with the z fixed it reads correctly over them,
+     which is what a notification should do. Flag if it looks wrong on the phone.
 5. **L/R balance reads 0/100 when coasting.** BLE reports ONE pedal's percentage; the meter sends 0
    with no power, so we render maximum-right. It's measuring nothing and displaying it. Peter:
    *"when you stop pedaling, it goes 100% right… I wonder if when I coast, that actually affects
