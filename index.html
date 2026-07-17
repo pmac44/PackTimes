@@ -218,7 +218,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    note there; the value below is only a fallback for the first paint. */
 .live-dist-chev.fin{background-color:transparent;color:rgba(255,255,255,0.24);
   background-image:conic-gradient(currentColor 0 25%,transparent 0 50%,currentColor 0 75%,transparent 0);
-  background-size:6px 6px;}
+  /* TWO values — --chq is a single length, and `background-size:<one value>` means
+     "that width, height AUTO", which stretches the conic-gradient to full height and
+     turns the chequer into vertical stripes. It must be square. */
+  background-size:var(--chq,6px) var(--chq,6px);}
 .live-dist-chev.fin.done{background-color:transparent;color:var(--accent);}
 /* v270 — A CRESCENT MOON WHEN THE LEG ENDS AT A SLEEP, not the finish. Peter's v257 rule,
    which outlived the SVGs he deleted in v259: "Chequered flag = finish, crescent moon =
@@ -237,11 +240,28 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    sets background-color:TRANSPARENT and paints itself entirely through the conic-gradient's
    currentColor. Override only the background-IMAGE and you get a dark crescent over
    nothing — dark on dark, invisible, which is exactly what Peter saw ("I can't see a moon
-   at all. There's nothing in there"). The cell must be FILLED, then the moon punched out. */
+   at all. There's nothing in there"). The cell must be FILLED, then the moon punched out.
+   ── v270f: THE MOON IS A CHEVRON LIKE ANY OTHER — grey ahead, green behind. ───────────
+   It went through purple on the way here and that was a WORKAROUND FOR A BUG, not a design:
+   while an inline background-size was pinning the crescent to 6.5px (v270e), the shape could
+   not carry its own meaning and the colour had to. Once the shape rendered at full size the
+   purple had nothing left to do — and it cost two things:
+     · COLOUR IN THIS BAR MEANS "RIDDEN". Seven rounds of it. A purple last chevron was the
+       only coloured thing in a grey row, so it read as LIT while you were still 100 km away.
+     · It made that chevron a badge rather than a unit, so it couldn't light with the others
+       and the ruler quietly lost 1/24th of itself.
+   Peter, seeing them side by side: "the grey might work for the moon and the small moment it
+   is coloured it could be green or purple, but green might be more consistent." Right on
+   both counts. THE MARK says which destination; THE COLOUR says how far you've got. One rule
+   each, no overlap.
+   So this rule now only swaps the chequer's grain for a crescent — the colours come from
+   .live-dist-chev / .done exactly as they do for every other chevron. */
 .live-dist-chev.fin.moon{
-  background-color:currentColor;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='2 2 20 20'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%230e140e'/></svg>");
-  background-size:auto 100%;background-repeat:no-repeat;background-position:right center;}
+  background-color:rgba(255,255,255,0.24);   /* ahead: the same ghost every chevron wears */
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%230e140e'/></svg>");
+  background-size:100% 100%;background-repeat:no-repeat;background-position:center;}
+/* ridden: green, like everything behind you. Arriving at the bed lights the moon. */
+.live-dist-chev.fin.moon.done{background-color:var(--accent);}
 /* The numbers are a plain flex row — no absolute positioning, because nothing about
    where they sit depends on the fill any more. That is the whole point of v261. */
 .live-dist-nums{position:absolute;left:0;right:0;top:20px;height:38px;display:flex;
@@ -2762,8 +2782,17 @@ function _distBarSync(){
           // screen. Tie it to the mark instead: tile = th/2 gives FOUR cells across the body
           // at every width. Floor of 5px (2.5px cells) so a freakishly narrow bar can't
           // dither it to mush (v258's lesson).
+          // ⚠ v270e — THE TILE IS A CSS VAR, NOT AN INLINE background-size. This is why the
+          // moon was tiny for four rounds and nothing I changed in the CSS helped: an
+          // INLINE background-size beats every class rule, so `.fin.moon`'s size was being
+          // thrown away and the moon rendered at the CHEQUER's ~6.5px tile. Peter kept
+          // saying "still too small" and he was right every time — I was editing a
+          // declaration the browser never used.
+          // As a var, `.fin` and `.fin.moon` compete on specificity like they should, and
+          // the moon's 100% wins. **Never set a property inline that a state class needs to
+          // override.**
           const tile=Math.max(5,th/2);
-          h+='<i class="live-dist-chev fin" style="left:'+left.toFixed(2)+'px;width:'+B.toFixed(2)+'px;clip-path:'+clipN+';background-size:'+tile.toFixed(2)+'px '+tile.toFixed(2)+'px;"></i>';
+          h+='<i class="live-dist-chev fin" style="left:'+left.toFixed(2)+'px;width:'+B.toFixed(2)+'px;clip-path:'+clipN+';--chq:'+tile.toFixed(2)+'px;"></i>';
           continue;
         }
         h+='<i class="live-dist-chev" style="left:'+left.toFixed(2)+'px;width:'+B.toFixed(2)+'px;clip-path:'+(i?clip:clip0)+';"></i>';

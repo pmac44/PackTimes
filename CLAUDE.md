@@ -219,6 +219,103 @@ chevrons is 187.5 km each — SEVEN AND A HALF HOURS of riding before one lights
   cell: it has ONE child (the chip), and flex:1 would stretch it into the black box Peter rejected.
 - **`--fpill-top` 64/44 → 58/38.** The 6px was the FLOATING pill's clearance from the bar; a grid
   butts up against it. Must equal the band's real height, and the verifier now checks that.
+### v270f — THE MOON IS GREY, AND GREEN WHEN RIDDEN. The purple was a workaround, not a design.
+
+**Peter, seeing them side by side: *"the grey might work for the moon and the small moment it is
+coloured it could be green or purple, but green might be more consistent."*** Right on both counts,
+and the purple is now gone from the bar (it stays in its 28 other places — sleep dots, the
+All-sleep filter, the SLEEP badge — where it genuinely means sleep).
+- **The purple only ever existed because the shape was broken.** While an inline `background-size`
+  pinned the crescent to 6.5px (v270e), the mark could not carry its own meaning and the colour
+  had to. **The moment the shape rendered at full size, the colour had nothing left to do.** It
+  was a workaround for a bug that I then argued for on the merits — worth remembering, because I
+  made a whole design case for it (see v270d below) and the case evaporated with the bug.
+- **And it cost two real things:**
+  · **COLOUR IN THIS BAR MEANS "RIDDEN"** — seven rounds of it. A purple last chevron was the only
+    coloured thing in a grey row, so it read as LIT while you were still 100 km from the bed.
+  · It made that chevron a **badge rather than a unit**, so it couldn't light with the others and
+    the ruler quietly lost 1/24th of itself. Grey hands that back.
+- **THE RULE, and it's clean: the MARK says which destination, the COLOUR says how far you've
+  got.** One job each, no overlap. The `.fin.moon` rule now only swaps the chequer's grain for a
+  crescent; the colours come from `.live-dist-chev` / `.done` like every other chevron.
+- **Peter's scrub-test confirmed the leg logic end-to-end** before this: *"I scrub through a whole
+  two-day route. The route starts with the distance at about 150K… and there's a moon at the end.
+  Then I go past a sleep stop, and then it changes to a chequer, so it's working."*
+
+### v270d — THE MOON IS PURPLE. Peter's fix, and it inverts the problem. **SUPERSEDED by v270f — kept for the lesson, not the outcome.**
+
+**The crescent alone FAILED on the phone** — *"the moon is identically tiny."* It was never going
+to work: the mark is 21px because the chevron is 1/24th of a phone, so **100% of tiny is still
+tiny**. I made it as large as the cell allows and it changed nothing. My own v261d note predicted
+exactly this and I under-weighted it: **the chequer survives because it only has to be FELT; a
+crescent has to be RECOGNISED, and recognition needs resolution there isn't any of.**
+- **Peter's move: "purple has been used throughout to indicate sleep."** He's right — `#b39ddb` is
+  already the app's sleep colour in **30 places**: sleep dots on every map, the "All sleep" filter
+  chip, the sleep-hours and wake-time labels, the SLEEP badge.
+- **THE INVERSION, and it's the keeper: COLOUR READS AT ANY SIZE, SHAPE DOESN'T.** Let the purple
+  carry the meaning and the crescent drops to REINFORCEMENT — it only has to be felt, which is
+  precisely why the chequer works at this size. The shape was only failing because it was being
+  asked to do the semantic work alone. **Don't try to fix a small mark by making it bigger; give
+  the meaning to something that survives being small.**
+- **It is NOT a third meaning for colour.** v260's rule (colour = zone, because the colour IS the
+  data) and v261's (colour = product) both hold. This is the app's existing sleep colour arriving
+  where sleep is being talked about.
+- **⚠ THE GHOST STATE IS THE ONE THAT MATTERS.** The last chevron is unlit for 23/24 of the leg,
+  so the GHOST is what tells you all day which end you're riding to. It gets a strong purple
+  (0.62), NOT the 24% white the other ghosts wear — a 24% purple would be indistinguishable from
+  them and the whole point would be lost. Ridden, it goes solid `#b39ddb`. `--accent` never
+  appears on this chevron, because this chevron is not the finish.
+- Verified at true device size (`moon-purple.png`): the purple is unmistakable against the green
+  and grey chevrons at a glance, across the whole bar.
+
+### v270e — THE MOON WORKS. It was never a size problem: an INLINE style was eating the rule.
+
+Peter: *"YES...!!!"* — after four rounds of him saying "still too small" and being right every time.
+- **THE BUG.** `_distBarSync` set `background-size` **inline** on the last chevron (the chequer's
+  tile, `th/2` ≈ 6.5px — added in v261f so the grain scales with the bar). **An inline style beats
+  every class rule**, so `.fin.moon`'s `background-size` was discarded and the moon rendered at
+  **6.5px**. Every "make it bigger" I tried — 80% → auto → 100%, tight viewBox, measuring the
+  path's real bounds — changed a declaration the browser never used.
+- **THE FIX:** the tile travels as a CSS var (`--chq`), set per-element by the builder, read by
+  `.fin{background-size:var(--chq,6px)}` and overridden by `.fin.moon{background-size:100% 100%}`.
+  The class rules can now compete like they're supposed to.
+- **THE RULE: never set a property INLINE that a state class needs to override.** The tile had to
+  be per-element (it scales with bar width) — but the moment `.moon` needed to beat it, inline
+  became a trap. A var gives you both.
+- **THE PROCESS FAILURE, which is the more useful one.** My mockups kept showing a big moon while
+  the app showed a small one. I assumed my mockup was unfaithful and kept "fixing" the mockup.
+  **THE DISAGREEMENT WAS THE FINDING.** When a faithful render and the build disagree, something
+  real is lying — ask which, before re-reasoning about the value. Four rounds were spent
+  re-deriving a number when the first question should have been "is this declaration even winning?"
+- **AND THE FIX BROKE THE CHEQUER, in the same property, in the same edit.** `--chq` holds a
+  single length, and `background-size:var(--chq)` means *"that width, height AUTO"* — which
+  stretched the conic-gradient to full height and turned the chequer into vertical stripes. It
+  needs **two** values: `var(--chq) var(--chq)`. The verifier now asserts that every
+  `background-size` on a chevron has two values or a keyword.
+- **`background-size` was the most-broken declaration of the whole session** — the inline override
+  ate the moon for four rounds, the one-value var ate the chequer for one. **Both failures were
+  about the FORM of the declaration, not its value**, which is precisely what I kept not checking
+  while re-deriving numbers.
+- **The final mark is NEGATIVE 100%** — a dark crescent punched out of a purple chevron — which is
+  what was in the code all along. Peter picked it out of a comparison sheet: *"the only one that
+  reads as a moon to me is the negative 100% version."* The positive-on-dark variants were solving
+  a problem that didn't exist.
+
+### ⚠ TWICE IN ONE SESSION I BROKE THE CSS WITH A COMMENT. Read this before editing one.
+
+Both times I edited a long CSS comment by replacing the rule beneath it and pasting new prose
+**after the comment's closing `*/`** — so English became stylesheet. The first time it was worse
+than a lost rule: the prose contained `("I can't see a moon` — an unclosed paren AND an unmatched
+quote — so the parser didn't stop at the next rule, it kept consuming, and **`.live-dist-nums` and
+the figure styles are the very next rules.** The distance bar came apart and the pills piled up.
+- **This file's convention of long explanatory comments makes that a live hazard, not a
+  theoretical one.** Prose full of apostrophes, quotes and dashes is one missing `/*` from being
+  code. **When a change is "just a comment", the check is still whether the file parses.**
+- **The verifier must use `re.search(r'<style>([\s\S]*?)</style>')`, NOT `s.index()`.** There is a
+  `</style>` inside a JS string at char 3820, BEFORE the real `<style>` at 3829 — so an
+  index-based slice is empty and reports a perfect 0/0. **A check that finds nothing and passes is
+  the same false pass as the truncated mount.** Third occurrence of that shape.
+
 - **THE MOON WAS INVISIBLE, and the cause is worth keeping.** `.fin` sets
   `background-color:transparent` and paints itself ENTIRELY through the conic-gradient's
   `currentColor`. My `.moon` overrode only the background-IMAGE — so a dark crescent was drawn
@@ -384,6 +481,26 @@ not a fix for a crowded column.
   Peter's answer is right for a rider (*"that is the beauty of the pills — you don't have to show
   them all"*) but it isn't an answer for the app, which currently fails by silently overlapping.
   That's the standing RIDE-SCREEN CONSOLIDATION item.
+
+### OPEN — MAP ROTATION LAGS. Peter's diagnosis, 17 July. NOT investigated, do not touch blind.
+
+*"The map rotation is still off. The jittering is long gone, and I think what is happening is that
+there is a left over delay or dampening function. This was to tame the jittering, but now that it
+is solved, this delay is giving off strange lagging map rotations."*
+- **His hypothesis is plausible and worth starting from.** v252 stacked THREE damping mechanisms
+  into `_rideHeadingDeg`, all to fight jitter: time-based easing (~2× error/s), a **60°/s rate
+  cap**, and **flip rejection** (a >120° jump held for 2.5 s).
+- **Since then the CAUSES have been fixed, and nobody revisited the damping.** v257 stopped
+  `checkAlerts` re-rolling the first-fix direction guess every tick (the coin-flip that made the
+  heading flap); v263 stopped a stale `_lastSnapIdx` feeding the detector lies. So the damping may
+  now be treating a disease that is cured — which is exactly the shape Peter describes: lag, with
+  no jitter left to justify it.
+- ⚠ **JUDGE IT ON A REAL RIDE AT 1× FIRST** — this file's own standing rule (v257: the residual
+  "looking ahead" at 5× sim is a playback artefact, ~90 km/h through switchbacks). Do not tune the
+  v252 constants off a desktop sim.
+- Suggested order when it's picked up: confirm WHICH of the three is responsible before changing
+  any of them — the rate cap and the flip rejection are cheap to disable independently, the easing
+  is not.
 
 ### OPEN BUG — the map paints BLACK until you touch it (Peter, desktop small map AND mobile)
 
