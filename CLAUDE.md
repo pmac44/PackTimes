@@ -15,9 +15,32 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-## Current status (17 July 2026, v261) — THE DISTANCE BAR IS A CHEVRON RULER. NOT phone-tested.
+## Current status (17 July 2026, v262) — the Stops map's white hint DELETED. v261 IS PUSHED.
 
-**v261 is unpushed.** It closes the v260 label mess: v260 had been pushed several times with
+**v261 is pushed and Peter is ride-testing it.** On the phone: *"the chevrons look very good along
+the top. Such a big improvement."* **His screenshot answers the one open worry from the whole
+build — the 2.51px chevron gaps ARE legible on his OLED**, so `DIST_CHEV_N` stays at 24 and the
+"drop to 22" fallback is not needed. That was the only number in v261 that came from my estimate
+rather than a measurement.
+
+### v262 — `.mhint` deleted (one CSS rule + one usage, Stops map only)
+
+Peter: *"the white text at the bottom of the map is largely unreadable, but also of questionable
+need."* Both true, and the second is the reason it's deleted rather than restyled.
+- It was `rgba(255,255,255,.35)` — **35% white laid over a map whose colour we don't control**
+  (pale grey and green). It never had a chance. **Standing shape, 4th occurrence** (cf. v260's
+  grey pill labels, which Peter killed for the same reason): translucent text over content you
+  don't control is not a subtle label, it's an invisible one.
+- **It DUPLICATED the list six pixels below it.** The stops list already opens with "Tap on the
+  map to add a stop" in full contrast on the panel's own dark background — and that copy
+  *scrolls away* once read, which is what a first-run hint should do. The v260 note about the
+  peek title said exactly this: "that new title just scrolls away when you scroll the list up
+  anyway."
+- "drag to pan" is the universal map gesture and needs no caption.
+- Verified: whole-file `node --check` (19,746 lines, ends `</html>`, both blocks clean); zero
+  orphan `mhint` references; the `map-wrap` still closes correctly around canvas + controls.
+
+## v261 — THE DISTANCE BAR IS A CHEVRON RULER (pushed 17 July, ride test in progress) It closes the v260 label mess: v260 had been pushed several times with
 different code under one label, so a phone reporting "v260" could be any of several builds. That
 is now behind us — **one step = one version bump = one push, and never re-push a version.**
 

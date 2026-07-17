@@ -279,7 +279,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .stops-drag:active .stops-drag-grip{background:rgba(255,255,255,0.5);}
 .map-wrap{position:relative;background:#0d1a0d;overflow:hidden;touch-action:none;}
 .map-wrap canvas{display:block;width:100%;height:100%;touch-action:none;}
-.mhint{position:absolute;bottom:6px;left:0;right:0;text-align:center;font-size:var(--fs-sm);color:rgba(255,255,255,.35);pointer-events:none;}
+/* v262: .mhint ("tap to add stop · drag to pan") DELETED — it was 35% white over a map we
+   don't control the colour of, so it was unreadable (Peter). Two reasons it isn't coming
+   back in a readable form either:
+     · It DUPLICATED the list six pixels below it, which already says "Tap on the map to add
+       a stop" in full contrast on the panel's own dark background — and that copy scrolls
+       away once you've read it, which is exactly what a first-run hint should do.
+     · "drag to pan" is the universal map gesture. Nobody needs telling.
+   Standing shape, 4th occurrence (cf. v260's grey pill labels): translucent text laid over
+   content whose colour we don't control is not a subtle label, it's an invisible one. */
 .zoom-btns{position:absolute;bottom:8px;right:8px;display:flex;flex-direction:column;gap:4px;}
 .live-fpill{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;}
 .zbtn{width:38px;height:38px;background:rgba(10,15,10,.82);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;}
@@ -986,7 +994,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v261';
+window.APP_VERSION='v262';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -13056,8 +13064,15 @@ function _adjustWeatherForElev(){
   if(wb) wb.style.bottom=h+'px';
   // Phase 1a Step 4: also lift the map controls and the recording strips
   // above the elevation profile so they're never masked.
+  // v262: 12 → 6. Peter, on the fit button being masked by the pill above it: "reduce the
+  // padding between the top of the elevation graph and the buttons above it". Worth noting
+  // what this is NOT: there was no big unmeasured gap to reclaim. `h` is the strip's REAL
+  // measured height and the padding on top of it was already only 12px — the weather bar
+  // beside it has none at all (bottom:h). So this buys SIX pixels, not the "plenty of room"
+  // it looks like on screen. It only helps because the overlap Peter is seeing is "a pixel
+  // or two" — it turns that into a small gap. It is not a fix for a crowded column.
   const mc=document.getElementById('live-map-ctrl');
-  if(mc) mc.style.bottom=(h+12)+'px';
+  if(mc) mc.style.bottom=(h+6)+'px';
   const sc=document.getElementById('rec-stop-confirm');
   if(sc) sc.style.bottom=(h+82)+'px';   // sits above the map controls
   const us=document.getElementById('rec-undo-strip');
@@ -13451,7 +13466,6 @@ function tStopsShell(r){
     <div class="stops-map-panel" id="stops-map-panel">
       <div class="map-wrap" id="stops-map-wrap" style="position:relative;">
         <canvas id="stops-map"></canvas>
-        <div class="mhint">tap to add stop · drag to pan</div>
         ${mapCtrlHTML('stops-map',true)}
         ${!IS_DESKTOP()?`
         <div id="mobile-map-legend" style="position:absolute;top:8px;left:6px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;z-index:20;">
