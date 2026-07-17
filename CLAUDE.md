@@ -84,6 +84,76 @@ transitions. **The order was left exactly as it was.** Recorded because I'd alre
 the fix and the justifying comment before testing it — v270f's lesson again: don't keep a
 change whose reason evaporates under a test.
 
+### v273g — THE STOP SQUARE. The icon set is finally complete.
+
+Peter: *"I think the stop ride button needs an icon. I suppose a red square would be the one."*
+Right, and it closes the set — **● record / ⏸ pause / ■ stop** is the camera language v245
+deliberately adopted, and Stop was the only one of the three still relying on words alone.
+- **⚠ RED HERE DOES NOT BREAK v245's "red is RESERVED" RULE, and the precedent is already in
+  the file.** That rule is about the button's **FILL** — "Start ride" has always been a
+  NEUTRAL `.zbtn` body carrying a **red dot**, where the mark means "record" and the quiet
+  body means "this isn't the alarming one". Stop gets exactly that treatment. A red FILL would
+  put it next to Delete, which is wrong: stopping isn't irreversible, it opens the save panel.
+  **Recording remains the only red-filled button.**
+- **16×16 against the dot's r=9 circle is an optical match, not a coincidence:** 256px² vs
+  254px², so the two marks carry identical weight in the column.
+- The button now uses the shared `row` + `label()` like its two siblings. Those were
+  hand-written inline here purely because this was the one button with no icon to wrap — the
+  very difference the square removes. Id unchanged, so the delegator is untouched.
+- Mockup at true size: `/outputs/rec-icons-v273g.png` (all four states side by side).
+
+**REJECTED — narrowing the text buttons. Don't rebuild this** (`/outputs/rec-text-lines.png`,
+four variants at true size). Peter raised two lines, then answered it himself: *"there is the
+possibility of even dropping 'ride' from all of them, but the text are generally temporary
+buttons, so leaving them bigger with more text might be ok."* Verdict: *"ok well leave it."*
+- **His argument is v245's rule restated and it's right:** the only state that eats map real
+  estate while you are actually RIDING is `recording`, and that is already an icon-only 52px
+  square. Start and Resume/Stop are states where you are STOPPED — trailhead, café, lights —
+  so the 32px they cost buys nothing back. The raggedness only reads as a problem in a mockup
+  that isolates them; in the real column they are left-aligned above a square.
+- **⚠ AND I HAD THE TRADE BACKWARDS UNTIL I RENDERED IT.** I claimed two lines "strictly
+  dominates" dropping "ride" — same width (both 102px, because "Resume" is the widest word
+  either way), more information. That was WIDTH-ONLY reasoning. At true size, two lines splits
+  a two-word phrase across a break and "Start / ride" reads as two things; "Start" reads as
+  one clean label. **So if these are ever narrowed, drop "ride" — do not two-line them.**
+  Same lesson as v261d's chequer: judge at true size, not from the arithmetic.
+
+### v273e/f — THE LEFT COLUMN ASKS WHAT SIZE THE OTHER BUTTONS ARE. And one size for a temp.
+
+**"The standard button size" is not a number.** Peter, from the desktop: *"can we make the
+weather button and the location share button the standard button size?"* — which he had
+already asked once, and v273c had "fixed" with a constant **52**. **52 is the PHONE's size.**
+The ride map's buttons are 52 there only because `btnSize` forces it; on desktop they fall
+back to `.zbtn`'s native **38**. So the constant was right on one device and wrong on the one
+he was looking at. `_leftColW()` now asks — and it is a FUNCTION, not a const, because
+`IS_DESKTOP()` can change on a resize and a const is evaluated once at load.
+- **The pack button was the tight one, and Peter called it before I measured** (*"the location
+  share icon has room, the packride icon might not"*). It is the only button in the column
+  carrying TWO things — the mark AND your placing. Measured against a 38px button's 34px of
+  inner space: **24 + 1 + 11 = 36 → clipped**; now 20 + 1 + 9 = 30. The share button is one
+  26px icon with 8px of air. **The phone is byte-identical** (36 in 48px of room), which is
+  why this only ever showed on desktop. `_w` is in the no-churn key so a resize re-renders.
+- The weather pill is now a **square the same size as everything else**, which also finishes
+  what dropping the ⚠ started: **it can no longer change width for any reason** — the glyph
+  was one cause, the digit count was the other.
+
+**v273f — ONE SIZE FOR A TEMPERATURE. There were FOUR** (Peter: *"it looks like the
+temperature number is at least two, perhaps three different font sizes?"*): 13 (the collapsed
+button + the "→ 9° in 3h" trend), 15 (panel header, "Feels", "Low tonight"), 17 (hour chips).
+Three of them inside the one panel, which is what he could see.
+- **THE HIERARCHY WAS INVERTED:** the hour chips — the least important number — were the
+  BIGGEST, and the current temperature the smallest. That predates v273 (15 vs 17 was already
+  backwards); v273e made it louder by dropping the button to 13 to fit a square.
+- **`WX_TEMP_PX=14`, stated once, used at all 7 sites.** ⚠ **14 is not a preference, it's the
+  square:** a 38px desktop button has 34px of inner space at a 2px border, and `-12°` — the
+  widest a temperature gets — is 41px at 17, 36 at 15, 34 at 14, 31 at 13. **The border going
+  2px → 1px is what buys 14** (36px inner, 1px of air each side) — and 1px matches `.zbtn`,
+  which this square is meant to look like. Anything larger clips a cold snap.
+- **Cost, taken with eyes open:** the chips shrink 17 → 14. Peter chose the flat set over a
+  hierarchy — "the same number should look the same" beats ranking here.
+- **If it's re-opened, the lever is the SQUARE.** A fixed-width pill (~58×38) would free the
+  whole family back up to 17. Offered and declined: the buttons matching each other won.
+
 ### v273d — THE RIDE MAP'S LINE IS FIXED CYAN. Peter's argument, and it kills a button.
 
 He asked whether the ride map should get a surface button, then answered it better himself:

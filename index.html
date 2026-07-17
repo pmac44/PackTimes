@@ -6850,6 +6850,18 @@ function recCtrlHTML(){
   const label=t=>`<span style="font-family:var(--sans);font-weight:600;white-space:nowrap;">${t}</span>`;
   const dot='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><circle cx="12" cy="12" r="9" fill="#ef4444"/></svg>';
   const tri='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><path d="M7 5 L19 12 L7 19 Z" fill="currentColor"/></svg>';
+  // v273g — the STOP square (Peter: "I think the stop ride button needs an icon. I suppose a
+  // red square would be the one"). Right, and it completes the set: ● record / ⏸ pause /
+  // ■ stop is the camera language v245 deliberately adopted, and Stop was the only one of the
+  // three still relying on words alone.
+  // ⚠ RED HERE DOES NOT BREAK v245's "red is RESERVED" RULE — that rule is about the button's
+  // FILL, and "Start ride" already proves the distinction: a neutral .zbtn body carrying a
+  // RED DOT, where the mark means "record" and the quiet body means "this isn't the alarming
+  // one". Stop keeps the same neutral body for the same reason (stopping isn't irreversible,
+  // it just opens the save panel — a red FILL would put it next to Delete).
+  // 16×16 against the dot's r=9 circle is a deliberate optical match, not a coincidence:
+  // 256px² vs 254px², so the two marks carry the same weight in the column.
+  const sq='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><rect x="4" y="4" width="16" height="16" rx="2" fill="#ef4444"/></svg>';
   const row='display:flex;align-items:center;justify-content:center;gap:7px;';
   if(recActive){
     // RECORDING — icon only. Small, solid TRUE red (--red2; the old --red #f87171 is a
@@ -6870,9 +6882,12 @@ function recCtrlHTML(){
     // weather pill is ~200px up from the bottom, and the pill grid ends 278px down from the
     // top, so on any real ride map they don't meet. One step, one version.
     return`<button class="zbtn" id="btn-gpstoggle" title="Resume recording" style="${wide}padding:0 14px;overflow:hidden;color:#fff;background:var(--accent3);border-color:var(--accent2);${shadow}"><span style="${row}">${tri}${label('Resume ride')}</span></button>`
-      // var(--sans), NOT var(--font): DM Mono is for numbers/metrics only. It was rendering
-      // "Stop ride" as typewriter text (Peter's screenshot).
-      +`<button class="zbtn" id="btn-recstop" title="Stop ride" style="${wide}color:var(--text);border-color:var(--border2);font-family:var(--sans);font-weight:600;${shadow}">Stop ride</button>`;
+      // v273g — now built exactly like its two siblings: the shared `row` span + `label()`,
+      // which is where var(--sans) and weight 600 come from. They used to be hand-written
+      // inline here purely because this was the one button with no icon to wrap — the very
+      // difference the square removes. (var(--sans), NOT var(--font): DM Mono is for
+      // numbers/metrics only; it was rendering "Stop ride" as typewriter text.)
+      +`<button class="zbtn" id="btn-recstop" title="Stop ride" style="${wide}color:var(--text);border-color:var(--border2);${shadow}"><span style="${row}">${sq}${label('Stop ride')}</span></button>`;
   }
   // IDLE — say what it does. Dark .zbtn body so it sits with the other controls (the white
   // version looked pasted on); the red dot carries the "record" meaning. Deliberately NOT a
@@ -6923,11 +6938,21 @@ function _recBtnSync(){
 // LEFT_COL_X/W are the share and pack buttons' own left and width, which were hard-coded
 // identically in two places and are now stated once — the weather pill has to clear them, so
 // a third copy of 54 was one edit away from drifting.
-// v273c — 54 -> 52. Peter: "Why is the location share button bigger than the other buttons?
-// Gut feel is to make all buttons the same size." No reason at all — the map's .zbtn squares
-// are 52 and this was 54, so the column had a 2px step in it for nothing.
-const LEFT_COL_X=8, LEFT_COL_W=52, LEFT_COL_GAP=8;
-const LEFT_COL_CLEAR=LEFT_COL_X+LEFT_COL_W+LEFT_COL_GAP;
+// ── THE COLUMN ASKS WHAT SIZE THE OTHER BUTTONS ARE. It doesn't assume. ────────────────
+// Peter: "Why is the location share button bigger than the other buttons? Gut feel is to
+// make all buttons the same size." Then, from the desktop: "can we make the weather button
+// and the location share button the standard button size?"
+// v273c answered the first with a CONSTANT 52 — and 52 is the PHONE's size. The ride map's
+// buttons are 52 on a phone only because btnSize in mapCtrlHTML forces it; on desktop they
+// fall back to .zbtn's native 38. So the constant was right on one device and wrong on the
+// other, which is exactly what Peter was still looking at.
+// "The standard button size" isn't a number, it's whatever the right-hand column is doing on
+// this device — so ask. Same lesson as everything else today: measure, don't assume.
+// ⚠ A FUNCTION, NOT A CONST: IS_DESKTOP() can change on a resize, and a const would be
+// evaluated once at load and be wrong for the rest of the session.
+const LEFT_COL_X=8, LEFT_COL_GAP=8;
+const _leftColW=()=>IS_DESKTOP()?38:52;   // must track .zbtn / btnSize in mapCtrlHTML
+const _leftColClear=()=>LEFT_COL_X+_leftColW()+LEFT_COL_GAP;
 // ⚠ THESE FOUR ARE A CHAIN, AND IT ONLY RESOLVES IN ONE DIRECTION:
 //   elevation strip  →  weather pill  →  share/pack button  →  record control
 // Each is positioned by MEASURING the one before it (v255's rule: the ride screen's overlays
@@ -7055,11 +7080,18 @@ function _shareBtnSync(){
   if(!el){
     el = document.createElement('div');
     el.id = 'share-btn';
-    el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;width:'+LEFT_COL_W+'px;height:'+LEFT_COL_W+'px;'
+    el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;'
       + 'border-radius:var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;'
       + 'align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;';
     sec.appendChild(el);
   }
+  // v273e — written every pass, not baked into cssText at creation: the size depends on
+  // IS_DESKTOP(), and a shell created on one side of the breakpoint must not keep the other
+  // side's size after a resize. Two cheap style writes.
+  // The 26px icon has 4px of air each side even in a 38px button — Peter checked: "the
+  // location share icon has room".
+  const _w = _leftColW();
+  el.style.width = _w + 'px'; el.style.height = _w + 'px';
   _leftColBottom(sec, el);
   const st = _shareBtnState();
   if(el._shareState !== st){
@@ -7087,10 +7119,12 @@ function _shareBtnSync(){
     // v273 — this was a hard-coded left:70px: the share button's right edge plus a gap,
     // correct until v273 briefly moved the weather pill into that exact spot. v273c moved the
     // pill up the left column instead, so the slot beside the button is empty again and
-    // LEFT_COL_CLEAR is honest — but it is now DERIVED from the button's own left+width, not
-    // a 70 that happens to match. That's the whole lesson: a constant standing in for a
-    // measurement is fine until the thing it was silently tracking moves.
-    tip.style.left = LEFT_COL_CLEAR + 'px';
+    // _leftColClear() is honest — it is DERIVED from the button's own left+width, not a 70
+    // that happens to match. That's the whole lesson: a constant standing in for a
+    // measurement is fine until the thing it was silently tracking moves. (And v273e proved
+    // it twice: the 70 assumed a 54px button, then a 52px one, and the button is 38 on
+    // desktop.)
+    tip.style.left = _leftColClear() + 'px';
     tip.style.bottom = el.style.bottom;
     tip.textContent = 'Shares when you start riding';
     sec.appendChild(tip);
@@ -7497,7 +7531,15 @@ function packStart(){
 // Built here, NOT in tLiveShell — the standing lesson: render() short-circuits to
 // updateLive() mid-ride, so template-only elements are never created. Hexes are
 // hard-coded where PACKRIDE_YELLOW would be a TDZ at load.
-const PACK_BTN_ICON = '<svg width="24" height="24" viewBox="0 0 20 20" fill="#fde047"><circle cx="10" cy="4.2" r="2.7"/><circle cx="13.9" cy="10.3" r="2.7"/><circle cx="6.1" cy="14.9" r="2.7"/></svg>';
+// v273e — parametric, because the pack button is the tight one and Peter spotted it:
+// "the location share icon has room, the packride icon might not." Measured, and he's right:
+// this button is the only one in the column carrying TWO things — the mark AND your placing
+// ("2/5") — so at 24px + 1px gap + an 11px label it needs 36px of a 38px desktop button's
+// 34px of inner space. It clipped. The share button is one 26px icon and has 4px of air.
+// The mark and the label now scale with the button; _packMark() keeps every other caller
+// (the sheets, the rider list) on the original 24px by defaulting to it.
+const _packMark = (sz=24) => '<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 20 20" fill="#fde047"><circle cx="10" cy="4.2" r="2.7"/><circle cx="13.9" cy="10.3" r="2.7"/><circle cx="6.1" cy="14.9" r="2.7"/></svg>';
+const PACK_BTN_ICON = _packMark();
 
 // Rider colours — the list rows ARE the map legend (no name labels during a peek),
 // so the dot colour must be stable per rider for the whole event. Green is you,
@@ -7538,12 +7580,14 @@ function _packBtnSync(){
   if(!el){
     el = document.createElement('div');
     el.id = 'pack-btn';
-    el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;width:'+LEFT_COL_W+'px;height:'+LEFT_COL_W+'px;'
+    el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;'
       + 'border-radius:var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;flex-direction:column;'
       + 'align-items:center;justify-content:center;gap:1px;cursor:pointer;box-sizing:border-box;'
       + 'border:2px solid #fde047;color:#fde047;';
     sec.appendChild(el);
   }
+  const _w = _leftColW();
+  el.style.width = _w + 'px'; el.style.height = _w + 'px';
   // v273: the same one authority the share button uses. This slot holds whichever of the two
   // is live, so they must land on the identical pixel — otherwise the whole left column
   // would shift the moment you joined or left a group ride.
@@ -7552,12 +7596,22 @@ function _packBtnSync(){
   const meIdx = rs.findIndex(x => x.isYou);
   const place = rs.length ? (meIdx >= 0 ? (meIdx + 1) + '/' + rs.length : String(rs.length)) : '';
   const live = shareIsLive();
-  const key = place + (live ? 'L' : '');
+  // v273e — the mark and the placing scale with the button. Peter: "the packride icon might
+  // not [have room]." Measured on the 38px desktop button, which has 34px of inner space:
+  //   before  24 mark + 1 gap + 11 label = 36  -> clipped
+  //   after   20 mark + 1 gap +  9 label = 30  -> 4px of air
+  // The phone is untouched (52px button, 24+1+11 = 36 in 48px of room) — this button has
+  // always fitted there, which is why the clipping only showed up on Peter's desktop.
+  // `_w` is in the key: a resize across the breakpoint must re-render at the new size, and
+  // without it the no-churn guard would happily keep the old one.
+  const mark = _w >= 52 ? 24 : 20;
+  const lbl  = _w >= 52 ? 11 : 9;
+  const key = place + (live ? 'L' : '') + _w;
   if(el._packKey !== key){
     el._packKey = key;
     el.style.animation = live ? 'pkbPulse 1.6s ease-out infinite' : 'none';
-    el.innerHTML = PACK_BTN_ICON
-      + (place ? '<span style="font-size:11px;font-family:var(--font);font-weight:600;color:#fde047;line-height:1;">' + place + '</span>' : '');
+    el.innerHTML = _packMark(mark)
+      + (place ? '<span style="font-size:' + lbl + 'px;font-family:var(--font);font-weight:600;color:#fde047;line-height:1;">' + place + '</span>' : '');
   }
   _recBtnSync();   // the record control hangs off this button's rect — see the chain note
 }
@@ -16803,6 +16857,29 @@ function drawWeatherDot(ctx,x,y,w,mapFontSm,isDesktop){
 let _weatherExpanded=false;
 let _weatherCollapseTimer=null;
 
+// ── v273f — ONE SIZE FOR A TEMPERATURE. EVERY TEMPERATURE. ─────────────────────────────
+// Peter, looking at the collapsed button next to the expanded panel: "it looks like the
+// temperature number is at least two, perhaps three different font sizes?"
+// It was FOUR — 13 (the collapsed button, and the "→ 9° in 3h" trend), 15 (the panel header,
+// "Feels", "Low tonight") and 17 (the hour chips) — and three of them were inside the one
+// panel, which is what he could see.
+// WORSE, THE HIERARCHY WAS INVERTED: the hour chips were the BIGGEST number on the screen
+// and the current temperature the smallest. That part predates v273 (15 vs 17 was already
+// backwards); v273e made it louder by dropping the button to 13 to fit a square.
+// So: the same quantity now always looks the same, and the size is stated once.
+//
+// ⚠ WHY 14 AND NOT 15 OR 17 — it is the collapsed button that sets this, and it is a real
+// constraint, not a preference. That button is a square the size of every other button
+// (38px on desktop), so it has 34px of inner space at a 2px border. Measured in DM Mono
+// against "-12°", the widest a temperature ever gets: 17px→41, 15px→36, 14px→34, 13px→31.
+// 14px only fits once the border drops 2px→1px (36px inner, 1px of air each side) — which
+// it now does, matching .zbtn anyway. Anything larger clips a cold snap.
+// The cost, taken with eyes open: the hour chips shrink 17→14. Peter chose the flat set over
+// a hierarchy, because "the same number should look the same" beats ranking here.
+// If this is ever re-opened, the lever is the SQUARE: a fixed-width pill (~58×38) would free
+// the whole family to go back up to 17. That was offered and declined — the buttons matching
+// each other won.
+const WX_TEMP_PX=14;
 function weatherPillHTML(code,temp,label){
   const isStorm=wmoIsStorm(code);
   const isHeavyRain=code>=65&&code<80;
@@ -16817,7 +16894,7 @@ function weatherPillHTML(code,temp,label){
            a fake bold, and a fake-bolded monospace is precisely Peter's "reads like Courier
            or something". Note the stack is 'DM Mono','Courier New',monospace — so Courier
            is genuinely one step away if the font ever fails to load. -->
-      <span style="font-size:17px;font-weight:500;color:${tc};">${Math.round(temp)}°</span>
+      <span style="font-size:${WX_TEMP_PX}px;font-weight:500;color:${tc};">${Math.round(temp)}°</span>
     </div>
     <div style="font-size:13px;color:var(--text2);font-family:var(--font);font-weight:500;">${label}</div>
   </div>`;
@@ -16924,9 +17001,9 @@ function weatherBarHTML(){
       <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">${hourChips}</div>
     </div>
     <div style="border-top:1px solid var(--border);padding:8px 10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
-      ${c.feelsLike!=null&&Math.abs(Math.round(c.feelsLike)-Math.round(c.temp))>=2?`<span style="font-size:15px;color:${Math.round(c.feelsLike)<Math.round(c.temp)?'#93c5fd':'#fca5a5'};">Feels ${Math.round(c.feelsLike)}°</span>`:''}
+      ${c.feelsLike!=null&&Math.abs(Math.round(c.feelsLike)-Math.round(c.temp))>=2?`<span style="font-size:${WX_TEMP_PX}px;color:${Math.round(c.feelsLike)<Math.round(c.temp)?'#93c5fd':'#fca5a5'};">Feels ${Math.round(c.feelsLike)}°</span>`:''}
       ${rainProb!=null?`<span style="font-size:15px;color:${rainProb>50?'#93c5fd':'var(--text2)'};">💧 ${rainProb}% rain</span>`:''}
-      ${lowWarning?`<span style="font-size:15px;color:#93c5fd;">🥶 Low ${Math.round(tonightLow)}° tonight</span>`:(tonightLow!=null?`<span style="font-size:15px;color:var(--text2);">Low ${Math.round(tonightLow)}° tonight</span>`:'')}
+      ${lowWarning?`<span style="font-size:${WX_TEMP_PX}px;color:#93c5fd;">🥶 Low ${Math.round(tonightLow)}° tonight</span>`:(tonightLow!=null?`<span style="font-size:${WX_TEMP_PX}px;color:var(--text2);">Low ${Math.round(tonightLow)}° tonight</span>`:'')}
       ${windRelHTML}
       ${sunHTML}
       ${_radarUrl?`<a href="${_radarUrl}" target="_blank" rel="noopener" style="font-size:14px;color:var(--blue);text-decoration:none;font-weight:600;" onclick="event.stopPropagation();">Radar ↗</a>`:''}
@@ -16956,19 +17033,34 @@ function weatherBarHTML(){
     // the pill change WIDTH on a warning, so a control that had finally been given a fixed
     // spot in a column would shove itself sideways at the worst possible moment. A pulse
     // costs no space and is far harder to miss on a moving map than a 13px glyph.
+    // v273e — A SQUARE, THE SAME SIZE AS EVERY OTHER BUTTON (Peter: "can we make the weather
+    // button and the location share button the standard button size?"). It was an auto-width
+    // pill, which is why it never matched anything.
+    // A fixed square also finishes the job the ⚠ removal started: the pill can no longer
+    // change width at all, for any reason. It was already free of the warning glyph; now it
+    // is free of the temperature's digit count too.
+    // ⚠ THE FONT IS SIZED FOR THE WORST STRING, NOT THE USUAL ONE. Measured in DM Mono
+    // against "-12°", the widest a temperature gets: at 16px it is 38px and would burst a
+    // 38px desktop button (34px inner); at 13px it is 31px and clears it. The phone's 52px
+    // button has room for 16px. Normal readings ("2°", "18°") are 16–23px either way, so the
+    // small size is only ever paying for the cold snap that would otherwise clip.
+    // v273f — the border is 1px, not 2. It matches .zbtn (the buttons this square is meant to
+    // look like), and it is what buys the 2px that lets WX_TEMP_PX be 14 instead of 13: the
+    // inner space goes 34→36 and "-12°" is 34. Not cosmetic — it is why the size is uniform.
+    const _wxB=_leftColW();
     return`<div id="live-weather-bar" style="position:absolute;bottom:8px;left:${LEFT_COL_X}px;z-index:10;cursor:pointer;-webkit-tap-highlight-color:transparent;pointer-events:auto;">
-      <div style="display:inline-flex;align-items:center;justify-content:center;background:${condBg};border:2px solid rgba(255,255,255,0.15);border-radius:8px;padding:4px 10px;font-family:var(--font);box-shadow:0 2px 8px rgba(0,0,0,0.4);${alertBorder}">
-        <span style="font-size:16px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
+      <div style="width:${_wxB}px;height:${_wxB}px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:${condBg};border:1px solid rgba(255,255,255,0.15);border-radius:var(--r-ctrl);font-family:var(--font);box-shadow:0 2px 8px rgba(0,0,0,0.4);${alertBorder}">
+        <span style="font-size:${WX_TEMP_PX}px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
       </div>
     </div>`;
   }
   return`<div id="live-weather-bar" style="position:absolute;bottom:0;left:0;right:0;z-index:10;background:var(--bg2);border-top:1px solid var(--border);font-family:var(--font);cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 -4px 20px rgba(0,0,0,0.4);pointer-events:auto;">
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;">
       <div style="background:${condBg};border-radius:5px;padding:3px 8px;flex-shrink:0;">
-        <span style="font-size:15px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
+        <span style="font-size:${WX_TEMP_PX}px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
       </div>
       <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
-      ${showTrend?`<div style="font-size:13px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
+      ${showTrend?`<div style="font-size:${WX_TEMP_PX}px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
       <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
       ${alert?`<div style="margin-left:auto;font-size:16px;line-height:1;color:#f97316;">⚠</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">▼</div>`}
     </div>
