@@ -15,6 +15,137 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+### v272 (18 July) — four off Peter's list. NOT phone-tested. The bottom-left move is v273.
+
+Split deliberately: the record-button move is a refactor of the recording control, so it goes
+on its own so a pill bug and a record bug can't arrive together.
+
+**1. THE STOPS STRIP IS A BUTTON — and it always was, we were throwing the answer away.**
+Peter: *"the scrolling is too difficult with clean dry hands sitting in a chair… we could
+have a button again, in the middle of the border… It would be more intuitive than the old
+button because it would be right on the stops list top."*
+- **The strip IS the button he's describing** — it already sits exactly where he wants one and
+  is already the object the gesture belongs to. A separate button on top of a thing that
+  already responds to touch makes the drag ambiguous for no gain.
+- **It cost ONE LINE, because v260e's 5px dead zone was already classifying taps and then
+  discarding the result** — `if(!moved) return` was a tap being deliberately ignored. The
+  machinery has been there since v260e; only the outcome is new. **Standing shape: when a
+  feature looks expensive, check whether the hard half is already built** (cf. v261's
+  six-pixel finding).
+- **22 → 32px** (under every touch guideline at 22), and the **grip bar became a CHEVRON that
+  points where the strip is about to travel** — so the control states its own outcome and
+  needs no label. That's what kills Peter's own option (a): moving "Stops (194)" into the box
+  buys the same target and pays permanent screen space for it.
+- ⚠ **preventDefault ON TOUCHSTART OR THE TAP CANCELS ITSELF.** An un-defaulted touch is
+  replayed as a compat mousedown+mouseup, so one finger-tap runs `end` TWICE — down, then
+  straight back up — and the strip looks broken while doing exactly what it was told.
+  **`touch-action:none` does NOT stop the synthesised mouse events**, which is the trap. It
+  was harmless until now only because a tap used to be a no-op; doing nothing twice is
+  nothing. Truth-tabled as its own case.
+- The drag survives. Two doorways, one pair of positions — v264's rule, one level down.
+
+**2. THE + WAS FAKE AND THE MAP PAID FOR IT (Peter).** *"The whole cell area is clickable…
+but it also means when that cell is empty that whole area blocks map panning."*
+- Worse than it sounds: pills off = a **220px band of invisible dead map, full width**, and
+  because an off cell is TRANSPARENT the map is visibly right there under your finger being
+  ignored. **v269 gave the map back the PIXELS and kept the TAPS** — the cell went
+  see-through but stayed a target. The cell was lying about what it was.
+- **The GRID ITSELF was the load-bearing half, not the cells.** Six pointer-events:none cells
+  still leave the container over the map, and a bare div with no background swallows taps
+  just as thoroughly as a painted one. Grid → `none`, cells opt back in via `base`, the off
+  cell overrides back to `none` (inline, after base, so it wins) and the chip alone re-arms.
+- **Peter priced the cost himself and it's the right call:** *"that will make it hard to
+  select… but the map pan problem is real and outranks it I think."* The asymmetry decides
+  it — the pan bug bites every rider who turns a pill off and then wonders why the map is
+  stuck; the 28px chip only bites on the one tap that leaves the empty state, made while
+  stopped.
+- The chip is inside the cell, so `closest('.live-fpill')` still finds the slot. **The cycle
+  handler needed no change at all.**
+
+**3. THE MOVING-SPEED PILL (`mspeed`), and the reason it earns a slot is Peter's framing:**
+*"If someone does not have a power meter or heart rate monitor, there are only 2 data cells
+they would use."* Six cells built for a kit list most riders don't own; this is the third
+number that needs no hardware.
+- **It is the speed pill with the other average.** Peter chose that shape with the
+  alternatives in front of him, knowing the cost: run both and current speed is on screen
+  twice. The trade — each pill stays self-contained, and the tone stops the pair reading as a
+  duplicate. (Rejected: moving-avg-over-elapsed-avg in one cell; moving avg as a lone hero.)
+- **THE TONE DOESN'T BREAK v260's COLOUR RULE — Peter drew the line himself:** *"Colour
+  showing a variable range or zone only is valid, but a set moderately different colour or
+  tone would be a good indicator."* A **VARIABLE colour encodes data** (zones); a **CONSTANT
+  tone identifies an object** and claims nothing, because it never moves. Worth keeping: the
+  old rule was never "no colour", it was "never let colour imply a reading that isn't there".
+  `FPILL_MSPEED_BG='#ccd6cf'` — one constant, one line to revert. A TONE not a hue, or it
+  would read as a zone with a real zone pill beside it. Contrast stays ~12:1.
+  ⚠ **JUDGE IT ON THE OLED** (v260's dirty-green lesson). Mockups at true size, rendered with
+  Pillow + the repo's real DM Sans/DM Mono (the sandbox still can't render HTML):
+  `/outputs/mspeed-tone.png` — the no-change row proves the point, the two pills are genuinely
+  hard to tell apart; `#b9c6be` is the fallback if `#ccd6cf` is too quiet.
+  `/outputs/mspeed-labels.png` — the four label pairs, and the row that found the "avg." bug.
+- **LABELS: "km/h moving avg." / "km/h avg. incl. stops"** — and **"avg." is LOAD-BEARING,
+  which took Peter one look at the mockup to catch.** *"I think average has to be in the
+  text."* My first cut had neither label say the figure was an average at all, and the tell is
+  that it didn't make them vague, it made one **WRONG**: "km/h moving" parses as *your moving
+  SPEED*, on a pill whose top half is exactly that. **Rendering it was what exposed it — the
+  words looked fine in the diff and only failed once they were sitting under the number they
+  described.**
+- **THE LENGTH IS THE PRICE OF THE ONLY WORDING THAT READS. Don't tighten it later.** Peter
+  ranked the whole vocabulary and there is no short clear option — *"'moving avg.' is clear
+  enough · 'total avg.' is vague · 'elapsed avg.' is vague · 'avg. incl. stops' is clear but
+  long"*: **both brief candidates are the vague ones.** And it's free anyway — measured with
+  the real DM Sans at 10px, 95px in 115px of cell room, 95/104 on a 360px phone. He expected
+  space to be the constraint (*"'avg.' is space is minimal"*); it never was.
+- **The word order flips between the two pills ON PURPOSE.** "moving avg." is a named thing
+  every bike computer uses, so it reads as one noun; "avg. incl. stops" has no name and must
+  describe itself. **Rejected: the tidier parallel** ("km/h avg. moving", both labels sharing
+  a prefix so the eye lands on the difference) — nobody says "average moving", and an
+  unidiomatic label is one you have to decode. **Rejected: dropping "km/h"** from the bottom
+  half (genuinely redundant — the top says it 30px up, and both halves ARE km/h) because every
+  other pill in the family names its unit in each half.
+- **The speed pill's "km/h avg" → "km/h avg. incl. stops" is v260's own settled decision,
+  written down and never built** — and it matters more now: until v272 there was only ever ONE
+  average on screen and "avg" couldn't be mistaken for the other one.
+- **IT DASHES WHEN NOT RECORDING, and that isn't inconsistent with the stoppage pill's zeros
+  — it's the SAME rule.** For a CLOCK zero is true; for a SENSOR zero is a lie. An average is
+  neither and lands on the sensor side: before you ride there is no average, not a zero one.
+  60 s gate, same as the stoppage %, for the same reason.
+- ⚠ **SCOPE MISMATCH, deliberate:** this average is LEG-scoped (`_legVals`), the speed pill's
+  is SESSION-scoped. Identical on a single day; they diverge on a multi-day fixed-wake plan
+  where a sleep starts a new leg. Not unified because the speed pill's average works when
+  you're NOT recording and the leg clock doesn't exist until you are — v259 left the same job
+  open for the same reason. Flag it if it ever matters on the phone.
+- `_legVals` asks the SIM for the time, so the new figure needs no sim guard of its own.
+
+**4. "JUST RIDE" NOW TAKES THE ROUTE FURNITURE WITH IT** (Peter's outstanding v264 item).
+The elevation strip, next-stops strip and stop list all hide. **v264 built the SWITCH and left
+three things wired to the old position** — every one route-scoped, every one LYING rather than
+going blank (his 16 July ride: route loaded, training loop 1.8 km away, `snapTo` faithfully
+reporting a fiction all day).
+- **NO NEW GATE** — `_distFollowing`, the one that already exists. Bar, chevrons and these
+  three now agree by construction.
+- ⚠ **A SYNC, NOT AN `if` IN THE TEMPLATE**, which is where I'd have put it: the template is
+  not a path that runs mid-ride on DESKTOP (`_render` short-circuits to `updateLive`). Tapping
+  the bar to change your mind IS a mid-ride change, so a template guard would have worked on
+  the phone and silently not in the desktop sim — which is where Peter tests. **v238's gotcha,
+  FOURTH occurrence** (turn popup → sharing button → the pills → this).
+- Hung off `_distBarSync` because it already computes `following` AND is already called from
+  everywhere that matters. Writes only on change; reads the elements' own state rather than a
+  remembered flag, so a freshly built shell is corrected rather than trusted.
+- **The weather bar drops for free** — a hidden strip measures 0, and `_adjustWeatherForElev`
+  is re-run because the thing that moves an anchor must re-anchor what hangs off it (v262).
+
+**Verified: honest whole-file `node --check`** (20,450 lines, ends `</html>`, both blocks
+clean — the `</html>` assert ran first, per the standing rule), CSS braces balanced and 47/47
+comment pairs closed, **plus 45/45 truth-table**: tap/drag/4px-wobble/6px-drag, the
+double-fire trap reproduced then fixed, the chevron through both doorways, the cycle wrapping
+and old 3-slot prefs padded not discarded, the moving average against a 4 h bivvy and a
+non-stop ride, divide-by-zero both ways, the sync's no-churn and fresh-shell cases, and the
+pointer-events resolution with all six pills off. **NOT phone-tested — open `index.html` in a
+browser once before `push.bat`.**
+
+**Peter's own tap-the-bar probation still stands** (v264): if the distance bar doesn't land as
+the way out of freestyle, the sheet still needs a permanent doorway.
+
 ## Current status (17 July 2026, v263) — THE OUT-AND-BACK BUG IS FIXED. v261 pushed, v262/263 not.
 
 **Peter's 17 July ride test found the biggest bug in months, and the direction detector was
@@ -321,6 +452,27 @@ the figure styles are the very next rules.** The distance bar came apart and the
   `currentColor`. My `.moon` overrode only the background-IMAGE — so a dark crescent was drawn
   over nothing. Dark on dark. **Fill the cell (`background-color:currentColor`) THEN punch the
   moon out of it.** Peter: "I can't see a moon at all. There's nothing in there."
+
+### OPEN — the map's km markers don't counter-rotate (Peter, 17 July, minor)
+
+*"The kilometre markers do not seem to rotate so that they're always visible or readable in the
+ride screen. They seem to be pinned to the map, which can be rotated, so that's something that's
+not easier to read. It may not matter."*
+- The live map is heading-up (v207), so anything drawn in the rotated frame turns with it — the km
+  labels ride upside down half the time.
+- **The fix already exists in this file**: v252 does exactly this for PackRide's rider name tags —
+  `drawPack` counter-rotates them (`translate → rotate(+cvs._heading)`) so they stay horizontal.
+  The km markers are drawn in `drawMap`'s km-marker block and never got the same treatment.
+- Peter's own "it may not matter" is fair: the markers are a planning aid and the leg-scoped bar
+  (v270) means they no longer correspond to anything on the ride screen anyway. Cheap to fix, low
+  value — do it if the block is being touched for another reason.
+
+### Peter's verdict on the v269 cell grid (17 July, pushed, NOT ride-tested)
+
+*"It doesn't look as attractive on the phone as I'd hoped, but I think it might be okay, and I
+think it reads better for the data."* Worth keeping the split: **legibility up, beauty down.** The
+floating pills were prettier objects; the grid is a better instrument. If it's re-opened, that's
+the trade to argue about — not the pixels.
 
 ### OPEN — Peter's idea for the no-route strip (17 July, not built)
 

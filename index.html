@@ -332,9 +332,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    touch-action:none or the browser tries to scroll the page out from under the drag.
    ns-resize is the desktop affordance; the handle itself is mobile-only (desktop pins the
    map at a flat 250px and never had an expand button either). */
-.stops-drag{flex-shrink:0;background:var(--bg);height:22px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;-webkit-tap-highlight-color:transparent;}
-.stops-drag-grip{width:44px;height:4px;border-radius:2px;background:rgba(255,255,255,0.28);pointer-events:none;}
-.stops-drag:active .stops-drag-grip{background:rgba(255,255,255,0.5);}
+/* v272 - the strip is TAP as well as drag, so it is sized to be hit, not just seen.
+   22 to 32px: Peter, on the 22px one, "the scrolling is too difficult with clean dry
+   hands sitting in a chair". A 22px target is under every touch guideline going.
+   The grip bar became a CHEVRON because a grip bar says drag me and says nothing about
+   tapping. The chevron points the way this strip is about to travel, so the control
+   states its own outcome and needs no label - which is what kills the option of moving
+   the Stops count in here and paying for it with permanent screen space. */
+.stops-drag{flex-shrink:0;background:var(--bg);height:32px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;-webkit-tap-highlight-color:transparent;}
+.stops-drag-grip{width:64px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:rgba(255,255,255,0.10);pointer-events:none;transition:transform .14s ease;}
+.stops-drag-grip svg{stroke:rgba(255,255,255,0.55);display:block;}
+.stops-drag:active .stops-drag-grip{background:rgba(255,255,255,0.22);}
+.stops-drag:active .stops-drag-grip svg{stroke:rgba(255,255,255,0.85);}
+/* map is big and the list is parked at the bottom, so a tap brings the list UP */
+.stops-drag-grip.up{transform:rotate(180deg);}
 .map-wrap{position:relative;background:#0d1a0d;overflow:hidden;touch-action:none;}
 .map-wrap canvas{display:block;width:100%;height:100%;touch-action:none;}
 /* v262: .mhint ("tap to add stop · drag to pan") DELETED — it was 35% white over a map we
@@ -1062,7 +1073,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v271';
+window.APP_VERSION='v272';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2682,6 +2693,53 @@ const DIST_BAR_H=20;         // the graphic's height — MUST match .live-dist-c
 function _distFollowing(r){
   return !!(r && r.totalDist>0 && _offRouteMode!=='abandoned');
 }
+
+// ── v272 — "JUST RIDE" TAKES THE ROUTE FURNITURE WITH IT ────────────────────────────────
+// Peter, the outstanding item from v264: "when you select just ride, instead of following a
+// route, the elevation profile and stops list should hide."
+// It's the same argument as v261d's chevrons and it was always going to arrive here — v264
+// built the SWITCH and left three things still wired to the old position. Every one of them
+// is route-scoped and every one of them LIES rather than going blank when you aren't on the
+// route: the elevation strip reads the profile at your snapped position, and the next-strip
+// and stop list are answering "what's coming up" about a route you have declared you aren't
+// riding. His 16 July ride is the proof — a route was loaded, he rode a training loop 1.8 km
+// away, and snapTo faithfully reported a fiction all day.
+//
+// NO NEW GATE — _distFollowing is the one that already exists, which is this file's standing
+// rule (do not invent a second trigger). So the bar, the chevrons and these three now agree
+// by construction, and "Just ride" from the v264 sheet turns off all of it in one flip.
+//
+// ⚠ WHY THIS IS A SYNC AND NOT AN `if` IN THE TEMPLATE, which is where I'd have put it:
+// the template is not a path that runs mid-ride on DESKTOP — _render short-circuits to
+// updateLive and returns without rebuilding the shell (the anti-flash guard). Tapping the
+// distance bar to change your mind is exactly a mid-ride change, so a template guard would
+// have worked on the phone and silently not on the desktop sim, which is where Peter tests.
+// That's the v238 gotcha for the FOURTH time (turn popup, sharing button, the pills, this).
+// The rule by now: if a thing can change while riding, it needs a sync.
+//
+// It writes only on CHANGE, so there's no per-tick DOM churn, and it reads the elements'
+// own state rather than a remembered flag — which means a freshly built shell is corrected
+// on the next tick instead of being trusted to have been born right.
+function _liveRouteBitsSync(following){
+  let changed=false;
+  ['live-elev-strip','live-next-strip','live-stop-list'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    const want=following?'':'none';
+    if(el.style.display!==want){el.style.display=want;changed=true;}
+  });
+  if(!changed)return;
+  // The weather bar and the map controls are anchored to the elevation strip's MEASURED
+  // height, so hiding it without re-anchoring would leave them floating over the gap it
+  // left. This is v262's lesson exactly — the thing that moves an anchor is the thing that
+  // must re-anchor whatever hangs off it. A hidden strip measures 0, so the bar simply drops
+  // to the bottom; nothing needed a special case.
+  // Safe from recursion: _adjustWeatherForElev calls the share/pack syncs, never this.
+  _adjustWeatherForElev();
+  // The map claims the freed space (or gives it back). Same call the next-strip already
+  // makes when its own height changes.
+  if(typeof _liveResizeHandler==='function')requestAnimationFrame(_liveResizeHandler);
+}
 function _distBarSync(){
   const bar=document.getElementById('live-dist-bar');if(!bar)return;
   const set=(el,n,u)=>{
@@ -2692,6 +2750,12 @@ function _distBarSync(){
   const r=cur();
   const following=_distFollowing(r);
   bar.classList.toggle('no-route',!following);
+  // v272 — the elevation strip, the next-stops strip and the stop list ride on the same
+  // answer. Hung here because this is already the one function that computes `following`
+  // AND is already called from every place that matters (updateLive every tick, initLiveMap,
+  // sizeLiveMap, the 200 ms settle) — a second call chain would be a second thing to keep in
+  // step, which is how this file has drifted before.
+  _liveRouteBitsSync(following);
   // The pills' top is a CSS var, not a hard-coded inline px, precisely so this one line can
   // move them when the band collapses. colBase reads var(--fpill-top).
   // v270b: 64/44 → 58/38. The 6px was the FLOATING pill's clearance from the bar — a grid
@@ -13633,7 +13697,9 @@ function sortedLayers(r){
 // ONE cycle, at module scope. There used to be two copies — one in tLiveShell, one in the
 // tap handler — which had to be kept in step by hand. Same drift trap as everything else
 // in this file.
-const PILL_CYCLE=['speed','stop','power','cad','hr','off'];
+// v272 — 'mspeed' sits straight after 'speed' because it IS the speed pill with the other
+// average, and a cycle should put like next to like.
+const PILL_CYCLE=['speed','mspeed','stop','power','cad','hr','off'];
 // v260c — FIVE slots, in three columns. Peter: "we now have more pills than spots, can we
 // add some spots below the current ones, on left and right, perhaps not centre as it blocks
 // the route line." Right on the centre: the live map is heading-up, so the route runs
@@ -13676,6 +13742,28 @@ const FPILL_N=6;
 //   border 1.5 x2                                             =  3.0  -> 109.1
 // A mockup is not a measurement. Same lesson as v260's ||48 header.
 const FPILL_CELL_H=110;             // px — must match grid-auto-rows below
+// ── v272 — THE MOVING PILL'S TONE, and it is ONE CONSTANT so it is one line to revert. ──
+// Peter: "I think we could have another data cell of speed and average speed, but this
+// would be moving speed, not overall average including stops… it should have a slightly
+// different appearance in colour or tone than the normal speed."
+// He needs it because the two pills' TOP halves are identical — both show current speed —
+// so at a glance, at arm's length, on a moving map, only the 10px label tells them apart.
+// The label is the truth; the tone is what gets you to the right pill before you read it.
+//
+// AND IT DOESN'T BREAK THE v260 COLOUR RULE — Peter drew the distinction himself in the
+// same breath: "Colour showing a variable range or zone only is valid, but a set moderately
+// different colour or tone would be a good indicator."
+//   · A VARIABLE colour encodes data. That's power/HR zones, and it's why cadence can't
+//     have one — there'd be nothing honest to encode.
+//   · A CONSTANT tone identifies an object. It claims nothing, because it never moves.
+// That's a clean line and it's worth keeping: the old rule was never "no colour", it was
+// "never let colour imply a reading that isn't there". A tone that is the same on every
+// ride, forever, cannot imply a reading.
+// Deliberately a TONE, not a hue: #eef3ee is the family's reversed half, and this steps it
+// down in lightness while staying the same colour. A saturated half would read as a zone
+// with a real zone pill sitting next to it — the exact thing v260 was protecting.
+// Contrast against #101510 stays ~12:1, so nothing is traded for the identity.
+const FPILL_MSPEED_BG='#ccd6cf';    // ⚠ JUDGE THIS ON THE PHONE (OLED), not the desktop — v260's dirty-green lesson
 const FPILL_BORDER='1.5px solid rgba(6,10,6,0.95)';   // dark, per Peter: "dark 1.5px borders are good"
 // Assigned by tLiveShell when the live shell is built. It closes over nothing (it reads
 // UI and _legVals only, never the route), so it is safe to call from anywhere once set.
@@ -13816,7 +13904,7 @@ function tStopsShell(r){
       </div>
     </div>
     ${IS_DESKTOP()?`<div style="height:6px;flex-shrink:0;background:var(--bg);"></div>`
-                  :`<div class="stops-drag" id="stops-drag-handle" title="Drag to resize the map"><div class="stops-drag-grip"></div></div>`}
+                  :`<div class="stops-drag" id="stops-drag-handle" title="Tap to expand or shrink the list, or drag it"><div class="stops-drag-grip${UI.stopsMapExpanded?' up':''}" id="stops-drag-grip"><svg width="18" height="10" viewBox="0 0 18 10" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2 L9 8 L16 2"/></svg></div></div>`}
     <div class="stops-scroll">
       ${!IS_DESKTOP()?`
       <!-- v260e — THE PEEK TITLE. The one line left showing when the list is dragged fully
@@ -13992,6 +14080,12 @@ function _stopsMapPxDown(){
 function _stopsApplySnap(down,skipRedraw){
   UI.stopsMapExpanded=!!down;
   _stopsSetMapPx(down?_stopsMapPxDown():_stopsMapPxUp(),skipRedraw);
+  // v272 — the chevron flips here, because this is the ONE place the snap state is written.
+  // Both doorways into it (a tap and a released drag) come through here, so neither can
+  // leave the mark pointing the wrong way. Same rule as everything else in this file: the
+  // thing that changes the state re-renders what depends on it.
+  const g=document.getElementById('stops-drag-grip');
+  if(g)g.classList.toggle('up',!!down);
   // The list is never hidden now, so nothing here touches .stops-scroll's display or the
   // panel's z-index — both were only needed because the old full-screen map covered them.
 }
@@ -14040,13 +14134,35 @@ function _stopsDragInit(){
     if(_stopsDrag.raf!==null)cancelAnimationFrame(_stopsDrag.raf);
     const moved=_stopsDrag.moved,cur=_stopsDrag.pending;
     _stopsDrag=null;
-    if(!moved)return;   // a tap: leave the map exactly where it was
+    // ── v272 — A TAP TOGGLES. ────────────────────────────────────────────────────────────
+    // Peter: "the scrolling is too difficult with clean dry hands sitting in a chair… we
+    // could have a button again, in the middle of the border… You click to expand or shrink
+    // the stops list. It would be more intuitive than the old button because it would be
+    // right on the stops list top."
+    // Right on the diagnosis, and the answer is that the strip ALREADY IS that button — it
+    // sits exactly where he wants one and it is already the object the gesture belongs to.
+    // Putting a separate button on top of a thing that already responds to touch would make
+    // the drag ambiguous (do you drag the button, or the strip under it?) for no gain.
+    // This costs one line because the 5px dead zone below was ALREADY classifying taps and
+    // then throwing the answer away: `if(!moved) return` was a tap being deliberately
+    // ignored. So the machinery to tell a tap from a drag has been here since v260e; only
+    // the outcome is new.
+    // The drag SURVIVES — this is a second doorway to the same two positions, not a
+    // replacement. v264's rule, one sheet two doorways, one level down.
+    if(!moved){_stopsApplySnap(!UI.stopsMapExpanded,false);return;}
     // SNAP TO THE NEARER END, not by direction. Nearest is predictable — wherever you let
     // go, it goes to the end you're closest to — and it can't strand you mid-way.
     const lo=_stopsMapPxUp(),hi=_stopsMapPxDown();
     _stopsApplySnap(Math.abs(cur-hi)<Math.abs(cur-lo),false);
   };
-  h.addEventListener('touchstart',e=>{begin(e.touches[0].clientY);},{passive:false});
+  // ⚠ v272 — preventDefault HERE OR THE TAP CANCELS ITSELF. A touch that isn't defaulted
+  // is replayed by the browser as a compatibility mousedown+mouseup a moment later, so one
+  // finger-tap would run `end` TWICE: touchend toggles the list down, the phantom mouseup
+  // toggles it straight back up, and the strip looks broken while doing exactly what it was
+  // told. Harmless until v272 because a tap used to be a no-op — doing it twice was still
+  // nothing. touch-action:none already stops the page scrolling; it does NOT stop the
+  // synthesised mouse events, which is the trap.
+  h.addEventListener('touchstart',e=>{e.preventDefault();begin(e.touches[0].clientY);},{passive:false});
   h.addEventListener('touchmove',e=>{if(_stopsDrag){e.preventDefault();move(e.touches[0].clientY);}},{passive:false});
   h.addEventListener('touchend',end);
   h.addEventListener('touchcancel',end);
@@ -14546,7 +14662,26 @@ function tLiveShell(r){
     const _r=Math.floor(slotIdx/3), _c=slotIdx%3, _me=_on(slotIdx);
     const _bR=(_c<2&&(_me||_on(slotIdx+1)))?FPILL_BORDER:'none';
     const _bB=(_r===0?(_me||_on(slotIdx+3)):_me)?FPILL_BORDER:'none';
+    // ── v272 — A REAL PILL TAKES THE TAPS; AN EMPTY CELL GIVES THEM BACK TO THE MAP. ─────
+    // Peter: "The + symbol for data cells is somewhat fake. The whole cell area is
+    // clickable… but it also means when that cell is empty that whole area blocks map
+    // panning. The panable area is below all cells, but this is not clear at all."
+    // Both halves of that are right, and the second is worse than it sounds: with pills off
+    // the grid is a 220px band of invisible dead map across the full width, and because an
+    // off cell is TRANSPARENT the map is visibly right there under your finger, ignoring it.
+    // v269 gave the map back the PIXELS and kept the taps — the cell went see-through but
+    // stayed a target. That's the bug: the cell was lying about what it was.
+    // So the grid is pointer-events:none and each cell opts back IN. A live pill keeps the
+    // full 110px target (the glove rule — that's why it's cell-sized in the first place);
+    // an off cell claims only its 28px chip.
+    // THE COST, and Peter priced it himself: cycling round to 'off' leaves you a 28px chip
+    // to find instead of a whole cell. He ranked it — "that will make it hard to select…
+    // but the map pan problem is real and outranks it I think." Agreed, and the asymmetry
+    // decides it: the pan bug bites every rider who turns a pill off and then wonders why
+    // the map is stuck, whereas the small chip only bites on the one tap that leaves the
+    // empty state — a tap you make while stopped, not while riding.
     const base='cursor:pointer;-webkit-tap-highlight-color:transparent;box-sizing:border-box;'
+              +'pointer-events:auto;'
               +'width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;'
               +'border-right:'+_bR+';border-bottom:'+_bB+';';
     const pos='';
@@ -14564,8 +14699,14 @@ function tLiveShell(r){
       // content starts, so the chips scattered across the map instead of tucking under the
       // cluster. align-items centres it horizontally; justify-content:flex-start pins it to
       // the top, because `base` makes this a COLUMN flex.
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}align-items:center;justify-content:flex-start;padding-top:4px;">
-        <div style="width:28px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:rgba(10,15,10,0.7);border:1px solid rgba(255,255,255,0.15);border-radius:7px;">
+      // v272 — pointer-events:none AFTER base, so it beats base's `auto` (later wins in an
+      // inline style). The chip turns them back on for itself and nothing else, which makes
+      // the + honest: it is now the only part of an empty cell that does anything, and the
+      // rest of the cell is map in every sense, not just visually.
+      // The chip is INSIDE the cell, so the delegator's closest('.live-fpill') still finds
+      // the slot from a chip tap — the cycle handler needs no change at all.
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}pointer-events:none;align-items:center;justify-content:flex-start;padding-top:4px;">
+        <div style="pointer-events:auto;width:28px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:rgba(10,15,10,0.7);border:1px solid rgba(255,255,255,0.15);border-radius:7px;">
           <span style="font-size:18px;color:rgba(255,255,255,0.5);line-height:1;">+</span>
         </div></div>`;
     }
@@ -14631,7 +14772,92 @@ function tLiveShell(r){
         </div>
         <div style="background:#eef3ee;padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
-          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">km/h avg</div>
+          <!-- v272: "km/h avg" -> "km/h avg. incl. stops". Two changes in one label, and
+               they came from opposite ends.
+               · "incl. stops" is v260's own settled decision, written down and never built.
+                 It matters more now than it did then: until v272 there was only ever ONE
+                 average on the screen and a bare "avg" could not be mistaken for the other
+                 one. Now there can be two, side by side.
+               · "avg." is back because Peter, judging the first mockup: "I think average has
+                 to be in the text." Right, and the tell is that WITHOUT it the sister pill
+                 read "km/h moving" — which parses as *your moving speed*, i.e. the current
+                 speed, on a pill whose top half is exactly that. So dropping "avg" didn't
+                 make the label vague, it made it WRONG.
+               THE LENGTH IS THE PRICE OF THE ONLY WORDING THAT READS, not a compromise to
+               tighten later. Peter ranked the whole vocabulary and there is no short clear
+               option: "'moving avg.' is clear enough · 'total avg.' is vague · 'elapsed avg.'
+               is vague · 'avg. incl. stops' is clear but long." The two brief candidates are
+               both the vague ones. Measured with the real DM Sans at 10px: 95px in 115px of
+               cell room on Peter's phone, 95 in 104 on a 360px phone — so the length costs
+               nothing real. Don't "fix" it back to "total avg.".
+               "incl. stops" also needs no domain knowledge, which is the point: the rider who
+               reaches for a moving average BECAUSE it flatters is exactly the one who won't
+               decode jargon. -->
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">km/h avg. incl. stops</div>
+        </div>
+      </div>`;
+    }
+    if(type==='mspeed'){
+      // ── v272 — THE MOVING-AVERAGE PILL. Peter's ask, and his framing is the reason it's
+      // worth a whole slot: "If someone does not have a power meter or heart rate monitor,
+      // there are only 2 data cells they would use."
+      // That's the case this serves. Six cells, and a rider with no sensors fills two of
+      // them — the grid was built for a kit list most riders don't own. This is the third
+      // number that needs no hardware at all.
+      //
+      // IT IS THE SPEED PILL WITH THE OTHER AVERAGE — deliberately, and Peter chose this
+      // shape over the alternatives with them in front of him. The top half repeating
+      // current speed is the known cost: run both pills and that number is on screen twice.
+      // The trade he took is that each pill stays SELF-CONTAINED — you can run either one
+      // alone and it tells you a whole story — and the tone below is what stops the pair
+      // reading as a duplicate.
+      //
+      // ⚠ SCOPE: this average is LEG-scoped, because _legVals is, and the speed pill's is
+      // SESSION-scoped. On a single-day ride they are the same span and the two pills agree
+      // about what they're measuring, differing only in the stops. They diverge on a
+      // multi-day plan with a fixed wake, where a sleep starts a new leg (v259's rule) — the
+      // moving pill resets each morning and the speed pill's average doesn't.
+      // NOT unified here on purpose: the speed pill's average works when you're NOT
+      // recording and the leg clock doesn't exist until you are (v259 left that same job
+      // open for the same reason). One step, one version. Flag it if the two ever disagree
+      // on the phone in a way that matters.
+      const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
+      const curSpd=s!==null&&s>=0.3?s.toFixed(1):'—';
+      const L=_legVals();
+      // ── WHY THIS DASHES WHEN THE STOPPAGE PILL SHOWS A ZERO ─────────────────────────────
+      // It looks inconsistent beside v260e's "0h00 / 0.0%" and it isn't — it's the SAME
+      // rule, and the rule is Peter's: for a CLOCK zero is simply true; for a SENSOR zero
+      // would be a lie. An average is neither, and it lands on the sensor side: before you
+      // ride there is no average — not a zero one, NONE. "0.0" would be a claim you rode at
+      // nothing. So it dashes, exactly like an unpaired power meter.
+      // The 60 s wait is the stoppage pill's rule again (its % waits the same minute, for
+      // the same reason): distance over a few seconds of moving time is a wild number that
+      // is briefly true and useless.
+      const mvH=L?(L.movingMs/3600000):0;
+      const mAvg=(L&&L.movingMs>60000&&mvH>0&&L.distKm>0)?(L.distKm/mvH).toFixed(1):'—';
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-mspeed">
+        <div style="padding:5px 8px 3px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-mspeed-cur">${curSpd}</span></div>
+          <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">km/h</div>
+        </div>
+        <!-- Geometry is the speed pill's, property for property — 34px in a 4ch box, same
+             paddings, same label sizes. ONLY the background tone differs. That is what makes
+             the tone read as an identity rather than as damage: change anything else and it
+             stops being the same object wearing a different coat. -->
+        <div style="background:${FPILL_MSPEED_BG};padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-mspeed-avg">${mAvg}</span></div>
+          <!-- Peter: "'moving avg.' is clear enough." So this one says what it IS, and the
+               speed pill says what the DIFFERENCE is. Both are his words; neither needs a
+               glossary. The word order flips between the two pills ON PURPOSE — "moving avg."
+               is a named thing every bike computer already uses, so it reads as one noun,
+               while "avg. incl. stops" has no name and has to describe itself. The tidier
+               parallel ("km/h avg. moving", so both labels share a prefix and the eye lands
+               on the difference) was mocked and rejected: nobody says "average moving", and
+               an unidiomatic label is a label you have to decode.
+               ⚠ "avg." IS LOAD-BEARING, not decoration — see the note in the speed pill.
+               Without it this read "km/h moving", which parses as your moving SPEED, and the
+               figure right above it is the actual current speed. -->
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">km/h moving avg.</div>
         </div>
       </div>`;
     }
@@ -14963,7 +15189,13 @@ function tLiveShell(r){
   // off. Turning pills off gives you map back, which is the whole point.
   // top is still var(--fpill-top): the band above collapses when there's no route to
   // follow (v263), and this must ride up with it.
+  // v272 — pointer-events:none on the GRID ITSELF, and this is the load-bearing half of the
+  // empty-cell fix, not a tidy-up. Six pointer-events:none cells still leave the grid
+  // CONTAINER over the map, and a bare div with no background swallows taps just as
+  // thoroughly as a painted one — so with every pill off the band would still have been
+  // dead. Cells opt back in via `base`; see the note there.
   const gridStyle='position:absolute;top:var(--fpill-top,64px);left:0;right:0;z-index:12;'
+                 +'pointer-events:none;'
                  +'display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:'+FPILL_CELL_H+'px;';
   const floatingPills=`<div id="fpill-grid" style="${gridStyle}">`
     +[0,1,2,3,4,5].map(i=>_renderFloatingPill(i)).join('')+`</div>`;
@@ -17684,6 +17916,27 @@ function updateLive(){
     const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
     const av=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
     if(avgEl.textContent!==av)avgEl.textContent=av;
+  }
+  // ── v272 — the moving-speed pill's two figures. ──────────────────────────────────────
+  // Both pills can be on at once, so BOTH sets of ids get patched every tick. The current
+  // speed here is a second element showing the same reading, not a second reading — the
+  // expression is the speed pill's, verbatim, because they must never disagree by a
+  // rounding step and sit next to each other doing it.
+  const mSpdEl=document.getElementById('live-mspeed-cur');
+  if(mSpdEl){
+    const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
+    const v=s!==null&&s>=0.3?s.toFixed(1):'—';
+    if(mSpdEl.textContent!==v)mSpdEl.textContent=v;
+  }
+  const mAvgEl=document.getElementById('live-mspeed-avg');
+  if(mAvgEl){
+    // _legVals asks the SIM for the time when a sim is running (v259) — so unlike the
+    // ride-average accumulator above, this needs no sim guard of its own. That's the
+    // fourth-occurrence lesson already paid for: any ride-time measurement asks the sim.
+    const L=_legVals();
+    const mvH=L?(L.movingMs/3600000):0;
+    const mv=(L&&L.movingMs>60000&&mvH>0&&L.distKm>0)?(L.distKm/mvH).toFixed(1):'—';
+    if(mAvgEl.textContent!==mv)mAvgEl.textContent=mv;
   }
   // Update power/hr spans similarly (textContent on the span is safe since unit is a sibling)
   // Update floating power pill value (if visible)
