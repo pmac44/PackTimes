@@ -204,6 +204,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   background-image:conic-gradient(currentColor 0 25%,transparent 0 50%,currentColor 0 75%,transparent 0);
   background-size:6px 6px;}
 .live-dist-chev.fin.done{background-color:transparent;color:var(--accent);}
+/* v270 — A CRESCENT MOON WHEN THE LEG ENDS AT A SLEEP, not the finish. Peter's v257 rule,
+   which outlived the SVGs he deleted in v259: "Chequered flag = finish, crescent moon =
+   tonight's bed. Two destinations must never wear one icon."
+   It is what makes the leg-scoped bar need no label and no setting — the bar states its own
+   scope, and on the last day it turns back into the flag by itself because legEnd says so.
+   Built the same way as the chequer so it reads as the same object: the cell keeps its
+   colour and the mark is PUNCHED OUT of it in the bar's own dark. `.moon` simply overrides
+   the chequer's conic-gradient, so the shape, size, clip-path and tick rule are untouched.
+   ⚠ WATCH THIS ON THE PHONE: the mark is ~21x20 CSS px. The chequer works at that size
+   because it only has to be FELT (v261d); a crescent has to be RECOGNISED, which is the
+   harder job — v258's "8-rect flag dithers to mush at 14px" is the warning. If it doesn't
+   read, the fallback is a plain solid last chevron (no mark = not the finish), which still
+   distinguishes the two ends. */
+.live-dist-chev.fin.moon{
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%230e140e'/></svg>");
+  background-size:82% 82%;background-repeat:no-repeat;background-position:center;}
 /* The numbers are a plain flex row — no absolute positioning, because nothing about
    where they sit depends on the fill any more. That is the whole point of v261. */
 .live-dist-nums{position:absolute;left:0;right:0;top:20px;height:38px;display:flex;
@@ -994,7 +1010,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v268';
+window.APP_VERSION='v270';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1049,7 +1065,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   sharePendingRide:null,shareRideSent:null,shareRideEvent:null,shareRides:[],
   // PackRide events (§3.7). eventCode = the event this rider is currently riding in.
   eventCode:null,eventRouteKey:null,events:[],
-  livePills:['speed','off','off','off','off']};   // v260c: 5 slots (see FPILL_COLS)
+  livePills:['speed','off','off','off','off','off']};   // v269: 6 slots, a 3x2 grid (see FPILL_DEFAULT)
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -1162,8 +1178,11 @@ async function loadAll(){
       // v260c: was `length===3`. Everyone's saved prefs hold 3, and a strict length check
       // would have silently thrown their pill choices away the first time they opened v260.
       // Pad instead: the two new slots start empty, the old three are kept exactly.
+      // v269: 5 slots → 6. PAD, never length-check — v260 recorded this exact trap: a
+      // strict check would silently discard every pill choice Peter has ever made the first
+      // time the new version opens. Old layouts keep their slots; the new one starts empty.
       if(Array.isArray(prefs.livePills)&&prefs.livePills.length>=3){
-        UI.livePills=[0,1,2,3,4].map(i=>prefs.livePills[i]||'off');
+        UI.livePills=[0,1,2,3,4,5].map(i=>prefs.livePills[i]||'off');
       }
       if(prefs.recId)UI.recId=prefs.recId;
       if(prefs.rideNowId)UI.rideNowId=prefs.rideNowId;
@@ -2468,6 +2487,15 @@ function legEnd(r,liveDist){
 // The bar's FILL is deliberately still whole-route: left figure + fill = where you
 // are in the whole ride; centre + right = tonight's target. Two honest scopes.
 function legToGoKm(r,liveDist){return Math.max(0,legEnd(r,liveDist).dist-liveDist);}
+// v270 — where TODAY started: the last sleep behind you, or the route's start.
+// The mirror of legEnd, on the same rule (ANY sleep — v257 chose that deliberately and
+// Peter's instinct matched it: a sleep is where the day ends whether or not it has a fixed
+// wake; the wake only matters to the CLOCK, v259). r.stops is kept sorted by dist.
+function legStartKmOf(r,liveDist){
+  let d=0;
+  (r.stops||[]).forEach(s=>{ if(isSleepStop(s)&&s.dist<=liveDist&&s.dist>d)d=s.dist; });
+  return d;
+}
 
 // ── Does this plan stop the clock at night? (v259) ───────────────────────────
 // Peter's rule for the leg-scoped average, and the distinction is a real one that must
@@ -2707,8 +2735,37 @@ function _distBarSync(){
       wrap.innerHTML=h; wrap._chevs=null; wrap._nDone=-1;
     }
     if(!wrap._chevs)wrap._chevs=wrap.querySelectorAll('.live-dist-chev');
-    const total=Math.max(1,r.totalDist||1);
-    const pct=Math.max(0,Math.min(1,liveDist/total));
+    // ── v270: THE BAR MEASURES TODAY'S LEG, NOT THE WHOLE ROUTE ────────────────────────
+    // Peter's Tour Divide argument is decisive and needs no opinion: "you will be out there
+    // for 2-4 weeks and it will hardly move each day." Measured — 4500 km over 24 chevrons
+    // is 187 km each, i.e. SEVEN AND A HALF HOURS of riding before one lights. The bar was
+    // dead furniture on the app's flagship ride. Leg-scoped it lights every ~19 min.
+    // And the sleeps are the honest divider, not a guess: "when people record on Strava for
+    // multi-day rides, generally they break it down into when they sleep… people see it as
+    // a series of rides. It's today. I've got 200 km to do."
+    // NO SETTING, and the reason matters: unlike the follow/freestyle question there IS a
+    // signal here — the rider planned the sleeps. Asking again in Settings is asking them to
+    // repeat themselves. It also SELF-SOLVES at both ends: no sleep ahead (a non-stop ride,
+    // or the last day) → legEnd returns the finish → the whole route, automatically. Peter's
+    // own 500 km Prologue, which he rides non-stop, is unaffected.
+    // This also ENDS a real inconsistency: to-go has been leg-scoped since v257 while the
+    // chevrons and the done figure measured the whole route, and nothing said so. That was
+    // a leftover — v257 leg-scoped to-go because the bar then had a centre ETA naming the
+    // sleep, and v258 deleted that ETA.
+    const le=legEnd(r,liveDist);
+    const ls=legStartKmOf(r,liveDist);
+    const total=Math.max(0.1,le.dist-ls);
+    const pct=Math.max(0,Math.min(1,(liveDist-ls)/total));
+    // THE LAST CHEVRON SAYS WHAT YOU'RE RIDING TO — Peter's v257 rule, which survived his
+    // own deletion of the SVGs that served it: "Chequered flag = finish, crescent moon =
+    // tonight's bed. Two destinations must never wear one icon."
+    // This is why no label and no setting are needed: the bar states its own scope. On the
+    // last day the moon becomes the flag by itself, because legEnd says so.
+    const fin=wrap._chevs[DIST_CHEV_N-1];
+    if(fin&&wrap._isFin!==le.isFinish){
+      wrap._isFin=le.isFinish;
+      fin.classList.toggle('moon',!le.isFinish);
+    }
     // FLOOR, not round: a chevron lights once its slice has actually been RIDDEN. Rounding
     // would light the last one before the finish — the one moment the bar must not lie.
     // It also means the bar is all-grey for the first 1/24th, which is honest.
@@ -2719,7 +2776,10 @@ function _distBarSync(){
     }
   }
   // No geometry left to compute: the numbers are a plain flex row, pinned to the ends.
-  set(document.getElementById('live-dist-done'),fmtDistKm(liveDist),DIST_DONE_UNIT);
+  // v270: DONE is now distance into TODAY'S LEG, so it agrees with the chevrons above it
+  // and with the to-go beside it. All three read the same ride. On a route with no sleeps
+  // legStartKmOf returns 0 and this is exactly what it always was.
+  set(document.getElementById('live-dist-done'),fmtDistKm(Math.max(0,liveDist-legStartKmOf(r,liveDist))),DIST_DONE_UNIT);
   set(document.getElementById('live-dist-left'),fmtDistKm(legToGoKm(r,liveDist)),'km');
   // v261e — RIDDEN distance in the centre. This is the ONE place the route-vs-ridden
   // difference is legible, and v258 called it: "if the route-vs-ridden distinction needs
@@ -13491,8 +13551,33 @@ const PILL_CYCLE=['speed','stop','power','cad','hr','off'];
 // The columns are flex, so a second-row pill sits under whatever the first row's height
 // turns out to be. That matters: pill heights vary from 28px (off) to ~105px (two halves),
 // so any fixed top for row 2 would break the moment a slot changed.
-const FPILL_DEFAULT=['speed','off','off','off','off'];
-const FPILL_COLS={0:'fpill-col-l',1:'fpill-col-c',2:'fpill-col-r',3:'fpill-col-l',4:'fpill-col-r'};
+// ── v269: THE PILLS ARE A FIXED GRID, NOT FLOATING COLUMNS ──────────────────────────
+// Peter, after the 17 Jul ride: "I don't know if there's much benefit in having the map
+// floating in behind those info pools. You just can't really see much of the map, and it's
+// actually eating some pixels. If we decided to have set slots, like set boxes… you
+// actually get some more pixels."
+// The argument that carried it: you were paying for that map TWICE — it's unreadable
+// behind the pills anyway, and the pills had to be opaque to sit on it. So you got a
+// compromised map AND a compromised pill. The pixels come from the gaps and the margins,
+// not from the map. And the distance bar is the precedent: "that distance bar with no gap
+// works, so we shouldn't put too much thought into map padding."
+// SIX SLOTS, 3 × 2. Peter: "a cell in the middle on the 2nd row, and people can choose to
+// show it or not. That's the beauty of the cyclable pills/cells." So the centre-bottom is
+// not a special structural window — it's just a slot that defaults to off.
+// AN OFF CELL IS A HOLE, NOT A BOX. Peter: "a black cell with a white plus symbol won't
+// work to clear the map, so the plus symbol will be a small one, like the current app."
+// Exactly — the cell goes transparent and keeps only the small chip, so turning a pill off
+// literally gives you the map back, and the chip is still there to bring it back. A
+// BORDERED empty cell was mocked and he killed it: "you get a border on your map doing
+// nothing… weird."
+// MEASURED before building: every figure fits a 131px cell at the full 34px — including
+// "49/51", which v260 had to shrink to 28px because it burst a ~100px free-floating pill.
+// A fixed cell is what buys that back. The tightest is "120h34" at 129.8 of 131 (a >100 h
+// non-stop effort); watch it if a leg ever runs that long.
+const FPILL_DEFAULT=['speed','off','off','off','off','off'];
+const FPILL_N=6;
+const FPILL_CELL_H=95;              // px — must match the grid-auto-rows below
+const FPILL_BORDER='1.5px solid rgba(6,10,6,0.95)';   // dark, per Peter: "dark 1.5px borders are good"
 // Assigned by tLiveShell when the live shell is built. It closes over nothing (it reads
 // UI and _legVals only, never the route), so it is safe to call from anywhere once set.
 let _renderFloatingPill=null;
@@ -13509,15 +13594,17 @@ let _renderFloatingPill=null;
 function _fpillsSync(){
   const sec=document.getElementById('live-map-section');
   if(!sec||!_renderFloatingPill)return;
-  for(let i=0;i<5;i++){
+  for(let i=0;i<FPILL_N;i++){
     const html=_renderFloatingPill(i);
     const el=sec.querySelector('.live-fpill[data-slot="'+i+'"]');
     if(!el){
-      // v260c: a missing pill must land in ITS OWN column, not loose in the map section —
-      // the columns are what position it now.
-      const col=document.getElementById(FPILL_COLS[i]);
-      if(col&&html)col.insertAdjacentHTML('beforeend',html);
-      continue;
+      // v269: the grid places cells by ORDER, so a cell can never be absent — an "off" one
+      // is transparent but still a grid item. If one really is missing (a shell built by an
+      // older version), rebuilding the whole grid is the only safe repair: appending would
+      // put it in the wrong square.
+      const grid=document.getElementById('fpill-grid');
+      if(grid)grid.innerHTML=[0,1,2,3,4,5].map(j=>_renderFloatingPill(j)).join('');
+      return;
     }
     const tmp=document.createElement('div');tmp.innerHTML=html;
     const fresh=tmp.firstElementChild;
@@ -14330,15 +14417,23 @@ function tLiveShell(r){
   // Each of 3 slots cycles: speed → power → hr → off → speed...
   _renderFloatingPill=(slotIdx)=>{
     const type=(UI.livePills||FPILL_DEFAULT)[slotIdx]||'off';
-    // v260c — the pills no longer position themselves. Their COLUMN does (see FPILL_COLS):
-    // a flex column stacks them, so a second row sits under the first whatever height the
-    // first happens to be — and they vary a lot (an "off" pill is 28px, a two-half pill is
-    // ~105px). Computing a fixed top for row 2 would have been wrong the moment a slot was
-    // switched off.
-    const base='cursor:pointer;-webkit-tap-highlight-color:transparent;';
+    // v269 — the pills no longer position themselves and no longer size themselves either.
+    // The GRID does both (see FPILL_DEFAULT). v260c's flex columns existed because pill
+    // heights varied (28px "off" vs ~105px paired), so a fixed top for row 2 was impossible.
+    // Fixed cells dissolve that: every cell is FPILL_CELL_H whatever is in it, including
+    // nothing.
+    // v269 — every cell fills its grid area. Nothing sizes itself to its content any more,
+    // which is what lets "49/51" go back to 34px (see the note at FPILL_DEFAULT).
+    const base='cursor:pointer;-webkit-tap-highlight-color:transparent;box-sizing:border-box;'
+              +'width:100%;height:100%;overflow:hidden;';
     const pos='';
     if(type==='off'){
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}">
+      // A HOLE WITH A HANDLE, not a black box (Peter). The cell is transparent — the map
+      // shows straight through it — and all that remains is the small chip, which is both
+      // the affordance to bring a pill back and the only thing occluding anything.
+      // A bordered-but-empty cell was mocked and rejected: "you get a border on your map
+      // doing nothing… weird."
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}display:flex;align-items:center;justify-content:center;">
         <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:rgba(10,15,10,0.7);border:1px solid rgba(255,255,255,0.15);border-radius:7px;">
           <span style="font-size:18px;color:rgba(255,255,255,0.5);line-height:1;">+</span>
         </div></div>`;
@@ -14366,8 +14461,12 @@ function tLiveShell(r){
     // computable and it's the rider's own — not invented. That's a feature, not a styling
     // pass, and it has nothing to say on a no-route ride.
     const pillBg='rgba(10,15,10,0.85)';
-    const pillBorder='1px solid rgba(255,255,255,0.15)';
-    const pillStyle=`${base}top:6px;${pos}background:${pillBg};border:${pillBorder};border-radius:8px;padding:4px 8px;min-width:70px;`;
+    // v269: pillBorder/pillStyle are GONE with the free-floating pill they described. Every
+    // cell now uses FPILL_BORDER (dark 1.5px, Peter's call) and fills its grid area — see
+    // `base` above. The old 1px rgba(255,255,255,0.15) ring existed so a pill never touched
+    // the map; a grid cell has neighbours, not map, so the border's job changed from
+    // separating the pill FROM the map to separating cells FROM EACH OTHER, and that wants
+    // dark, not light. Peter: "they definitely need borders to split the cells."
     if(type==='speed'){
       const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
       const curSpd=s!==null&&s>=0.3?s.toFixed(1):'—';
@@ -14383,7 +14482,7 @@ function tLiveShell(r){
       // steady for "88.8" (2 digits + point + 1 — Peter: >100 km/h can fend for
       // itself). The AVERAGE half is REVERSED (light bg, dark figures) — on a long
       // ride the average is the number that matters; current speed wobbles.
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-speed">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-speed">
         <div style="padding:5px 8px 3px;">
           <!-- numbers RIGHT-JUSTIFIED in a fixed 4-character box (DM Mono = equal
                widths), so the decimal point never moves between 9.2 and 18.0 -->
@@ -14453,7 +14552,7 @@ function tLiveShell(r){
       // Says WHICH elapsed. On a fixed-wake plan the clock restarts each morning, so
       // "elapsed" alone would be a lie on day 2.
       const elbl=legHasFixedWake(r)?'leg elapsed':'elapsed';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-stop">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-stop">
         <div style="padding:5px 8px 3px;">
           <!-- min-width, not width: holds the 4ch column like the speed pill for any
                normal ride, and simply grows past 99h ("120h34") rather than clipping. -->
@@ -14520,7 +14619,7 @@ function tLiveShell(r){
       // hrConnected, and _fpillSync swaps the whole element in when the html changes, so
       // the real ids arrive with the real pill the moment it pairs.
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-power">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-power">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x26A1;</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">W &middot; 3 sec</div>
@@ -14554,7 +14653,6 @@ function tLiveShell(r){
       // to neither (Peter: "the border around the bottom half in the same colour as the
       // top half is weird" — it was). Now the two halves ARE the zones and the border is
       // just the pill's border, like every other pill.
-      const bdr=pillBorder;
       const col=pz?(pz.textDark?'#000':'#fff'):'var(--text)';
       const lblCol=pz?col:'var(--text)';
       const curVal=pw!==null?pw:'—';
@@ -14570,7 +14668,7 @@ function tLiveShell(r){
       const npz=(np!=='—')?powerZone(np,UI.ftp):null;
       const npBg=npz?npz.bg:'#eef3ee';
       const npCol=npz?(npz.textDark?'#000':'#fff'):'#101510';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${bdr};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-power">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-power">
         <div id="live-power-top" style="padding:5px 8px 3px;${pz?`background:${pz.bg};`:''}">
           <!-- v260b CENTRED, not right-justified. The 4ch right-aligned box exists to stop a
                DECIMAL POINT moving (speed: 9.2 → 18.0). Watts have no decimal, so there was
@@ -14618,7 +14716,7 @@ function tLiveShell(r){
       // question — why should a font size move the pill's height at all? It shouldn't; see
       // the paired half below.
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-cad">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-cad">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:15px;font-weight:600;color:var(--text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">Cadence</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
@@ -14632,7 +14730,7 @@ function tLiveShell(r){
       // "49/51" is 5 chars — min-width so the pill holds the 4ch column when it can and
       // grows when it must, rather than clipping.
       const balTxt=_powerBalTxt();   // v267 — one authority, see _powerBalTxt
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-cad">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-cad">
         <div style="padding:5px 8px 3px;">
           <!-- centred: no decimal point to hold still (same rule as the power pill) -->
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-cad-cur">${cadTxt}</span></div>
@@ -14669,7 +14767,7 @@ function tLiveShell(r){
       // Empty state — see the note on the power pill for why this one wears a glyph and the
       // cadence pill wears a word.
       if(!UI.hrConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-hr">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-hr">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x2764;&#xFE0F;</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">bpm</div>
@@ -14698,7 +14796,7 @@ function tLiveShell(r){
       const az=avgN!==null?hrZone(avgN,UI.maxHr):null;
       const aBg=az?az.bg:'#eef3ee';
       const aCol=az?(az.textDark?'#000':'#fff'):'#101510';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${pillBorder};border-radius:8px;text-align:center;min-width:100px;overflow:hidden;" id="live-fpill-hr">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-hr">
         <div id="live-hr-top" style="padding:5px 8px 3px;${hz?`background:${hz.bg};`:''}">
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-hr-cur">${val}</span></div>
           <div style="font-size:11px;font-weight:400;color:${col};font-family:var(--sans);line-height:1.1;" id="live-hr-lbl">bpm</div>
@@ -14722,11 +14820,18 @@ function tLiveShell(r){
   // It is a CSS VAR, not a literal, because the band COLLAPSES to 38px when there's no route
   // to follow — _distBarSync sets --fpill-top (64px following / 44px not). The 64px fallback
   // is what paints before the first sync.
-  const colBase='position:absolute;top:var(--fpill-top,64px);z-index:12;display:flex;flex-direction:column;gap:6px;';
-  const floatingPills=
-     `<div id="fpill-col-l" style="${colBase}left:6px;align-items:flex-start;">${_renderFloatingPill(0)}${_renderFloatingPill(3)}</div>`
-    +`<div id="fpill-col-c" style="${colBase}left:50%;transform:translateX(-50%);align-items:center;">${_renderFloatingPill(1)}</div>`
-    +`<div id="fpill-col-r" style="${colBase}right:6px;align-items:flex-end;">${_renderFloatingPill(2)}${_renderFloatingPill(4)}</div>`;
+  // v269 — ONE GRID, six equal cells, flush to the edges and to each other. No gaps, no
+  // margins, no radius: that is where the pixels come from, and it is the distance bar's
+  // own lesson one row down.
+  // The grid still sits OVER the map (it is not a band the map starts below), because an
+  // OFF cell is transparent — so the map shows through exactly the cells you've switched
+  // off. Turning pills off gives you map back, which is the whole point.
+  // top is still var(--fpill-top): the band above collapses when there's no route to
+  // follow (v263), and this must ride up with it.
+  const gridStyle='position:absolute;top:var(--fpill-top,64px);left:0;right:0;z-index:12;'
+                 +'display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:'+FPILL_CELL_H+'px;';
+  const floatingPills=`<div id="fpill-grid" style="${gridStyle}">`
+    +[0,1,2,3,4,5].map(i=>_renderFloatingPill(i)).join('')+`</div>`;
 
   return`
   <div class="live-outer" id="live-scroller">

@@ -164,6 +164,49 @@ ridden distance**, and the bug is mine (v261e's centre figure + v263's no-route 
 - **Same class as v263's stale `_lastSnapIdx`: state persisted for crash recovery, then read as if
   it were per-ride.** If a third one turns up, look for `lastGps` restores with no reset.
 
+### v270 — THE DISTANCE BAR MEASURES TODAY'S LEG. Peter's Tour Divide argument settled it.
+
+*"If you're riding Tour Divide, the distance bar is largely worthless. You will be out there for
+2–4 weeks and it will hardly move each day."* **Measured, and he's understating it: 4500 km over 24
+chevrons is 187.5 km each — SEVEN AND A HALF HOURS of riding before one lights.** Leg-scoped it's
+8.1 km, one every ~19 min. The bar was dead furniture on the app's flagship ride.
+- **The sleeps are the honest divider, and it isn't the app's guess.** Peter: *"when people record
+  on Strava for multi-day rides, generally they break it down into when they sleep… people see it
+  as a series of rides. It's today. I've got 200 km to do."*
+- **NO SETTING, and the reason is worth keeping.** He asked for one (*"people are unique"*) and the
+  argument that held is: unlike the follow/freestyle question there IS a signal here — **the rider
+  planned the sleeps.** A setting asks them to say it twice. And it **self-solves at both ends**:
+  no sleep ahead (a non-stop ride, or the last day) → `legEnd` returns the finish → whole route,
+  automatically. His own 500 km Prologue, which he rides non-stop, is byte-identical to before.
+  **It is easier to add a setting later than to remove one** — if the odd person turns up, add it
+  then and we'll know what it's for.
+- **THE LAST CHEVRON SAYS WHICH — and this is what makes the setting unnecessary.** Peter's v257
+  rule, which outlived the SVGs he deleted in v259: *"Chequered flag = finish, crescent moon =
+  tonight's bed. Two destinations must never wear one icon."* So the bar states its own scope with
+  no label, and on the last day the moon becomes the flag by itself because `legEnd` says so.
+  · Built exactly like the chequer — the mark is PUNCHED OUT of the cell in the bar's own dark, so
+    it reads as the same object. `.moon` only overrides the chequer's `conic-gradient`; shape,
+    size, clip-path and tick rule are untouched.
+  · ⚠ **WATCH IT ON THE PHONE.** The mark is ~21×20 CSS px. The chequer survives that because it
+    only has to be FELT (v261d); a crescent has to be RECOGNISED, which is the harder job —
+    v258's "the 8-rect flag dithers to mush at 14px" is the warning. Fallback if it doesn't read:
+    a plain solid last chevron (no mark = not the finish), which still separates the two ends.
+- **This ends a real inconsistency, not just a scoping choice.** To-go has been leg-scoped since
+  v257 while the chevrons and the done figure measured the whole route — and nothing said so. That
+  was a leftover: v257 leg-scoped to-go because the bar then carried a centre ETA naming the sleep,
+  and **v258 deleted that ETA without re-opening the scoping.**
+- **`legStartKmOf`** is the mirror of `legEnd`, on the same rule (ANY sleep — v257's deliberate
+  call, and Peter's instinct matched it: a sleep ends the day whether or not it has a fixed wake;
+  the wake only ever mattered to the CLOCK, v259). **Don't merge it with `legHasFixedWake`.**
+- **Accepted with eyes open: "how far through the whole ride" now has no home.** On Tour Divide
+  that passes Peter's own test — "1200 of 4500" isn't actionable. On a single-day route it's the
+  same number either way. The only loser is a 1000 km two-sleeper who wants the grand total, and
+  that is precisely the odd person a setting would serve.
+- **Verified: whole-file `node --check` + 13/13** — Tour Divide reads 15 / 180 with a moon and
+  8.1 km per chevron; the final day flips to the flag by itself; the 500 km Prologue is unchanged
+  (150 / 350, flag); Grenfell day 2 RESETS to 35 km into today; the 30 km loop is untouched;
+  standing exactly on the sleep flips the leg cleanly.
+
 ### OPEN — Peter's idea for the no-route strip (17 July, not built)
 
 *"There is the option for a non-chevron distance bar to also show the average speed and the ride
