@@ -207,6 +207,24 @@ chevrons is 187.5 km each — SEVEN AND A HALF HOURS of riding before one lights
   (150 / 350, flag); Grenfell day 2 RESETS to 35 km into today; the 30 km loop is untouched;
   standing exactly on the sleep flips the leg cleanly.
 
+### v270b — three fixes off Peter's first look at the grid. All mine.
+
+- **THE PILLS WERE CLIPPED — `FPILL_CELL_H` was 95 and the content needs 109.1.** I took 95 from
+  MY MOCKUP, where I drew the halves myself, instead of measuring the real CSS (top half
+  5+34+12.1+3 = 54.1; bottom 3+34+11+4 = 52; border 3). **A mockup is not a measurement** — the
+  same shape as v260's `||48` phantom header. Now 110.
+- **The halves now SPLIT the cell** (`flex:1 1 0` on both). Without it they keep their natural
+  heights and the slack shows as a dark strip under the light half — and the types don't agree on
+  their padding, so the strip would differ in every cell. `:not(:first-child)` excludes the OFF
+  cell: it has ONE child (the chip), and flex:1 would stretch it into the black box Peter rejected.
+- **`--fpill-top` 64/44 → 58/38.** The 6px was the FLOATING pill's clearance from the bar; a grid
+  butts up against it. Must equal the band's real height, and the verifier now checks that.
+- **THE MOON WAS INVISIBLE, and the cause is worth keeping.** `.fin` sets
+  `background-color:transparent` and paints itself ENTIRELY through the conic-gradient's
+  `currentColor`. My `.moon` overrode only the background-IMAGE — so a dark crescent was drawn
+  over nothing. Dark on dark. **Fill the cell (`background-color:currentColor`) THEN punch the
+  moon out of it.** Peter: "I can't see a moon at all. There's nothing in there."
+
 ### OPEN — Peter's idea for the no-route strip (17 July, not built)
 
 *"There is the option for a non-chevron distance bar to also show the average speed and the ride

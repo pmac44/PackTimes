@@ -177,7 +177,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
        and my 15px then 24px were me protecting map real estate instead of answering him.
      · SO THE FLOATING PILLS MOVED: top:48px → 64px (see colBase). That is the entire cost
        of the readable figures, and the pills are the only thing keyed to this band. */
-.live-dist-bar{position:absolute;top:0;left:0;right:0;height:58px;background:rgba(10,15,10,0.92);border-top:1px solid rgba(255,255,255,0.10);z-index:10;}
+/* v270c — a light hairline BELOW the bar too (Peter: "there needs to be a small border
+   between the distance bar and the data cells below"). Right, and the cause is that the bar
+   and the cells are near enough the same dark, so they merged into one slab. The cells'
+   own borders are DARK — they separate cell from cell, inside the cluster. This one has the
+   opposite job: it separates the bar FROM the cluster, so it is light, like the border-top
+   that separates the bar from the tab bar. Same object, same treatment, both ends.
+   Costs nothing: `*{box-sizing:border-box}` is global, so 58px still means 58px and
+   --fpill-top stays correct. */
+.live-dist-bar{position:absolute;top:0;left:0;right:0;height:58px;background:rgba(10,15,10,0.92);border-top:1px solid rgba(255,255,255,0.10);border-bottom:1px solid rgba(255,255,255,0.22);z-index:10;}
 /* v261c: the row no longer runs off either end — the pitch is solved so the first
    chevron's flat back sits on x=0 and the last one's point lands on the right edge.
    overflow:hidden stays as a guard against a sub-pixel rounding overshoot; it is no
@@ -216,10 +224,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    because it only has to be FELT (v261d); a crescent has to be RECOGNISED, which is the
    harder job — v258's "8-rect flag dithers to mush at 14px" is the warning. If it doesn't
    read, the fallback is a plain solid last chevron (no mark = not the finish), which still
-   distinguishes the two ends. */
+   distinguishes the two ends.
+   ⚠ background-COLOR:currentColor is load-bearing and I got it wrong first time. `.fin`
+   sets background-color:TRANSPARENT and paints itself entirely through the conic-gradient's
+   currentColor. Override only the background-IMAGE and you get a dark crescent over
+   nothing — dark on dark, invisible, which is exactly what Peter saw ("I can't see a moon
+   at all. There's nothing in there"). The cell must be FILLED, then the moon punched out. */
 .live-dist-chev.fin.moon{
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%230e140e'/></svg>");
-  background-size:82% 82%;background-repeat:no-repeat;background-position:center;}
+  background-color:currentColor;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='2 2 20 20'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%230e140e'/></svg>");
+  background-size:auto 100%;background-repeat:no-repeat;background-position:right center;}
 /* The numbers are a plain flex row — no absolute positioning, because nothing about
    where they sit depends on the fill any more. That is the whole point of v261. */
 .live-dist-nums{position:absolute;left:0;right:0;top:20px;height:38px;display:flex;
@@ -306,6 +320,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    content whose colour we don't control is not a subtle label, it's an invisible one. */
 .zoom-btns{position:absolute;bottom:8px;right:8px;display:flex;flex-direction:column;gap:4px;}
 .live-fpill{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;}
+/* v270b — the two halves SPLIT the cell. Without this the halves keep their natural heights
+   and any slack shows as a strip of the cell's own dark under the reversed (light) half —
+   and the types don't agree on their padding, so the strip would be a different size in
+   every cell. flex:1 on both makes each exactly half, whatever is in it.
+   :not(:first-child) excludes the OFF cell — it has ONE child (the 28px chip), and flex:1
+   would stretch the chip to fill the square, which is precisely the black box Peter
+   rejected. Two children = a real pill; one = a hole with a handle. */
+.live-fpill>div:first-child:not(:last-child),
+.live-fpill>div:last-child:not(:first-child){flex:1 1 0;min-height:0;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;}
 .zbtn{width:38px;height:38px;background:rgba(10,15,10,.82);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;}
 .zbtn:active{background:var(--card2);}
 .map-ctrl{position:absolute;top:50%;left:8px;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;pointer-events:none;}
@@ -2642,7 +2666,11 @@ function _distBarSync(){
   bar.classList.toggle('no-route',!following);
   // The pills' top is a CSS var, not a hard-coded inline px, precisely so this one line can
   // move them when the band collapses. colBase reads var(--fpill-top).
-  document.documentElement.style.setProperty('--fpill-top',following?'64px':'44px');
+  // v270b: 64/44 → 58/38. The 6px was the FLOATING pill's clearance from the bar — a grid
+  // BUTTS UP against it, which is the whole point (Peter: "you've still got a blank gap
+  // between the distance bar and the pills"). These must equal the band's real height:
+  // 58 = 20px chevrons + 38px numbers row; 38 = the numbers row alone when there's no route.
+  document.documentElement.style.setProperty('--fpill-top',following?'58px':'38px');
   if(!following){
     // ONE NUMBER, ONE MEANING: the slot shows route distance while you're following a
     // route and RIDDEN distance when you aren't. Never both — Peter's v258 ruling stands
@@ -13576,7 +13604,14 @@ const PILL_CYCLE=['speed','stop','power','cad','hr','off'];
 // non-stop effort); watch it if a leg ever runs that long.
 const FPILL_DEFAULT=['speed','off','off','off','off','off'];
 const FPILL_N=6;
-const FPILL_CELL_H=95;              // px — must match the grid-auto-rows below
+// v270b — 95 → 110. My 95 came from the MOCKUP, where I drew the halves myself; the real
+// ones are taller, so every label was clipped (Peter: "there's a bit of an offset error in
+// all the pills"). Measured from the actual CSS, not guessed:
+//   top half     padding 5+3 + 34px figure + 11px label x1.1  = 54.1
+//   bottom half  padding 3+4 + 34px figure + 10px label x1.1  = 52.0
+//   border 1.5 x2                                             =  3.0  -> 109.1
+// A mockup is not a measurement. Same lesson as v260's ||48 header.
+const FPILL_CELL_H=110;             // px — must match grid-auto-rows below
 const FPILL_BORDER='1.5px solid rgba(6,10,6,0.95)';   // dark, per Peter: "dark 1.5px borders are good"
 // Assigned by tLiveShell when the live shell is built. It closes over nothing (it reads
 // UI and _legVals only, never the route), so it is safe to call from anywhere once set.
@@ -14424,8 +14459,32 @@ function tLiveShell(r){
     // nothing.
     // v269 — every cell fills its grid area. Nothing sizes itself to its content any more,
     // which is what lets "49/51" go back to 34px (see the note at FPILL_DEFAULT).
+    // v270b: display:flex + column is what lets the two halves split the cell evenly (see
+    // the .live-fpill rule in the CSS). Without it the halves keep their natural heights and
+    // the slack shows as a dark strip under the light half.
+    // ── v270c: ONE LINE PER BOUNDARY, NOT A BORDER PER CELL (Peter caught this) ────────
+    // "Are they doubling up? They probably are… You really want the border to straddle both
+    // cells, or pretend to." Exactly: bordering all four sides gave THREE weights — 3px
+    // between two cells (1.5+1.5), 1.5px at the cluster's outer edge, and 1.5px next to an
+    // off cell. The fix is to stop thinking in cell borders and think in LINES: every
+    // boundary is drawn once, by the cell above/left of it.
+    //   · right   — the vertical line to my right (never on col 2: that's the screen edge)
+    //   · bottom  — the horizontal line under me (on row 1 that IS the cluster's edge)
+    // A line only exists if EITHER side of it is a real cell, which is Peter's own rule
+    // ("the empty cell needs to have borders where another cell is adjacent") arrived at
+    // from the other direction — the filled neighbour draws it, so an off cell never puts a
+    // line on the map for nothing.
+    // No top/left borders anywhere: row 0's top is the distance bar's own light hairline,
+    // and col 0/2 run to the screen edge exactly as the bar does.
+    // NOTE this makes a cell's borders depend on its NEIGHBOURS, so _fpillsSync must
+    // re-render every cell when any one type changes. It already loops all six.
+    const _p=(UI.livePills||FPILL_DEFAULT), _on=i=>(_p[i]||'off')!=='off';
+    const _r=Math.floor(slotIdx/3), _c=slotIdx%3, _me=_on(slotIdx);
+    const _bR=(_c<2&&(_me||_on(slotIdx+1)))?FPILL_BORDER:'none';
+    const _bB=(_r===0?(_me||_on(slotIdx+3)):_me)?FPILL_BORDER:'none';
     const base='cursor:pointer;-webkit-tap-highlight-color:transparent;box-sizing:border-box;'
-              +'width:100%;height:100%;overflow:hidden;';
+              +'width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;'
+              +'border-right:'+_bR+';border-bottom:'+_bB+';';
     const pos='';
     if(type==='off'){
       // A HOLE WITH A HANDLE, not a black box (Peter). The cell is transparent — the map
@@ -14433,8 +14492,16 @@ function tLiveShell(r){
       // the affordance to bring a pill back and the only thing occluding anything.
       // A bordered-but-empty cell was mocked and rejected: "you get a border on your map
       // doing nothing… weird."
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}display:flex;align-items:center;justify-content:center;">
-        <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:rgba(10,15,10,0.7);border:1px solid rgba(255,255,255,0.15);border-radius:7px;">
+      // v270c — the chip sits at the TOP of its cell, not the middle. Peter, on the first
+      // grid build: "the plus symbols would move up, effectively being at the top of the
+      // space the pill would occupy if you turned it on. The plus symbols now sit in the
+      // middle of the cell, so they are all spread out and getting in the way."
+      // Right — a 28px chip centred in a 110px cell is 41px adrift of where the cell's own
+      // content starts, so the chips scattered across the map instead of tucking under the
+      // cluster. align-items centres it horizontally; justify-content:flex-start pins it to
+      // the top, because `base` makes this a COLUMN flex.
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}align-items:center;justify-content:flex-start;padding-top:4px;">
+        <div style="width:28px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:rgba(10,15,10,0.7);border:1px solid rgba(255,255,255,0.15);border-radius:7px;">
           <span style="font-size:18px;color:rgba(255,255,255,0.5);line-height:1;">+</span>
         </div></div>`;
     }
@@ -14460,7 +14527,11 @@ function tLiveShell(r){
     // the PLAN'S OWN stoppage %. The plan has every stop and duration, so the benchmark is
     // computable and it's the rider's own — not invented. That's a feature, not a styling
     // pass, and it has nothing to say on a no-route ride.
-    const pillBg='rgba(10,15,10,0.85)';
+    // v270c — OPAQUE (Peter: "should those data cells be black not dark gray?" — yes).
+    // The 0.85 alpha existed so a FLOATING pill never completely hid the map beneath it.
+    // A grid cell has no map beneath it, so the alpha wasn't softening anything — it was
+    // just letting the dark bar bleed through and turning black into grey.
+    const pillBg='rgb(10,15,10)';
     // v269: pillBorder/pillStyle are GONE with the free-floating pill they described. Every
     // cell now uses FPILL_BORDER (dark 1.5px, Peter's call) and fills its grid area — see
     // `base` above. The old 1px rgba(255,255,255,0.15) ring existed so a pill never touched
@@ -14482,7 +14553,7 @@ function tLiveShell(r){
       // steady for "88.8" (2 digits + point + 1 — Peter: >100 km/h can fend for
       // itself). The AVERAGE half is REVERSED (light bg, dark figures) — on a long
       // ride the average is the number that matters; current speed wobbles.
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-speed">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-speed">
         <div style="padding:5px 8px 3px;">
           <!-- numbers RIGHT-JUSTIFIED in a fixed 4-character box (DM Mono = equal
                widths), so the decimal point never moves between 9.2 and 18.0 -->
@@ -14552,7 +14623,7 @@ function tLiveShell(r){
       // Says WHICH elapsed. On a fixed-wake plan the clock restarts each morning, so
       // "elapsed" alone would be a lie on day 2.
       const elbl=legHasFixedWake(r)?'leg elapsed':'elapsed';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-stop">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-stop">
         <div style="padding:5px 8px 3px;">
           <!-- min-width, not width: holds the 4ch column like the speed pill for any
                normal ride, and simply grows past 99h ("120h34") rather than clipping. -->
@@ -14619,7 +14690,7 @@ function tLiveShell(r){
       // hrConnected, and _fpillSync swaps the whole element in when the html changes, so
       // the real ids arrive with the real pill the moment it pairs.
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-power">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};text-align:center;" id="live-fpill-power">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x26A1;</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">W &middot; 3 sec</div>
@@ -14668,7 +14739,7 @@ function tLiveShell(r){
       const npz=(np!=='—')?powerZone(np,UI.ftp):null;
       const npBg=npz?npz.bg:'#eef3ee';
       const npCol=npz?(npz.textDark?'#000':'#fff'):'#101510';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-power">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-power">
         <div id="live-power-top" style="padding:5px 8px 3px;${pz?`background:${pz.bg};`:''}">
           <!-- v260b CENTRED, not right-justified. The 4ch right-aligned box exists to stop a
                DECIMAL POINT moving (speed: 9.2 → 18.0). Watts have no decimal, so there was
@@ -14716,7 +14787,7 @@ function tLiveShell(r){
       // question — why should a font size move the pill's height at all? It shouldn't; see
       // the paired half below.
       if(!UI.powerConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-cad">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};text-align:center;" id="live-fpill-cad">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:15px;font-weight:600;color:var(--text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">Cadence</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
@@ -14730,7 +14801,7 @@ function tLiveShell(r){
       // "49/51" is 5 chars — min-width so the pill holds the 4ch column when it can and
       // grows when it must, rather than clipping.
       const balTxt=_powerBalTxt();   // v267 — one authority, see _powerBalTxt
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-cad">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-cad">
         <div style="padding:5px 8px 3px;">
           <!-- centred: no decimal point to hold still (same rule as the power pill) -->
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-cad-cur">${cadTxt}</span></div>
@@ -14767,7 +14838,7 @@ function tLiveShell(r){
       // Empty state — see the note on the power pill for why this one wears a glyph and the
       // cadence pill wears a word.
       if(!UI.hrConnected){
-        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-hr">
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}background:${pillBg};text-align:center;" id="live-fpill-hr">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x2764;&#xFE0F;</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">bpm</div>
@@ -14796,7 +14867,7 @@ function tLiveShell(r){
       const az=avgN!==null?hrZone(avgN,UI.maxHr):null;
       const aBg=az?az.bg:'#eef3ee';
       const aCol=az?(az.textDark?'#000':'#fff'):'#101510';
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};border:${FPILL_BORDER};text-align:center;" id="live-fpill-hr">
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-hr">
         <div id="live-hr-top" style="padding:5px 8px 3px;${hz?`background:${hz.bg};`:''}">
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-hr-cur">${val}</span></div>
           <div style="font-size:11px;font-weight:400;color:${col};font-family:var(--sans);line-height:1.1;" id="live-hr-lbl">bpm</div>
@@ -15976,7 +16047,14 @@ async function fetchWeather(lat,lon,days){
       winddeg:j.hourly.winddirection_10m[i],
       code:j.hourly.weathercode[i],
       precip:j.hourly.precipitation_probability[i]
-    })).slice(idx);
+    }));
+    // v270c — the slice moved OUT of here, to render time (see _wxFromNow). v265 sliced the
+    // array as it was FETCHED, which is only right while the cache is fresh: the cache
+    // persists to IndexedDB and is only refetched on demand, so as the app sits open the
+    // window silently drifts behind the clock. Peter: "the weather pill seems to have lost
+    // its connection to the correct time." Right — a window computed once cannot track a
+    // clock that keeps moving. Store the whole day; ask "which hour is it now?" at the
+    // moment of drawing.
     // Current feels-like: use the hourly value at the current time index
     const curFeelsLike=j.hourly.apparent_temperature?j.hourly.apparent_temperature[idx]:null;
     const result={
@@ -16130,6 +16208,20 @@ function weatherPillHTML(code,temp,label){
   </div>`;
 }
 
+// ── v270c: the hourly window, computed against the clock EVERY draw ──────────────────
+// The stored array is the whole day from midnight (that's what Open-Meteo returns and what
+// weatherAtEta needs — it searches by time across the lot). This trims it to "from the
+// current hour" at the moment of use, so it can never drift as the cached forecast ages.
+// h.time is a tz-naive local ISO like "2026-07-17T14:00" — compare it as a STRING against a
+// locally-built key rather than parsing to a Date, which is what the chips already do.
+function _wxFromNow(w){
+  if(!w||!w.hourly||!w.hourly.length)return [];
+  const n=new Date();
+  const key=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0')
+           +'T'+String(n.getHours()).padStart(2,'0');
+  const i=w.hourly.findIndex(h=>(h.time||'')>=key);
+  return i<0?[]:w.hourly.slice(i);   // i<0 = the forecast is entirely in the past → say nothing
+}
 function weatherBarHTML(){
   const keys=Object.keys(_weatherCache);
   if(!keys.length)return'';
@@ -16137,7 +16229,10 @@ function weatherBarHTML(){
   const w=_weatherCache[key];
   if(!w||!w.current)return'';
   const c=w.current;
-  const next3h=w.hourly?w.hourly.slice(1,4):[];
+  // v270c: the hourly window is computed HERE, every draw, against the current clock — not
+  // baked in at fetch time (v265's mistake). Everything below reads hrs, never w.hourly.
+  const hrs=_wxFromNow(w);
+  const next3h=hrs.slice(1,4);
   const alert=isSignificantWeatherChange(c,next3h);
   const temp3h=next3h.length?next3h[next3h.length-1].temp:null;
   const tempDrop=temp3h!==null?Math.round(temp3h)-Math.round(c.temp):0;
@@ -16154,9 +16249,9 @@ function weatherBarHTML(){
 
   // Expanded panel — hourly forecast + extra details
   let expandedHTML='';
-  if(_weatherExpanded&&w.hourly&&w.hourly.length){
+  if(_weatherExpanded&&hrs.length){
     // Hourly chips — next 8 hours
-    const hours=w.hourly.slice(0,8);
+    const hours=hrs.slice(0,8);
     const hourChips=hours.map(h=>{
       // h.time is an ISO string like "2026-03-22T14:00" with no tz suffix —
       // parse the hour directly from the string to avoid UTC/local ambiguity
@@ -16165,7 +16260,7 @@ function weatherBarHTML(){
     }).join('');
 
     // Tonight's low
-    const tonight=w.hourly.filter(h=>{
+    const tonight=hrs.filter(h=>{
       const hr=parseInt((h.time||'').slice(11,13),10);
       return hr>=18||hr<=6;
     });
