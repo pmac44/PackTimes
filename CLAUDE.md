@@ -15,6 +15,246 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+### v273 (18 July) — THE BOTTOM-LEFT CORNER. The record control moves. NOT phone-tested.
+
+**v272's stops tap is CONFIRMED ON THE PHONE** (Peter: *"the stops tap works on phone"*). The
+rest of v272 still needs a ride.
+
+**THE LAYOUT, Peter's words:** *"the weather pill for the time being needs to move right and
+alongside the location button, so they are bottom aligned. The start ride button can move to
+the left and above the location share button."* So the corner now reads:
+
+```
+[ Start ride ]
+[ 📍 ] [ 18° ]
+```
+
+- **THE CHAIN IS NOW FOUR LINKS, and it only resolves one way:**
+  `elevation strip → weather pill → share/pack button → record control`.
+  Each measures the one before it (v255: different sub-containers, so rect maths, never
+  composed px). Wired at the CAUSE, per v262: `_adjustWeatherForElev` calls the two button
+  syncs; **both** of those end by calling `_recBtnSync`. Calling it twice is deliberate —
+  exactly one of share/pack exists, so whichever ran last leaves the record control anchored
+  to the button actually on screen, and it's idempotent.
+- **`_leftColBottom` is the one authority for the baseline**, because the share and pack
+  buttons had verbatim copies of the old maths. "Bottom aligned" is a MEASUREMENT of the
+  pill's bottom edge, not two constants that happen to agree.
+- ⚠ **THE EXPANDED WEATHER PANEL IS NOT THE SAME PROBLEM** — hence the one ternary. Collapsed,
+  the pill is a corner object and "alongside" is what Peter asked for. Expanded, it's a
+  full-width panel: there is no alongside, and bottom-aligning would park the share button AND
+  the record control underneath it. So the column steps above the panel, as it always did.
+  Truth-tabled the counterfactual: naive bottom-alignment hides the record button.
+- **`LEFT_COL_X/W/GAP/CLEAR`** state the corner's numbers once. 54 was hard-coded twice and the
+  weather pill now has to clear it — a third copy was one edit from drifting.
+- **THE ONE-TIME SHARING BUBBLE WAS A LANDMINE, and it's this file's oldest shape.** It was
+  pinned at a hard-coded `left:70px` — the share button's right edge plus a gap, correct right
+  up until the weather pill moved into that exact spot. **A constant standing in for a
+  measurement, bitten by the very change it was blind to.** It would have shipped as a
+  7-second bubble sitting on the temperature. Now it measures what's actually beside it.
+
+**THE RECORD CONTROL — `recCtrlHTML` + `_recBtnSync`, out of `mapCtrlHTML`.**
+- ⚠ **A MOVE, NOT A REDESIGN. Every v245 state, colour and word is byte-identical** — the
+  TEXT/ICON rule, red reserved for recording+delete, neutral "Stop ride". This file calls the
+  recording control sacred; changing its address and its behaviour in one version is how you
+  can't tell which broke it.
+- **Why it had to LEAVE the function rather than be restyled in it:** a wide left-to-right text
+  button belongs on the left, and in a right-hand column it forced `align-items:flex-end` and
+  dragged the square buttons' widths about. And it belongs BESIDE the sharing button, because
+  **sharing only happens while recording — v257 said the UI must EXPLAIN that coupling and it
+  never did.** One column is the cheapest thing that says it.
+- **NO HANDLER WORK AT ALL.** The ids are unchanged and `#live-map-section` is inside
+  content-wrap, so the delegator still hears them. (v257's body-level gotcha is about the
+  SHEETS; this isn't one.) `_recBtnSync` rewrites only when `_rec.status` changes, or the
+  `.rec-pulse` blink would restart every tick and eat taps.
+- **THE PAUSED STACK STAYS — Peter's v262 popup idea is NOT built here**, deliberately: it
+  changes the recording FLOW, and this version only changes its address. Measured: paused
+  reaches ~182–238px up, the pill grid ends 278px down, so on any real map they don't meet.
+- `mapCtrlHTML` keeps fit-route + tile, and its `updateLive` rebuild still earns its keep —
+  the fit button appears and disappears with `rideLive`. Its `showGPS` argument is now inert
+  on every path; left alone rather than swept.
+
+**⚠ I CHASED AN ORDERING BUG THAT DOESN'T EXIST, and nearly shipped the "fix".** The worry
+looked textbook: `_adjustWeatherForElev` runs share-then-pack, `updateLive` runs
+pack-then-share, and both now end in `_recBtnSync` — so share-first in an event should have
+hunted for a `#pack-btn` that didn't exist yet and destroyed the record control. **The model
+refuted it: the buttons PERSIST in the DOM between calls, so whichever sync runs first, the
+other's button is already there from last time.** The only rebuild is on the one transition
+where you join or leave an event — and it's symmetric, one rebuild each, on opposite
+transitions. **The order was left exactly as it was.** Recorded because I'd already written
+the fix and the justifying comment before testing it — v270f's lesson again: don't keep a
+change whose reason evaporates under a test.
+
+### v273d — THE RIDE MAP'S LINE IS FIXED CYAN. Peter's argument, and it kills a button.
+
+He asked whether the ride map should get a surface button, then answered it better himself:
+*"The ride screen can quickly overfill due to too many buttons. Would a surface button earn
+its keep?? …the day/night colour does not always have high contrast, and I have not ridden
+with it at night where it would be black. The benefit of the route sky colour on the ride tab
+is reduced because your own eyes know what time it is or how bright it is by looking. It is
+an excellent PLANNING tool, and is still available on the stops map. Should we opt just for a
+high contrast route line and not have any toggle button for route line colour?"*
+
+- **THE RULE, and it's v260's pill rule one screen over: colour must encode something you
+  can't otherwise know.** On a planning map "when will I be riding in the dark?" is unknowable
+  and valuable. Mid-ride you look up. So the line was spending its contrast on information the
+  rider already has — and v243 had already logged the bill (*"at times it can have minimal
+  contrast"*). **Measured: the night navy is 1.21:1 against satellite tiles. Cyan is 6.7:1.**
+  Peter's night case isn't a nitpick, it's the line disappearing.
+- **NO TOGGLE.** It would be a control for choosing between a good option and a bad one.
+- **IT WAS A GATE, NOT A FEATURE** — one condition (`id!=='live-map'`). The `else` branch was
+  already the no-sun-data fallback and already draws exactly this: dark casing + `#22d3ee`,
+  and *thicker* (3.5px vs 2.5px over tiles). The cyan is v246's considered "must be seen on
+  any basemap" choice — blue was rejected there because it sinks into OSM water and the blue
+  cycle-route dashes. Planning maps, and PackView (a watcher can't see the rider's sky), keep
+  day/night.
+- **⚠ I OVERCLAIMED AND THE TRUTH-TABLE CAUGHT IT.** I wrote that cyan is "near-complementary
+  to --turn, so the orange reads as an unmistakable change" — implying contrast. **Cyan vs
+  orange is only 1.6:1**; they have similar luminance and separate by HUE (161°, on the
+  blue-yellow axis, so it survives red-green colour blindness). And midday blue is *further*
+  from orange (172°), so hue separation was never the argument either. **The real argument is
+  CONSTANCY: a day/night line is already changing colour along its length and through the
+  ride, so orange is one hue among several; a fixed line has ONE colour, so any change means
+  the turn.** The cue never leaned on luminance anyway — v243 also thickens and blinks it.
+- **Free perf, and not small:** skips ~600 `etaAt` calls per redraw on a 300 km route, on the
+  one map that redraws at blink rate (130 ms) while a turn is lit.
+
+**FIT-ROUTE IS BACK while riding** (Peter: *"I just noticed the fit route button has
+disappeared"*). **Not a v273 regression** — v245 deliberately hid it, and his own screenshots
+confirm the rule working (the "Start ride" shot has ⛶; the red-pause shots don't).
+- v245's argument was really about the **crosshair** (the map already follows you, so "centre
+  on me" has nothing to do) and fit-route got tarred with it. It isn't the same thing: it
+  answers "where am I on the whole route", which nothing else says at ride zoom.
+- **It's a PEEK, which v245 under-weighted:** panning is disabled and `_liveFitReturnTimer`
+  returns you to following in ~5 s. One tap in, ZERO taps out — v253's pack peek, v272's stops
+  strip. The crosshair half of v245's decision still stands; only fit-route returns.
+- v273 removed the last objection by accident: with the record control moved left, hiding this
+  left the right column holding **one** button. The emptiness is what made Peter notice.
+- `rideLive` is gone — it had no other reader. Verified **23/23**.
+
+### v273c — THE WEATHER PILL WAS NEVER THE FLOOR. One wrong anchor, four of Peter's bugs.
+
+Four reports in a row, and they were **one mistake**: the sharing button, the map controls
+and the turn box all measured the **weather pill**, when what every one of them wanted was
+the **floor**. The pill merely SAT on the floor — so the day the pill moved (v273 sent it
+right; v273c sends it up the left column) everything that had been quietly tracking it went
+with it. `_colBaselinePx` now asks the ELEVATION STRIP, and the pill has no dependants at all.
+
+- *"the turn box does not seem to move down when you hide the elevation profile"* — nothing
+  re-ran the box when `_adjustWeatherForElev` moved the anchor. On a LIVE tick
+  `updateLive → renderTurnCue` fixed it within a frame, which is exactly why it hid until
+  Peter paused a sim and toggled the strip. **v238/v262's lesson, FIFTH occurrence.**
+- *"the turn box seems to be affected to whether a GPS signal is active or not"* — **it wasn't
+  the GPS.** `renderTurnCue` had TWO branches computing DIFFERENT baselines (`sr.bottom -
+  wr.bottom` off the pill, else `elevH + 14`), chosen by whether `#live-weather-bar` existed —
+  i.e. by whether the forecast had loaded, which arrives with the GPS. The box jumped 6px
+  because the weather turned up. One branch now, one number.
+- *"unsurprisingly the weather button almost overlaps with the next turn box"* — v273's own
+  fault: at x=70 the pill reached into the CENTRED turn box's lane. **v273 was wrong and
+  v273c reverses it** — Peter: *"Weather should go left aligned above the record button."*
+  In the left column at x=8 it clears the box by 36px.
+- The right column floating (v273b, below) was the same root cause one column over.
+
+**THE LEFT COLUMN IS NOW A STACK, each link measuring the one below it:**
+`strip → share(52) → record control → weather pill`. `_wxPillSync` reads `#rec-ctrl`'s rect,
+so the pill rides the paused state's taller stack (52 → 112px) without knowing about it.
+The turn box and the map controls hang off the **baseline**, not off the column.
+
+- **54 → 52 (Peter: *"Why is the location share button bigger than the other buttons? Gut feel
+  is to make all buttons the same size."*)** No reason existed; the map's `.zbtn` squares are
+  52 and the column had a 2px step in it for nothing.
+- **THE ⚠ GLYPH IS GONE FROM THE COLLAPSED PILL** (Peter: *"the warning state for it should
+  just be that it flashes/pulses which it does anyway"*). Right, and the glyph was the
+  expensive half of a doubled-up encoding: `warnPulse` already pulsed the border, while the
+  glyph made the pill **change WIDTH on a warning** — a control that had just been given a
+  fixed spot in a column would shove itself sideways at the worst possible moment.
+
+**THE ELEVATION PROFILE'S HEADROOM** (Peter: *"There is too much gap above the elevation
+profile"*). The layout gap is 8px whether the profile is shown or not — what changes is
+**inside the canvas**: `elePad = max(20, range*0.1)` was added to BOTH ends of the elevation
+range, so the tallest peak never reached the top. Measured: **11–22px** of empty canvas.
+- **The bottom half of that pad was invisible** — the fill runs to the canvas edge regardless,
+  so a pad below only set how thick the fill is under the lowest point. Only the TOP shows.
+- Split into `padTop`/`padBot`: peak now lands on the existing 4px margin (100m of relief:
+  **15.7px → 7px**), and the relief gets **~90% of the canvas instead of ~70%** — so the hills
+  read better in the same 90px. Two wins from one change.
+- ⚠ **THE 20m FLOOR WAS NOT USELESS AND I NEARLY JUST DELETED IT.** On a flat section the pad
+  is ALL there is, so a small pad would stretch a few metres of DEM noise across the canvas
+  and a plain would render as terrain — measured, **9× exaggerated** vs a real 100m section.
+  **The floor belongs on the WINDOW, not on the pad**: `MIN_ELE_RANGE=40`, centred. Flat then
+  reads as flat (3× — a fixed window is still a compromise), and a real profile is no longer
+  squashed to make room for a case it isn't in.
+
+**THE PILL WOULDN'T STAY PUT — and this one was mine, an hour old** (Peter: *"something not
+quite right with weather pill. Sometimes it is in the correct position, at other times it is
+not"*). **`_wxPillSync` writes the position as an INLINE STYLE, and three places replaced the
+wrap's innerHTML wholesale** — the 30 s refresh in `updateLive`, the expand tap, and the
+auto-collapse timer. Each put back the TEMPLATE's `bottom:8px` and dropped the pill into the
+corner, onto the share/pack button — his screenshot exactly.
+- **Intermittent for the usual reason:** on a LIVE tick the next `_shareBtnSync → _recBtnSync
+  → _wxPillSync` fixed it within a frame; paused or idle, nothing ran and it stayed wrong.
+- **AND THE "HAS IT CHANGED" GUARD NEVER GUARDED:** `wb.innerHTML !== newW` compared a live
+  pill carrying a *synced* inline bottom against fresh HTML carrying the *template's*, so it
+  was always true. It rebuilt every 30 s regardless — which is what made the bug PERIODIC
+  rather than rare.
+- **`_wxBarRender` is now the only way to rewrite that bar** (rebuild + re-anchor in one
+  function, and it calls the whole chain because expanding moves the baseline for the sharing
+  button, map controls and turn box too). **STANDING RULE: a sync that writes an inline style
+  onto an element someone else rebuilds is one call site away from being undone.** Verified
+  17/17: ten refreshes on a paused sim never drop it, and the old bare-write path is
+  reproduced dropping it first.
+
+**Verified: whole-file `node --check`** (20,753 lines, ends `</html>`, both blocks clean,
+asserted first), CSS braces balanced, 47/47 comments, **plus 33/33 + 17/17** — the GPS-dependent
+6px jump reproduced then fixed; the box drops by exactly the profile's height, and to the
+floor on a just-ride; all three consumers read one baseline; the column stacks without
+overlap riding AND paused; the v273 overlap reproduced and the v273c clearance measured;
+the warning costs no width; the profile's peak and amplitude at 50/100/300m; and the flat
+case both ways, including the naive fix I was about to ship.
+**NOT phone-tested, and the turn box's absolute position wants Peter's eyes in a browser —
+I can't measure it from a screenshot (this file's own standing warning).**
+
+### v273b — THE RIGHT COLUMN FLOATED. Peter's "something is reversed" was the whole diagnosis.
+
+*"the OSM and Fit all buttons on the right are up high. They should be bottom aligned with the
+location share and weather buttons. When you hide the elevation profile they go even higher,
+so something is reversed."* Desktop. All three observations were one bug.
+
+- **`.map-ctrl`'s base CSS is `top:50%; transform:translateY(-50%)`** — a vertically CENTRED
+  column. The two MOBILE strings override both (`top:auto` + `transform:none`); the DESKTOP
+  string only ever overrode `left`/`right`, so **desktop kept `top:50%` and the transform**.
+- **Then `_adjustWeatherForElev` sets `bottom` on it — and a box with `top` AND `bottom` set
+  and `height:auto` does not MOVE, it STRETCHES.** The column grew to span from mid-map down
+  to the elevation strip (measured: 3× its content), the buttons sat at the top of it
+  (flex-start), and `translateY(-50%)` then hauled the stretched box up by half its own
+  height. Modelled: buttons at **231px** down an 800px map.
+- **THAT is the reversal.** Hide the strip → `bottom` shrinks → the box gets TALLER → the
+  transform lifts it FURTHER. Buttons go **231 → 203**. They rise when the thing below them
+  shrinks. Peter read the symptom exactly right without seeing the code.
+- **THE RULE, and it's the general one: never set `bottom` on a box that still has a `top`.**
+  The giveaway was in the file all along — the mobile strings carry `top:auto;transform:none;`
+  for no stated reason, which is someone having hit this once and patched only their own path.
+- **Fixed on the ride map for EVERY device** (one string now, not a desktop special case),
+  plus `top`/`transform` cleared defensively in `_adjustWeatherForElev` so an older shell or a
+  future path can't resurrect it.
+- **And the alignment Peter asked for falls out**: the right column now takes the same
+  `_colBaselinePx` as the left. It had its own private copy of the maths (`h+6`) sitting **2px
+  below** the left column's `h+8` — the v262 shape one column over, free to drift. One
+  authority, both columns, every state including the expanded panel (which used to hide the
+  OSM/fit buttons entirely).
+- Verified **19/19** — the model reproduces the bug at 231px/203px BEFORE proving the fix, per
+  the standing rule; both columns land on the weather pill's exact bottom edge at 0/56/150px
+  of elevation; mobile is byte-identical; nothing stretches.
+
+**Verified: honest whole-file `node --check`** (20,638 lines, ends `</html>`, both blocks
+clean, `</html>` asserted first), CSS braces balanced, 47/47 comments closed, **plus 29/29 +
+13/13 + 19/19 truth-tables** — bottom alignment lands on the pill's exact edge; the chain lifts all
+three by exactly the elevation strip's height; the expanded-panel ternary (and the
+counterfactual that proves it); PackRide lands the pack button on the identical pixel; all
+three record states; the no-rewrite guard; the paused stack's clearance; no forecast → no NaN;
+and both call orders, in steady state and across both transitions.
+**NOT phone-tested — open `index.html` in a browser once before `push.bat`.**
+Mockup at true size: `/outputs/bottom-left-v273.png` (idle / recording / paused).
+
 ### v272 (18 July) — four off Peter's list. NOT phone-tested. The bottom-left move is v273.
 
 Split deliberately: the record-button move is a refactor of the recording control, so it goes
@@ -534,7 +774,9 @@ basic numbers — distance, time, maybe speed."*
    it. The pixels come from the gaps and margins, not the map; it helps small screens most; and the
    distance bar is the precedent — *"that distance bar with no gap works, so we shouldn't put too
    much thought into map padding."* Also dissolves the fit-button masking.
-7. **Start ride → bottom-left; Resume/Stop → a popup** (see v262 below).
+7. ~~**Start ride → bottom-left**~~ **BUILT — v273.** Resume/Stop → a popup is still OPEN (see
+   v262 below): v273 moved the control's address only, so the paused state still stacks two
+   buttons. Measured as fitting, but it remains the case that "breaks first" on a small screen.
 
 ### Answered, not built (17 July)
 

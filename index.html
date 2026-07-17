@@ -128,7 +128,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    floating overlay in that band stands down (flagged in the 15 Jul design). */
 .pack-peeking .live-fpill,.pack-peeking #live-dist-bar,.pack-peeking .map-ctrl,
 .pack-peeking #live-weather-bar-wrap,.pack-peeking #turn-cue,.pack-peeking .turn-cue,
-.pack-peeking #pack-btn,.pack-peeking #share-btn,.pack-peeking #rec-stop-confirm{visibility:hidden;}
+.pack-peeking #pack-btn,.pack-peeking #share-btn,.pack-peeking #rec-stop-confirm,
+.pack-peeking #rec-ctrl{visibility:hidden;}
 .tabs{display:flex;justify-content:space-around;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;padding:0;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:0 1 auto;min-width:0;padding:8px 6px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
@@ -1073,7 +1074,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v272';
+window.APP_VERSION='v273';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -6815,29 +6816,251 @@ function _shareBtnState(){
   return shareIsLive() ? 'live' : 'armed';
 }
 
+// ── THE RECORDING CONTROL (v245's design, v273's address) ───────────────────────────────
+// MOVED here from mapCtrlHTML, bottom-left above the sharing button (Peter, v262 + v273).
+// ⚠ NOTHING ABOUT THE STATES OR THE COLOURS CHANGED — this is a move, not a redesign, and
+// the v245 reasoning below is all still load-bearing. The recording control is the one thing
+// in this app that must never be clever.
+//
+// The rule: TEXT wherever you can afford it, ICON only where you can't.
+//   Idle      — you're stopped, about to start   → TEXT ("Start ride")
+//   Recording — you're RIDING, the map matters   → ICON only (small, solid red, blinks)
+//   Paused    — you're stopped at a cafe/lights  → TEXT ("Resume ride" + "Stop ride")
+// So the one state that eats map real estate is the one state that doesn't need words.
+//
+// Colour discipline: red is RESERVED. Recording = red (live). Delete = red (destroys).
+// "Stop ride" is deliberately NEUTRAL — stopping isn't irreversible, it just opens the save
+// panel. If Stop were red too, red would stop meaning anything.
+//
+// The ids (#btn-gpstoggle / #btn-recstop) are UNCHANGED, which is why this move needed no
+// handler work at all: every one of them is in the content-wrap delegator, and this control
+// is appended to #live-map-section, which is inside content-wrap. (v257's standing gotcha is
+// about things appended to document.BODY — the sheets. This isn't one.)
+function recCtrlHTML(){
+  const mob=!IS_DESKTOP();
+  const recActive = _rec && _rec.status === 'active';
+  const recPaused = _rec && _rec.status === 'paused';
+  const pauseSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;margin:auto;"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg>';
+  const shadow='box-shadow:0 2px 8px rgba(0,0,0,.45);';
+  // Wide text-button shell for the stationary states. Height matches the 52px icon buttons
+  // so the column stays aligned whichever state you're in.
+  const wide=mob?'width:auto;height:52px;min-width:52px;padding:0 14px;font-size:15px;'
+                :'width:auto;padding:0 12px;font-size:14px;';
+  const btnSize=mob?'width:52px;height:52px;font-size:22px;':'';
+  const label=t=>`<span style="font-family:var(--sans);font-weight:600;white-space:nowrap;">${t}</span>`;
+  const dot='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><circle cx="12" cy="12" r="9" fill="#ef4444"/></svg>';
+  const tri='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><path d="M7 5 L19 12 L7 19 Z" fill="currentColor"/></svg>';
+  const row='display:flex;align-items:center;justify-content:center;gap:7px;';
+  if(recActive){
+    // RECORDING — icon only. Small, solid TRUE red (--red2; the old --red #f87171 is a
+    // salmon that fills PINK), blinking via .rec-pulse. Tap = pause.
+    return`<button class="zbtn rec-pulse" id="btn-gpstoggle" title="Pause recording" style="${btnSize}padding:0;overflow:hidden;color:#fff;background:var(--red2);border-color:var(--red2);${shadow}">${pauseSvg}</button>`;
+  }
+  if(recPaused){
+    // PAUSED — say so. GREEN "Resume ride" (v245): a button's colour should describe its
+    // ACTION, not the state you're in. Green = go / carry on. The old amber was describing
+    // the paused STATE — but amber means "caution", and there's nothing cautionary about
+    // resuming. The state is already carried by the word "Resume" and by "Stop ride"
+    // appearing alongside.
+    // v273 — this is the state that stacks TWO buttons in the column, and it is the one
+    // Peter's v262 note wants gone: "Resume/Stop become a popup — they're a transient state
+    // you're actively resolving, so sizing the permanent layout around them is backwards."
+    // NOT done here on purpose: that changes the recording FLOW, and this version only
+    // changes its address. Measured while stacked — 52+52+8 + the 54px share button + the
+    // weather pill is ~200px up from the bottom, and the pill grid ends 278px down from the
+    // top, so on any real ride map they don't meet. One step, one version.
+    return`<button class="zbtn" id="btn-gpstoggle" title="Resume recording" style="${wide}padding:0 14px;overflow:hidden;color:#fff;background:var(--accent3);border-color:var(--accent2);${shadow}"><span style="${row}">${tri}${label('Resume ride')}</span></button>`
+      // var(--sans), NOT var(--font): DM Mono is for numbers/metrics only. It was rendering
+      // "Stop ride" as typewriter text (Peter's screenshot).
+      +`<button class="zbtn" id="btn-recstop" title="Stop ride" style="${wide}color:var(--text);border-color:var(--border2);font-family:var(--sans);font-weight:600;${shadow}">Stop ride</button>`;
+  }
+  // IDLE — say what it does. Dark .zbtn body so it sits with the other controls (the white
+  // version looked pasted on); the red dot carries the "record" meaning. Deliberately NOT a
+  // red button: RECORDING is red, and idle-vs-recording is the one distinction this button
+  // absolutely must make at a glance.
+  return`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${wide}color:var(--text);border-color:var(--border2);${shadow}"><span style="${row}">${dot}${label('Start ride')}</span></button>`;
+}
+
+// Position the record control above whichever 54px button owns the bottom-left slot.
+// Built here rather than in the template for the same reason as the sharing button: on
+// desktop mid-ride _render short-circuits to updateLive and never rebuilds the shell, so a
+// template-only element is never created and never updated. v238's gotcha — and this control
+// is the worst possible thing to have go stale, which is why the OLD home (mapCtrlHTML) had
+// its own rebuild block in updateLive doing exactly this job.
+function _recBtnSync(){
+  const sec = document.getElementById('live-map-section');
+  let el = document.getElementById('rec-ctrl');
+  // The anchor is whichever of the two is live — never both, never neither, on the Ride tab.
+  const anchor = document.getElementById('share-btn') || document.getElementById('pack-btn');
+  if(!sec || UI.tab !== 'live' || !anchor){ if(el) el.remove(); return; }
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'rec-ctrl';
+    // align-items:flex-start so each button keeps its NATURAL width and hugs the left edge.
+    // The mirror of the right column's flex-end, and for the same reason: a column flex
+    // defaults to stretch, which would drag the 52px pause square out to "Resume ride" width.
+    el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;display:flex;'
+      + 'flex-direction:column;align-items:flex-start;gap:8px;';
+    sec.appendChild(el);
+  }
+  const sr = sec.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+  el.style.top = 'auto';
+  el.style.bottom = Math.max(8, sr.bottom - ar.top + LEFT_COL_GAP) + 'px';
+  // Only rewrite when the STATE changes — this runs on every live tick via the share/pack
+  // syncs, and blowing away the buttons each time would restart the .rec-pulse blink and
+  // eat taps mid-press.
+  const st = _rec ? _rec.status : 'idle';
+  if(el._recState !== st){ el._recState = st; el.innerHTML = recCtrlHTML(); }
+  _wxPillSync();   // the weather pill sits on top of this — last link in the chain
+}
+
+// ── v273 — THE BOTTOM-LEFT COLUMN. One set of numbers, three objects. ──────────────────
+// Peter: "the weather pill for the time being needs to move right and alongside the location
+// button, so they are bottom aligned. The start ride button can move to the left and above
+// the location share button."
+// So the corner reads, bottom-up:  [ Start ride ]
+//                                  [ 📍 ] [ 18° ]
+// LEFT_COL_X/W are the share and pack buttons' own left and width, which were hard-coded
+// identically in two places and are now stated once — the weather pill has to clear them, so
+// a third copy of 54 was one edit away from drifting.
+// v273c — 54 -> 52. Peter: "Why is the location share button bigger than the other buttons?
+// Gut feel is to make all buttons the same size." No reason at all — the map's .zbtn squares
+// are 52 and this was 54, so the column had a 2px step in it for nothing.
+const LEFT_COL_X=8, LEFT_COL_W=52, LEFT_COL_GAP=8;
+const LEFT_COL_CLEAR=LEFT_COL_X+LEFT_COL_W+LEFT_COL_GAP;
+// ⚠ THESE FOUR ARE A CHAIN, AND IT ONLY RESOLVES IN ONE DIRECTION:
+//   elevation strip  →  weather pill  →  share/pack button  →  record control
+// Each is positioned by MEASURING the one before it (v255's rule: the ride screen's overlays
+// live in different sub-containers, so rect maths, never composed top/bottom px). A longer
+// chain is a bigger version of the bug v262 fixed — the thing that MOVES an anchor is the
+// thing that must re-anchor whatever hangs off it — so the links are wired at the CAUSE:
+// _adjustWeatherForElev ends by calling the two button syncs, and BOTH of those end by
+// calling _recBtnSync.
+// _recBtnSync is called by both on purpose, and it is not a redundant call: exactly one of
+// share/pack exists at a time, so whichever one ran last leaves the record control anchored
+// to the button that is actually on screen. It is idempotent and cheap (it only rewrites its
+// HTML when the recording STATE changes), so calling it twice costs a rect read.
+// Don't "optimise" it to a single call site — that would reintroduce an ordering dependency
+// between _adjustWeatherForElev (share then pack) and updateLive (pack then share), which
+// disagree, and one of them would then read a stale rect.
+
+// Sit a 54px left-column button on the weather pill's own baseline. ONE authority, because
+// the share button and the pack button share this slot and had verbatim copies of the old
+// maths — two copies of one rule is how this file has drifted three times already.
+//
+// ⚠ THE EXPANDED CASE IS NOT THE SAME PROBLEM, which is why the ternary earns its keep.
+// Collapsed, #live-weather-bar is a small pill in the corner and "alongside, bottom aligned"
+// is exactly what Peter asked for. EXPANDED, it is a full-width panel pinned across the
+// bottom — there is no "alongside" left to have, and bottom-aligning to it would park the
+// button (and the record control stacked above it) UNDERNEATH the panel. So when the panel
+// is up, the column steps above it, which is what it already did before v273. The weather
+// panel is transient and auto-collapses; the record button must stay reachable throughout.
+// ── THE BASELINE: ONE NUMBER, AND IT COMES FROM THE ELEVATION STRIP ────────────────────
+// v273c — this used to measure the WEATHER PILL, which was the mistake underneath three
+// separate bugs Peter reported in a row:
+//   · the turn box "does not seem to move down when you hide the elevation profile"
+//   · the weather pill "almost overlaps with the next turn box"
+//   · the OSM/fit buttons floating up the right-hand side (v273b)
+// The pill was never the floor — it just happened to SIT on the floor, so everything that
+// wanted the floor measured the pill instead, and the moment the pill moved (v273 sent it
+// right, v273c sends it up the left column) every one of those things followed it.
+// The floor is the ELEVATION STRIP. Ask the strip. The weather pill is now just another
+// item in the left column with no dependants, which is what it always should have been.
+// A hidden strip (a "just ride", v272) measures 0 and everything drops — for free.
+// The expanded weather PANEL is the one exception: it really is a full-width thing across
+// the bottom, so while it's up the furniture steps above it rather than under it.
+function _colBaselinePx(sec){
+  if(_weatherExpanded){
+    const wx = document.getElementById('live-weather-bar');
+    if(wx && sec){
+      const sr = sec.getBoundingClientRect(), wr = wx.getBoundingClientRect();
+      return Math.max(8, sr.bottom - wr.top + 6);
+    }
+  }
+  const es = document.getElementById('live-elev-strip');
+  const h = (es && es.style.display !== 'none') ? es.offsetHeight : 0;
+  return h + LEFT_COL_GAP;
+}
+function _leftColBottom(sec, el){
+  el.style.top = 'auto';
+  el.style.bottom = _colBaselinePx(sec) + 'px';
+}
+
+// The collapsed weather pill, LEFT-ALIGNED above the record control (Peter, v273c):
+// "Weather should go left aligned above the record button."
+// It fixes the overlap he hit — "unsurprisingly the weather button almost overlaps with the
+// next turn box" — because the turn box is CENTRED and the pill was sitting at x=70,
+// reaching right into it. At x=8 in a column of its own it can't.
+// Positioned off #rec-ctrl's rect, so it rides the paused state's taller stack without
+// knowing anything about it. Pure rect maths against its OWN wrap (v255: never compose px
+// across containers — the pill lives inside #live-weather-bar-wrap, which the elevation
+// strip has already moved).
+// Does nothing when expanded: the panel is full-width by design and owns the bottom.
+// ⚠ THE ONE WAY TO REWRITE THE WEATHER BAR. Use this, never `wb.innerHTML=weatherBarHTML()`.
+// Peter: "something not quite right with weather pill. Sometimes it is in the correct
+// position, at other times it is not."
+// THE TRAP, and it is the sharpest version of this file's oldest lesson: _wxPillSync writes
+// the pill's position as an INLINE STYLE, and there were three places that replaced the
+// wrap's innerHTML wholesale — the 30 s refresh in updateLive, the expand tap, and the
+// auto-collapse timer. Every one of them threw the synced position away and put back the
+// TEMPLATE's `bottom:8px`, dropping the pill into the corner on top of the share/pack button.
+// It looked intermittent because on a LIVE tick the next _shareBtnSync→_recBtnSync→_wxPillSync
+// put it right within a frame; paused or idle, nothing ran and it just stayed wrong. The
+// 30 s refresh was the thing that kept knocking it over.
+// A sync that writes an inline style onto an element someone else rebuilds is only ever one
+// call site away from being undone. So the rebuild and the re-anchor are now the same
+// function and there is nothing to keep in step.
+// It calls the WHOLE chain, not just _wxPillSync, because expanding or collapsing the panel
+// moves the baseline for the sharing button, the map controls and the turn box too.
+// Non-recursive: _adjustWeatherForElev never calls back into here.
+function _wxBarRender(){
+  const wb=document.getElementById('live-weather-bar-wrap');
+  if(!wb) return false;
+  const html=weatherBarHTML();
+  if(!html) return false;          // no forecast yet — leave whatever is there
+  wb.innerHTML=html;
+  _adjustWeatherForElev();
+  return true;
+}
+function _wxPillSync(){
+  if(_weatherExpanded) return;
+  const wx = document.getElementById('live-weather-bar');
+  const wrap = document.getElementById('live-weather-bar-wrap');
+  const rc = document.getElementById('rec-ctrl');
+  if(!wx || !wrap || !rc) return;
+  const wrr = wrap.getBoundingClientRect(), rr = rc.getBoundingClientRect();
+  wx.style.left = LEFT_COL_X + 'px';
+  wx.style.bottom = Math.max(8, Math.round(wrr.bottom - rr.top + LEFT_COL_GAP)) + 'px';
+}
+
+// The turn box sits on the same baseline as everything else, measured from the STRIP.
+// v273c — it used to measure the weather pill's bottom, and _adjustWeatherForElev never
+// re-ran it, so on a paused sim the box simply stayed where it was when the strip closed
+// (Peter: "the turn box does not seem to move down when you hide the elevation profile").
+// On a LIVE tick it self-corrected within a frame via updateLive → renderTurnCue, which is
+// exactly why it survived this long. v238/v262's lesson, fifth occurrence.
+function _tcBoxSync(){
+  const sec = document.getElementById('live-map-section');
+  const box = document.getElementById('tc-box');
+  if(!sec || !box) return;
+  box.style.bottom = _colBaselinePx(sec) + 'px';
+}
 function _shareBtnSync(){
   const sec = document.getElementById('live-map-section');
   let el = document.getElementById('share-btn');
   // In a PackRide the bottom-left slot belongs to the pack button — one slot, one
   // object (the ride-screen consolidation rule). A STALE event doesn't count
   // (_eventLive), so an old sim ride can't hog the slot forever.
-  if(!sec || UI.tab !== 'live' || _eventLive()){ if(el) el.remove(); return; }
+  if(!sec || UI.tab !== 'live' || _eventLive()){ if(el) el.remove(); _recBtnSync(); return; }
   if(!el){
     el = document.createElement('div');
     el.id = 'share-btn';
-    el.style.cssText = 'position:absolute;left:8px;z-index:22;width:54px;height:54px;'
+    el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;width:'+LEFT_COL_W+'px;height:'+LEFT_COL_W+'px;'
       + 'border-radius:var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;'
       + 'align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;';
     sec.appendChild(el);
   }
-  const wx = document.getElementById('live-weather-bar');
-  el.style.top = 'auto';
-  if(wx){
-    const sr = sec.getBoundingClientRect(), wr = wx.getBoundingClientRect();
-    el.style.bottom = Math.max(8, sr.bottom - wr.top + 6) + 'px';
-  } else {
-    el.style.bottom = '14px';
-  }
+  _leftColBottom(sec, el);
   const st = _shareBtnState();
   if(el._shareState !== st){
     el._shareState = st;
@@ -6858,14 +7081,22 @@ function _shareBtnSync(){
     UI.shareBubbleSeen = true; _shareSaveAuth();
     const tip = document.createElement('div');
     tip.id = 'share-btn-tip';
-    tip.style.cssText = 'position:absolute;left:70px;z-index:22;background:rgba(10,15,10,.92);'
+    tip.style.cssText = 'position:absolute;z-index:23;background:rgba(10,15,10,.92);'
       + 'border:1px solid rgba(74,222,128,.4);border-radius:var(--r-ctrl);padding:8px 12px;'
       + 'font-family:var(--sans);font-size:13px;color:var(--text);white-space:nowrap;';
+    // v273 — this was a hard-coded left:70px: the share button's right edge plus a gap,
+    // correct until v273 briefly moved the weather pill into that exact spot. v273c moved the
+    // pill up the left column instead, so the slot beside the button is empty again and
+    // LEFT_COL_CLEAR is honest — but it is now DERIVED from the button's own left+width, not
+    // a 70 that happens to match. That's the whole lesson: a constant standing in for a
+    // measurement is fine until the thing it was silently tracking moves.
+    tip.style.left = LEFT_COL_CLEAR + 'px';
     tip.style.bottom = el.style.bottom;
     tip.textContent = 'Shares when you start riding';
     sec.appendChild(tip);
     setTimeout(() => tip.remove(), 7000);
   }
+  _recBtnSync();   // the record control hangs off this button's rect — see the chain note
 }
 
 // ── The sharing sheet (and first-time setup) — v257 ──────────────────────────
@@ -7303,25 +7534,20 @@ function _packBtnSync(){
     UI._eventsFetched = true;
     eventListLoad().then(() => _packBtnSync()).catch(() => {});
   }
-  if(!sec || UI.tab !== 'live' || !_eventLive()){ if(el) el.remove(); return; }
+  if(!sec || UI.tab !== 'live' || !_eventLive()){ if(el) el.remove(); _recBtnSync(); return; }
   if(!el){
     el = document.createElement('div');
     el.id = 'pack-btn';
-    el.style.cssText = 'position:absolute;left:8px;z-index:22;width:54px;height:54px;'
+    el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;width:'+LEFT_COL_W+'px;height:'+LEFT_COL_W+'px;'
       + 'border-radius:var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;flex-direction:column;'
       + 'align-items:center;justify-content:center;gap:1px;cursor:pointer;box-sizing:border-box;'
       + 'border:2px solid #fde047;color:#fde047;';
     sec.appendChild(el);
   }
-  // Same rect maths as the share button: above the weather pill, container-agnostic.
-  const wx = document.getElementById('live-weather-bar');
-  el.style.top = 'auto';
-  if(wx){
-    const sr = sec.getBoundingClientRect(), wr = wx.getBoundingClientRect();
-    el.style.bottom = Math.max(8, sr.bottom - wr.top + 6) + 'px';
-  } else {
-    el.style.bottom = '14px';
-  }
+  // v273: the same one authority the share button uses. This slot holds whichever of the two
+  // is live, so they must land on the identical pixel — otherwise the whole left column
+  // would shift the moment you joined or left a group ride.
+  _leftColBottom(sec, el);
   const rs = (_packData && _packData.riders) || [];
   const meIdx = rs.findIndex(x => x.isYou);
   const place = rs.length ? (meIdx >= 0 ? (meIdx + 1) + '/' + rs.length : String(rs.length)) : '';
@@ -7333,6 +7559,7 @@ function _packBtnSync(){
     el.innerHTML = PACK_BTN_ICON
       + (place ? '<span style="font-size:11px;font-family:var(--font);font-weight:600;color:#fde047;line-height:1;">' + place + '</span>' : '');
   }
+  _recBtnSync();   // the record control hangs off this button's rect — see the chain note
 }
 
 // ── The peek itself: ¾ list + ¼ strip, then full map ─────────────────────────
@@ -9721,8 +9948,43 @@ function drawMap(cvs,r,opts){
 
   // ── Route line + overlays (only when route geometry exists) ──
   if(hasRoute){
-  // Day/night coloured route line — all maps when sun data and start time available
-  if(startDT(r)&&Object.keys(_sunCache).length){
+  // ── THE RIDE MAP'S LINE IS A FIXED HIGH-CONTRAST CYAN. NO TOGGLE. (v273d) ─────────────
+  // Peter's argument, and it's the one that decides it: "The benefit of the route sky colour
+  // on the ride tab is reduced because your own eyes know what time it is or how bright it
+  // is by looking. It is an excellent PLANNING tool, and is still available on the stops map."
+  // Exactly — day/night colour ENCODES TIME OF DAY, and on a planning map "when will I be
+  // riding in the dark?" is unknowable and genuinely valuable. Mid-ride you look up and you
+  // know. So it was spending the route line's contrast on information the rider already has,
+  // and v243 had already logged the bill: "the route colour matching sky is very good, but at
+  // times it can have minimal contrast." Peter's night case is worse than minimal — the line
+  // goes NAVY on a dark map, which is the moment you most need to see it.
+  // Same rule as v260's pill colours, one screen over: colour must encode something you can't
+  // otherwise know. Here it can't, so it costs and buys nothing.
+  //
+  // NO TOGGLE BUTTON either (Peter: "The ride screen can quickly overfill due to too many
+  // buttons"). A toggle would be a control for choosing between a good option and a bad one.
+  //
+  // ⚠ AND THE RIDE MAP'S LINE COLOUR IS SPOKEN FOR ANYWAY: v243 paints it ORANGE through a
+  // turn, and that is safety-critical guidance. That is also why the surface/grade overlays
+  // are gated to the planning maps and must stay there.
+  // THE REASON A FIXED LINE HELPS THE TURN CUE IS CONSTANCY, NOT CONTRAST — I claimed the
+  // latter first and the numbers refused it. Measured: cyan vs --turn is only 1.6:1, because
+  // they have similar LUMINANCE; they separate by HUE (161°, and on the blue-yellow axis, so
+  // it survives red-green colour blindness). Midday blue is even marginally FURTHER from
+  // orange (172°), so hue separation was never the argument either.
+  // The argument is that a day/night line is already changing colour along its length and
+  // through the ride, so orange arrives as one hue among several. A fixed line has exactly
+  // ONE colour, so any change on it means the turn. (The cue never leaned on luminance
+  // anyway — v243 also thickens the line and blinks its width.)
+  //
+  // The `else` branch below ALREADY does exactly this — dark casing + #22d3ee, and thicker
+  // (3.5px vs 2.5px over tiles) — because it is the no-sun-data fallback. So this is a gate,
+  // not a new drawing path. The cyan is v246's considered choice for "a line that must be
+  // seen on any basemap": blue was rejected there because it sinks into OSM water and the
+  // blue cycle-route dashes.
+  // Bonus, and it is not small: this skips ~600 etaAt calls per redraw on a 300 km route —
+  // on the one map that redraws at blink rate (130 ms) while a turn is lit.
+  if(id!=='live-map'&&startDT(r)&&Object.keys(_sunCache).length){
     const sdt=startDT(r);
     const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
     const midLat=(Math.min(...lats)+Math.max(...lats))/2;
@@ -10821,64 +11083,43 @@ function mapCtrlHTML(mapId,showGPS){
   // desktop nobody ever set a position, so they fell through to .map-ctrl's left:8px
   // default and ended up on the opposite side. Not a decision — just an unset value.
   // Mobile is the primary device, so desktop moves to match it.
-  const desktopRight=(mapId==='live-map'||mapId==='stops-map')?'left:auto;right:8px;':'';
-  const pos=isLiveMobile?'top:auto;bottom:90px;right:8px;left:auto;transform:none;z-index:5;'
+  // ⚠ v273b — THE DESKTOP BUG PETER FOUND, and "something is reversed" was the exact tell.
+  // .map-ctrl's base CSS is `top:50%; transform:translateY(-50%)` — a vertically CENTRED
+  // column. The mobile strings below override BOTH (`top:auto` + `transform:none`); the old
+  // desktop string overrode only left/right, so desktop kept top:50% and the transform.
+  // _adjustWeatherForElev then sets `bottom` on it, and an absolutely-positioned box with
+  // top AND bottom both set and height:auto does not MOVE — it STRETCHES. So the column grew
+  // to span from mid-map down to the elevation strip, the buttons sat at the top of it
+  // (flex-start), and translateY(-50%) hauled the whole stretched box up by half its own
+  // height. Hiding the elevation strip made the box TALLER, so the transform lifted it even
+  // further: the buttons went UP when the thing below them got smaller. Exactly backwards,
+  // exactly as Peter described.
+  // The fix is to say top:auto and transform:none on every path that sets a bottom — i.e.
+  // the ride map, on every device. Never set `bottom` on a box that still has a `top`.
+  // stops-map on DESKTOP is deliberately left centred: nothing ever sets a bottom on it (the
+  // id is only ever live-map-ctrl), so it has no top/bottom conflict to resolve.
+  const isLiveAny=mapId==='live-map';
+  const pos=isLiveAny?'top:auto;bottom:8px;right:8px;left:auto;transform:none;z-index:5;'
            :isStopsMobile?'top:auto;bottom:8px;right:8px;left:auto;transform:none;'
-           :desktopRight;
+           :(mapId==='stops-map'?'left:auto;right:8px;':'');
   const btnSize=isLiveMobile?'width:52px;height:52px;font-size:22px;':'';
-  // Build the recording-or-GPS button. On live-map it's the recording control; elsewhere it's the GPS toggle.
-  let gpsBtn='';
-  let stopBtn='';
-  if(mapId==='live-map'){
-    const recActive = _rec && _rec.status === 'active';
-    const recPaused = _rec && _rec.status === 'paused';
-    // ── Recording control (v245 rebuild, Peter's principle) ─────────────────────────
-    // The recording state model wasn't legible: an icon-only button meant you had to
-    // remember what the colours meant, and a paused ride restored on app-open looked
-    // like a "play" button sitting there for no reason.
-    //
-    // The rule: TEXT wherever you can afford it, ICON only where you can't.
-    // Which state you're in tells you whether you can afford it:
-    //   Idle     — you're stopped, about to start   → TEXT ("Start ride")
-    //   Recording— you're RIDING, the map matters   → ICON only (small, solid red, blinks)
-    //   Paused   — you're stopped at a cafe/lights  → TEXT ("Resume ride" + "Stop ride")
-    // So the one state that eats map real estate is the one state that doesn't need words.
-    //
-    // Colour discipline: red is RESERVED. Recording = red (live). Delete = red (destroys).
-    // "Stop ride" is deliberately NEUTRAL — stopping isn't irreversible, it just opens the
-    // save panel. If Stop were red too, red would stop meaning anything.
-    const pauseSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;margin:auto;"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg>';
-    const shadow='box-shadow:0 2px 8px rgba(0,0,0,.45);';
-    // Wide text-button shell for the stationary states. Height matches the 52px icon
-    // buttons so the control stack stays aligned.
-    const wide=isLiveMobile?'width:auto;height:52px;min-width:52px;padding:0 14px;font-size:15px;'
-                           :'width:auto;padding:0 12px;font-size:14px;';
-    const label=t=>`<span style="font-family:var(--sans);font-weight:600;white-space:nowrap;">${t}</span>`;
-    const dot='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><circle cx="12" cy="12" r="9" fill="#ef4444"/></svg>';
-    const tri='<svg viewBox="0 0 24 24" width="15" height="15" style="display:block;flex-shrink:0;"><path d="M7 5 L19 12 L7 19 Z" fill="currentColor"/></svg>';
-    const row='display:flex;align-items:center;justify-content:center;gap:7px;';
-    if(recActive){
-      // RECORDING — icon only. Small, solid TRUE red (--red2; the old --red #f87171 is a
-      // salmon that fills PINK), blinking via .rec-pulse. Tap = pause.
-      gpsBtn=`<button class="zbtn rec-pulse" id="btn-gpstoggle" title="Pause recording" style="${btnSize}padding:0;overflow:hidden;color:#fff;background:var(--red2);border-color:var(--red2);${shadow}">${pauseSvg}</button>`;
-    } else if(recPaused){
-      // PAUSED — say so. GREEN "Resume ride" (v245): a button's colour should describe its
-      // ACTION, not the state you're in. Green = go / carry on. The old amber was describing
-      // the paused STATE — but amber means "caution", and there's nothing cautionary about
-      // resuming. The state is already carried by the word "Resume" and by "Stop ride"
-      // appearing alongside. Neutral "Stop ride" sits beneath it.
-      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Resume recording" style="${wide}padding:0 14px;overflow:hidden;color:#fff;background:var(--accent3);border-color:var(--accent2);${shadow}"><span style="${row}">${tri}${label('Resume ride')}</span></button>`;
-      // var(--sans), NOT var(--font): DM Mono is for numbers/metrics only. It was
-      // rendering "Stop ride" as typewriter text (Peter's screenshot).
-      stopBtn=`<button class="zbtn" id="btn-recstop" title="Stop ride" style="${wide}color:var(--text);border-color:var(--border2);font-family:var(--sans);font-weight:600;${shadow}">Stop ride</button>`;
-    } else {
-      // IDLE — say what it does. Dark .zbtn body so it sits with the other controls (the
-      // white version looked pasted on); the red dot carries the "record" meaning.
-      // Deliberately NOT a red button: RECORDING is red, and idle-vs-recording is the one
-      // distinction this button absolutely must make at a glance.
-      gpsBtn=`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${wide}color:var(--text);border-color:var(--border2);${shadow}"><span style="${row}">${dot}${label('Start ride')}</span></button>`;
-    }
-  }
+  // ── v273: THE RECORD CONTROL NO LONGER LIVES HERE. ────────────────────────────────────
+  // It moved to the bottom-LEFT, above the sharing button — see recCtrlHTML / _recBtnSync in
+  // the LOCATION SHARING section. Peter: "The start ride button can move to the left and
+  // above the location share button."
+  // Two reasons it had to LEAVE this function rather than be restyled inside it:
+  //   · A wide left-to-right text button ("Start ride") belongs on the left. In a right-hand
+  //     column it forced align-items:flex-end and dragged the square buttons' widths about —
+  //     the ctrlAlign note below is scar tissue from exactly that.
+  //   · It belongs BESIDE the sharing button, because sharing only happens while recording.
+  //     v257 said the UI must EXPLAIN that coupling and it never did; putting the two in one
+  //     column is the cheapest thing that says it.
+  // What's left in this column is the map's own furniture: fit-route and the tile toggle.
+  // NOTE the `showGPS` argument is now unused on every path. Left in place: zoomBtnsHTML and
+  // several call sites pass it, and this is an 18k-line file — an inert argument is cheaper
+  // than a sweep. Don't wire anything new to it.
+  const gpsBtn='';
+  const stopBtn='';
   // ── NO GPS BUTTON OUTSIDE THE RIDE MAP (v260e) ────────────────────────────────────
   // The Stops map used to carry a plain GPS on/off toggle. Removed at Peter's call:
   // "we should only need FIT ROUTE, MAP TYPE, SURFACE TYPE for the buttons."
@@ -10913,11 +11154,22 @@ function mapCtrlHTML(mapId,showGPS){
   // BUT: with GPS off, the ride map is a plain static map you CAN pan and zoom — and with
   // no fit button you could strand yourself with no way back. So they're hidden only while
   // a ride is actually live. The ride screen simplifies the moment you start riding.
-  const rideLive=(mapId==='live-map')&&(UI.gpsActive||UI.simRunning||!!_rec);
-  // Same square rule as the tile button: on the ride map, width:auto would make it narrower
-  // than the 52px record button sitting under it.
+  // ── v273d — FIT-ROUTE IS BACK WHILE RIDING. v245's rule reversed, at Peter's prompt
+  // ("I just noticed the fit route button has disappeared"). ──────────────────────────────
+  // v245 hid fit-route and the crosshair together while a ride was live, and the argument
+  // was really about the CROSSHAIR: the ride map already follows you, so "centre on me" has
+  // nothing to do. Fit-route got tarred with it, and it isn't the same thing — it answers
+  // "where am I on the whole route", which the map can't otherwise say at ride zoom.
+  // It is also SAFE by construction, which is what v245 under-weighted: panning is disabled
+  // and _liveFitReturnTimer snaps you back to following in ~5 s. That makes it a PEEK — one
+  // tap in, ZERO taps out, the same shape as v253's pack peek and v272's stops strip.
+  // And v273 removed the last objection by accident: with the record control moved to the
+  // left column, hiding this left the right-hand column holding a single button. It was the
+  // emptiness that made Peter notice, which is its own argument that the slot is free.
+  // The `rideLive` expression is GONE with the gate it fed — it had no other reader. The
+  // crosshair half of v245's decision stands and is documented below; only fit-route is back.
   const fitSquare=(mapId==='live-map')?'padding:0;':'width:auto;padding:0 8px;';
-  const fitBtn=rideLive?'':`<button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);${fitSquare}">⛶</button>`;
+  const fitBtn=`<button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);${fitSquare}">⛶</button>`;
   // ── NO CROSSHAIR HERE ANY MORE (v260e) ────────────────────────────────────────────
   // v245 gave the Stops map a crosshair on the argument that this map pans freely, so
   // "jump back to me" is a job fit-route can't do. Peter has now removed it, and the
@@ -13410,8 +13662,20 @@ function _adjustWeatherForElev(){
   // beside it has none at all (bottom:h). So this buys SIX pixels, not the "plenty of room"
   // it looks like on screen. It only helps because the overlap Peter is seeing is "a pixel
   // or two" — it turns that into a small gap. It is not a fix for a crowded column.
+  // v273b — the right column lands on the SAME baseline as the left one (Peter: "the OSM and
+  // Fit all buttons on the right are up high. They should be bottom aligned with the location
+  // share and weather buttons"). It was h+6, i.e. its own private copy of the maths, sitting
+  // 2px below the left column's h+8 and free to drift away from it — the exact shape the
+  // v262 note above warns about, one column over.
+  // top/transform are cleared here as well as in mapCtrlHTML: a shell built by an older
+  // version, or any future path that forgets, would otherwise resurrect the stretch bug (see
+  // the note in mapCtrlHTML). Cheap, and it makes this function correct on its own.
   const mc=document.getElementById('live-map-ctrl');
-  if(mc) mc.style.bottom=(h+6)+'px';
+  if(mc){
+    const sec=document.getElementById('live-map-section');
+    mc.style.top='auto'; mc.style.transform='none';
+    mc.style.bottom=(sec?_colBaselinePx(sec):(h+8))+'px';
+  }
   const sc=document.getElementById('rec-stop-confirm');
   if(sc) sc.style.bottom=(h+82)+'px';   // sits above the map controls
   const us=document.getElementById('rec-undo-strip');
@@ -13430,8 +13694,30 @@ function _adjustWeatherForElev(){
   // Fixing it at the three call sites would leave the same trap for the fourth. The thing
   // that MOVES the anchor is the thing that must re-anchor what hangs off it — same lesson
   // as v252's rotation, v257's peek anchor and v260's afterKm, now the fourth occurrence.
+  // v273 — I CHASED AN ORDERING BUG HERE AND THERE ISN'T ONE. Recorded because the reasoning
+  // is the useful part, and because I nearly "fixed" it.
+  // The worry: both syncs end by calling _recBtnSync, which anchors the record control to
+  // whichever button owns the slot — so calling share first IN AN EVENT looked like it would
+  // have _recBtnSync hunting for a #pack-btn that _packBtnSync hadn't built yet, remove the
+  // record control, and rebuild it a line later (restarting the .rec-pulse blink and eating
+  // taps). This call site runs share-then-pack; updateLive runs pack-then-share; two call
+  // sites disagreeing about order is this file's classic drift, so it smelled right.
+  // IT'S WRONG, and the model says so: the buttons PERSIST IN THE DOM between calls. In the
+  // steady state the other button is already there from last time, so whichever sync runs
+  // first, _recBtnSync always finds an anchor. The only rebuild is on the one transition
+  // where you join or leave an event — which is a rebuild either way round, because the
+  // anchor genuinely changes. Truth-tabled both orders, both cases.
+  // So the order is left ALONE. Don't change code for a reason that evaporates under a test
+  // (v270f's lesson: the purple that was only ever propping up a bug).
   _shareBtnSync();
   _packBtnSync();
+  // v273c — the turn box is on the same baseline, and NOTHING re-ran it when the strip
+  // moved. On a live tick updateLive→renderTurnCue fixed it within a frame, which is why it
+  // hid until Peter paused a sim and toggled the strip: "the turn box does not seem to move
+  // down when you hide the elevation profile." Fifth object to hang off this function and
+  // fifth time the answer is the same — the thing that moves an anchor re-anchors what hangs
+  // off it. Safe: _tcBoxSync only reads and writes one style.
+  _tcBoxSync();
 }
 
 // Draw the expanded elevation profile on canvas
@@ -13492,9 +13778,32 @@ function drawElevProfile(r,liveDist){
     if(e<eleMin)eleMin=e;
     if(e>eleMax)eleMax=e;
   }
-  // Add vertical padding
-  const elePad=Math.max(20,(eleMax-eleMin)*0.1);
-  eleMin-=elePad;eleMax+=elePad;
+  // ── v273c — THE PADDING IS ASYMMETRIC NOW. Peter: "There is too much gap above the
+  // elevation profile." ────────────────────────────────────────────────────────────────
+  // It was `elePad = max(20, range*0.1)` added to BOTH ends. The bottom half of that is
+  // invisible — the fill runs down to the canvas edge regardless, so a pad below only ever
+  // set how thick the fill is under the lowest point. The TOP half is the one you can see:
+  // it guaranteed the tallest peak never reached the top of its canvas. Measured, that was
+  // 11–22px of empty canvas, and it is why the gap looked bigger with the profile SHOWN than
+  // hidden — the layout gap is 8px in both cases; only the canvas headroom changes.
+  // Splitting it closes the gap AND un-squashes the profile: the relief now gets ~90% of the
+  // canvas instead of ~70%, in the same 90px, so the hills read better too.
+  const eleSpan=eleMax-eleMin;
+  const padBot=Math.max(4,eleSpan*0.06);
+  const padTop=Math.max(4,eleSpan*0.04);
+  eleMin-=padBot;eleMax+=padTop;
+  // ⚠ AND HERE IS WHY THE OLD 20m FLOOR EXISTED — don't just delete it, which is what I was
+  // about to do. On a genuinely flat section the pad is ALL there is, so with a small pad the
+  // scale would stretch a few metres of noise across the whole canvas and a dead-flat plain
+  // would render as a mountain range (or, with only a bottom pad, as a solid block).
+  // The floor belongs on the WINDOW, not on the pad: never show less than 40 m of range, and
+  // centre a flat profile inside it. A flat section then reads as flat — which is true — and
+  // a real one is no longer squashed to make room for a case it isn't in.
+  const MIN_ELE_RANGE=40;
+  if(eleMax-eleMin<MIN_ELE_RANGE){
+    const mid=(eleMax+eleMin)/2;
+    eleMin=mid-MIN_ELE_RANGE/2;eleMax=mid+MIN_ELE_RANGE/2;
+  }
   const eleRange=eleMax-eleMin||1;
   const distRange=distMax-distMin||1;
 
@@ -15259,7 +15568,7 @@ function tLiveShell(r){
                10  distance bar
                12  floating pills          <- these were burying the notifications
                20  turn cue (guidance)
-               22  sharing / pack button
+               22  sharing / pack button, and the record control above it (v273)
                30  weather bar
                ── everything above is FURNITURE. Everything below is a MESSAGE. ──
                40  notifications: drift banner, undo strip
@@ -16618,10 +16927,28 @@ function weatherBarHTML(){
   // Floating pill (collapsed) or full popup overlay (expanded)
   const alertBorder=alert?'border-color:rgba(249,115,22,0.7);animation:warnPulse 1.2s ease-in-out infinite;':'';
   if(!_weatherExpanded){
-    return`<div id="live-weather-bar" style="position:absolute;bottom:8px;left:8px;z-index:10;cursor:pointer;-webkit-tap-highlight-color:transparent;pointer-events:auto;">
-      <div style="display:inline-flex;align-items:center;gap:5px;background:${condBg};border:2px solid rgba(255,255,255,0.15);border-radius:8px;padding:4px 10px;font-family:var(--font);box-shadow:0 2px 8px rgba(0,0,0,0.4);${alertBorder}">
+    // ── v273c — LEFT-ALIGNED, IN THE LEFT COLUMN, ABOVE THE RECORD BUTTON (Peter). ─────
+    // v273 sent it RIGHT to sit alongside the sharing button and that was wrong: at x=70 it
+    // reached straight into the CENTRED turn box ("unsurprisingly the weather button almost
+    // overlaps with the next turn box"). The left column is where it belongs.
+    // These left/bottom values are only the first paint — _wxPillSync owns the real position
+    // and stacks it on #rec-ctrl, which is the one thing that knows how tall the record
+    // control currently is (52px riding, ~112px paused).
+    // ⚠ THE PILL IS NO LONGER AN ANCHOR FOR ANYTHING. It used to be measured by the sharing
+    // button, the map controls AND the turn box, none of which actually wanted the pill —
+    // they wanted the FLOOR, and the pill merely sat on it. See _colBaselinePx.
+    //
+    // NO ⚠ GLYPH — Peter: "I think the weather button is variable width depending on if it
+    // is carrying a warning or not. I think the warning state for it should just be that it
+    // flashes/pulses which it does anyway."
+    // Right on both counts. The glyph was a SECOND encoding of a state the border was already
+    // pulsing (warnPulse, still here in alertBorder), and it was the expensive one: it made
+    // the pill change WIDTH on a warning, so a control that had finally been given a fixed
+    // spot in a column would shove itself sideways at the worst possible moment. A pulse
+    // costs no space and is far harder to miss on a moving map than a 13px glyph.
+    return`<div id="live-weather-bar" style="position:absolute;bottom:8px;left:${LEFT_COL_X}px;z-index:10;cursor:pointer;-webkit-tap-highlight-color:transparent;pointer-events:auto;">
+      <div style="display:inline-flex;align-items:center;justify-content:center;background:${condBg};border:2px solid rgba(255,255,255,0.15);border-radius:8px;padding:4px 10px;font-family:var(--font);box-shadow:0 2px 8px rgba(0,0,0,0.4);${alertBorder}">
         <span style="font-size:16px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
-        ${alert?'<span style="font-size:13px;color:#f97316;">⚠</span>':''}
       </div>
     </div>`;
   }
@@ -17854,16 +18181,16 @@ function renderTurnCue(r,liveDist){
   else if(UI._tcOrangeOn){UI._tcOrangeOn=false;if(document.getElementById('live-map'))redrawMap('live-map');}
   if(blink){if(!UI._tcBlinkTimer)UI._tcBlinkTimer=setInterval(()=>{if(document.getElementById('live-map'))redrawMap('live-map');},130);}
   else stopBlink();
-  // Box position + content — align the box's BOTTOM with the weather pill's bottom (Peter).
-  const box=cue.querySelector('#tc-box');
-  const wbar=document.getElementById('live-weather-bar');
-  if(wbar){
-    const wr=wbar.getBoundingClientRect(),sr=sec.getBoundingClientRect();
-    box.style.bottom=Math.max(0,Math.round(sr.bottom-wr.bottom))+'px';
-  }else{
-    const es=document.getElementById('live-elev-strip'),elevH=es?es.offsetHeight:56;
-    box.style.bottom=(elevH+14)+'px';
-  }
+  // ── v273c — ONE BRANCH, ONE NUMBER, MEASURED FROM THE STRIP. ────────────────────────
+  // This was two branches computing DIFFERENT baselines — `sr.bottom - wr.bottom` off the
+  // weather pill, else `elevH + 14` — and which one ran depended on whether #live-weather-bar
+  // existed, i.e. on whether the forecast had loaded. That is Peter's "the turn box seems to
+  // be affected to whether a GPS signal is active or not": it wasn't the GPS, it was the
+  // weather arriving with it and swapping the box onto a different rule (+8 vs +14).
+  // It also never moved when the elevation strip closed on a PAUSED sim, because nothing
+  // re-ran this — _adjustWeatherForElev moved the anchor and left the box behind. Both are
+  // gone: _tcBoxSync is the one authority and _adjustWeatherForElev calls it.
+  _tcBoxSync();
   const gKey=turnGlyphKey(nt.type,nt.notes),gEl=cue.querySelector('#tc-glyph');
   if(gEl.dataset.k!==gKey){
     gEl.innerHTML=`<svg width="38" height="47" viewBox="12 6 112 140" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="${TURN_GLYPHS[gKey]||TURN_GLYPHS.straight}" fill="var(--turn)" stroke="#7a3406" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
@@ -18100,13 +18427,12 @@ function updateLive(){
   if(wb){
     const now2=Date.now();
     if(!wb._lastUpdate||now2-wb._lastUpdate>30000){
-      const newW=weatherBarHTML();
-      if(newW&&wb.innerHTML!==newW){
-        wb.innerHTML=newW;
-        wb._lastUpdate=now2;
-      } else if(newW){
-        wb._lastUpdate=now2;
-      }
+      // v273c — via _wxBarRender, so the rebuild re-anchors the pill it just replaced.
+      // The old `wb.innerHTML!==newW` guard is gone and wasn't doing its job anyway: the
+      // live pill carries a synced inline `bottom`, the fresh HTML carries the template's,
+      // so the two strings ALWAYS differed and it rebuilt on every 30 s pass regardless.
+      // That's what made Peter's bug periodic rather than rare.
+      if(_wxBarRender()) wb._lastUpdate=now2;
     }
   }
   // Also refresh weather cache for current GPS position
@@ -18260,6 +18586,12 @@ function updateLive(){
   // mapCtrlHTML returns a wrapper div; we extract its inner HTML and patch only
   // when changed, so this is essentially free when nothing's different.
   // (Variable name `mcCtrl` to avoid shadowing the `mc` declared above for live-map.)
+  // v273 — this block no longer has anything to do with RECORDING; the record control moved
+  // bottom-left and keeps itself fresh in _recBtnSync (same technique, its own home).
+  // v273d — nor does it have anything to do with fit-route any more: that button used to
+  // appear and disappear with `rideLive`, and now it is simply always there. What is left in
+  // this column is the TILE toggle, whose label and colour track _tileMode — so the rebuild
+  // still earns its keep, just for a smaller job than the comment above once described.
   const mcCtrl=document.getElementById('live-map-ctrl');
   if(mcCtrl){
     const newCtrlHtml = mapCtrlHTML('live-map', true);
@@ -18897,15 +19229,17 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#live-weather-bar')&&UI.tab==='live'){
     _weatherExpanded=!_weatherExpanded;
     if(_weatherCollapseTimer){clearTimeout(_weatherCollapseTimer);_weatherCollapseTimer=null;}
-    const wb=document.getElementById('live-weather-bar-wrap');
-    if(wb)wb.innerHTML=weatherBarHTML();
+    // v273c — both of these were bare innerHTML writes, so expanding or collapsing dropped
+    // the pill back into the corner AND left the sharing button, map controls and turn box
+    // anchored to the panel that had just gone (or not moved for the one that had just
+    // arrived). _wxBarRender does the rebuild and the re-anchor together.
+    _wxBarRender();
     // Auto-collapse after 30s if expanded
     if(_weatherExpanded){
       _weatherCollapseTimer=setTimeout(()=>{
         _weatherExpanded=false;
         _weatherCollapseTimer=null;
-        const wb2=document.getElementById('live-weather-bar-wrap');
-        if(wb2)wb2.innerHTML=weatherBarHTML();
+        _wxBarRender();
       },30000);
     }
     return;
