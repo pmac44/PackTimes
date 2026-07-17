@@ -1062,7 +1062,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v270';
+window.APP_VERSION='v271';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -10347,9 +10347,36 @@ function _rideHeadingDeg(pts){
   // faster than 60°/s however fast the target moves (20× sim, snap jitter).
   const dtS=Math.min(0.5,Math.max(0,(now-(UI._orientT||now))/1000));
   UI._orientT=now;
-  let stepDeg=d*Math.min(1,2*dtS);
-  const maxStep=60*dtS;
-  if(Math.abs(stepDeg)>maxStep) stepDeg=Math.sign(stepDeg)*maxStep;
+  // ── v271: EASING 2 → 5 (Peter, after riding it). ────────────────────────────────────
+  // "The jittering is long gone, and I think what is happening is that there is a left over
+  // delay or dampening function. This was to tame the jittering, but now that it is solved,
+  // this delay is giving off strange lagging map rotations." Right, and it measures out:
+  // this is a first-order filter, so the steady-state error is TURN RATE / EASE, held for
+  // the whole corner —
+  //     20°/s (an ordinary corner)  ->  8.0° behind at ease=2,  3.2° at ease=5
+  //     50°/s (a hairpin)           -> 20.0° behind at ease=2,  8.0° at ease=5
+  // and after you straighten it took 1.9 s to come within 2°, now 0.7 s.
+  // WHY IT'S SAFE TO RAISE NOW: the easing exists to smooth a NOISY target, and the target
+  // isn't noisy any more. v252 was fighting three things that have since been fixed at the
+  // cause — v257 gated the first-fix direction guess (the per-tick coin flip that made the
+  // heading flap), v257's _snapRefine cut the position error from 49 m to ~0, and v263
+  // stopped a stale _lastSnapIdx feeding the detector lies. A filter that smooths something
+  // already smooth removes nothing and costs 8°.
+  // 5, not "off": the chord still inherits a couple of degrees of snap jitter on a curve,
+  // and this is one constant — if the jitter ever returns, lower it before touching anything
+  // else. ⚠ Judge it at 1× on a real ride (v257's standing rule), never off the 20× sim.
+  const stepDeg=d*Math.min(1,5*dtS);
+  // ── v271: THE 60°/s RATE CAP IS DELETED. Both reasons for it are gone. ───────────────
+  // v252 added it so that "20× sim or snap jitter can't whip" the map. The snap jitter was
+  // fixed at the CAUSE (v257's _snapRefine + direction gating, v263's stale index), and
+  // Peter asked for the sim half to go: "I find it annoying on the sim."
+  // MEASURED before removing: a bike corners at 8–50°/s at 25 km/h across every radius from
+  // an 8 m hairpin to an 80 m sweeper. **The cap never once fired on a real ride.** It only
+  // ever engaged in the SIM, where 20× playback multiplies the rate to ~400°/s and the cap
+  // clamped it to 60 — so the sim showed a lag the road never had, which is the worst
+  // possible place for it, because the sim is where the rotation gets judged.
+  // The >120° flip rejection above is still the safety net for a genuine ±180° leg flip, and
+  // it is the one that was doing that job all along.
   UI._mapOrient=(UI._mapOrient+stepDeg+360)%360;
   return UI._mapOrient;
 }

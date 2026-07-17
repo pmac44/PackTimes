@@ -482,7 +482,38 @@ not a fix for a crowded column.
   them all"*) but it isn't an answer for the app, which currently fails by silently overlapping.
   That's the standing RIDE-SCREEN CONSOLIDATION item.
 
-### OPEN — MAP ROTATION LAGS. Peter's diagnosis, 17 July. NOT investigated, do not touch blind.
+### v271 — MAP ROTATION: THE EASING WAS THE LAG. Peter's diagnosis was right.
+
+*"The jittering is long gone… there is a left over delay or dampening function… now that it is
+solved, this delay is giving off strange lagging map rotations."* Correct, and it measures out.
+- **THE EASING IS A FIRST-ORDER FILTER, so the error is TURN RATE / EASE — held for the WHOLE
+  corner**, not a momentary thing. At the old ease=2:
+
+  | corner | true turn rate | lag @ ease 2 | lag @ ease 5 |
+  |---|---|---|---|
+  | sweeper (50 m) | 8°/s | 3.2° | 0.8° |
+  | ordinary (20 m) | 20°/s | **8.0°** | 2.0° |
+  | hairpin (8 m) | 50°/s | **20.0°** | 5.0° |
+
+  And after you straighten, catching to within 2° took **1.9 s → now 0.7 s**.
+- **WHY IT WAS SAFE TO RAISE: the target isn't noisy any more.** v252 stacked this damping to
+  fight three things that have since been fixed AT THE CAUSE — v257 gated the first-fix direction
+  guess (the per-tick coin flip that made the heading flap), v257's `_snapRefine` cut the position
+  error from 49 m to ~0, and v263 stopped a stale `_lastSnapIdx` feeding the detector lies.
+  **A filter smoothing something already smooth removes nothing and costs 8°.**
+- **ONE constant changed (2 → 5).** Not "off": the chord still inherits a couple of degrees of
+  snap jitter on a curve. **If jitter ever returns, lower this before touching anything else.**
+- **⚠ THE 60°/s RATE CAP NEVER FIRES ON A BIKE — modelled at every corner radius from 8 m to 80 m
+  at 25 km/h, the true rate is 8–50°/s.** It only ever engages in the SIM, where 20× playback
+  multiplies the rate — so it has been shaping what Peter sees in the simulator and NOTHING on the
+  road. Left in place deliberately (it costs nothing and tames a fast scrub), but don't mistake it
+  for a ride-time mechanism.
+- **The flip rejection (>120°, held 2.5 s) is untouched.** It only fires on a genuine ±180° jump,
+  which the fixed snap shouldn't now produce; harmless if it never fires, and still the safety net
+  if a leg-flip ever recurs.
+- ⚠ **STILL JUDGE IT AT 1× ON A REAL RIDE** (v257's standing rule). The numbers above are a model.
+
+### (superseded — kept for the diagnosis) MAP ROTATION LAGS. Peter, 17 July.
 
 *"The map rotation is still off. The jittering is long gone, and I think what is happening is that
 there is a left over delay or dampening function. This was to tame the jittering, but now that it
