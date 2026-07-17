@@ -768,7 +768,8 @@ basic numbers — distance, time, maybe speed."*
      right-leg bias. Omitting it is exactly what v247's builder already does for a missing sensor,
      and every decoder treats an absent field as no-data.
    · Verified: whole-file `node --check` + 9/9.
-6. **The pills should be SET SLOTS in a solid band, not floating over the map** (Peter). *"You just
+6. ~~**The pills should be SET SLOTS in a solid band**~~ **BUILT — v269** (the 3×2 cell grid; his
+   verdict: *"legibility up, beauty down"*). Original ask kept below for the argument. *"You just
    can't really see much of the map, and it's actually eating some pixels."* The argument: you pay
    for that map twice — it's unreadable behind them anyway, and the pills must be opaque to sit on
    it. The pixels come from the gaps and margins, not the map; it helps small screens most; and the

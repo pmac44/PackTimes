@@ -11074,6 +11074,16 @@ let _pendingOffRoute=null;
 //                            (which leads to a confirm strip → finalise → undo strip)
 //
 // Stops/desktop maps: the button stays a plain GPS toggle. (Recording is a Live-tab thing.)
+// v273e — "cycle" does not fit (Peter, desktop). MEASURED: `.zbtn` is 38px wide and this
+// button is padding:0 on the ride map, but "Cycle" is 39.0px of DM Mono at 13px. It fit on
+// the phone only because btnSize forces 52px there — a desktop-only overflow, which is why
+// it survived.
+// The set was also three naming schemes at once — lowercase word, uppercase abbreviations,
+// title-case words — so it's now one scheme: uppercase abbreviations, which is what a mono
+// font and the existing OSM/SAT were already asking for. Widest is TOPO at 31px, so it
+// clears a 38px button with 3.5px each side and a 52px one easily.
+// ⚠ Keep every label under ~34px of DM Mono 13px or the desktop button clips again.
+const TILE_LABELS=["OFF","OSM","SAT","CYC","TOPO"];
 function mapCtrlHTML(mapId,showGPS){
   const isStopsMobile=mapId==='stops-map'&&!IS_DESKTOP();
   const isLiveMobile=mapId==='live-map'&&!IS_DESKTOP();
@@ -11195,7 +11205,7 @@ function mapCtrlHTML(mapId,showGPS){
   return`<div class="map-ctrl" style="${pos}${ctrlAlign}" id="${mapId==='live-map'?'live-map-ctrl':''}">
     ${expandBtn}
     ${fitBtn}
-    <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${["off","OSM","SAT","Cycle","Topo"][_tileMode]}</button>
+    <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${TILE_LABELS[_tileMode]}</button>
     ${recenterBtn}
     ${gpsBtn}
     ${stopBtn}
