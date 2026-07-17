@@ -185,7 +185,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    that separates the bar from the tab bar. Same object, same treatment, both ends.
    Costs nothing: `*{box-sizing:border-box}` is global, so 58px still means 58px and
    --fpill-top stays correct. */
-.live-dist-bar{position:absolute;top:0;left:0;right:0;height:58px;background:rgba(10,15,10,0.92);border-top:1px solid rgba(255,255,255,0.10);border-bottom:1px solid rgba(255,255,255,0.22);z-index:10;}
+/* v270c — OPAQUE, matching the cells below it. Peter: "the cells are black, but the
+   distance bar is a very dark grey. I'm not sure why they are different."
+   Same cause as the cells' 0.85, one layer up: this was rgba(10,15,10,0.92), so 8% of the
+   MAP came through and greyed it. The alpha is a leftover from v258, when the bar was an
+   inset pill FLOATING on the map and had to look like it belonged there. It has been a
+   full-width band since v261 with no map around it, so the alpha stopped softening anything
+   and only made black grey. Both are now rgb(10,15,10) — they were always meant to be the
+   same colour; only the alpha differed. */
+.live-dist-bar{position:absolute;top:0;left:0;right:0;height:58px;background:rgb(10,15,10);border-top:1px solid rgba(255,255,255,0.10);border-bottom:1px solid rgba(255,255,255,0.22);z-index:10;}
 /* v261c: the row no longer runs off either end — the pitch is solved so the first
    chevron's flat back sits on x=0 and the last one's point lands on the right edge.
    overflow:hidden stays as a guard against a sub-pixel rounding overshoot; it is no
