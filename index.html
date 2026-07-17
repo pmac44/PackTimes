@@ -1074,7 +1074,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v273';
+window.APP_VERSION='v274';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1101,6 +1101,13 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   settingsExp:{sharing:false,packride:false,strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,
+  // v274 — crank length. ⚠ DELIBERATELY NOT IN uiPrefs: the PEDAL stores this, not us. A
+  // persisted copy could say 172.5 while the pedal ran on 175, and a setting that doesn't
+  // reach the hardware is a lie that silently scales every watt. Read from the pedal on
+  // connect, cleared on disconnect. See the CRANK LENGTH block in the POWER METER section.
+  crankLengthMm:null,       // what the PEDALS report (mm), null = unknown/not connected
+  powerCrankAdjust:false,   // the pedals' own Feature bit 12 — do they allow it at all
+  crankStatus:'',           // transient UI message from the last write
   simSensors:false,   // v260: desktop sim fake power/HR — never persisted, never on a phonefoodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
   // Recording state
   recId:null,recMinMoveM:null,recStopDetectMs:null,
@@ -12138,6 +12145,30 @@ document.addEventListener('click',e=>{
     if(btn){btn.textContent=UI.gpsActive?'⏹ GPS':'GPS';btn.style.color=UI.gpsActive?'var(--red)':'';btn.style.borderColor=UI.gpsActive?'rgba(248,113,113,.4)':'';}
   }
 });
+// v274 — the crank-length dropdown. A document-level 'change' listener because a <select>
+// fires change, not click, so the main click delegator can't hear it.
+document.addEventListener('change',e=>{
+  if(e.target.id!=='crank-sel')return;
+  const sel=e.target, want=parseFloat(sel.value);
+  sel.disabled=true;
+  UI.crankStatus='Writing to the pedals…';
+  const st=document.getElementById('crank-status');
+  if(st){st.textContent=UI.crankStatus;st.style.color='var(--text3)';}
+  powerSetCrankLength(want).then(got=>{
+    // The PEDALS' answer wins, not what we asked for — that's the whole point of reading it
+    // back. If they clamped or ignored it, the rider sees the truth, not our intention.
+    UI.crankLengthMm=(got!=null)?got:UI.crankLengthMm;
+    UI.crankStatus=(got!=null&&Math.abs(got-want)<0.01)
+      ? '✓ Pedals set to '+got+' mm'
+      : '⚠ The pedals report '+(got!=null?got+' mm':'nothing')+' — not the '+want+' mm asked for';
+  }).catch(err=>{
+    UI.crankStatus='⚠ '+(err&&err.message?err.message:'The write failed');
+  }).finally(()=>{
+    // Re-render so the dropdown shows what the PEDALS say. If the write failed, the select
+    // snaps back to the pedals' real value rather than sitting on a lie.
+    if(UI.tab==='settings')renderKeepScroll();
+  });
+});
 document.addEventListener('input',e=>{
   // v260 fake sensors (desktop sim). Bound here with the other desktop-map controls,
   // which live outside #content-wrap and so can't use the main delegator.
@@ -16421,7 +16452,41 @@ function tSettings(r){
     +'<span style="font-size:16px;color:var(--text3);">bpm</span>'
     +(UI.maxHr?'<button class="btn btn-sm btn-r" id="maxhr-clear">Clear</button>':'')
     +'</div></div>'
-    +hrZoneRows;
+    +hrZoneRows
+    // ── v274 — CRANK LENGTH. This SETS the pedals, it isn't a note to ourselves. ────────
+    // The whole panel is state-driven off what the pedals actually said, because the only
+    // dishonest version of this feature is one that shows a number the pedals don't have.
+    +(()=>{
+      const head='<div class="field" style="margin-top:16px;"><label class="lbl">🔧 Crank Length &mdash; '
+        +'<span class="unit">'+(UI.crankLengthMm!=null?UI.crankLengthMm+' mm':'—')+'</span></label>';
+      const why='<p style="font-size:14px;color:var(--text3);margin-bottom:8px;line-height:1.5;">'
+        +'Your pedals work out power from the force on the spindle and how fast the cranks turn &mdash; '
+        +'but force alone isn\'t power, so they need to know the crank length to do the sum. '
+        +'This writes it to the pedals, the same as a bike computer does. Change it when you move '
+        +'the pedals to a bike with different cranks.</p>';
+      if(!UI.powerConnected)
+        return head+why+'<p style="font-size:14px;color:var(--text3);">Pair a power meter first &mdash; '
+          +'this reads the setting from the pedals themselves.</p></div>';
+      if(!UI.powerCrankAdjust||!_powerCP)
+        return head+why+'<p style="font-size:14px;color:var(--amber);">'
+          +(UI.powerDeviceName||'These pedals')+' didn\'t offer a crank length setting, so it can\'t be '
+          +'changed from here. Some meters only allow it from the maker\'s own app.</p></div>';
+      // The dropdown offers the standard set; if the pedals report something off-list (a
+      // Wahoo can write any value), it's added so the current reading is never hidden from
+      // the rider just because it isn't one of ours.
+      const opts=CRANK_LENGTHS_MM.slice();
+      if(UI.crankLengthMm!=null&&!opts.includes(UI.crankLengthMm))opts.push(UI.crankLengthMm);
+      opts.sort((a,b)=>a-b);
+      return head+why
+        +'<div style="display:flex;gap:8px;align-items:center;">'
+        +'<select id="crank-sel" style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;">'
+        +opts.map(v=>'<option value="'+v+'"'+(v===UI.crankLengthMm?' selected':'')+'>'+v+' mm</option>').join('')
+        +'</select><span style="font-size:16px;color:var(--text3);">on '+(UI.powerDeviceName||'your pedals')+'</span>'
+        +'</div>'
+        +(UI.crankStatus?'<p id="crank-status" style="font-size:14px;margin-top:8px;color:'
+          +(UI.crankStatus.startsWith('✓')?'var(--accent)':'var(--amber)')+';">'+UI.crankStatus+'</p>':'')
+        +'</div>';
+    })();
 
   return`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
@@ -20460,6 +20525,94 @@ document.addEventListener('pointercancel',()=>{if(_fpillLP.timer){clearTimeout(_
 const CYCLING_POWER_SERVICE    = 0x1818;
 const CYCLING_POWER_MEASUREMENT= 0x2A63;
 let _powerDevice=null,_powerChar=null;
+
+// ═══ CRANK LENGTH (v274) ═══════════════════════════════════════════════════════════════
+// ⚠ READ THIS BEFORE TOUCHING IT — I got the reasoning half wrong first and Peter corrected
+// me, and the correction is the whole point of the feature.
+//
+// WHAT'S RIGHT: PackTimes never calculates power. The pedal does `force × crank length ×
+// angular velocity` INTERNALLY and broadcasts finished watts in the Cycling Power
+// Measurement characteristic; _parsePowerMeasurement just reads that field. So nothing in
+// this app needs a crank length to DISPLAY or RECORD power.
+// WHAT I HAD WRONG: I concluded from that "so there's nothing to enter". Peter: "the Assioma
+// pedals have to know the crank length… They only measure force and rpm which alone are not
+// enough. So they get that crank length from something. I usually use my Wahoo… and that
+// definitely has a crank length setting."
+// Exactly. The pedal needs it PRECISELY BECAUSE it does the maths — the strain gauges read
+// FORCE at the spindle, and torque = force × moment arm. Without the arm it has force and
+// rpm and no torque. It is not a passive sensor; it must be TOLD the arm, and the only way
+// it can be told is a head unit writing to the Control Point below. So if PackTimes is to
+// replace the Wahoo, it needs this — otherwise Peter keeps a Wahoo around purely to move
+// pedals between bikes. His case is real: "All my bikes are 175mm, but one is 172.5mm.
+// 165mm are becoming popular."
+// (Historical aside, because it makes the confusion reasonable: older SRM cranks really did
+// work the way Peter first guessed — crank torque frequency, head unit does the maths. The
+// BLE standard settled the other way.)
+//
+// ⚠ THIS IS A WRITE TO THE PEDAL, NOT A LOCAL PREFERENCE. That is why crankLengthMm is
+// deliberately NOT in uiPrefs: the pedal is the authority. A remembered local copy would be
+// a number that says 172.5 while the pedal quietly runs on 175 — a setting that doesn't
+// reach the hardware is a lie, and this one silently scales every watt you record.
+// So: every write is read BACK from the pedal (0x05) and the UI shows what the PEDAL says.
+// Verify, don't trust.
+const CYCLING_POWER_FEATURE       = 0x2A65;   // uint32 bitfield; bit 12 = crank length adjustable
+const CYCLING_POWER_CONTROL_POINT = 0x2A66;   // write + INDICATE
+const CRANK_LENGTHS_MM=[165,170,172.5,175,177.5,180];   // Peter: "There's only a handful… a simple dropdown list and pick one"
+const CP_OP_SET_CRANK=0x04, CP_OP_GET_CRANK=0x05, CP_OP_RESPONSE=0x20;
+// Response Values from the CPS spec. Worded for a rider, not a spec reader.
+const CP_RESP_ERR={2:'These pedals don\'t support setting the crank length',
+                   3:'The pedals rejected that length as invalid',
+                   4:'The pedals refused the change'};
+let _powerCP=null;          // the Control Point characteristic, once subscribed
+let _powerCPWaiters=[];     // in-flight requests: {op, resolve, reject, timer}
+
+// The Control Point answers by INDICATION, not by the write's return — so a request is a
+// write plus a wait for a matching Response Code. Matched on the echoed request op code, so
+// two requests in flight can't take each other's answer.
+function _cpOnIndication(e){
+  const v=e.target.value;
+  if(!v||v.byteLength<3||v.getUint8(0)!==CP_OP_RESPONSE)return;
+  const reqOp=v.getUint8(1), res=v.getUint8(2);
+  const w=_powerCPWaiters.find(x=>x.op===reqOp);
+  if(!w)return;
+  _powerCPWaiters=_powerCPWaiters.filter(x=>x!==w);
+  clearTimeout(w.timer);
+  if(res!==0x01){ w.reject(new Error(CP_RESP_ERR[res]||('The pedals answered with code '+res))); return; }
+  w.resolve(v);
+}
+function _cpRequest(bytes,expectOp){
+  if(!_powerCP)return Promise.reject(new Error('No power meter connected'));
+  return new Promise((resolve,reject)=>{
+    const w={op:expectOp,resolve,reject};
+    // A pedal that simply never answers must not hang the UI forever.
+    w.timer=setTimeout(()=>{
+      _powerCPWaiters=_powerCPWaiters.filter(x=>x!==w);
+      reject(new Error('The pedals didn\'t answer'));
+    },6000);
+    _powerCPWaiters.push(w);
+    const wr=_powerCP.writeValueWithResponse
+      ? _powerCP.writeValueWithResponse(bytes)   // Chrome 85+
+      : _powerCP.writeValue(bytes);              // older name, same thing
+    wr.catch(err=>{
+      _powerCPWaiters=_powerCPWaiters.filter(x=>x!==w);
+      clearTimeout(w.timer);
+      reject(err);
+    });
+  });
+}
+// Success response to 0x05 is [0x20, 0x05, 0x01, lo, hi] — uint16 in HALF-millimetres.
+async function powerReadCrankLength(){
+  const v=await _cpRequest(new Uint8Array([CP_OP_GET_CRANK]),CP_OP_GET_CRANK);
+  if(v.byteLength<5)return null;
+  return v.getUint16(3,true)/2;
+}
+// ⚠ HALF-MILLIMETRE UNITS — the one place this is easy to get wrong, and getting it wrong
+// would set a 172.5mm crank to 86mm and halve every watt. 172.5 × 2 = 345.
+async function powerSetCrankLength(mm){
+  const half=Math.round(mm*2);
+  await _cpRequest(new Uint8Array([CP_OP_SET_CRANK, half&0xff, (half>>8)&0xff]),CP_OP_SET_CRANK);
+  return powerReadCrankLength();   // read it back — the pedal is the authority, not us
+}
 // Rolling 3s average for display
 const _powerWindow=[];
 const POWER_SMOOTH_MS=3000;
@@ -20540,11 +20693,35 @@ async function connectPowerMeter(){
       UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;
       _powerChar=null;_powerWindow.length=0;
       _npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;
+      // v274 — the crank length belongs to the PEDAL, so it goes when the pedal goes. Showing
+      // a remembered value next to "not connected" would be claiming to know something we
+      // can no longer see.
+      _powerCP=null;_powerCPWaiters.forEach(w=>clearTimeout(w.timer));_powerCPWaiters=[];
+      UI.crankLengthMm=null;UI.powerCrankAdjust=false;UI.crankStatus='';
       if(UI.tab==='live')renderKeepScroll();
     });
     const server=await _powerDevice.gatt.connect();
     const service=await server.getPrimaryService(CYCLING_POWER_SERVICE);
     _powerChar=await service.getCharacteristic(CYCLING_POWER_MEASUREMENT);
+    // v274 — crank length, in its OWN try/catch and awaited BEFORE nothing.
+    // ⚠ It must never be able to break pairing: a meter with no Control Point, or one that
+    // refuses to answer, is a perfectly good power meter and must still connect and show
+    // watts. Every failure here is swallowed into "not adjustable".
+    try{
+      const feat=await service.getCharacteristic(CYCLING_POWER_FEATURE);
+      const fv=await feat.readValue();
+      // bit 12 = Crank Length Adjustment Supported. Ask the pedals rather than assume —
+      // if they say no, the dropdown says so instead of offering a write that will fail.
+      UI.powerCrankAdjust=!!(fv.getUint32(0,true)&(1<<12));
+    }catch(e){ UI.powerCrankAdjust=false; }
+    try{
+      _powerCP=await service.getCharacteristic(CYCLING_POWER_CONTROL_POINT);
+      // MUST subscribe before writing — the spec has the sensor answer by indication, and
+      // an unsubscribed client gets CCCD Improperly Configured rather than a response.
+      await _powerCP.startNotifications();
+      _powerCP.addEventListener('characteristicvaluechanged',_cpOnIndication);
+      UI.crankLengthMm=await powerReadCrankLength();
+    }catch(e){ _powerCP=null; UI.crankLengthMm=null; }
     _powerChar._lastCrankRevs=undefined;_powerChar._lastCrankTime=undefined;
     await _powerChar.startNotifications();
     _powerChar.addEventListener('characteristicvaluechanged',e=>{

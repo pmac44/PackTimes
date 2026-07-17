@@ -15,7 +15,59 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-### v273 (18 July) — THE BOTTOM-LEFT CORNER. The record control moves. NOT phone-tested.
+### v274 (18 July) — CRANK LENGTH. PackTimes can now set the pedals. NOT TESTED ON HARDWARE.
+
+**⚠ NEXT CODE CHANGE IS v275.** v273 is pushed and live.
+**⚠ NOTHING HERE HAS MET A REAL PEDAL. Peter has a set of Assiomas to test with — that test
+is the whole point, because the maths is verifiable from a desk and the BLE write is not.**
+
+**THE REASONING IS THE FEATURE — and I had it half wrong until Peter corrected me.**
+- **Right:** PackTimes never calculates power. The pedal does `force × crank length × angular
+  velocity` internally and broadcasts finished watts; `_parsePowerMeasurement` just reads the
+  field. Nothing here needs a crank length to DISPLAY or RECORD power.
+- **Wrong:** I concluded "so there's nothing to enter". Peter: *"the Assioma pedals have to
+  know the crank length… They only measure force and rpm which alone are not enough. So they
+  get that crank length from something. I usually use my Wahoo… and that definitely has a
+  crank length setting."* **The pedal needs it PRECISELY BECAUSE it does the maths** — strain
+  gauges read FORCE at the spindle, and torque = force × moment arm. It is not a passive
+  sensor; it must be TOLD the arm, and only a head unit can tell it. So to replace the Wahoo,
+  PackTimes needs this. His case is real: *"All my bikes are 175mm, but one is 172.5mm."*
+- Peter's own instinct (pedals send force+rpm, the app does the sum) is how **older SRM cranks
+  genuinely worked** — crank torque frequency, head unit does the maths. BLE settled the other
+  way. Worth keeping: the confusion is reasonable, not careless.
+
+**THE DESIGN RULE: THIS IS A WRITE TO THE PEDAL, NOT A LOCAL PREFERENCE.**
+- **`crankLengthMm` is deliberately NOT in `uiPrefs`.** The pedal stores it; we don't. A
+  persisted copy could read 172.5 while the pedal ran on 175 — **a setting that doesn't reach
+  the hardware is a lie, and this one silently scales every watt you record.**
+- **Every write is read BACK (`0x05`) and the UI shows what the PEDAL says**, not what we
+  asked for. If the pedals clamp or ignore the value, the rider sees the truth and a warning,
+  not our intention. Verify, don't trust.
+- **The Feature bit is asked, not assumed** (`0x2A65` bit 12 = Crank Length Adjustment
+  Supported). No bit → the panel says so instead of offering a write that will fail.
+- **It can NEVER break pairing.** A meter with no Control Point is a perfectly good power
+  meter; every failure in that path is swallowed into "not adjustable" and watts still flow.
+
+**⚠ HALF-MILLIMETRE UNITS — the one detail that would silently halve every watt.** The CPS
+Control Point takes crank length as a uint16 in **1/2 mm**. 172.5 mm → **345**, not 172.
+Truth-tabled: whole-mm would have set a 172.5 crank to 86 mm. Little-endian.
+- Subscribe to indications BEFORE writing or the sensor answers `CCCD Improperly Configured`.
+- Responses are matched on the echoed request op code, so two in flight can't take each
+  other's answer; a 6 s timeout stops a silent pedal hanging the UI.
+- `writeValueWithResponse` with a `writeValue` fallback for older Chrome.
+
+**Verified: whole-file `node --check` clean + 34/34** — every length round-trips through the
+encoder and decoder; the whole-mm error reproduced; the response protocol incl. truncated and
+foreign packets; the feature bit; the clamp case (pedal says 175 when asked for 172.5 → we
+show 175 and flag it); four ways of failing to find a Control Point, none of which break
+pairing; and an off-list length reported by the pedals is shown rather than hidden.
+
+### v273 (18 July) — PUSHED. The bottom-left corner; the record control moves. NOT ride-tested.
+
+v272 and v273 are both live (Peter pushed v273 on 18 July, after desktop-testing it round by
+round — v273b/c/d/e/f/g were all found that way). Never re-push a version.
+**Confirmed on the phone:** the v272 stops-strip tap. **Everything else is desktop-verified
+only and has never met a ride** — see the ride-test list at the foot of this entry.
 
 **v272's stops tap is CONFIRMED ON THE PHONE** (Peter: *"the stops tap works on phone"*). The
 rest of v272 still needs a ride.
@@ -280,8 +332,9 @@ floor on a just-ride; all three consumers read one baseline; the column stacks w
 overlap riding AND paused; the v273 overlap reproduced and the v273c clearance measured;
 the warning costs no width; the profile's peak and amplitude at 50/100/300m; and the flat
 case both ways, including the naive fix I was about to ship.
-**NOT phone-tested, and the turn box's absolute position wants Peter's eyes in a browser —
-I can't measure it from a screenshot (this file's own standing warning).**
+**Desktop-confirmed by Peter round by round; NOT ride-tested.** The turn box's absolute
+position was checked on his screen, not modelled — I can't measure it from a screenshot (this
+file's own standing warning) and didn't try.
 
 ### v273b — THE RIGHT COLUMN FLOATED. Peter's "something is reversed" was the whole diagnosis.
 
@@ -322,10 +375,28 @@ three by exactly the elevation strip's height; the expanded-panel ternary (and t
 counterfactual that proves it); PackRide lands the pack button on the identical pixel; all
 three record states; the no-rewrite guard; the paused stack's clearance; no forecast → no NaN;
 and both call orders, in steady state and across both transitions.
-**NOT phone-tested — open `index.html` in a browser once before `push.bat`.**
 Mockup at true size: `/outputs/bottom-left-v273.png` (idle / recording / paused).
 
-### v272 (18 July) — four off Peter's list. NOT phone-tested. The bottom-left move is v273.
+### ⚠ WHAT v273 STILL OWES A RIDE — check these first, they are all judgement calls
+
+Everything below is desktop-verified and pushed, but a desktop is not where this file's bugs
+live (five of them turned up in one session on Peter's screen; every earlier one needed a
+phone). In rough order of "most likely to be wrong":
+1. **The `#ccd6cf` moving-pill tone on the OLED** — v260's dirty-green lesson exactly: the
+   desktop LCD is not the device. `#b9c6be` is the pre-argued fallback if it's too quiet.
+2. **The moving-average pill against real stops** — needs a ride with actual stoppage before
+   the number means anything. Leg-scoped vs the speed pill's session scope may bite on a
+   multi-day plan (documented in v272).
+3. **The record control at its new address** — the thing you least want broken mid-ride. Every
+   state is byte-identical to v245, but the address is new.
+4. **The fixed cyan line at NIGHT, on satellite tiles** — the case that motivated it, and the
+   one Peter has never ridden.
+5. **The paused stack** (Resume + Stop + share + weather) on a real phone. Measured as fitting
+   with ~40px to spare; it is still the thing that breaks first on a small screen.
+6. **The stops-strip tap is the ONLY thing confirmed on a phone.** Everything else in v272/273
+   is unridden.
+
+### v272 (18 July) — PUSHED. Four off Peter's list. The bottom-left move is v273.
 
 Split deliberately: the record-button move is a refactor of the recording control, so it goes
 on its own so a pill bug and a record bug can't arrive together.
@@ -450,8 +521,8 @@ comment pairs closed, **plus 45/45 truth-table**: tap/drag/4px-wobble/6px-drag, 
 double-fire trap reproduced then fixed, the chevron through both doorways, the cycle wrapping
 and old 3-slot prefs padded not discarded, the moving average against a 4 h bivvy and a
 non-stop ride, divide-by-zero both ways, the sync's no-churn and fresh-shell cases, and the
-pointer-events resolution with all six pills off. **NOT phone-tested — open `index.html` in a
-browser once before `push.bat`.**
+pointer-events resolution with all six pills off. **PUSHED. The stops-strip tap is confirmed
+on the phone (Peter: "the stops tap works on phone"); the other three are unridden.**
 
 **Peter's own tap-the-bar probation still stands** (v264): if the distance bar doesn't land as
 the way out of freestyle, the sheet still needs a permanent doorway.
@@ -763,6 +834,34 @@ the figure styles are the very next rules.** The distance bar came apart and the
   over nothing. Dark on dark. **Fill the cell (`background-color:currentColor`) THEN punch the
   moon out of it.** Peter: "I can't see a moon at all. There's nothing in there."
 
+### OPEN BUG — a turn BEEPED with no box and no orange (Peter, 18 July, desktop sim, v273)
+
+*"some turns aren't triggering either the orange route change and there is no next turn box
+shown. There is a turn marker and there is a beep… I just restarted that route and the turn
+box came back up. So the turn markers are ok, something broke the turn box. Hmmm, I can't
+seem to break it again."*
+**Not reproduced. Noted, not chased — do not "fix" it blind.**
+
+- **THE STRUCTURAL FINDING, and it is this file's favourite shape: THERE ARE TWO INDEPENDENT
+  AUTHORITIES FOR "WHICH TURN IS NEXT", and they are computed differently.**
+  · **The BEEP** (`checkAlerts`): `r.turns.find(t => (t.dist+offKm) > UI.gpsDistKm && !t._dismissed)`
+    — a plain "next corner ahead", plus a `_dismissed` filter.
+  · **The BOX + ORANGE** (`_activeTurn`): a windowed index with the v243 demote guard, a
+    linger past the corner, and `if(idx<0) return null`. It does **not** look at `_dismissed`.
+  **A beep with no box IS the two disagreeing.** That is the symptom, exactly.
+- **"Restarting the route fixed it" points at STATE, not data** — Peter's own conclusion, and
+  it rules out his first suspicion (manually-added turns). Candidates worth checking first:
+  `r._moffM` (the marker-offset scan is CACHED ON THE ROUTE OBJECT — undefined = not scanned,
+  null = no reliable result; re-selecting the route rebuilds it, which fits the symptom),
+  `UI._tcOrangeOn`, and `_turnCuesFired` (the sim slider clears it on scrub — v238).
+- **The fix, when it's picked up, is almost certainly ONE authority**: `checkAlerts` should ask
+  `_activeTurn` which turn is live rather than running its own `find`. Then the beep, the box
+  and the orange are the same decision by construction and cannot drift. That is the change
+  every other instance of this shape has needed (v252's rotation, v257's peek anchor, v260's
+  `afterKm`, v273c's baseline).
+- ⚠ **Reproduce it BEFORE fixing it** — the standing rule. A turn cue is safety-critical and
+  the failure is intermittent, which is the worst combination to "fix" on a hypothesis.
+
 ### OPEN — the map's km markers don't counter-rotate (Peter, 17 July, minor)
 
 *"The kilometre markers do not seem to rotate so that they're always visible or readable in the
@@ -851,6 +950,8 @@ basic numbers — distance, time, maybe speed."*
 
 ### Answered, not built (17 July)
 
+- ~~**CRANK LENGTH**~~ **BUILT — v274** (untested on hardware). Original note kept below; the
+  reasoning in it is still the reasoning.
 - **CRANK LENGTH — I WAS HALF WRONG AND PETER CORRECTED ME. IT IS A REAL TO-DO.**
   · What I had right: the pedal does `force × crank length × angular velocity` INTERNALLY and sends
     finished watts, so **PackTimes never calculates power** and needs no crank length to display or
