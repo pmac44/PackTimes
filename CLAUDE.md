@@ -1003,6 +1003,43 @@ seem to break it again."*
 - ⚠ **Reproduce it BEFORE fixing it** — the standing rule. A turn cue is safety-critical and
   the failure is intermittent, which is the worst combination to "fix" on a hypothesis.
 
+### v276 — THE GRADE PILL. A road-rider's cell, and it earns its keep by market not by me.
+
+Peter: *"can we add another data cell - grade?… the grade cell could change colour to match
+the grade zone."* And the reason it exists: *"I don't really look at elevation stats on an
+ultra, but on an everyday ride, especially a road ride, many people really do."* So this is
+the **road-rider's pill** (the two-markets theme) — grade and climbs are what the Wahoo/Strava
+user watches, and pills are where a rider picks the metrics their riding cares about.
+- **TOP = current grade, its BACKGROUND the grade zone** (`gradeCol`: grey ≤0.5 / green <4 /
+  yellow <8 / orange <12 / red <20 / brown). Colour IS the data — the v260 rule that already
+  lets power/HR wear zones. Uses the same smoothed `gradeAt` as the strip + profile, so all
+  three agree. **Signed number, NO arrow** — the sign gives up/down, the colour says
+  climb-vs-flat, and an arrow overflowed the 131px cell past 10% (measured).
+- **BOTTOM = distance to the top of the current climb, METRES when close / km when far**
+  (Peter: *"should we show metres to the top and not km?"* — yes, a climb countdown reads
+  better in metres, but a long climb shouldn't say "12000"). `—` off a climb. Peter accepted
+  the dead-space cost: *"it will be dead space unless you're on a climb… it's cheap, evaluate
+  on the bike."* (Garmin/Wahoo instead trigger a whole climb SCREEN — a pill is the cheap
+  first step toward that.)
+- **The % is FULL SIZE and both halves right-align in a min-width:4ch box** — copied from the
+  stoppage pill, after Peter caught the first cut ("the numbers aren't aligned" + the 16px %
+  was "the wrong size"). Adaptive precision (1 dp under 10, whole at/above) keeps "-12%" in
+  the cell, the stoppage pill's own `fmtStopPct` rule.
+- **CLIMB DETECTION = Wahoo's rule, and Peter gave the number:** *"≥3% average grade over at
+  least 400 m."* `getClimbs` (cached): the climb body is the grade-run where the smoothed
+  grade stays ≥1% (so it's measured from the BASE of the ascent, not the route's low point);
+  short false-flats merge; a run qualifies if ANY ≥400 m sub-window averages ≥3%.
+  · ⚠ **FIRST CUT WAS TROUGH-TO-PEAK AND FOUND ZERO CLIMBS on a route that had one** — it
+    dragged in the flat before the climb and diluted the average. The grade-run fixes it.
+  · ⚠ **SECOND CUT AVERAGED THE WHOLE RUN and dropped a real 3.4% climb to 2.95%** (the eased
+    ramp at each end). Wahoo's rule is "≥3% over AT LEAST 400 m" = such a stretch EXISTS, so
+    a sliding 400 m window is the right test, not the whole-run average.
+  · Peter's own ride is a bad sample — *"a little bit of climbing, but… no official or
+    distinct climb"* — and the detector correctly finds 0 there. Validated instead on synthetic
+    profiles: 8/8 (clear climbs, a false-flat merge, a valley pair, a 400 m/5% pinch, and
+    gentle rolling correctly ignored). Threshold FEEL still owes a real ride.
+- Verified: whole-file `node --check` + 8/8 detector truth-table.
+
 ### v276 — THE GRADE READOUT DISAGREED WITH THE PROFILE. Wrong for months, Peter's real ride.
 
 *"the up or down % does not correspond to the elevation profile… I suspect there is some

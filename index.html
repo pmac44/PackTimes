@@ -13979,6 +13979,65 @@ function smEleAt(r,d){
   return sm[a]+(sm[b]-sm[a])*t;
 }
 
+// ── v276 — CLIMB DETECTION, Wahoo's definition (Peter gave the numbers). ────────────────
+// "Wahoo recognises a climb at ≥3% average grade over at least 400 m." Used by the grade
+// pill's bottom half (distance to the top of the current climb) and cached on the route.
+// You are ON THE CLIMB while the smoothed grade stays above CLIMB_CONT (1%) — so the climb is
+// measured from the BASE OF THE ASCENT, not from the route's lowest point.
+// ⚠ WHY NOT TROUGH-TO-PEAK: the first cut walked from the running low to the crest, and on a
+// rolling ride that dragged in all the flat before the climb and diluted the average below 3%
+// — it found ZERO climbs on a route that clearly had one. The grade-run measures only the
+// rising body, so the average is the climb's own.
+// CLIMB_GAP merges two runs separated by a short false-flat/dip, so one climb with a breather
+// in it isn't split into three (the "sliding scale" Peter described).
+const CLIMB_CONT=1, CLIMB_GAP_KM=0.25, CLIMB_MIN_KM=0.4, CLIMB_MIN_AVG=3;
+function getClimbs(r){
+  if(r._climbs)return r._climbs;
+  const pts=r.points,n=pts?pts.length:0;
+  if(n<3){r._climbs=[];return r._climbs;}
+  const sm=_smEleArr(r);
+  // 1. runs of points where the smoothed grade is above the "still climbing" floor
+  const runs=[];let s=-1;
+  for(let i=0;i<n;i++){
+    if(gradeAt(r,pts[i].dist)>=CLIMB_CONT){if(s<0)s=i;}
+    else if(s>=0){runs.push([s,i-1]);s=-1;}
+  }
+  if(s>=0)runs.push([s,n-1]);
+  // 2. merge runs across a short flat/dip (a breather inside one climb)
+  const merged=[];
+  for(const run of runs){
+    const prev=merged[merged.length-1];
+    if(prev && pts[run[0]].dist-pts[prev[1]].dist<CLIMB_GAP_KM) prev[1]=run[1];
+    else merged.push(run.slice());
+  }
+  // 3. keep runs that CONTAIN a ≥400 m stretch averaging ≥3% — Wahoo's rule is literally
+  //    "≥3% over AT LEAST 400 m", i.e. such a stretch EXISTS, not that the whole run averages
+  //    3%. Averaging the whole grade-run diluted a real 3.4% climb to 2.95% (the eased ramp
+  //    at each end drags it down) and dropped it. A sliding 400 m window fixes that: if any
+  //    400 m sub-window is ≥3%, the run is a climb; its extent is the full rising body.
+  const climbs=[];
+  for(const [a,b] of merged){
+    let qual=false,j=a;
+    for(let i=a;i<=b;i++){
+      if(j<i)j=i;
+      while(j<b && pts[j].dist-pts[i].dist<CLIMB_MIN_KM) j++;
+      const win=pts[j].dist-pts[i].dist;
+      if(win>=CLIMB_MIN_KM && (sm[j]-sm[i])/(win*1000)*100>=CLIMB_MIN_AVG){qual=true;break;}
+    }
+    if(qual){
+      const dist=pts[b].dist-pts[a].dist, gain=sm[b]-sm[a];
+      climbs.push({start:pts[a].dist, top:pts[b].dist, gain, avg:dist>0?gain/(dist*1000)*100:0});
+    }
+  }
+  r._climbs=climbs;return climbs;
+}
+// The climb you are currently ON (start ≤ d < top), or null. Not "the next climb" — the
+// pill only has something to say once you are climbing (Peter accepted the dead-space cost).
+function climbAt(r,d){
+  for(const c of getClimbs(r)) if(d>=c.start && d<c.top) return c;
+  return null;
+}
+
 // Compute grade segments (~50m) from route points — cached on route object.
 // v276 — the grade of each segment now comes from gradeAt (smoothed), so the map/desktop
 // grade overlays that read these segments match the ride profile too. The from/to/ele fields
@@ -14396,7 +14455,9 @@ function sortedLayers(r){
 // in this file.
 // v272 — 'mspeed' sits straight after 'speed' because it IS the speed pill with the other
 // average, and a cycle should put like next to like.
-const PILL_CYCLE=['speed','mspeed','stop','power','cad','hr','off'];
+// v276 — 'grade' sits with the other no-hardware metrics (speed/mspeed/stop), before the
+// paired sensors, because it's the road rider's metric and needs nothing plugged in.
+const PILL_CYCLE=['speed','mspeed','stop','grade','power','cad','hr','off'];
 // v260c — FIVE slots, in three columns. Peter: "we now have more pills than spots, can we
 // add some spots below the current ones, on left and right, perhaps not centre as it blocks
 // the route line." Right on the centre: the live map is heading-up, so the route runs
@@ -15567,6 +15628,50 @@ function tLiveShell(r){
                Without it this read "km/h moving", which parses as your moving SPEED, and the
                figure right above it is the actual current speed. -->
           <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">km/h moving avg.</div>
+        </div>
+      </div>`;
+    }
+    if(type==='grade'){
+      // ── v276 — THE GRADE PILL. Peter: "can we add another data cell - grade?… the grade
+      // cell could change colour to match the grade zone." And the reason it earns a slot is
+      // the market: "I don't really look at elevation stats on an ultra, but on an everyday
+      // ride, especially a road ride, many people really do." So this is the road-rider's
+      // pill — the Wahoo/Strava user who watches gradient and climbs.
+      //
+      // TOP = current grade, its BACKGROUND the grade zone (gradeCol) — colour IS the data
+      // here, exactly the v260 rule that lets power/HR wear zone colour. Descents grey, per
+      // Wahoo. Uses the SAME smoothed gradeAt as the strip and the profile, so all three agree.
+      // BOTTOM = distance to the top of the current climb (Wahoo ≥3%/400m, see getClimbs).
+      // ⚠ Peter accepted the known cost: "it will be dead space unless you're on a climb…
+      // it's cheap, evaluate on the bike." What Garmin/Wahoo do instead is trigger a whole
+      // climb SCREEN; a pill is the cheap version and a possible step toward that later.
+      const gr=cur();
+      const gLive=(gr&&gr.points&&gr.points.length>1&&UI.gpsDistKm!=null);
+      const g=gLive?gradeAt(gr,UI.gpsDistKm):0;
+      const gBg=gLive?gradeCol(g):'#555';
+      const gDark=(gBg==='#4ade80'||gBg==='#fbbf24');      // light zones -> black text
+      // Signed grade, NO arrow: the sign gives up/down and the zone colour already says
+      // climb-vs-flat. The % is FULL SIZE and part of the string, exactly like the stoppage
+      // pill's "0.5%" (Peter: the small 16px % was "the wrong size"). Both halves use the
+      // stoppage pill's min-width:4ch right-align, so they line up (Peter: "not aligned").
+      // Adaptive precision, the stoppage pill's own rule (fmtStopPct): 1 decimal under 10,
+      // whole number at/above, so a steep "-12%" stays inside the cell.
+      const gTxt=gLive?((Math.abs(g)<0.05?'0.0':Math.abs(g)<10?g.toFixed(1):String(Math.round(g)))+'%'):'—';
+      // v276 — METRES when close, km when far (Peter: "should we show metres not km?"). A
+      // climb countdown reads better in metres, but a long climb shouldn't say "12000".
+      const clb=gLive?climbAt(gr,UI.gpsDistKm):null;
+      const toKm=clb?Math.max(0,clb.top-UI.gpsDistKm):null;
+      const toTxt=toKm==null?'—':(toKm<1?String(Math.round(toKm*100)*10):toKm.toFixed(1));
+      const toLbl=(toKm!=null&&toKm<1)?'m to top':'km to top';
+      const F='display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;font-family:var(--font);';
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-grade">
+        <div id="live-grade-top" style="padding:5px 8px 3px;${gLive?`background:${gBg};`:''}">
+          <div style="line-height:1.0;"><span style="${F}color:${gDark?'#000':'#fff'};" id="live-grade-cur">${gTxt}</span></div>
+          <div style="font-size:11px;font-weight:400;color:${gDark?'#000':'#fff'};font-family:var(--sans);line-height:1.1;">grade</div>
+        </div>
+        <div style="background:#eef3ee;padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="${F}color:#101510;" id="live-grade-totop">${toTxt}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;" id="live-grade-tolbl">${toLbl}</div>
         </div>
       </div>`;
     }
@@ -18785,6 +18890,28 @@ function updateLive(){
     const mvH=L?(L.movingMs/3600000):0;
     const mv=(L&&L.movingMs>60000&&mvH>0&&L.distKm>0)?(L.distKm/mvH).toFixed(1):'—';
     if(mAvgEl.textContent!==mv)mAvgEl.textContent=mv;
+  }
+  // ── v276 — the GRADE pill, patched live: grade text, its zone colour, and distance-to-top.
+  // Same-fn note as the strip: the colour under the profile dot IS this number by construction.
+  const gCurEl=document.getElementById('live-grade-cur');
+  if(gCurEl){
+    const gLive=(r.points&&r.points.length>1&&UI.gpsDistKm!=null);
+    const g=gLive?gradeAt(r,UI.gpsDistKm):0;
+    const gBg=gLive?gradeCol(g):'#555';
+    const gDark=(gBg==='#4ade80'||gBg==='#fbbf24');
+    const gTxt=gLive?((Math.abs(g)<0.05?'0.0':Math.abs(g)<10?g.toFixed(1):String(Math.round(g)))+'%'):'—';
+    if(gCurEl.textContent!==gTxt){gCurEl.textContent=gTxt;}
+    if(gCurEl._c!==gDark){gCurEl._c=gDark;gCurEl.style.color=gDark?'#000':'#fff';}
+    const top=document.getElementById('live-grade-top');
+    if(top){const bg=gLive?gBg:'';if(top._bg!==bg){top._bg=bg;top.style.background=bg;
+      const lbl=top.querySelector('div:last-child');if(lbl)lbl.style.color=gDark?'#000':'#fff';}}
+    const totop=document.getElementById('live-grade-totop'),tolbl=document.getElementById('live-grade-tolbl');
+    if(totop){const clb=gLive?climbAt(r,UI.gpsDistKm):null;
+      const km=clb?Math.max(0,clb.top-UI.gpsDistKm):null;
+      const t=km==null?'—':(km<1?String(Math.round(km*100)*10):km.toFixed(1));
+      const l=(km!=null&&km<1)?'m to top':'km to top';
+      if(totop.textContent!==t)totop.textContent=t;
+      if(tolbl&&tolbl.textContent!==l)tolbl.textContent=l;}
   }
   // Update power/hr spans similarly (textContent on the span is safe since unit is a sibling)
   // Update floating power pill value (if visible)
