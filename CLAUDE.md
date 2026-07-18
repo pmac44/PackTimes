@@ -17,8 +17,11 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 
 ### v274 (18 July) — CRANK LENGTH. PackTimes sets the pedals. CONFIRMED ON REAL ASSIOMAS.
 
-**⚠ NEXT CODE CHANGE IS v275.** v273 is pushed and live; v274 was pushed and hardware-tested
-the same day (see v274b — it works). **PackTimes can now replace the Wahoo for this job.**
+**⚠ NEXT CODE CHANGE IS v275.** v272, v273 and v274 (incl. v274b) are all PUSHED and live.
+v274 is hardware-tested on Peter's Assiomas the same day — see v274b, it works. **PackTimes
+can now replace the Wahoo for this job.** Crank length is the ONLY thing in v272–v274 that is
+confirmed on real hardware; the stops-strip tap is confirmed on a phone; everything else on
+the ride screen is desktop-verified only and still owes a ride.
 
 **THE REASONING IS THE FEATURE — and I had it half wrong until Peter corrected me.**
 - **Right:** PackTimes never calculates power. The pedal does `force × crank length × angular
@@ -1130,7 +1133,51 @@ is solved, this delay is giving off strange lagging map rotations."*
   any of them — the rate cap and the flip rejection are cheap to disable independently, the easing
   is not.
 
-### OPEN BUG — the map paints BLACK until you touch it (Peter, desktop small map AND mobile)
+### v275 (18 July) — THE BLACK MAP IS FIXED. It was the SIM, and Peter's zoom clue found it.
+
+**~~OPEN BUG — the map paints BLACK until you touch it~~ SOLVED.** The old entry is kept below
+because the hypothesis in it was WRONG and the way it died is the useful part.
+
+**MY THEORY WAS A ZERO-WIDTH CANVAS** (`drawMap`'s W had no fallback and no zero-guard, unlike
+H's `||220` and unlike `drawElevProfile`'s `if(W<10)return` ten lines away). It was tidy, it
+had two corroborating tells, **and it was wrong.** I had written the guard when Peter said:
+*"zoom works, and it is VERY zoomed in when broken. I kept zooming out and out and slowly the
+top of the route appeared. So maybe it was zoomed in on some last point perhaps."*
+**If zooming out reveals the route, the canvas was drawing perfectly all along.** The grey was
+real OSM tiles over empty countryside. The guard was reverted unbuilt. **A blank map and a map
+pointed at nowhere look identical, and I picked the wrong one.**
+
+**THE REAL CAUSE — two copies of one rule, and only one of them got the line.**
+```
+startGPS:  _userZoomed=false; _autoZoomed=false; _fitted=false;   ← has it
+simStart:  _userZoomed=false; _autoZoomed=false;                  ← MISSING
+```
+`redrawMap` gates follow-GPS on exactly that flag:
+`if(gpsOn && !st._fitted && !_packPeekOn()) → followGPS:true, else → followGPS:false`.
+Open the Ride tab with GPS off → the map fits the route → `_fitted=true`. Press play in the
+sim → `gpsOn` is true but so is `_fitted` → **the else branch → the map never follows.**
+- **⚠ IT IS THE CENTRE, NOT THE ZOOM — I claimed the zoom was stale and the truth-table
+  refused it.** simStart DID clear both zoom flags, so auto-zoom fires and the zoom is
+  *correct*: ride zoom, ~150 m across. That zoom is then applied to **the route's BOUNDING-BOX
+  MIDDLE**, which on any bent route isn't even on the line. 150 m of empty paddock is the grey
+  screen, and it is exactly why Peter had to zoom a long way out before the route edged in.
+  **Clearing the zoom flags alone never could have fixed this. Only `_fitted` does.**
+- **Both of Peter's clues fall out of the one cause:** a PAN sets `_fitted=false`, so the next
+  redraw finally follows and "route, background etc" all appear; and the route was never gone,
+  just off-screen.
+- **⚠ WHY IT SURVIVED: `startGPS` has the line, so it is INVISIBLE ON A REAL RIDE and fires
+  every single time in the desktop sim** — the one place this file gets tested most. Peter's
+  *"I've always got to sort of touch it"* was always the sim.
+- Fixed as `_liveFollowReset()`, called by both. **Don't inline it back** — this bug is what
+  two copies of three lines costs.
+- Verified **22/22**, reproducing the grey screen in the model BEFORE proving the fix (the
+  standing rule): the sim path never follows and never recovers; the real-ride path is
+  byte-identical to before; a rider who has pinched keeps their zoom; no-fix-yet falls back to
+  the fitted route rather than crashing; and v273d's fit-route peek still works and still
+  snaps back.
+
+### OPEN BUG (SOLVED in v275 — see above; the hypothesis below was wrong, kept for the lesson)
+### the map paints BLACK until you touch it (Peter, desktop small map AND mobile)
 
 *"I've always got to sort of touch it and maybe trigger a slight pan for it to draw… as soon as
 you touch or move anything, it just appears."* **Not diagnosed — hypothesis only, do not "fix"

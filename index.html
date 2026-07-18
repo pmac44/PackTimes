@@ -1074,7 +1074,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v274';
+window.APP_VERSION='v275';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3918,9 +3918,7 @@ function _doStartGPS(){
   // KEEP the index only when resuming a recording that already has history — that IS the
   // crash-recovery case the restore was built for. A fresh startRecording has points:[].
   if(!(_rec && _rec.points && _rec.points.length > 1)) UI._lastSnapIdx = null;
-  const liveState=ms('live-map');
-  liveState._userZoomed=false;liveState._autoZoomed=false;
-  liveState._fitted=false; // exit fitted/overview mode so GPS handler follows the dot
+  _liveFollowReset();   // v275 — was three lines here; simStart had two of them. See the note.
 
   // Ride average: check if GPS restarting after a significant gap
   const now=Date.now();
@@ -8981,9 +8979,11 @@ function simStart(){
   }
   UI.simPaused=false;
   UI.gpsActive=true;
-  // Reset auto-zoom for live (small) map only — don't touch desktop big map state
-  const liveState=ms('live-map');
-  liveState._userZoomed=false;liveState._autoZoomed=false;
+  // v275 — THIS IS WHERE THE BLACK MAP CAME FROM. It reset the two zoom flags and not
+  // _fitted, so the sim started a ride the live map never followed. Same call as startGPS
+  // now, so the two cannot drift again — don't inline it back.
+  // (Still live-map only: the desktop big map is a planning map and keeps its own view.)
+  _liveFollowReset();
   updateGPSPill();
   // Calculate interval from timestamps or use fixed 1s between points
   function step(){
@@ -9731,6 +9731,41 @@ document.addEventListener('keydown',e=>{
 // Per-canvas zoom/pan state
 const _ms={};
 function ms(id){if(!_ms[id])_ms[id]={zoom:1,cx:null,cy:null};return _ms[id];}
+
+// ── v275 — "A RIDE IS STARTING, SO THE LIVE MAP MUST FOLLOW THE RIDER." ONE authority. ──
+// THE BUG (Peter, 18 July, and his own observation is what found it): the ride map came up
+// blank — no route, no tiles, just grey — and stayed blank until he panned it. Zooming out
+// revealed the route, which is what killed my first theory (a zero-width canvas drawing
+// nothing) and pointed at the truth: the map was drawing perfectly, hard-zoomed onto empty
+// space. The grey was real OSM tiles over nowhere.
+// THE CAUSE: `redrawMap` gates follow-GPS on `!st._fitted` —
+//     if(gpsOn && !st._fitted && !_packPeekOn()) drawMap(… followGPS:true …)
+//     else                                       drawMap(… followGPS:false …)
+// Open the Ride tab with GPS off and the map fits the route, which sets `_fitted = true`.
+// Press play and `gpsOn` is now true — but `_fitted` still is too, so it takes the ELSE
+// branch and NEVER follows. A pan clears `_fitted`, so the next redraw finally follows and
+// the whole map appears — exactly what Peter saw.
+// ⚠ IT IS THE CENTRE, NOT THE ZOOM. I claimed the zoom was stale and the truth-table refused
+// it: simStart DID clear the two zoom flags, so auto-zoom fires and the zoom is CORRECT —
+// ride zoom, ~150 m across. That zoom is then applied to the ROUTE'S BOUNDING-BOX MIDDLE,
+// which on any bent route isn't even on the line. 150 m of empty countryside is Peter's grey
+// screen, and it's why he had to zoom a long way out before "the top of the route appeared".
+// So clearing the zoom flags alone never could have fixed this; only _fitted does.
+// ⚠ WHY THIS SURVIVED SO LONG: startGPS cleared `_fitted` and simStart did not. So it is
+// invisible on a real ride and reproduces every time in the desktop sim — the one place this
+// file gets tested most. Two copies of one rule, drifting; the shape this file keeps paying
+// for. Hence a function, not a fourth copy of three lines.
+// All THREE flags matter and they do different jobs:
+//   _fitted     — gates follow-GPS in redrawMap (the centre)
+//   _autoZoomed — lets updateLive snap state.zoom to UI.gpsZoom on the first fix (the zoom)
+//   _userZoomed — ...unless the rider has pinched, in which case their zoom is respected
+// Clearing only the last two, as simStart did, fixes the zoom and leaves the map parked.
+function _liveFollowReset(){
+  const st=ms('live-map');
+  st._userZoomed=false;
+  st._autoZoomed=false;
+  st._fitted=false;
+}
 
 // Tile overlay mode (shared across all maps)
 let _tileMode=1; // 0=off 1=OSM 2=SAT 3=CyclOSM 4=Topo
