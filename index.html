@@ -10912,7 +10912,37 @@ function _rideHeadingDeg(pts){
   // 5, not "off": the chord still inherits a couple of degrees of snap jitter on a curve,
   // and this is one constant — if the jitter ever returns, lower it before touching anything
   // else. ⚠ Judge it at 1× on a real ride (v257's standing rule), never off the 20× sim.
-  const stepDeg=d*Math.min(1,5*dtS);
+  // ── v276e — THE EASE FOLLOWS THE SIM'S CLOCK. Peter: "there seems to be a delay or a cap
+  // or something… It seems to rotate too slowly in a turn and it takes a while after the turn
+  // to align with the route. It's probably more an issue on the sim." ────────────────────
+  // He's right, and it is ONLY a sim issue. This is a first-order filter that closes per
+  // WALL-CLOCK second, while the sim moves the rider — and therefore the target bearing — N
+  // times faster than real time. So the lag multiplies by the playback rate.
+  // ⚠ MEASURED, because my first estimate was wrong and worth recording. The steady-state
+  // lag is TURN RATE / EASE, which at 20x would be 80° — but a 20x corner NEVER REACHES
+  // steady state: it lasts 0.225 s of wall clock, about two frames. Simulated frame by frame:
+  //     ordinary corner (20°/s)        hairpin (50°/s)
+  //     1x    1.8° behind               4.5°       <- the road. Invisible; v271 called it fixed.
+  //     20x  32.7°, + 0.44 s catch-up  49.5°, + 0.55 s   <- the sim's DEFAULT, what Peter watched
+  // Smaller than the steady-state maths suggests, and still exactly what he described: the
+  // map lags through the corner and then you watch it come around afterwards.
+  // Scaling the ease by the playback rate makes every speed track the target at least as well
+  // as the road does — which is the sim's whole job, to show you the ride, not the playback.
+  // Above 1x the step simply clamps to 1 and the map follows the target exactly. That is
+  // correct rather than a cheat: the target is smooth (v252's interpolated chord), so there
+  // is nothing left to filter, and at 20x a corner IS two frames — no filter can show a
+  // smooth sweep through it.
+  // ⚠ THE CLOCK, AGAIN. v259 wrote the rule after the fourth occurrence — "ANY ride-time
+  // measurement must ask the sim for the time" — and this dt never did. Fifth occurrence.
+  // Deliberately NOT _simElapsedMs: that accrues per STEP, so it is flat during a tween and
+  // would freeze the rotation between points and then jump. The multiplier keeps the smooth
+  // wall-clock dt and just re-scales it, which is the same thing without the staircase.
+  // The dtS clamp above (0.5 s) still catches a backgrounded tab; at 20x it also means a very
+  // slow frame simply snaps to the target, which is correct — the target is smooth (v252's
+  // interpolated chord), so there is nothing to filter, only noise that no longer exists.
+  const simMult=(UI.simRunning||UI.simPaused)
+    ? Math.max(1,+(document.getElementById('sim-speed')?.value||1)) : 1;
+  const stepDeg=d*Math.min(1,5*simMult*dtS);
   // ── v271: THE 60°/s RATE CAP IS DELETED. Both reasons for it are gone. ───────────────
   // v252 added it so that "20× sim or snap jitter can't whip" the map. The snap jitter was
   // fixed at the CAUSE (v257's _snapRefine + direction gating, v263's stale index), and
@@ -18353,6 +18383,35 @@ function fmtTurnDist(m){
 // unioned into ONE shape, filled white + one dark stroke). Generated offline; coords in a
 // 130x150 space with the rider dot at (65,132). renderTurnCue picks one by turn type and
 // scales it. Do NOT hand-edit the path data — regenerate from _planning/gen (shapely).
+// ── v276d — PER-GLYPH viewBox ORIGIN. The frame is the same SIZE; only its y moves. ─────
+// Peter: "the run arrow is too far down in the turn box. It looks weird, probably made worse
+// by the larger arrows because now there is even less gap." Right on both halves.
+// WHY: every glyph is BOTTOM-ANCHORED — the rider dot sits at y=132 — so the ink hangs at
+// the bottom of the shared 6..146 frame and ALL the empty space is above it. Centring the
+// FRAME therefore renders the INK low, and by wildly different amounts, because the glyphs
+// fill the frame so unevenly:
+//     straight 0.6px low · right 8.2px · SHARP RIGHT 11.6px   (in a 66px box)
+// And v276c's 1.4x scaled the empty space along with everything else, so it made the drop
+// 40% worse. The frame's shared origin is another v241 leftover: it existed so the dot stayed
+// pinned to the rider on the MAP. In a box the dot anchors nothing.
+// ⚠ THE SIZE IS DELIBERATELY UNCHANGED (still 112x140). Cropping the frame to each glyph's
+// ink would centre it too AND make every arrow fill the box — but the scale would then differ
+// per glyph, so the 3.5-unit stroke would render at a different WEIGHT on each one, and the
+// sharp turn gets wide enough to spill out of the box (mocked, /outputs/turn-glyph-fit.png
+// row C). Moving the origin centres the ink and costs nothing.
+// ⚠ GENERATED FROM THE PATHS — y = inkCentre − 70, with the 3.5 stroke included. If a glyph's
+// path is ever edited, REGENERATE these; a stale value here silently mis-centres that one
+// arrow. (Same rule as TURN_GLYPHS itself: don't hand-edit.)
+const TURN_GLYPH_VB={
+  straight   :'12 7.2 112 140',
+  slightLeft :'12 14.2 112 140',
+  left       :'12 23.5 112 140',
+  sharpLeft  :'12 30.6 112 140',
+  slightRight:'12 14.2 112 140',
+  right      :'12 23.5 112 140',
+  sharpRight :'12 30.5 112 140',
+  uturn      :'12 17.5 112 140',
+};
 const TURN_GLYPHS={
   straight:'M 79.5 32.0 65.0 13.0 50.5 32.0 59.5 32.0 59.5 124.3 56.6 127.5 55.5 132.0 56.2 135.6 58.3 138.7 60.5 140.4 64.1 141.5 67.8 141.1 71.0 139.3 73.4 136.5 74.5 132.9 73.8 128.4 72.3 126.0 70.5 124.3 70.5 32.0 79.5 32.0 Z',
   slightLeft:'M 55.5 29.9 31.8 26.8 34.9 50.5 41.3 44.1 53.2 56.2 56.3 60.7 58.3 65.7 59.5 74.1 59.5 124.3 57.7 126.0 56.2 128.4 55.5 132.9 56.6 136.5 59.0 139.3 62.2 141.1 65.9 141.5 69.5 140.4 71.7 138.7 73.4 136.5 74.5 132.9 73.8 128.4 72.3 126.0 70.5 124.3 70.3 69.8 69.0 62.8 67.7 59.2 64.1 52.4 59.2 46.4 49.1 36.3 55.5 29.9 Z',
@@ -18545,10 +18604,14 @@ function renderTurnCue(r,liveDist){
   _tcBoxSync();
   const gKey=turnGlyphKey(nt.type,nt.notes),gEl=cue.querySelector('#tc-glyph');
   if(gEl.dataset.k!==gKey){
-    // v276c — 38x47 -> 53x66. Same viewBox, same aspect, same stroke weight: this is a pure
-    // 1.40x, so every glyph keeps its size RELATIVE to the others and only grows into the
-    // box's own padding. See the .tc-glyph rule for why the box doesn't grow with it.
-    gEl.innerHTML=`<svg width="53" height="66" viewBox="12 6 112 140" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="${TURN_GLYPHS[gKey]||TURN_GLYPHS.straight}" fill="var(--turn)" stroke="#7a3406" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
+    // v276c — 38x47 -> 53x66. Same frame SIZE, same aspect, same stroke weight: a pure 1.40x,
+    // so every glyph keeps its size relative to the others and only grows into the box's own
+    // padding. See the .tc-glyph rule for why the box doesn't grow with it — and for the
+    // flex-shrink:0 without which none of this happens at all.
+    // v276d — the frame's ORIGIN is now per-glyph (TURN_GLYPH_VB) so the INK is centred
+    // rather than the frame. Same size, so the scale and the stroke are untouched.
+    const vb=TURN_GLYPH_VB[gKey]||TURN_GLYPH_VB.straight;
+    gEl.innerHTML=`<svg width="53" height="66" viewBox="${vb}" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="${TURN_GLYPHS[gKey]||TURN_GLYPHS.straight}" fill="var(--turn)" stroke="#7a3406" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
     gEl.dataset.k=gKey;
   }
   const distEl=cue.querySelector('#tc-dist'),roadEl=cue.querySelector('#tc-road');
