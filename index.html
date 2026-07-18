@@ -156,7 +156,28 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-next-in{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);}
 .turn-cue{position:absolute;inset:0;z-index:20;pointer-events:none;}
 .tc-box{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:rgba(18,22,26,0.82);border-radius:var(--r-card);padding:9px 18px 9px 14px;box-shadow:0 3px 14px rgba(0,0,0,0.45);}
-.tc-box .tc-glyph{flex:0 0 auto;display:flex;width:40px;justify-content:center;}
+/* v276c — THE ARROW USES THE BOX'S PADDING. Peter: "the arrow could be taller."
+   Measured, and he's right twice over:
+   · The glyph was 47px because that MATCHES THE TEXT COLUMN (30px distance + 14px road ≈ 48),
+     and the text is what sets the box height. So 9px of padding sat above and below it,
+     unused, and the arrow was sized to a neighbour rather than to its own box.
+   · Worse, the glyphs do NOT fill their shared frame equally. The 140-unit viewBox is sized
+     for `straight` (132 units of ink, 94%); a SHARP turn is only 85 units, 61%. So a sharp
+     right rendered 28.7px of ink in a 47px slot while a straight arrow got 44.3px — which is
+     exactly the screenshot Peter sent. The shared frame is a leftover from v241, when the
+     glyph was an OVERLAY and the rider dot had to stay pinned to the same spot on the map.
+     In a box nothing needs that.
+   ⚠ THE MARGIN IS WHAT KEEPS THE BOX THE SAME SIZE, and it is not cosmetic: without it a
+   66px flex item makes the line 66 and the box 84. -9px top/bottom cancels the padding, so
+   the outer height is 48 — the text's height — and the box stays at 66 while the arrow
+   renders 66 and bleeds into the padding. Same trick horizontally: the SVG is 53 wide in a
+   40px slot, so it spills ~6px each side into the 14px padding and the 14px gap.
+   REJECTED — cropping each glyph to its own ink (mocked, /outputs/turn-glyph-fit.png, row C).
+   It makes every arrow fill the box, but the scale then differs per glyph, so the 3.5-unit
+   stroke renders at a DIFFERENT WEIGHT on each one — three arrows, three line weights — and
+   the sharp turn gets wide enough to spill out of the box entirely. Uniform growth keeps the
+   set coherent. If it's ever revisited, the lever is scaling stroke-width inversely. */
+.tc-box .tc-glyph{flex:0 0 auto;display:flex;width:40px;justify-content:center;margin:-9px 0;}
 .tc-box .tc-txt{display:flex;flex-direction:column;line-height:1.05;}
 /* Turn distance is a live countdown (250→240→230 m), so it wants DM Mono: every digit is the
    same width, so the number can't shuffle sideways as it ticks. (v243 had this on --sans because
@@ -18512,7 +18533,10 @@ function renderTurnCue(r,liveDist){
   _tcBoxSync();
   const gKey=turnGlyphKey(nt.type,nt.notes),gEl=cue.querySelector('#tc-glyph');
   if(gEl.dataset.k!==gKey){
-    gEl.innerHTML=`<svg width="38" height="47" viewBox="12 6 112 140" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="${TURN_GLYPHS[gKey]||TURN_GLYPHS.straight}" fill="var(--turn)" stroke="#7a3406" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
+    // v276c — 38x47 -> 53x66. Same viewBox, same aspect, same stroke weight: this is a pure
+    // 1.40x, so every glyph keeps its size RELATIVE to the others and only grows into the
+    // box's own padding. See the .tc-glyph rule for why the box doesn't grow with it.
+    gEl.innerHTML=`<svg width="53" height="66" viewBox="12 6 112 140" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="${TURN_GLYPHS[gKey]||TURN_GLYPHS.straight}" fill="var(--turn)" stroke="#7a3406" stroke-width="3.5" stroke-linejoin="round"/></svg>`;
     gEl.dataset.k=gKey;
   }
   const distEl=cue.querySelector('#tc-dist'),roadEl=cue.querySelector('#tc-road');
