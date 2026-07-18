@@ -118,25 +118,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    in-between frames — so there is no pink midpoint and the change is actually noticeable.
    Sits mostly on the brighter red and dips briefly to the darker one: reads as a blink,
    not a throb, and both ends are unambiguously RED. */
-/* ── v276 — THE SYMBOL BLINKS, THE BUTTON HOLDS STILL. Peter's idea. ────────────────────
-   "the symbol on the button pulsing/blinking and leaving the background and border alone —
-   the two vertical bars on the record would blink from red to white, and the location symbol
-   would blink from black to green."
-   Right, and it's the v245 rule made cleaner: red is reserved for the button's FILL, so the
-   fill (and border) now stay rock-solid and only the MARK carries the "live" state. It also
-   kills the last of the salmon-pink flash — nothing large changes colour any more.
-   steps(1,end), not a smooth fade: the record blink is red<->white, and a smooth tween of
-   those two passes through PINK at the midpoint (the exact thing v245 fought). A discrete
-   flip has no midpoint, so no pink, and it reads as a crisp indicator blink on all three. */
+/* ── v276 — THE SYMBOL BREATHES, THE BUTTON HOLDS STILL. Peter's idea, refined. ─────────
+   First cut: "the symbol on the button pulsing/blinking and leaving the background and border
+   alone." Right instinct — red is reserved for the button's FILL (v245), so the fill and
+   border stay rock-solid and only the MARK carries the "live" state. But a hard steps() BLINK
+   read as a FAULT, not activity (Peter: "they suggest something is wrong, not just that
+   something is happening. A flashing red is almost always a warning").
+   That's the indicator convention: a hard on/off square wave is the ALARM waveform (hazard
+   lights, error LEDs), while a slow smooth BREATHE that never fully disappears is the
+   alive/working waveform (a sleep light, a charging phone). Same organ, opposite meaning.
+   So: ease-in-out, ~2 s, and OPACITY floored at 0.4 so the mark dims but never vanishes
+   (absence reads as "off/broken"). Opacity is colour-agnostic, which is why all three share
+   ONE keyframe and need no per-button colour tricks.
+   ⚠ The record's white bars over the red body will tint slightly PINK at the dim end — Peter
+   accepted that ("we'll deal with the pink if need be"). If it reads as a warning after all,
+   raise the record's floor or breathe a red GLOW behind steady-white bars instead. */
 .rec-pulse{background:var(--red2);}                 /* body stays solid red */
-.rec-pulse svg rect{animation:recpulse 1.4s steps(1,end) infinite;}
-@keyframes recpulse{0%,60%{fill:#fff;}61%,100%{fill:var(--red2);}}  /* red = the button's own bg, so the bars vanish then return */
-/* Sharing button: the location symbol blinks green<->gone; the green border/body hold. */
-@keyframes shbPulse{0%,60%{color:var(--accent);}61%,100%{color:transparent;}}
-/* Pack button: same, in PackRide yellow. #pack-btn svg picks up currentColor (CSS beats the
-   icon's inline fill) so the mark + placing follow the button's animated colour. */
-#pack-btn svg{fill:currentColor;}
-@keyframes pkbPulse{0%,60%{color:#fde047;}61%,100%{color:transparent;}}
+.rec-pulse svg,
+#share-btn.pulse svg,
+#pack-btn.pulse svg,#pack-btn.pulse span{animation:symBreathe 2s ease-in-out infinite;}
+@keyframes symBreathe{0%,100%{opacity:1;}50%{opacity:.4;}}
 /* While the pack peek is open, the top quarter of the screen IS the map — every
    floating overlay in that band stands down (flagged in the 15 Jul design). */
 .pack-peeking .live-fpill,.pack-peeking #live-dist-bar,.pack-peeking .map-ctrl,
@@ -354,15 +355,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-dist-fig{display:inline-flex;align-items:baseline;}
 /* NO GREY on the unit (v260, Peter: "we actually can't read that grey km/h… I'd just
    use black and white. I wouldn't use the grey."). It inherits its figure's colour. */
-.live-dist-unit{font-size:15px;font-weight:400;font-family:var(--sans);margin-left:5px;}
-/* v276 — the LEFT figure's unit stacks "stage" over "km" (Peter: "leg km" is clear but
-   collides with the mission tab's leg; "stage" is the cycling word for a day's segment and
-   the figure IS leg-scoped, v270). It sits in the space above the "km" — no wider than the
-   bare "km" was, so it can't reach the centre "km ridden" stack.
-   set() wraps the unit in .live-dist-unit; the stacked content is .stage-inner INSIDE it, so
-   the layout targets the inner span (a 2-line column) and lets the outer keep its margin. */
-.live-dist-unit .stage-inner{display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1.08;font-size:11px;}
-.live-dist-unit .stage-inner b{font-weight:600;color:var(--accent);}
+.live-dist-unit{font-size:15px;font-weight:400;font-family:var(--sans);margin-left:5px;position:relative;}
+/* v276 — the LEFT figure says "stage km" (Peter: "leg km" is clear but collides with the
+   mission tab's leg; "stage" is the cycling word for a day's segment, and the figure IS
+   leg-scoped, v270). ⚠ FIRST CUT MISALIGNED: a 2-line flex column baseline-aligned its FIRST
+   line ("stage") to the figure, dropping "km" below the baseline where it clipped.
+   The fix: the unit is just "km" — baseline-identical to the to-go "km", untouched — and
+   "stage" floats ABOVE it as an ABSOLUTELY-positioned tag. Absolute = it adds no width, so it
+   can neither move the km nor reach the centre "km ridden" stack; it just fills the empty
+   space above the km that Peter pointed at. */
+.live-dist-unit .stage-tag{position:absolute;bottom:100%;left:0;font-size:11px;font-weight:600;line-height:1;color:var(--accent);white-space:nowrap;}
 /* NOT FOLLOWING A ROUTE (no route loaded, or the rider tapped "Stop following this route").
    The chevrons and the "to go" figure are route-scoped fictions here, so both go; the band
    collapses to its numbers row and the left figure becomes the odometer. Driven by
@@ -3082,7 +3084,7 @@ const DIST_DONE_UNIT='km';
 // v276 — the stacked "stage / km" unit for the LEFT figure while following a route. It is
 // HTML (set() escapes nothing), and the .stage class turns .live-dist-unit into a 2-line
 // column that occupies the space ABOVE the "km" — same footprint as the old bare "km".
-const DIST_STAGE_UNIT='<span class="stage-inner"><b>stage</b>km</span>';
+const DIST_STAGE_UNIT='<span class="stage-tag">stage</span>km';
 // v276 — the no-route slot says what it IS, because it is not the same quantity as the one
 // above. See the note in _distBarSync's !following branch. Kept beside DIST_DONE_UNIT so the
 // two are visibly a pair and nobody "tidies" them back into one.
@@ -7263,7 +7265,8 @@ function _shareBtnSync(){
                off   :['rgba(157,184,157,.35)','#6a8a6a']}[st];
     el.style.border = '2px solid ' + C[0];
     el.style.color = C[1];
-    el.style.animation = st === 'live' ? 'shbPulse 1.4s steps(1,end) infinite' : 'none';
+    el.style.animation = 'none';
+    el.classList.toggle('pulse', st === 'live');   // v276 — CSS breathes the svg (see .pulse)
     el.style.boxShadow = 'none';
     el.innerHTML = SHARE_BTN_ICON + (st === 'off'
       ? '<span style="position:absolute;width:34px;height:3px;background:#6a8a6a;border-radius:2px;transform:rotate(-45deg);"></span>' : '');
@@ -7770,11 +7773,10 @@ function _packBtnSync(){
   const key = place + (live ? 'L' : '') + _w;
   if(el._packKey !== key){
     el._packKey = key;
-    el.style.animation = live ? 'pkbPulse 1.4s steps(1,end) infinite' : 'none';
-    // v276 — placing is currentColor so it blinks WITH the mark; the button's own color
-    // (#fde047, set in cssText) drives both, and pkbPulse animates that color.
+    el.style.animation = 'none';
+    el.classList.toggle('pulse', !!live);          // v276 — CSS breathes the svg + placing
     el.innerHTML = _packMark(mark)
-      + (place ? '<span style="font-size:' + lbl + 'px;font-family:var(--font);font-weight:600;color:currentColor;line-height:1;">' + place + '</span>' : '');
+      + (place ? '<span style="font-size:' + lbl + 'px;font-family:var(--font);font-weight:600;color:#fde047;line-height:1;">' + place + '</span>' : '');
   }
   _recBtnSync();   // the record control hangs off this button's rect — see the chain note
 }

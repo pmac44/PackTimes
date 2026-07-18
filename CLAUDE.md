@@ -213,6 +213,11 @@ The ride map's buttons are 52 there only because `btnSize` forces it; on desktop
 back to `.zbtn`'s native **38**. So the constant was right on one device and wrong on the one
 he was looking at. `_leftColW()` now asks — and it is a FUNCTION, not a const, because
 `IS_DESKTOP()` can change on a resize and a const is evaluated once at load.
+- **THE PACK PLACING IS NOW SMALL, and Peter accepts the trade with eyes open:** *"with me
+  asking for the packride button to be the same size as all the others, it has lost its
+  ability to show placings at a glance, but I think that is ok… In an ultra you don't change
+  positions often at all, and it is only a press away to show the positions list."* So don't
+  "fix" the placing back to a bigger button — size-consistency won that on purpose.
 - **The pack button was the tight one, and Peter called it before I measured** (*"the location
   share icon has room, the packride icon might not"*). It is the only button in the column
   carrying TWO things — the mark AND your placing. Measured against a 38px button's 34px of
