@@ -178,6 +178,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    the sharp turn gets wide enough to spill out of the box entirely. Uniform growth keeps the
    set coherent. If it's ever revisited, the lever is scaling stroke-width inversely. */
 .tc-box .tc-glyph{flex:0 0 auto;display:flex;width:40px;justify-content:center;margin:-9px 0;}
+/* ⚠ v276c — WITHOUT THIS THE WHOLE CHANGE DOES NOTHING, and it took Peter looking at it to
+   catch me: "im not seeing a difference." He was right and the build was lying.
+   .tc-glyph is display:flex with a fixed 40px width, so the SVG inside it is a FLEX ITEM —
+   and flex-shrink defaults to 1. A 53px-wide SVG in a 40px container therefore gets shrunk
+   straight back to 40px, and preserveAspectRatio then fits the artwork to that width, so the
+   ink rendered 50px instead of 66. A 6% change. Invisible, exactly as he said.
+   I had written a comment describing the glyph spilling into the padding and never wrote the
+   one property that permits it. THE RULE: a fixed width on a flex CONTAINER does not stop its
+   child shrinking — only flex-shrink:0 on the CHILD does.
+   Same shape as v270e's inline background-size: I spent the effort re-deriving the number and
+   none of it on asking whether the declaration was winning. */
+.tc-box .tc-glyph svg{flex-shrink:0;}
 .tc-box .tc-txt{display:flex;flex-direction:column;line-height:1.05;}
 /* Turn distance is a live countdown (250→240→230 m), so it wants DM Mono: every digit is the
    same width, so the number can't shuffle sideways as it ticks. (v243 had this on --sans because
