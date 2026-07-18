@@ -13928,7 +13928,61 @@ function gradeColAbs(g){
 }
 function gradeArrow(g){return g>0.5?'↗':g<-0.5?'↘':'→';}
 
-// Compute grade segments (~50m) from route points — cached on route object
+// ── v276 — ONE GRADE, SMOOTHED, USED EVERYWHERE. Peter, from a real ride: "the up or down %
+//    does not correspond to the elevation profile… I suspect the reading is from the
+//    unsmoothed data. It's quite important. I suspect it has been wrong for some time." ─────
+// He is exactly right. There were TWO grade systems and they disagreed:
+//   · the READOUT (getGradeSegs) — RAW elevation over a ~50 m segment
+//   · the drawn PROFILE            — SMOOTHED elevation (0.15 km) over a 300 m window
+// So the number was raw-and-short while the picture was smoothed-and-long: on noisy DEM data
+// a 50 m raw step reads 6% where the real trend is 1%. Now both go through gradeAt() and
+// agree by construction.
+// _smEleArr caches the ±0.15 km smoothed elevation per point (the DEM-staircase fix), via a
+// two-pointer window so it's O(n), not O(n²).
+function _smEleArr(r){
+  if(r._smEle)return r._smEle;
+  const pts=r.points,n=pts?pts.length:0,sm=new Float64Array(n),R=0.15;
+  let lo=0,hi=0,sum=0;
+  for(let i=0;i<n;i++){
+    while(hi<n&&pts[hi].dist-pts[i].dist<=R){sum+=(pts[hi].ele||0);hi++;}     // extend forward edge
+    while(pts[i].dist-pts[lo].dist>R){sum-=(pts[lo].ele||0);lo++;}            // drop points now behind the window
+    sm[i]=(hi>lo)?sum/(hi-lo):(pts[i]?.ele||0);
+  }
+  r._smEle=sm;return sm;
+}
+// The smoothed grade at any distance d: the slope of the SMOOTHED elevation across ±0.15 km,
+// which is precisely what the profile draws. Interpolates the cached smoothed elevation at
+// d-0.15 and d+0.15, clamped at the route ends.
+function gradeAt(r,d){
+  const pts=r.points;if(!pts||pts.length<2)return 0;
+  const sm=_smEleArr(r),R=0.15,last=pts.length-1,d0=pts[0].dist,dN=pts[last].dist;
+  const eAt=x=>{
+    if(x<=d0)return sm[0];
+    if(x>=dN)return sm[last];
+    let a=0,b=last;while(b-a>1){const m=(a+b)>>1;if(pts[m].dist<x)a=m;else b=m;}
+    const t=(x-pts[a].dist)/((pts[b].dist-pts[a].dist)||1);
+    return sm[a]+(sm[b]-sm[a])*t;
+  };
+  const xb=Math.max(d0,d-R),xf=Math.min(dN,d+R),dx=(xf-xb)*1000;
+  return dx>0?(eAt(xf)-eAt(xb))/dx*100:0;
+}
+// The smoothed elevation at a distance — for the readout's "m asl", so it matches the height
+// the dot sits at on the smoothed profile line (raw asl disagreed with the line for the same
+// reason the grade did).
+function smEleAt(r,d){
+  const pts=r.points;if(!pts||!pts.length)return 0;
+  const sm=_smEleArr(r),last=pts.length-1;
+  if(d<=pts[0].dist)return sm[0];
+  if(d>=pts[last].dist)return sm[last];
+  let a=0,b=last;while(b-a>1){const m=(a+b)>>1;if(pts[m].dist<d)a=m;else b=m;}
+  const t=(d-pts[a].dist)/((pts[b].dist-pts[a].dist)||1);
+  return sm[a]+(sm[b]-sm[a])*t;
+}
+
+// Compute grade segments (~50m) from route points — cached on route object.
+// v276 — the grade of each segment now comes from gradeAt (smoothed), so the map/desktop
+// grade overlays that read these segments match the ride profile too. The from/to/ele fields
+// are unchanged; only `grade` is now the smoothed value.
 function getGradeSegs(r){
   if(r._gradeSegs)return r._gradeSegs;
   const pts=r.points;if(!pts||pts.length<2){r._gradeSegs=[];return r._gradeSegs;}
@@ -13942,9 +13996,9 @@ function getGradeSegs(r){
     if(j>=pts.length)j=pts.length-1;
     const endDist=pts[j].dist;
     const endEle=pts[j].ele||0;
-    const dx=(endDist-startDist)*1000; // metres
-    const dy=endEle-startEle;
-    const grade=dx>0?(dy/dx*100):0;
+    // v276 — grade is now the SMOOTHED value at the segment's midpoint, not raw over 50 m,
+    // so every consumer (map overlay, desktop, and anything reading segs) matches the profile.
+    const grade=gradeAt(r,(startDist+endDist)/2);
     segs.push({from:startDist,to:endDist,ele:startEle,eleEnd:endEle,grade});
     i=j;
   }
@@ -13957,11 +14011,11 @@ function buildElevStrip(r,liveDist){
   const pts=r.points;
   if(!pts||pts.length<2)return'';
   // Current elevation and grade at liveDist
-  const idx=cidx(r,liveDist);
-  const curEle=Math.round(pts[idx].ele||0);
-  const segs=getGradeSegs(r);
-  const curSeg=segs.find(s=>liveDist>=s.from&&liveDist<=s.to)||segs[0];
-  const curGrade=curSeg?curSeg.grade:0;
+  // v276 — READ THE SMOOTHED GRADE + ELEVATION AT THE EXACT RIDER DISTANCE, so the readout
+  // matches the profile drawn right above it (Peter's real-ride bug). Was raw ele + a 50 m
+  // raw-grade segment; both now go through the same smoothing the profile uses.
+  const curEle=Math.round(smEleAt(r,liveDist));
+  const curGrade=gradeAt(r,liveDist);
   const arrow=gradeArrow(curGrade);
   const gc=gradeColAbs(curGrade);
   // Climbed so far vs total
@@ -14149,18 +14203,13 @@ function drawElevProfile(r,liveDist){
   const xOf=d=>(d-distMin)/distRange*W;
   const yOf=e=>H-(e-eleMin)/eleRange*(H-8)-4; // 4px top/bottom margin
 
-  // Fill gradient-coloured area using smoothed elevations so colours match the visual profile
-  // Grade window must be wider than smoothing radius (0.15km) to capture real gradients
-  const gradeR=0.15; // ±150m each side = 300m window
+  // v276 — colour each point by gradeAt() — the SAME smoothed grade the readout shows — so
+  // the colour under the rider dot IS the number in the strip below (Peter's bug: they were
+  // computed two different ways and disagreed). This also caches the smoothing, so the
+  // profile no longer re-derives a 300 m window per point on every redraw.
   const ptCols=[];
   for(let pi=0;pi<visPts.length;pi++){
-    let j0=pi,j1=pi;
-    while(j0>0&&visPts[pi].dist-visPts[j0-1].dist<gradeR)j0--;
-    while(j1<visPts.length-1&&visPts[j1+1].dist-visPts[pi].dist<gradeR)j1++;
-    const dx=(visPts[j1].dist-visPts[j0].dist)*1000;
-    const dy=smEle[j1]-smEle[j0];
-    const g=dx>0?(dy/dx*100):0;
-    ptCols.push(gradeCol(g));
+    ptCols.push(gradeCol(gradeAt(r,visPts[pi].dist)));
   }
   // Draw grade-coloured fill from profile line down to bottom.
   // Always extend to both canvas edges (x=0 and x=W) to avoid gaps.

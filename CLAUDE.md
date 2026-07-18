@@ -1003,6 +1003,34 @@ seem to break it again."*
 - ⚠ **Reproduce it BEFORE fixing it** — the standing rule. A turn cue is safety-critical and
   the failure is intermittent, which is the worst combination to "fix" on a hypothesis.
 
+### v276 — THE GRADE READOUT DISAGREED WITH THE PROFILE. Wrong for months, Peter's real ride.
+
+*"the up or down % does not correspond to the elevation profile… I suspect there is some
+averaging and smoothing of the profile but the actual reading is from the unsmoothed data.
+It's quite important. I suspect it has been wrong for some time."* Exactly right on every
+count.
+- **THERE WERE TWO GRADE SYSTEMS.** The READOUT (`getGradeSegs`) used RAW elevation over a
+  ~50 m segment; the drawn PROFILE (`drawElevProfile`) used SMOOTHED elevation (0.15 km) over
+  a 300 m window. Raw-and-short vs smoothed-and-long — they cannot agree on DEM data.
+- **Measured on his FIT: mean disagreement 0.81%, worst 5.8%, and at km 13 the raw grade even
+  had the WRONG SIGN** (−0.8% down while the real trend was +2.0% up). A 50 m raw step across
+  DEM staircase noise is nearly meaningless.
+- **THE FIX: one smoothed grade, `gradeAt(r,d)`, used everywhere.** `_smEleArr` caches the
+  ±0.15 km smoothed elevation per point (two-pointer, O(n)); `gradeAt` is the slope of that
+  across ±0.15 km — precisely what the profile draws. Now:
+  · the readout calls `gradeAt(r, liveDist)`,
+  · the profile colours each point with `gradeAt(r, ptDist)`,
+  so **the colour under the rider dot IS the number in the strip — identical by construction**,
+  not merely close. `getGradeSegs`' grade is now `gradeAt(midpoint)` too, so the map/desktop
+  grade overlays match as well. `smEleAt` does the same for "m asl" so it matches the height
+  the dot sits at on the smoothed line.
+- Free perf: the profile no longer re-derives a 300 m window per point every redraw; it reads
+  the cache.
+- ⚠ The line SHAPE still uses the profile's own visible-window `smEle` — identical to the
+  cache at the dot (mid-window), differs only at the off-screen window edges. Not worth
+  unifying; the number-vs-colour agreement is what mattered.
+- Verified against his FIT's real elevation (`_planning/fit-spike/_tmp_grade.mjs`).
+
 ### v276 (18 July) — THE KM LABELS COUNTER-ROTATE. The fix was already in the file.
 
 Peter, 17 July: *"The kilometre markers do not seem to rotate so that they're always visible or
