@@ -118,12 +118,25 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    in-between frames — so there is no pink midpoint and the change is actually noticeable.
    Sits mostly on the brighter red and dips briefly to the darker one: reads as a blink,
    not a throb, and both ends are unambiguously RED. */
-.rec-pulse{animation:recpulse 1.4s steps(1,end) infinite;}
-@keyframes recpulse{0%,72%{background:var(--red2);}73%,100%{background:var(--red3);}}
-/* Sharing button (ride screen): slow pulse while genuinely transmitting */
-@keyframes shbPulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.5);}70%{box-shadow:0 0 0 12px rgba(74,222,128,0);}100%{box-shadow:0 0 0 0 rgba(74,222,128,0);}}
-/* Pack button: same pulse in PackRide yellow — the button IS the sharing indicator in an event */
-@keyframes pkbPulse{0%{box-shadow:0 0 0 0 rgba(253,224,71,.45);}70%{box-shadow:0 0 0 12px rgba(253,224,71,0);}100%{box-shadow:0 0 0 0 rgba(253,224,71,0);}}
+/* ── v276 — THE SYMBOL BLINKS, THE BUTTON HOLDS STILL. Peter's idea. ────────────────────
+   "the symbol on the button pulsing/blinking and leaving the background and border alone —
+   the two vertical bars on the record would blink from red to white, and the location symbol
+   would blink from black to green."
+   Right, and it's the v245 rule made cleaner: red is reserved for the button's FILL, so the
+   fill (and border) now stay rock-solid and only the MARK carries the "live" state. It also
+   kills the last of the salmon-pink flash — nothing large changes colour any more.
+   steps(1,end), not a smooth fade: the record blink is red<->white, and a smooth tween of
+   those two passes through PINK at the midpoint (the exact thing v245 fought). A discrete
+   flip has no midpoint, so no pink, and it reads as a crisp indicator blink on all three. */
+.rec-pulse{background:var(--red2);}                 /* body stays solid red */
+.rec-pulse svg rect{animation:recpulse 1.4s steps(1,end) infinite;}
+@keyframes recpulse{0%,60%{fill:#fff;}61%,100%{fill:var(--red2);}}  /* red = the button's own bg, so the bars vanish then return */
+/* Sharing button: the location symbol blinks green<->gone; the green border/body hold. */
+@keyframes shbPulse{0%,60%{color:var(--accent);}61%,100%{color:transparent;}}
+/* Pack button: same, in PackRide yellow. #pack-btn svg picks up currentColor (CSS beats the
+   icon's inline fill) so the mark + placing follow the button's animated colour. */
+#pack-btn svg{fill:currentColor;}
+@keyframes pkbPulse{0%,60%{color:#fde047;}61%,100%{color:transparent;}}
 /* While the pack peek is open, the top quarter of the screen IS the map — every
    floating overlay in that band stands down (flagged in the 15 Jul design). */
 .pack-peeking .live-fpill,.pack-peeking #live-dist-bar,.pack-peeking .map-ctrl,
@@ -342,6 +355,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 /* NO GREY on the unit (v260, Peter: "we actually can't read that grey km/h… I'd just
    use black and white. I wouldn't use the grey."). It inherits its figure's colour. */
 .live-dist-unit{font-size:15px;font-weight:400;font-family:var(--sans);margin-left:5px;}
+/* v276 — the LEFT figure's unit stacks "stage" over "km" (Peter: "leg km" is clear but
+   collides with the mission tab's leg; "stage" is the cycling word for a day's segment and
+   the figure IS leg-scoped, v270). It sits in the space above the "km" — no wider than the
+   bare "km" was, so it can't reach the centre "km ridden" stack.
+   set() wraps the unit in .live-dist-unit; the stacked content is .stage-inner INSIDE it, so
+   the layout targets the inner span (a 2-line column) and lets the outer keep its margin. */
+.live-dist-unit .stage-inner{display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1.08;font-size:11px;}
+.live-dist-unit .stage-inner b{font-weight:600;color:var(--accent);}
 /* NOT FOLLOWING A ROUTE (no route loaded, or the rider tapped "Stop following this route").
    The chevrons and the "to go" figure are route-scoped fictions here, so both go; the band
    collapses to its numbers row and the left figure becomes the odometer. Driven by
@@ -3018,7 +3039,11 @@ function _distBarSync(){
   // v270: DONE is now distance into TODAY'S LEG, so it agrees with the chevrons above it
   // and with the to-go beside it. All three read the same ride. On a route with no sleeps
   // legStartKmOf returns 0 and this is exactly what it always was.
-  set(document.getElementById('live-dist-done'),fmtDistKm(Math.max(0,liveDist-legStartKmOf(r,liveDist))),DIST_DONE_UNIT);
+  // v276 — the LEFT figure says WHAT it is: distance into today's STAGE, not distance ridden.
+  // Peter: "how far along this particular route are we? It is not how far you have ridden."
+  // The centre already carries "km ridden" (the odometer), so a bare "km" here was the
+  // ambiguous one of the two. Stacked "stage / km" in the same slot the bare "km" used.
+  set(document.getElementById('live-dist-done'),fmtDistKm(Math.max(0,liveDist-legStartKmOf(r,liveDist))),DIST_STAGE_UNIT);
   set(document.getElementById('live-dist-left'),fmtDistKm(legToGoKm(r,liveDist)),'km');
   // v261e — RIDDEN distance in the centre. This is the ONE place the route-vs-ridden
   // difference is legible, and v258 called it: "if the route-vs-ridden distinction needs
@@ -3054,6 +3079,10 @@ function _distBarSync(){
 // distance ("actual"), where both numbers are visible at once and the difference means
 // something.
 const DIST_DONE_UNIT='km';
+// v276 — the stacked "stage / km" unit for the LEFT figure while following a route. It is
+// HTML (set() escapes nothing), and the .stage class turns .live-dist-unit into a 2-line
+// column that occupies the space ABOVE the "km" — same footprint as the old bare "km".
+const DIST_STAGE_UNIT='<span class="stage-inner"><b>stage</b>km</span>';
 // v276 — the no-route slot says what it IS, because it is not the same quantity as the one
 // above. See the note in _distBarSync's !following branch. Kept beside DIST_DONE_UNIT so the
 // two are visibly a pair and nobody "tidies" them back into one.
@@ -7234,7 +7263,7 @@ function _shareBtnSync(){
                off   :['rgba(157,184,157,.35)','#6a8a6a']}[st];
     el.style.border = '2px solid ' + C[0];
     el.style.color = C[1];
-    el.style.animation = st === 'live' ? 'shbPulse 1.6s ease-out infinite' : 'none';
+    el.style.animation = st === 'live' ? 'shbPulse 1.4s steps(1,end) infinite' : 'none';
     el.style.boxShadow = 'none';
     el.innerHTML = SHARE_BTN_ICON + (st === 'off'
       ? '<span style="position:absolute;width:34px;height:3px;background:#6a8a6a;border-radius:2px;transform:rotate(-45deg);"></span>' : '');
@@ -7741,9 +7770,11 @@ function _packBtnSync(){
   const key = place + (live ? 'L' : '') + _w;
   if(el._packKey !== key){
     el._packKey = key;
-    el.style.animation = live ? 'pkbPulse 1.6s ease-out infinite' : 'none';
+    el.style.animation = live ? 'pkbPulse 1.4s steps(1,end) infinite' : 'none';
+    // v276 — placing is currentColor so it blinks WITH the mark; the button's own color
+    // (#fde047, set in cssText) drives both, and pkbPulse animates that color.
     el.innerHTML = _packMark(mark)
-      + (place ? '<span style="font-size:' + lbl + 'px;font-family:var(--font);font-weight:600;color:#fde047;line-height:1;">' + place + '</span>' : '');
+      + (place ? '<span style="font-size:' + lbl + 'px;font-family:var(--font);font-weight:600;color:currentColor;line-height:1;">' + place + '</span>' : '');
   }
   _recBtnSync();   // the record control hangs off this button's rect — see the chain note
 }
