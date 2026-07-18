@@ -1105,9 +1105,22 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   // persisted copy could say 172.5 while the pedal ran on 175, and a setting that doesn't
   // reach the hardware is a lie that silently scales every watt. Read from the pedal on
   // connect, cleared on disconnect. See the CRANK LENGTH block in the POWER METER section.
-  crankLengthMm:null,       // what the PEDALS report (mm), null = unknown/not connected
+  crankLengthMm:null,       // what the PEDALS report RIGHT NOW (mm). null = not connected, so unknown.
   powerCrankAdjust:false,   // the pedals' own Feature bit 12 — do they allow it at all
   crankStatus:'',           // transient UI message from the last write
+  // ── v274b — THE LAST READING. A RECORD, NOT A SETTING. Peter's fix, and it's a better
+  // distinction than the one I built with. ─────────────────────────────────────────────
+  // v274 cleared everything on disconnect and showed "—", on the rule that a remembered
+  // crank length is a lie. Peter: "I went back to the app and there seemed to be no crank
+  // length set. It was ---- I think?" — and he's right that the message is wrong. "—" reads
+  // as NOTHING IS SET when the truth is THE PEDALS AREN'T HERE TO ASK.
+  // His suggestion — "crank length read at 172.5mm xxx hrs/minutes ago" — resolves it,
+  // because a TIMESTAMP converts a claim about the present into a fact about the past:
+  //   "the crank length is 172.5"          — only true while connected. A lie otherwise.
+  //   "the pedals said 172.5, 32 min ago"  — true forever, and useful when they're away.
+  // So THESE three persist (they're history) while crankLengthMm above does not (it's a
+  // live reading). The panel must never present the record as the current setting.
+  crankLastMm:null, crankLastAt:null, crankLastDev:null,
   simSensors:false,   // v260: desktop sim fake power/HR — never persisted, never on a phonefoodSubTab:'food',gearFilter:'all',elevExpanded:false,routeOverlay:'off',elevZoomKm:0,
   // Recording state
   recId:null,recMinMoveM:null,recStopDetectMs:null,
@@ -1202,7 +1215,11 @@ async function saveAll(){
   await DB.setKV('dbxExpiresAt',UI.dbxExpiresAt||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode}).catch(()=>{});
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,
+    // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
+    // live reading of the hardware and must die with the connection. These three are history
+    // and are only ever shown with their timestamp. See the note in STATE.
+    crankLastMm:UI.crankLastMm||null,crankLastAt:UI.crankLastAt||null,crankLastDev:UI.crankLastDev||null}).catch(()=>{});
   dbxScheduleSave();
 }
 async function loadAll(){
@@ -1235,6 +1252,12 @@ async function loadAll(){
       if(prefs.gpsZoom!==undefined)UI.gpsZoom=prefs.gpsZoom;
       if(prefs.weatherSpacingKm!==undefined)UI.weatherSpacingKm=prefs.weatherSpacingKm;
       if(prefs.ftp)UI.ftp=prefs.ftp;
+      // v274b — the last crank reading survives a restart, because it's a record of what the
+      // pedals said, not a claim about what they hold now. crankLengthMm is deliberately NOT
+      // restored: with no pedals connected we don't know it, and saying so is the point.
+      if(prefs.crankLastMm!=null)UI.crankLastMm=prefs.crankLastMm;
+      if(prefs.crankLastAt)UI.crankLastAt=prefs.crankLastAt;
+      if(prefs.crankLastDev)UI.crankLastDev=prefs.crankLastDev;
       if(prefs.maxHr)UI.maxHr=prefs.maxHr;
       if(Array.isArray(prefs.hiddenMapTypes))UI.hiddenMapTypes=new Set(prefs.hiddenMapTypes);
       if(prefs.osmOpts)UI.osmOpts=prefs.osmOpts;
@@ -16457,16 +16480,29 @@ function tSettings(r){
     // The whole panel is state-driven off what the pedals actually said, because the only
     // dishonest version of this feature is one that shows a number the pedals don't have.
     +(()=>{
+      // ⚠ v274b — THE HEADER STATES A LIVE VALUE ONLY WHEN THERE IS ONE. Connected, the
+      // number IS the pedals' current setting. Disconnected, "—" was wrong (it reads as
+      // "nothing is set" — Peter hit exactly that), and a bare remembered number would be
+      // worse: it would claim to know something we can't see. The last READING, with its
+      // timestamp, is the honest third option.
+      const live=UI.powerConnected&&UI.crankLengthMm!=null;
       const head='<div class="field" style="margin-top:16px;"><label class="lbl">🔧 Crank Length &mdash; '
-        +'<span class="unit">'+(UI.crankLengthMm!=null?UI.crankLengthMm+' mm':'—')+'</span></label>';
+        +'<span class="unit">'+(live?UI.crankLengthMm+' mm':(UI.crankLastMm!=null?'last read '+UI.crankLastMm+' mm':'not read yet'))+'</span></label>';
+      // The record, shown only when the pedals aren't here to speak for themselves.
+      const record=(UI.crankLastMm!=null&&UI.crankLastAt)
+        ? '<p style="font-size:14px;color:var(--text2);margin-bottom:8px;line-height:1.5;">'
+          +'Read <strong>'+UI.crankLastMm+' mm</strong> from '+(UI.crankLastDev||'your pedals')
+          +' <strong>'+_viewAgo(UI.crankLastAt)+'</strong>. The pedals hold this setting, not PackTimes — '
+          +'pair them to see or change it.</p>'
+        : '';
       const why='<p style="font-size:14px;color:var(--text3);margin-bottom:8px;line-height:1.5;">'
         +'Your pedals work out power from the force on the spindle and how fast the cranks turn &mdash; '
         +'but force alone isn\'t power, so they need to know the crank length to do the sum. '
         +'This writes it to the pedals, the same as a bike computer does. Change it when you move '
         +'the pedals to a bike with different cranks.</p>';
       if(!UI.powerConnected)
-        return head+why+'<p style="font-size:14px;color:var(--text3);">Pair a power meter first &mdash; '
-          +'this reads the setting from the pedals themselves.</p></div>';
+        return head+why+(record||'<p style="font-size:14px;color:var(--text3);">Pair a power meter '
+          +'&mdash; this reads the setting from the pedals themselves.</p>')+'</div>';
       if(!UI.powerCrankAdjust||!_powerCP)
         return head+why+'<p style="font-size:14px;color:var(--amber);">'
           +(UI.powerDeviceName||'These pedals')+' didn\'t offer a crank length setting, so it can\'t be '
@@ -20601,10 +20637,18 @@ function _cpRequest(bytes,expectOp){
   });
 }
 // Success response to 0x05 is [0x20, 0x05, 0x01, lo, hi] — uint16 in HALF-millimetres.
+// v274b — every reading is STAMPED here, in the one function that ever hears from the
+// pedals, so the record can't drift from what they actually said. Both callers (connect and
+// the read-back after a write) go through this.
 async function powerReadCrankLength(){
   const v=await _cpRequest(new Uint8Array([CP_OP_GET_CRANK]),CP_OP_GET_CRANK);
   if(v.byteLength<5)return null;
-  return v.getUint16(3,true)/2;
+  const mm=v.getUint16(3,true)/2;
+  UI.crankLastMm=mm;
+  UI.crankLastAt=Date.now();
+  UI.crankLastDev=UI.powerDeviceName||(_powerDevice&&_powerDevice.name)||'your pedals';
+  saveAll().catch(()=>{});
+  return mm;
 }
 // ⚠ HALF-MILLIMETRE UNITS — the one place this is easy to get wrong, and getting it wrong
 // would set a 172.5mm crank to 86mm and halve every watt. 172.5 × 2 = 345.

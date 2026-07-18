@@ -15,11 +15,10 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
-### v274 (18 July) — CRANK LENGTH. PackTimes can now set the pedals. NOT TESTED ON HARDWARE.
+### v274 (18 July) — CRANK LENGTH. PackTimes sets the pedals. CONFIRMED ON REAL ASSIOMAS.
 
-**⚠ NEXT CODE CHANGE IS v275.** v273 is pushed and live.
-**⚠ NOTHING HERE HAS MET A REAL PEDAL. Peter has a set of Assiomas to test with — that test
-is the whole point, because the maths is verifiable from a desk and the BLE write is not.**
+**⚠ NEXT CODE CHANGE IS v275.** v273 is pushed and live; v274 was pushed and hardware-tested
+the same day (see v274b — it works). **PackTimes can now replace the Wahoo for this job.**
 
 **THE REASONING IS THE FEATURE — and I had it half wrong until Peter corrected me.**
 - **Right:** PackTimes never calculates power. The pedal does `force × crank length × angular
@@ -55,6 +54,38 @@ Truth-tabled: whole-mm would have set a 172.5 crank to 86 mm. Little-endian.
 - Responses are matched on the echoed request op code, so two in flight can't take each
   other's answer; a 6 s timeout stops a silent pedal hanging the UI.
 - `writeValueWithResponse` with a `writeValue` fallback for older Chrome.
+
+### v274b — IT WORKS ON REAL ASSIOMAS. And Peter's fix for "—" is a better rule than mine.
+
+**CONFIRMED ON HARDWARE (18 July, AssiomaPRO42957L):** the dropdown rendered — so **Feature
+bit 12 IS set on the Assiomas and Favero do allow the write** — the write was accepted with
+no error, and `✓ Pedals set to 172.5 mm` appeared. **172.5 works, so the half-millimetre
+encoding (345) is right on real hardware.**
+- **THE DEFINITIVE PROOF came from Peter's own sequence, and it's better than the test I
+  proposed:** he left the app, the pedals dropped, he re-paired — and **172.5 came back from
+  the pedals**. The value is stored in the Assiomas, not in PackTimes. The write reaches the
+  hardware.
+
+**THE "—" WAS A REAL UX BUG AND HIS FIX IS THE KEEPER.** Peter: *"I went back to the app and
+there seemed to be no crank length set. It was ---- I think? … Maybe you could add something
+to say 'crank length read at 172.5mm xxx hrs/minutes ago' and that would be a clear message?"*
+- v274 cleared everything on disconnect, on the rule that a remembered crank length is a lie.
+  The behaviour was right; **the message was wrong — "—" reads as NOTHING IS SET when the
+  truth is THE PEDALS AREN'T HERE TO ASK.**
+- **A TIMESTAMP CONVERTS A CLAIM ABOUT THE PRESENT INTO A FACT ABOUT THE PAST**, which is what
+  makes a remembered value honest:
+  · *"the crank length is 172.5"* — only true while connected. A lie otherwise.
+  · *"the pedals said 172.5, 32 min ago"* — true forever, and useful when they're away.
+  So this doesn't break v274's no-local-copy rule, it **satisfies** it. Worth keeping as a
+  general shape: when a remembered value would be dishonest, the fix is often a timestamp,
+  not amnesia.
+- **`crankLastMm/At/Dev` persist (a RECORD); `crankLengthMm` still does not (a LIVE reading).**
+  The header states a bare number ONLY while connected; otherwise "last read 172.5 mm", or
+  "not read yet" if we never have. Stamped in `powerReadCrankLength` — the one function that
+  ever hears from the pedals — so the record can't drift from what they said.
+- Reuses the existing `_viewAgo` rather than a second formatter. Verified **20/20**, including
+  Peter's exact sequence and the case the record exists for (pedals moved to the 175 bike
+  still reporting 172.5).
 
 **Verified: whole-file `node --check` clean + 34/34** — every length round-trips through the
 encoder and decoder; the whole-mm error reproduced; the response protocol incl. truncated and
