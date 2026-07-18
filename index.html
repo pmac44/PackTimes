@@ -278,10 +278,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    was ("is that the actual distance, as against the route distance?") — that settles it. */
 .live-dist-actual{position:absolute;left:50%;transform:translateX(-50%);text-align:center;
   line-height:1;pointer-events:none;}
-.live-dist-actual .v{display:block;font-family:var(--font);font-weight:500;font-size:20px;color:var(--text);}
+/* v276 — the no-route band's time + speed share this stacked treatment, and the reason is a
+   measurement, not a preference: three INLINE 34px figures come to 435px against a 377px
+   band. They cannot all be heroes. So the odometer keeps 34px and these two support it at
+   20px — which is the same ranking the centre figure already uses, for the same reason.
+   Stack height is 20 + 2 + 11 = 33px, inside the band's 38. */
+.live-dist-sub{display:none;text-align:center;line-height:1;}
+.live-dist-bar.no-route .live-dist-sub{display:block;}
+.live-dist-actual .v,.live-dist-sub .v{display:block;font-family:var(--font);font-weight:500;font-size:20px;color:var(--text);}
 /* No grey (v260, Peter: "I'd just use black and white. I wouldn't use the grey"). SIZE does
    the ranking here — 20px against the ends' 34px — so the caption can be full contrast. */
-.live-dist-actual .c{display:block;font-size:11px;font-family:var(--sans);color:var(--text);margin-top:2px;}
+.live-dist-actual .c,.live-dist-sub .c{display:block;font-size:11px;font-family:var(--sans);color:var(--text);margin-top:2px;}
 /* 34px — THE SPEED PILL'S FIGURE SIZE, deliberately. I twice argued distance should rank
    below a pill's hero because the chevrons carry the glance-read; Peter twice said it was
    too small next to speed. He's right and my reasoning was upside down: the chevrons are a
@@ -1074,7 +1081,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v275';
+window.APP_VERSION='v276';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2802,7 +2809,46 @@ function _distBarSync(){
     // side as it did to two bars. The odometer owes nothing to any route, which is exactly
     // why it's the honest number here ("you still absolutely need distance for a no route
     // ride" — Peter, 16 July).
-    set(document.getElementById('live-dist-done'),fmtDistKm(_riddenKm()),DIST_DONE_UNIT);
+    // ⚠ v276 — IT MUST SAY "RIDDEN". Peter: "What does need to be clear is that distance in
+    // the no route distance bar is actually distance ridden, not distance along a route,
+    // because there is no route. The main distance marker when there IS a route is distance
+    // along the route, so we can't just leave that one there."
+    // Exactly — and it was a bare 'km' on both paths, so the SAME slot with the SAME unit
+    // meant two different things and only the route case was ever explained. The number was
+    // right (v268 fixed that); the label was the lie.
+    // The precedent is v261e, and it's the same rule from the same rider: the CENTRE figure
+    // carries a "km ridden" caption only because Peter looked at it and had to ask what it
+    // was. A distance that needs saying what it is, says it.
+    // Free: in no-route mode the left figure is the only thing in the band (the to-go and the
+    // centre stack are both display:none), so there is a whole bar of room for the word.
+    set(document.getElementById('live-dist-done'),fmtDistKm(_riddenKm()),DIST_NOROUTE_UNIT);
+    // ── v276 — RIDE TIME + AVERAGE SPEED fill the band's two spare slots (Peter's own idea,
+    // 17 July): "basic measurements that might save a dedicated pill… they are just a basic
+    // rider, and as a default they get the basic numbers — distance, time, maybe speed."
+    // Settled here against the rival SUNSET idea, which the file flagged as "decide, don't
+    // stack": *"sunset can just remain in the weather pill expansion"* — and it already does.
+    //
+    // ⚠ THE SPEED IS THIS BAND'S OWN DISTANCE OVER THIS BAND'S OWN TIME, and that is what
+    // makes "avg" unambiguous here without the pills' longer "avg. incl. stops" wording.
+    // v272 needed those words because a lone average on a pill can't say which one it is —
+    // but here its numerator and denominator are sitting either side of it, so the rider can
+    // do the division and see that the time is ELAPSED, not moving. The three numbers agree
+    // by construction; if speed were the MOVING average the row would look broken.
+    // (If it ever does read ambiguous, "km/h avg. incl. stops" measures 103px and still fits
+    // with 64px to spare, even against a 4-digit odometer.)
+    const L=_legVals();
+    const el=document.getElementById('live-dist-time');
+    if(el)el.innerHTML='<span class="v">'+fmtDurPill(L?L.elapsedMs:0)+'</span><span class="c">ride time</span>';
+    const sp=document.getElementById('live-dist-speed');
+    if(sp){
+      // Same 60 s gate and the same DASH as the mspeed pill, for the same reason (v272): for
+      // a CLOCK zero is true, so the time reads 0h00 — but an average of nothing is NONE, not
+      // zero, and distance over a few seconds is a wild number that is briefly true and
+      // useless. _legVals asks the sim for the time, so this needs no sim guard of its own.
+      const h=L?L.elapsedMs/3600000:0;
+      const v=(L&&L.elapsedMs>60000&&h>0&&_riddenKm()>0)?(_riddenKm()/h).toFixed(1):'—';
+      sp.innerHTML='<span class="v">'+v+'</span><span class="c">km/h avg</span>';
+    }
     return;
   }
   const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
@@ -2975,6 +3021,10 @@ function _distBarSync(){
 // distance ("actual"), where both numbers are visible at once and the difference means
 // something.
 const DIST_DONE_UNIT='km';
+// v276 — the no-route slot says what it IS, because it is not the same quantity as the one
+// above. See the note in _distBarSync's !following branch. Kept beside DIST_DONE_UNIT so the
+// two are visibly a pair and nobody "tidies" them back into one.
+const DIST_NOROUTE_UNIT='km ridden';
 // ── v268: "RIDDEN" IS THE RECORDING'S DISTANCE, NOT THE ODOMETER'S ───────────────────
 // Peter asked me to double-check this figure and he was right to. It IS ridden distance
 // rather than route distance — but it was the WRONG ridden distance.
@@ -10432,24 +10482,43 @@ function drawMap(cvs,r,opts){
       const mi=cidx(r,km);if(!pts[mi])continue;
       const mx=px(pts[mi].lon),my=py(pts[mi].lat);
       if(mx<-30||mx>W+30||my<-30||my>H+30)continue;
-      // Dark dot matching label colour
+      // Dark dot matching label colour.
+      // ⚠ The DOT needs no counter-rotation and must not get one: it's a circle, so it looks
+      // identical at every angle, and it's the thing that must stay pinned to the route.
       ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);
       ctx.fillStyle='rgba(0,0,0,0.75)';ctx.fill();
       ctx.strokeStyle='#e8f5e8';ctx.lineWidth=1.2;ctx.stroke();
-      // Label — dark semi-transparent pill on desktop, white on mobile
+      // ── v276 — THE LABEL COUNTER-ROTATES. Peter, 17 July: "The kilometre markers do not
+      // seem to rotate so that they're always visible or readable in the ride screen. They
+      // seem to be pinned to the map, which can be rotated." ────────────────────────────
+      // Exactly: the live map is heading-up (v207), so anything drawn in this frame turns
+      // with it and the labels ride upside down half the time. Text has to be READ, so unlike
+      // the dot it can't be left in the rotated frame.
+      // THE FIX ALREADY EXISTED IN THIS FILE — v252 does this for PackRide's rider name tags
+      // (drawPack), for the same reason and with the same transform. The km labels simply
+      // never got it. Same shape: translate to the point, rotate by +heading to undo the
+      // frame's -heading, then draw everything about the origin.
+      // heading is null on every north-up map (stops, desktop, PackView), so `||0` makes this
+      // a no-op there — those maps are byte-identical to before.
       const lbl=km+'km';
       const isDesktopMap=id==='desktop-map';
       const fSize=isDesktopMap?10:mapFontSm;
+      ctx.save();
+      ctx.translate(mx,my);
+      ctx.rotate((cvs._heading||0)*Math.PI/180);
       ctx.font=`${fSize}px DM Mono, monospace`;ctx.textAlign='center';ctx.textBaseline='bottom';
       const tw=ctx.measureText(lbl).width;
-      const pillH=fSize+4,pillY=my-pillH-4;
+      // Now relative to the dot at (0,0) — the pill still sits just above its marker, and it
+      // stays above it on screen whichever way the map is pointing.
+      const pillH=fSize+4,pillY=-pillH-4;
       ctx.fillStyle=isDesktopMap?'rgba(10,15,10,0.72)':'rgba(255,255,255,0.92)';
       ctx.beginPath();
-      if(ctx.roundRect){ctx.roundRect(mx-tw/2-3,pillY,tw+6,pillH,3);}
-      else{ctx.rect(mx-tw/2-3,pillY,tw+6,pillH);}
+      if(ctx.roundRect){ctx.roundRect(-tw/2-3,pillY,tw+6,pillH,3);}
+      else{ctx.rect(-tw/2-3,pillY,tw+6,pillH);}
       ctx.fill();
       ctx.fillStyle=isDesktopMap?'rgba(200,230,200,0.9)':'#111';
-      ctx.fillText(lbl,mx,pillY+pillH-1);
+      ctx.fillText(lbl,0,pillY+pillH-1);
+      ctx.restore();
     }
     ctx.restore();
   } // end km markers toggle
@@ -15086,6 +15155,18 @@ function tLiveShell(r){
     <div class="live-dist-chevs" id="live-dist-chevs"></div>
     <div class="live-dist-nums">
       <div class="live-dist-done" id="live-dist-done"></div>
+      <!-- v276 — the no-route band's other two numbers (Peter: "basic measurements that
+           might save a dedicated pill… they are just a basic rider, and as a default they
+           get the basic numbers — distance, time, maybe speed").
+           DOM order is the no-route reading order: distance · time · speed. The to-go figure
+           comes last and is hidden without a route; time/speed are hidden WITH one. So each
+           mode leaves exactly the items it wants as flex children and space-between does the
+           rest — no second layout.
+           NOTE this comment lives inside a TEMPLATE LITERAL, so it must never contain a
+           backtick — node --check caught exactly that here. Same shape as the file's standing
+           CSS-comment warning: prose is one stray delimiter away from being code. -->
+      <div class="live-dist-sub live-dist-time" id="live-dist-time"></div>
+      <div class="live-dist-sub live-dist-speed" id="live-dist-speed"></div>
       <div class="live-dist-actual" id="live-dist-actual"></div>
       <div class="live-dist-left" id="live-dist-left"></div>
     </div>

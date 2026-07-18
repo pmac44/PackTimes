@@ -17,7 +17,7 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 
 ### v274 (18 July) — CRANK LENGTH. PackTimes sets the pedals. CONFIRMED ON REAL ASSIOMAS.
 
-**⚠ NEXT CODE CHANGE IS v275.** v272, v273 and v274 (incl. v274b) are all PUSHED and live.
+**⚠ NEXT CODE CHANGE IS v276.** v272, v273, v274 (incl. v274b) and v275 are all PUSHED and live.
 v274 is hardware-tested on Peter's Assiomas the same day — see v274b, it works. **PackTimes
 can now replace the Wahoo for this job.** Crank length is the ONLY thing in v272–v274 that is
 confirmed on real hardware; the stops-strip tap is confirmed on a phone; everything else on
@@ -868,6 +868,60 @@ the figure styles are the very next rules.** The distance bar came apart and the
   over nothing. Dark on dark. **Fill the cell (`background-color:currentColor`) THEN punch the
   moon out of it.** Peter: "I can't see a moon at all. There's nothing in there."
 
+### ROUNDABOUTS — ANSWERED. PackTimes is NOT blind to them, and the words are already right.
+
+Peter, 18 July, from a sim run through three roundabouts in Young NSW: *"Something is
+happening. It is not blind to them."* Correct, and his screenshots settle several things I had
+wrong or was guessing at.
+
+- **RWGPS PUTS THE EXIT IN THE COURSE POINT'S NAME.** A roundabout arrives as FIT type **8
+  (Straight)** with `name = "Exit 2 Boo"`. `CP_TURN[8] = ['Straight','']`, so `notes` is empty,
+  the label falls through to the name, and the box says **Exit 2**. Roundabouts work — not by
+  design exactly, but they do work.
+- **THE 10-CHAR TRUNCATION IS RWGPS's, NOT OURS.** "Boorowa St" and "Exit 2 Boo" are both
+  exactly 10 characters. Our parser reads the declared field faithfully and `.tc-road` has no
+  ellipsis. **This costs nothing that matters: the exit NUMBER survives, and that is the
+  instruction. The street name is the decoration.**
+- **⚠ I PROPOSED SWAPPING `notes||name` TO `name||notes` AND IT WAS WRONG TWICE. Don't do it.**
+  · **It would break every TCX route.** The two parsers use `notes` for OPPOSITE things: in a
+    TCX, `<Notes>` is the SOURCE's rich instruction ("Turn right onto Boorowa Street") and
+    `<Name>` is a short label ("Right"); in a FIT, `notes` is OUR OWN synthesised modifier and
+    `name` is RWGPS's text. One field, two meanings, decided by the parser.
+  · **`notes` is also LOAD-BEARING** — `turnGlyphKey(type,notes)` reads it for slight/sharp/
+    u-turn. It cannot simply be emptied.
+  · **And the premise was wrong anyway. Peter's rule, which is the keeper:** *"street name is
+    of lesser importance than a direction to be honest. You want to know left or right, but
+    street name only matters if you stop and read it, but you're looking for confirmation on
+    the map itself with the big orange turn marker."*
+    I called the label "redundant" because the glyph already says slight-left. **On a vibrating
+    bar at speed, saying the safety-critical thing twice is REINFORCEMENT, not waste** — and
+    the street name is information you'd only use once you'd stopped. v243's design already
+    said where confirmation comes from: the orange on the route, not the words.
+  · So `notes||name` is correct and the label already shows the most useful thing available at
+    every turn type: the modifier if there is one, "Exit 2" at a roundabout (an INSTRUCTION,
+    not a street name), and the street name only when the glyph has already said everything.
+
+**WHAT'S ACTUALLY LEFT FOR ROUNDABOUTS IS THE ARC, AND ONLY THE ARC.** The information
+arrives; the geometry doesn't. A turn is modelled as a POINT and a roundabout is an ARC:
+- The orange spans `alertM` before → the corner → `alertM` after (50 m default). A roundabout
+  is 50–150 m of arc, so the highlight dies mid-roundabout with the exit still ahead — exactly
+  where v243 says the orange's job is confidence.
+- `cornerOf(t)` is the ENTRY, so the countdown counts to where you go in, not to your exit.
+- **The fix shares a solution with the parked "generated turns need OSM junction context"
+  item:** OSM tags roundabouts `junction=roundabout`, and the Overpass pipe already exists for
+  POIs and surface. Cross-referencing gives the entry AND the exit as real positions, so the
+  orange can span the whole arc. Two parked items, one job.
+- **NOT A BUG — the merged orange in Peter's screenshots is his own setting.** I flagged the
+  whole street reading orange as "possibly the bigger problem"; he dissolved it: *"that is
+  because I have set the turn alerts to be a long way out, so they overlap a bit on close turn
+  events."* The orange spans ±`turnAlertM` (his choice, 20–250 m), so a long alert in a town
+  with 100 m turn spacing overlaps by construction. Working as designed.
+  · Worth keeping as an observation though, in case it ever comes up: `turnAlertM` is ONE
+    global number, and the value that suits open road (long) is the value that merges in town
+    (short). v260 argued the alert distance already encodes speed and context — which is true
+    of a rider who sets it once for the ride they're on, and less true across a route that has
+    both. Not a problem Peter has reported; don't pre-emptively build a per-context alert.
+
 ### OPEN BUG — a turn BEEPED with no box and no orange (Peter, 18 July, desktop sim, v273)
 
 *"some turns aren't triggering either the orange route change and there is no next turn box
@@ -896,7 +950,32 @@ seem to break it again."*
 - ⚠ **Reproduce it BEFORE fixing it** — the standing rule. A turn cue is safety-critical and
   the failure is intermittent, which is the worst combination to "fix" on a hypothesis.
 
-### OPEN — the map's km markers don't counter-rotate (Peter, 17 July, minor)
+### v276 (18 July) — THE KM LABELS COUNTER-ROTATE. The fix was already in the file.
+
+Peter, 17 July: *"The kilometre markers do not seem to rotate so that they're always visible or
+readable in the ride screen. They seem to be pinned to the map, which can be rotated."*
+- Exactly right. The live map is heading-up (v207) — `ctx.rotate(-heading)` — so anything drawn
+  in that frame turns with it. **Measured: the label is beyond ±90° of upright across HALF the
+  compass (181/360 headings).** Any route that heads south at all has half its km markers
+  unreadable.
+- **v252 ALREADY SOLVED THIS for PackRide's rider name tags** (`drawPack`: translate → rotate
+  `+cvs._heading` → draw about the origin). Same problem, same transform, same file. The km
+  labels simply never got it. Now they use the identical call — `_heading` is stored by drawMap
+  for exactly this purpose.
+- **The DOT is deliberately NOT counter-rotated.** It's a circle, so it looks identical at
+  every angle, and it's the thing that must stay pinned to the route. Only text has to be READ.
+- **North-up maps are byte-identical**: `heading` is null on stops/desktop/PackView, so
+  `(cvs._heading||0)` makes it `rotate(0)`, a no-op. Verified the pill lands on the same pixel.
+- Verified **26/26** — the upside-down case reproduced first (half the compass), then 0/360
+  headings unreadable after; the save/restore stack balances so marker 2 can't inherit marker
+  1's rotation.
+- **CONFIRMED by Peter in the ride sim** (*"km markers are staying upright (good) in ride sim
+  now"*) — and worth noting WHY the sim could show it at all: v275 had just stopped the sim's
+  map parking on empty countryside, so this is the first build where a heading-up map actually
+  followed the rider on a desktop. The two fixes are unrelated but the second needed the first
+  to be visible.
+
+### ~~OPEN~~ SOLVED in v276 — the map's km markers don't counter-rotate (Peter, 17 July, minor)
 
 *"The kilometre markers do not seem to rotate so that they're always visible or readable in the
 ride screen. They seem to be pinned to the map, which can be rotated, so that's something that's
@@ -906,9 +985,14 @@ not easier to read. It may not matter."*
 - **The fix already exists in this file**: v252 does exactly this for PackRide's rider name tags —
   `drawPack` counter-rotates them (`translate → rotate(+cvs._heading)`) so they stay horizontal.
   The km markers are drawn in `drawMap`'s km-marker block and never got the same treatment.
-- Peter's own "it may not matter" is fair: the markers are a planning aid and the leg-scoped bar
-  (v270) means they no longer correspond to anything on the ride screen anyway. Cheap to fix, low
-  value — do it if the block is being touched for another reason.
+- ⚠ **I HAD THE VALUE ARGUMENT BACKWARDS AND PETER CORRECTED IT.** I wrote that the markers "no
+  longer correspond to anything on the ride screen" BECAUSE the bar is leg-scoped (v270). It's
+  the opposite: *"this helps make up for the new disconnect between the distance bar readings
+  and the distance along the route. At least now the distance along the route is more readable
+  on the map."* Leg-scoping is precisely what makes them matter MORE — v270 accepted that "how
+  far through the whole ride" would have no home on the bar, and the km markers ARE that home.
+  They're not a leftover planning aid; they're the only whole-route position the ride screen
+  states.
 
 ### Peter's verdict on the v269 cell grid (17 July, pushed, NOT ride-tested)
 
@@ -917,7 +1001,52 @@ think it reads better for the data."* Worth keeping the split: **legibility up, 
 floating pills were prettier objects; the grid is a better instrument. If it's re-opened, that's
 the trade to argue about — not the pixels.
 
-### OPEN — Peter's idea for the no-route strip (17 July, not built)
+### v276b — THE NO-ROUTE BAND IS FINISHED. And "km" was lying in one of its two modes.
+
+**THE BUG PETER CAUGHT, and it's a correctness one, not a layout one:** *"What does need to be
+clear is that distance in the no route distance bar is actually distance ridden, not distance
+along a route, because there is no route. The main distance marker when there IS a route is
+distance along the route, so we can't just leave that one there."*
+- The same slot, with the same bare `'km'`, meant **two completely different quantities**:
+  `liveDist − legStart` (along the route) vs `_riddenKm()` (the odometer). The NUMBER was right
+  — v268 fixed that — **the label was the lie.**
+- `DIST_NOROUTE_UNIT='km ridden'`, kept beside `DIST_DONE_UNIT` so the two read as a pair.
+- **The precedent is v261e and it's the same rider making the same point:** the centre figure
+  only carries a "km ridden" caption because Peter looked at it and had to ask what it was.
+  A distance that needs saying what it is, says it.
+
+**SUNSET vs SPEED/TIME — SETTLED, and Peter settled it himself:** *"sunset can just remain in
+the weather pill expansion"* — where it already is. The file had flagged this as "decide, don't
+stack" and it was never actually decided; it is now. The band gets **ride time + average
+speed** (his 17 July idea: *"basic measurements that might save a dedicated pill… they are just
+a basic rider, and as a default they get the basic numbers — distance, time, maybe speed"*).
+
+- ⚠ **THE LAYOUT IS A MEASUREMENT, NOT A TASTE CALL.** Three INLINE 34px figures come to
+  **435px against a 377px band** — they cannot all be heroes. So the odometer keeps 34px and
+  time/speed take the stacked 20px+11px treatment the centre figure already uses: **313px,
+  64px spare**, and the 33px stack sits inside the 38px band. One shared `.live-dist-sub`
+  class, not a second copy of the styling.
+- **The two modes leave the right flex children by construction** — to-go is hidden without a
+  route, time/speed are hidden with one — so `space-between` handles both and there is no
+  second layout to keep in step.
+- **⚠ WHY THE SPEED SAYS PLAIN "avg" AND NOT v272's "avg. incl. stops":** it is **this band's
+  own distance over this band's own time**, and both are sitting either side of it. The rider
+  can do the division and see the denominator is ELAPSED. v272 needed the longer wording
+  because a lone average on a pill can't say which one it is; here the row self-evidences —
+  and if speed were the MOVING average the three numbers would visibly fail to add up. (If it
+  ever does read ambiguous, "km/h avg. incl. stops" is 103px and still fits.)
+- Dash/zero follows v272's rule exactly: the clock reads `0h00` (for a CLOCK zero is true), the
+  average dashes (an average of nothing is NONE, not zero) with the same 60 s gate.
+- Verified **25/25** + whole-file `node --check`.
+
+**⚠ AND node --check EARNED ITS KEEP ON A COMMENT, AGAIN.** The HTML comment I added sits
+inside a **template literal**, and I wrote `` `left` `` with backticks — which TERMINATE the
+literal. Prose became code and the block stopped parsing. This is the file's standing
+CSS-comment hazard in a new place: **a comment is only a comment until it contains the
+delimiter it's nested in.** When a change is "just a comment", the check is still whether the
+file parses.
+
+### ~~OPEN~~ BUILT in v276b — Peter's idea for the no-route strip (17 July)
 
 *"There is the option for a non-chevron distance bar to also show the average speed and the ride
 time — basic measurements that might save a dedicated pill. Maybe that would help on a small basic
