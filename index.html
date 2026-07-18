@@ -14037,6 +14037,15 @@ function climbAt(r,d){
   for(const c of getClimbs(r)) if(d>=c.start && d<c.top) return c;
   return null;
 }
+// Distance-to-top split into [number, unit] (Peter: "my wahoo shows the units right next to
+// it"). Metres when close, km when far; km loses its decimal past 10 so "12 km" stays in the
+// cell. The unit renders smaller than the number so a two-letter "km" doesn't read heavy.
+function _toTopParts(km){
+  if(km==null)return['—',''];
+  if(km<1)return[String(Math.round(km*100)*10),'m'];
+  if(km<10)return[km.toFixed(1),'km'];
+  return[String(Math.round(km)),'km'];
+}
 
 // Compute grade segments (~50m) from route points — cached on route object.
 // v276 — the grade of each segment now comes from gradeAt (smoothed), so the map/desktop
@@ -15657,21 +15666,22 @@ function tLiveShell(r){
       // Adaptive precision, the stoppage pill's own rule (fmtStopPct): 1 decimal under 10,
       // whole number at/above, so a steep "-12%" stays inside the cell.
       const gTxt=gLive?((Math.abs(g)<0.05?'0.0':Math.abs(g)<10?g.toFixed(1):String(Math.round(g)))+'%'):'—';
-      // v276 — METRES when close, km when far (Peter: "should we show metres not km?"). A
-      // climb countdown reads better in metres, but a long climb shouldn't say "12000".
+      // v276 — the unit rides INLINE with the number (Peter, from his Wahoo), and both halves
+      // are CENTRED, not right-aligned in a 4ch box: a short value like "800" looked shoved
+      // right in that box. Centre + inline unit means the unit is part of the token, so the
+      // label below is just "to top".
       const clb=gLive?climbAt(gr,UI.gpsDistKm):null;
-      const toKm=clb?Math.max(0,clb.top-UI.gpsDistKm):null;
-      const toTxt=toKm==null?'—':(toKm<1?String(Math.round(toKm*100)*10):toKm.toFixed(1));
-      const toLbl=(toKm!=null&&toKm<1)?'m to top':'km to top';
-      const F='display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;font-family:var(--font);';
+      const[toNum,toUnit]=_toTopParts(clb?Math.max(0,clb.top-UI.gpsDistKm):null);
+      const F='font-size:34px;font-weight:500;font-family:var(--font);';
+      const U='font-size:20px;font-weight:500;font-family:var(--font);margin-left:3px;';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-grade">
         <div id="live-grade-top" style="padding:5px 8px 3px;${gLive?`background:${gBg};`:''}">
           <div style="line-height:1.0;"><span style="${F}color:${gDark?'#000':'#fff'};" id="live-grade-cur">${gTxt}</span></div>
           <div style="font-size:11px;font-weight:400;color:${gDark?'#000':'#fff'};font-family:var(--sans);line-height:1.1;">grade</div>
         </div>
         <div style="background:#eef3ee;padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="${F}color:#101510;" id="live-grade-totop">${toTxt}</span></div>
-          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;" id="live-grade-tolbl">${toLbl}</div>
+          <div style="line-height:1.0;"><span style="${F}color:#101510;" id="live-grade-totop">${toNum}</span><span style="${U}color:#101510;" id="live-grade-tounit">${toUnit}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">to top</div>
         </div>
       </div>`;
     }
@@ -18905,13 +18915,11 @@ function updateLive(){
     const top=document.getElementById('live-grade-top');
     if(top){const bg=gLive?gBg:'';if(top._bg!==bg){top._bg=bg;top.style.background=bg;
       const lbl=top.querySelector('div:last-child');if(lbl)lbl.style.color=gDark?'#000':'#fff';}}
-    const totop=document.getElementById('live-grade-totop'),tolbl=document.getElementById('live-grade-tolbl');
+    const totop=document.getElementById('live-grade-totop'),tounit=document.getElementById('live-grade-tounit');
     if(totop){const clb=gLive?climbAt(r,UI.gpsDistKm):null;
-      const km=clb?Math.max(0,clb.top-UI.gpsDistKm):null;
-      const t=km==null?'—':(km<1?String(Math.round(km*100)*10):km.toFixed(1));
-      const l=(km!=null&&km<1)?'m to top':'km to top';
-      if(totop.textContent!==t)totop.textContent=t;
-      if(tolbl&&tolbl.textContent!==l)tolbl.textContent=l;}
+      const[n,u]=_toTopParts(clb?Math.max(0,clb.top-UI.gpsDistKm):null);
+      if(totop.textContent!==n)totop.textContent=n;
+      if(tounit&&tounit.textContent!==u)tounit.textContent=u;}
   }
   // Update power/hr spans similarly (textContent on the span is safe since unit is a sibling)
   // Update floating power pill value (if visible)

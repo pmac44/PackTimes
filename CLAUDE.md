@@ -1023,7 +1023,16 @@ user watches, and pills are where a rider picks the metrics their riding cares a
   first step toward that.)
 - **The % is FULL SIZE and both halves right-align in a min-width:4ch box** — copied from the
   stoppage pill, after Peter caught the first cut ("the numbers aren't aligned" + the 16px %
-  was "the wrong size"). Adaptive precision (1 dp under 10, whole at/above) keeps "-12%" in
+  was "the wrong size").
+- **THE UNIT MOVED INLINE and both halves are now CENTRED (Peter, from his Wahoo: "my wahoo
+  shows the units right next to it"; "the 800 is not centred in the cell").** The min-width:4ch
+  right-align box was the bug — a short value like "800" sat shoved to the right of the wider
+  box. So the box is gone, both halves centre, and the distance carries its unit inline
+  ("800 m" / "1.2 km" / "12 km", km drops its decimal ≥10 so it stays in the cell), which lets
+  the label below shrink to just "to top". `_toTopParts` returns [number, unit]; `live-grade-
+  totop` + `live-grade-tounit` are patched separately so the unit can be **20px (not 34px)** —
+  a two-letter "km" at full size read heavy and overflowed the ~99px inner cell. The % stays
+  34px (Peter rejected a small %): it's part of the reading, the m/km is a unit beside it. Adaptive precision (1 dp under 10, whole at/above) keeps "-12%" in
   the cell, the stoppage pill's own `fmtStopPct` rule.
 - **CLIMB DETECTION = Wahoo's rule, and Peter gave the number:** *"≥3% average grade over at
   least 400 m."* `getClimbs` (cached): the climb body is the grade-run where the smoothed
