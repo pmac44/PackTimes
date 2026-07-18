@@ -3774,6 +3774,10 @@ let _snapDir=0,_snapDirAccum=0;
 // How far (deg) the given heading is from the route's LOCAL bearing at vertex i —
 // one point either side, so tens of metres, not the ±20-point (±1.6 km on an 80 m
 // route!) arms the old first-fix guess used. 0 = riding forward along the route.
+// ⚠ v276 — UNUSED since the windowed direction vote moved from heading to route PROGRESS
+// (see snapTo). Kept, not deleted, because heading-vs-local-bearing is the obvious thing a
+// future change would reach for, and this documents that it was TRIED and is the wrong signal
+// at an out-and-back turnaround. Don't wire it back into the snap direction.
 function _snapBrgDiff(r,i,heading){
   const pn=r.points,a=pn[i>0?i-1:i],b=pn[i<pn.length-1?i+1:i];
   const dLon=(b.lon-a.lon)*Math.cos(a.lat*Math.PI/180),dLat=b.lat-a.lat;
@@ -3815,6 +3819,7 @@ function _snapRefine(r,lat,lon,best){
 // gates the out-and-back start preference below. The POI/stop searches and the gap-fill
 // snaps also omit lastIdx, and they are emphatically NOT "starting a ride".
 const SNAP_ENDS_MEET_KM=0.25;   // start and finish this close = the route doubles back
+const SNAP_TIE_M=8;             // v276: two candidates this close = the same physical spot (the two legs of an out-and-back sit ~2-3 m apart)
 function snapTo(r,lat,lon,lastIdx,liveFix){
   if(!r.points.length)return null;
   let best=null,bd=Infinity;
@@ -3833,30 +3838,46 @@ function snapTo(r,lat,lon,lastIdx,liveFix){
       if(d<bd){bd=d;best={idx:i,dist:p.dist,off:hav({lat,lon},p)};}
     }
     if(best&&best.off<0.5){
-      // v257: direction evidence now comes from the HEADING vs the route's local
-      // bearing. The old rule only counted index jumps >2 points — but normal
-      // forward riding advances 1–2 points per fix, so forward motion could NEVER
-      // vote, and a wrong -3 lock had no way back (the backward-biased window it
-      // causes is self-reinforcing). Node-tested on the real 200 km route: a forced
-      // wrong direction now recovers within ~550 m; the old rule never recovered.
-      if(UI.gpsHeading!=null){
-        const dd=_snapBrgDiff(r,best.idx,UI.gpsHeading);
-        let v=0;
-        if(dd<70)v=1;else if(dd>110)v=-1;   // ambiguous middle band = no vote
-        if(v){
-          _snapDirAccum+=v;
-          if(_snapDirAccum>=3){_snapDir=1;_snapDirAccum=3;}
-          else if(_snapDirAccum<=-3){_snapDir=-1;_snapDirAccum=-3;}
-        }
-      }else{
-        // No heading available (rare) — the old index-movement evidence
-        const delta=best.idx-lastIdx;
-        if(Math.abs(delta)>2){
-          _snapDirAccum+=delta>0?1:-1;
-          if(_snapDirAccum>=3){_snapDir=1;_snapDirAccum=3;}
-          else if(_snapDirAccum<=-3){_snapDir=-1;_snapDirAccum=-3;}
+      // ── v276 — PETER'S JUMP RULE. Reproduced from his real 18 Jul out-and-back FIT
+      //    (_planning/fit-spike/_tmp_outback2.mjs) and the fix validated against it. ──────
+      // On a route that DOUBLES BACK (an out-and-back), every physical spot maps to TWO
+      // route points — the outbound leg and the return leg, 2-3 m apart. The nearest-vertex
+      // search can pick either. His rule: "beware big route km jumps, and test it against
+      // the alternative jump" — you cannot teleport 14 km along a route between two GPS
+      // fixes, so among the CO-LOCATED candidates prefer the one that is the smallest
+      // route-distance jump from where you just were; a tie goes forward ("when in doubt it
+      // is more likely that you are proceeding along a route").
+      // ⚠ NO-OP ON A NORMAL ROUTE: if the route never overlaps itself there is only one
+      // nearby point, so `near` collapses to `best` and the snap is byte-identical to the
+      // old nearest-vertex. Validated on a one-way route (zero reversals, unchanged).
+      const lastKm=UI.gpsDistKm;
+      if(lastKm!=null){
+        const pom=best.off*1000;
+        let pj=Math.abs(best.dist-lastKm);
+        for(let i=lo;i<=hi;i++){
+          const p=r.points[i];
+          const offM=hav({lat,lon},p)*1000;
+          if(offM>pom+SNAP_TIE_M)continue;                   // not the same physical spot
+          const j=Math.abs(p.dist-lastKm);                   // this candidate's km jump
+          if(j<pj-1e-9||(Math.abs(j-pj)<1e-9&&i>best.idx)){  // smaller jump, or a tie -> forward
+            best={idx:i,dist:p.dist,off:offM/1000}; pj=j;
+          }
         }
       }
+      // ── _snapDir FROM ACTUAL ROUTE PROGRESS, not heading. This is the ROOT fix. ─────────
+      // v257 voted direction from HEADING vs the route's local bearing, and that is exactly
+      // the signal that betrays you at an out-and-back turnaround: your heading flips 180°
+      // while your route PROGRESS keeps climbing. Heading falsely latched reverse, the
+      // backward-biased window followed the outbound leg, and the km wound down — Peter's
+      // "it thought I was going backwards again". Progress cannot lie about which way along
+      // the route you are going: index up = forward, index down = back. Same 3-step latch,
+      // and it now votes on every fix (the old >2-point gate meant forward could never vote).
+      // Reproduced winding to 0.04 km on his FIT with the old code; this climbs 0 -> 15 ->
+      // 30.32 correctly, biggest single-fix jump 0.16 km, and never once picks the big jump
+      // over a small alternative (204 co-located fixes, 0 wrong).
+      const delta=best.idx-lastIdx;
+      if(delta>0){_snapDirAccum=Math.min(3,_snapDirAccum+1);if(_snapDirAccum>=3)_snapDir=1;}
+      else if(delta<0){_snapDirAccum=Math.max(-3,_snapDirAccum-1);if(_snapDirAccum<=-3)_snapDir=-1;}
       return _snapRefine(r,lat,lon,best);
     }
   }

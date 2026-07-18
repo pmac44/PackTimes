@@ -922,6 +922,54 @@ arrives; the geometry doesn't. A turn is modelled as a POINT and a roundabout is
     of a rider who sets it once for the ride they're on, and less true across a route that has
     both. Not a problem Peter has reported; don't pre-emptively build a per-context alert.
 
+### v276f — THE OUT-AND-BACK U-TURN IS FIXED. Peter's real FIT, and it was HIS method.
+
+**v263 HELD** — *"It picked the start this time. All was going well."* Then: *"when I got to
+the end and turned around it thought I was going backwards again and the elevation profile
+reversed itself and the kms wound down (but NOT on the ridden kms)."* Same heading ambiguity
+as v263, one level in — at the turnaround, not the start.
+
+**REPRODUCED FAITHFULLY FIRST (the standing rule), from his real FIT.** Rides card export →
+`_planning/fit-spike/` Garmin SDK → `/tmp/ride.json` (2354 fixes, 30.5 km, turnaround at 12 km
+= 54% through). Built a true out-and-back route (outbound decimated + its exact reverse, so
+the legs carry real 2-3 m GPS offset — v263's warning: never a zero-offset out-and-back). The
+OLD code wound km down to **0.04 km** on the return, exactly matching his report. Three
+synthetic tries would have proved nothing; the real FIT is what cracked it (same as v257).
+
+**ROOT CAUSE:** v257 voted `_snapDir` from HEADING vs the route's local bearing — and that is
+the one signal that betrays you at a U-turn. Heading flips 180° while route PROGRESS keeps
+climbing. Heading falsely latched `_snapDir=-1`, the backward-biased window followed the
+outbound leg, km wound down. (Ridden km stayed right because it's `_rec.totalDist`, snap-
+independent — Peter's own confirming tell.)
+
+**THE FIX IS PETER'S, arrived at across the session in his words:**
+1. **`_snapDir` now votes from ACTUAL ROUTE PROGRESS** (`best.idx − lastIdx`), not heading.
+   *"You have to look at route direction and riding direction."* On a true out-and-back the
+   index never decreases, so progress-voting stays forward and the window never inverts. This
+   is the root fix; heading was the lie. (`_snapBrgDiff` is now unused — kept, documented, do
+   NOT wire it back.)
+2. **The co-located JUMP RULE.** Every physical spot on an out-and-back maps to two route
+   points (the two legs). Among candidates within `SNAP_TIE_M` (8 m) of the nearest, pick the
+   SMALLEST route-km jump from the last position; a tie goes forward. *"Beware big route km
+   jumps, and test it against the alternative jump… when in doubt it is more likely that you
+   are proceeding along a route."*
+   - ⚠ Peter caught the naive version himself: *"just picking the higher route distance won't
+     always work — it might latch to the return points on the way out."* Right — that's why
+     it's the smallest JUMP (continuity), not the highest dist. On the way out the outbound
+     twin is a 0-jump and the return twin an 18-km jump, so it stays outbound.
+   - **NO-OP on any route that never overlaps itself** — one nearby point, so `near` collapses
+     to the nearest and the snap is byte-identical to before.
+
+**VALIDATED, against the REAL edited snapTo extracted from index.html (not a hand-port):**
+- his FIT: climbs 0 → 15 → **30.32** km, biggest single-fix jump **0.166 km**, 1 reversal
+  (the apex). 204 fixes had a co-located twin >1 km away; it picked the big jump **0 times**.
+- a one-way route: clean forward, zero reversals — proves normal routes are untouched.
+- 9/9 synthetic truth-table incl. the keeper: a GENUINE backtrack (rider retreats down the
+  SAME leg, not onto the return) still winds km down. The fix refuses the FALSE reversal at the
+  turnaround, not a real one.
+- Harness left in `_planning/fit-spike/_tmp_outback2.mjs` (repro) + `_tmp_realsnap.mjs` +
+  `_tmp_snaptt.mjs`. Bash can't delete on this mount; Peter can bin the `_tmp_*`.
+
 ### OPEN BUG — a turn BEEPED with no box and no orange (Peter, 18 July, desktop sim, v273)
 
 *"some turns aren't triggering either the orange route change and there is no next turn box
