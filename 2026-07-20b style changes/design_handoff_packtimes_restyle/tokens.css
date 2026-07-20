@@ -1,0 +1,105 @@
+/* Packtimes design tokens — themes: paper (day), graphite (night/OLED-friendly)
+   Switch with <html data-theme="paper"> / <html data-theme="graphite"> */
+
+:root {
+  /* type */
+  --font-ui: 'Archivo', system-ui, sans-serif;
+  --font-num-live: 'IBM Plex Mono', monospace;   /* fast-changing: speed, power, cadence, HR */
+  --font-num-slow: 'Space Grotesk', sans-serif;  /* slow: distance, time, stoppage, ETA */
+  /* type scale */
+  --num-cell: 36px;        /* paired-cell primary digit */
+  --num-cell-sub: 30px;    /* paired-cell secondary digit */
+  --num-cell-small: 30px;  /* step-down when value > 5 characters */
+  --num-hero: 36px;        /* progress-row distances */
+  --num-secondary: 19px;
+  --label: 11px;
+  --tab-label: 11.5px;
+  /* geometry */
+  --radius-card: 12px;
+  --radius-panel: 14px;
+  --border-w: 1.5px;
+  --hit-min: 44px;         /* minimum touch target (gloved) */
+}
+
+[data-theme="paper"] {
+  --surface: #eae5d5;
+  --surface-raised: #fffef8;
+  --surface-sunken: #dcd5c0;
+  --hairline: #cfc7ae;
+  --border-strong: #48562f;
+  --text: #2a2721;
+  --text-muted: #8a8271;
+  --accent: #48562f;         /* olive — active tab, progress, primary values */
+  --accent-mid: #6d8446;     /* chevron light stripe */
+  --accent-on: #ffffff;
+  --warm: #a8622d;           /* temp, turn arrow, hints */
+  --warm-deep: #7c4e16;      /* power (non-zoned contexts only) */
+  --route: #2f5f9e;
+  --cell-top: #2a2721;       /* paired cell upper half */
+  --cell-top-text: #fffef8;
+  --cell-top-muted: #b5ac99;
+  --cell-bottom: #fffef8;    /* paired cell lower half */
+  --cell-bottom-text: #1d1d1f;
+  --sleep: #6f5f96;
+  --food: #a8622d;
+  --water: #46688f;
+  --finish: #a04a38;
+  --shadow-float: 0 3px 10px rgba(90,80,50,.18);
+  /* zones (earth-tuned; keep hue semantics, mute saturation) */
+  --z1: #8a8271; --z2: #46688f; --z3: #5d7a3a; --z4: #c98a2e;
+  --z5: #b5501f; --z6: #a8382c; --z7: #6f5f96;
+}
+
+[data-theme="graphite"] {
+  --surface: #16181d;
+  --surface-raised: #22252b;
+  --surface-sunken: #101216;
+  --hairline: #262a31;
+  --border-strong: #3a3f47;
+  --text: #eef1f4;
+  --text-muted: #8b939e;
+  --accent: #4cd97b;
+  --accent-mid: #2c8a4f;
+  --accent-on: #101216;
+  --warm: #ffd166;
+  --warm-deep: #ffd166;
+  --route: #5b9bd5;
+  --cell-top: #101216;
+  --cell-top-text: #eef1f4;
+  --cell-top-muted: #8b939e;
+  --cell-bottom: #fffef8;    /* stays light — the B&W pairing is the legibility feature */
+  --cell-bottom-text: #1d1d1f;
+  --sleep: #a08fe0;
+  --food: #ffd166;
+  --water: #5b9bd5;
+  --finish: #e06a5a;
+  --shadow-float: 0 3px 10px rgba(0,0,0,.35);
+  /* zones (lifted for dark ground) */
+  --z1: #8b939e; --z2: #4a7ab5; --z3: #6a9955; --z4: #d9a03c;
+  --z5: #d96c2e; --z6: #cf4b3d; --z7: #8f7fd0;
+}
+
+/* ---- Planning tabs (Mission / Stops / Supplies) ---- */
+[data-theme="paper"] {
+  --text-soft: #6d6759;        /* leg-stat rows, card meta lines */
+  /* stop-card tints: bg is a tint of the semantic color over --surface; body text stays --text */
+  --card-start-bg: #e3e7d2;   --card-start-br: #48562f66;
+  --card-sleep-bg: #e6e0ef;   --card-sleep-br: #6f5f9666;
+  --card-food-bg:  #f3e4d2;   --card-food-br:  #a8622d66;
+  --card-water-bg: #dde6ee;   --card-water-br: #46688f66;
+  --card-town-bg:  #fffef8;   --card-town-br:  #cfc7ae;    /* neutral: raised + hairline */
+  --card-finish-bg:#f0ddd8;   --card-finish-br:#a04a3866;
+  /* deep variants — the ONLY legal colored-text values on Paper card tints (>=4.5:1) */
+  --sleep-deep: #55477c; --food-deep: #7c4e16; --water-deep: #35516f; --finish-deep: #7c352a;
+}
+[data-theme="graphite"] {
+  --text-soft: #b9c0c9;
+  --card-start-bg: #1c2f22;   --card-start-br: #4cd97b66;
+  --card-sleep-bg: #251f33;   --card-sleep-br: #a08fe066;
+  --card-food-bg:  #2a2417;   --card-food-br:  #ffd16655;
+  --card-water-bg: #1c2734;   --card-water-br: #5b9bd566;
+  --card-town-bg:  #22252b;   --card-town-br:  #3a3f47;
+  --card-finish-bg:#2f1d1c;   --card-finish-br:#e06a5a66;
+  /* on Graphite tints the semantic colors themselves pass 4.5:1 — no deep variants needed */
+  --sleep-deep: #a08fe0; --food-deep: #ffd166; --water-deep: #5b9bd5; --finish-deep: #e06a5a;
+}

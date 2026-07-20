@@ -135,6 +135,16 @@
   --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;--mspeed-bg:#e4dfcb; /* moving-avg pill: stepped-down warm light */
   --chev-off:rgba(72,86,47,0.28); /* unlit progress chevron — faint olive, visible on the light surface */
   --elev-bg:rgba(220,213,192,0.92); /* elevation stat strip — semi-opaque sunken surface over the map */
+  /* Planning tabs (20b spec): stop cards are TINTS with --text body copy; semantic colour lives
+     only in the border/dot/tag. -deep tokens are the ONLY legal coloured text on Paper tints (>=4.5:1). */
+  --text-soft:#6d6759;
+  --card-start-bg:#e3e7d2;--card-start-br:#48562f66;
+  --card-sleep-bg:#e6e0ef;--card-sleep-br:#6f5f9666;
+  --card-food-bg:#f3e4d2;--card-food-br:#a8622d66;
+  --card-water-bg:#dde6ee;--card-water-br:#46688f66;
+  --card-town-bg:#fffef8;--card-town-br:#cfc7ae;
+  --card-finish-bg:#f0ddd8;--card-finish-br:#a04a3866;
+  --sleep-deep:#55477c;--food-deep:#7c4e16;--water-deep:#35516f;--finish-deep:#7c352a;
   --sleep:#6f5f96;--food:#a8622d;--water:#46688f;--finish:#a04a38;
   --shadow-float:0 3px 10px rgba(90,80,50,.18);
   --z1:#8a8271;--z2:#46688f;--z3:#5d7a3a;--z4:#c98a2e;--z5:#b5501f;--z6:#a8382c;--z7:#6f5f96;
@@ -166,6 +176,15 @@
   --mspeed-bg:#ccd6cf; /* moving-avg pill's stepped tone — the value v272 tuned on the OLED */
   --chev-off:rgba(255,255,255,0.24); /* unlit progress chevron — the value v261 tuned on the OLED */
   --elev-bg:rgba(16,18,22,0.9); /* elevation stat strip — semi-opaque sunken surface over the map */
+  /* Planning tabs (20b spec) — dark tints; on Graphite the semantic colours themselves pass 4.5:1 */
+  --text-soft:#b9c0c9;
+  --card-start-bg:#1c2f22;--card-start-br:#4cd97b66;
+  --card-sleep-bg:#251f33;--card-sleep-br:#a08fe066;
+  --card-food-bg:#2a2417;--card-food-br:#ffd16655;
+  --card-water-bg:#1c2734;--card-water-br:#5b9bd566;
+  --card-town-bg:#22252b;--card-town-br:#3a3f47;
+  --card-finish-bg:#2f1d1c;--card-finish-br:#e06a5a66;
+  --sleep-deep:#a08fe0;--food-deep:#ffd166;--water-deep:#5b9bd5;--finish-deep:#e06a5a;
   --sleep:#a08fe0;--food:#ffd166;--water:#5b9bd5;--finish:#e06a5a;
   --shadow-float:0 3px 10px rgba(0,0,0,.35);
   --z1:#8b939e;--z2:#4a7ab5;--z3:#6a9955;--z4:#d9a03c;--z5:#d96c2e;--z6:#cf4b3d;--z7:#8f7fd0;
@@ -609,7 +628,7 @@ select option{background:var(--bg3);}
 .btn-d:hover,.btn-d:active{background:var(--red3)!important;border-color:var(--red3)!important;color:#fff!important;}
 .btn-sm{padding:6px 12px;font-size:var(--fs-sm);}
 .btn-full{width:100%;justify-content:center;}
-.si{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:6px;display:flex;align-items:flex-start;gap:9px;cursor:pointer;transition:border-color .15s;}
+.si{background:var(--surface-raised);border:1px solid var(--hairline);border-radius:8px;padding:9px 11px;margin-bottom:6px;display:flex;align-items:flex-start;gap:9px;cursor:pointer;transition:border-color .15s;box-shadow:var(--shadow-float);}
 .si:last-child{margin-bottom:0;}
 .si:hover{border-color:var(--border2);}
 .si.hi{border-color:var(--accent)!important;}
@@ -619,21 +638,6 @@ select option{background:var(--bg3);}
 .si-meta{font-family:var(--font);font-size:var(--fs-sm);color:var(--text3);margin-top:2px;}
 .si-rt{text-align:right;flex-shrink:0;}.si-time{font-family:var(--font);font-size:var(--fs-base);font-weight:500;color:var(--accent);}
 .si-st{font-size:var(--fs-sm);margin-top:1px;}.s-op{color:var(--accent);}.s-cl{color:var(--red);}.s-uk{color:var(--amber);}
-/* Restyle: the ride-tab stops list gets an EARTHY dark-row / light-text look in Paper (Peter).
-   Done by rebinding the row's tokens ONCE — every sub-element (name=--text, meta=--text3,
-   ETA=--accent, bg=--card2, tags=--cat-*) flips to the lifted values automatically, no
-   per-element edits. Scoped to #live-stop-list so the planning tabs are untouched for now;
-   drop the `#live-stop-list ` prefix to apply everywhere. Graphite rows are already dark. */
-[data-theme="paper"] #live-stop-list .si{
-  --card2:#5c4d37;--border:#77664a;--border2:#8c7a5a;
-  --text:#f3ede1;--text2:#d9cdb5;--text3:#c2b596;
-  --accent:#bcd08a;--accent2:#bcd08a;--accent3:#a7c06f;
-  --amber:#ffd166;--red:#f2a08f;--blue:#8fbfe8;--purple:#c3b2ec;
-  --cat-town:#8fd3a4;--cat-food:#ffd166;--cat-water:#8fbfe8;--cat-sleep:#c3b2ec;
-  --cat-accom:#c3b2ec;--cat-fuel:#f0a86a;--cat-hut:#d8be8e;--cat-camp:#9fc98a;
-  --cat-caravan:#c3d68a;--cat-peak:#b6c2ce;--cat-crossing:#93bcc9;--cat-wc:#b6c2ce;
-  --cat-stop:#cabf9f;--cat-church:#d9b8e8;--cat-school:#a9c9f5;--cat-hall:#dcc08a;
-  --cat-fire:#f28b7a;--cat-police:#8fb0e0;}
 .tag{display:inline-block;padding:2px 7px;border-radius:6px;font-size:var(--fs-xs);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;}
 .t-food{background:color-mix(in srgb,var(--cat-food) 15%,transparent);color:var(--cat-food);}.t-water{background:color-mix(in srgb,var(--cat-water) 15%,transparent);color:var(--cat-water);}
 .t-sleep{background:color-mix(in srgb,var(--cat-sleep) 15%,transparent);color:var(--cat-sleep);}.t-accom{background:color-mix(in srgb,var(--cat-accom) 15%,transparent);color:var(--cat-accom);}.t-wc{background:color-mix(in srgb,var(--cat-wc) 15%,transparent);color:var(--cat-wc);}.t-town{background:color-mix(in srgb,var(--cat-town) 15%,transparent);color:var(--cat-town);}.t-shop{background:color-mix(in srgb,var(--cat-shop) 15%,transparent);color:var(--cat-shop);}.t-hut{background:color-mix(in srgb,var(--cat-hut) 15%,transparent);color:var(--cat-hut);}.t-fuel{background:color-mix(in srgb,var(--cat-fuel) 15%,transparent);color:var(--cat-fuel);}.t-peak{background:color-mix(in srgb,var(--cat-peak) 15%,transparent);color:var(--cat-peak);}.t-camp{background:color-mix(in srgb,var(--cat-camp) 15%,transparent);color:var(--cat-camp);}.t-stop{background:color-mix(in srgb,var(--cat-stop) 15%,transparent);color:var(--cat-stop);}.t-crossing{background:color-mix(in srgb,var(--cat-crossing) 15%,transparent);color:var(--cat-crossing);}.t-church{background:color-mix(in srgb,var(--cat-church) 15%,transparent);color:var(--cat-church);}.t-school{background:color-mix(in srgb,var(--cat-school) 15%,transparent);color:var(--cat-school);}.t-hall{background:color-mix(in srgb,var(--cat-hall) 15%,transparent);color:var(--cat-hall);}.t-fire{background:color-mix(in srgb,var(--cat-fire) 15%,transparent);color:var(--cat-fire);}.t-police{background:color-mix(in srgb,var(--cat-police) 15%,transparent);color:var(--cat-police);}.t-caravan{background:color-mix(in srgb,var(--cat-caravan) 15%,transparent);color:var(--cat-caravan);}
@@ -1270,7 +1274,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v286';
+window.APP_VERSION='v289';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -17890,6 +17894,22 @@ function bgIsLight(bgCol){
   return lum*a>0.35;
 }
 
+// Restyle: pick readable text for a day/night SKY-colour tile. The sky is translucent, so its
+// real appearance depends on the card behind it — composite over the CURRENT theme surface
+// (light in Paper, dark in Graphite) and return near-black or near-white for guaranteed contrast.
+function dnTextCol(sky){
+  const m=(sky||'').match(/rgba?\((\d+),(\d+),(\d+),?([\d.]+)?\)/);
+  if(!m)return null;
+  const sr=+m[1],sg=+m[2],sb=+m[3],sa=+(m[4]||1);
+  const paper=((UI&&UI._theme)!=='graphite');
+  const B=paper?[255,254,248]:[34,37,43];   // ≈ --surface-raised behind the tile
+  const er=sr*sa+B[0]*(1-sa),eg=sg*sa+B[1]*(1-sa),eb=sb*sa+B[2]*(1-sa);
+  const lum=(0.299*er+0.587*eg+0.114*eb)/255;
+  return lum>0.55
+    ? {text:'#1a1a17',soft:'rgba(26,26,23,0.72)'}   // light sky → dark text
+    : {text:'#f6f4ef',soft:'rgba(246,244,239,0.78)'};// dark sky  → light text
+}
+
 function dayNightBg(dt,sun){
   if(!dt||!sun)return'var(--card2)';
   const t=dt.getTime();
@@ -18077,14 +18097,20 @@ function tPlan(r){
     const sun=getSun(eta);
     const dnBg=(!node.isStart&&!node.isFinish&&!isSleep)?dayNightBg(eta,sun):'';
     const dnIcon=(!node.isStart&&!node.isFinish)?dayNightLabel(eta,sun):'';
-    const bgCol=node.isStart?'rgba(22,163,74,0.25)':node.isFinish?'rgba(239,68,68,.25)':
-      isRest?'rgba(80,65,45,0.55)':isSleep?'rgba(60,40,120,0.55)':dnBg||'var(--card2)';
-    const borderCol=node.isStart?'rgba(74,222,128,0.5)':node.isFinish?'rgba(239,68,68,0.5)':isRest?'rgba(148,133,106,0.7)':isSleep?'rgba(130,100,220,0.6)':'var(--border)';
-    const dotCol=node.isStart?'#4ade80':node.isFinish?'#ef4444':isRest?'#94856a':isSleep?'#8b6fd4':'#9db89d';
-    const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--border2);margin-top:2px;"></div>';
-    const isLightBg=bgIsLight(bgCol);
-    const textCol=isLightBg?'#fff':'var(--text)';
-    const text3Col=isLightBg?'rgba(255,255,255,0.75)':'var(--text3)';
+    // Restyle: regular nodes KEEP their calculated day/night SKY-colour background (Peter wants
+    // it — it shows the time of day you arrive). Start/finish/sleep use the semantic tint tokens.
+    // Text colour is picked for contrast by compositing the sky over the theme surface
+    // (dnTextCol); tinted states use dark --text. Semantic colour still only in border + dot.
+    const sky=(!node.isStart&&!node.isFinish&&!isSleep&&dnBg&&dnBg.indexOf('rgba')===0)?dnBg:'';
+    const bgCol=node.isStart?'var(--card-start-bg)':node.isFinish?'var(--card-finish-bg)':isSleep?'var(--card-sleep-bg)':(sky||'var(--card-town-bg)');
+    const borderCol=node.isStart?'var(--card-start-br)':node.isFinish?'var(--card-finish-br)':isSleep?'var(--card-sleep-br)':'var(--card-town-br)';
+    const dotCol=node.isStart?'var(--accent)':node.isFinish?'var(--finish-deep)':isSleep?'var(--sleep-deep)':'var(--text-muted)';
+    const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--hairline);margin-top:2px;"></div>';
+    const _dn=sky?dnTextCol(sky):null;
+    const isLightBg=_dn?(_dn.text!=='#f6f4ef'):true;   // true = tile reads light → dark text/ETA
+    const textCol=_dn?_dn.text:'var(--text)';
+    const text3Col=_dn?_dn.soft:'var(--text-soft)';
+    const etaCol=_dn?_dn.text:'var(--accent)';
     const daydiv=dayStr?'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);">'+dayStr+'</div>':'';
     const metaCount=node.cluster&&node.cluster.stops.length>1?' · '+node.cluster.stops.length+' stops':'';
     const chips=node.cluster?node.cluster.stops.map(s=>stopChip(s,r)).join(''):'';
@@ -18107,7 +18133,7 @@ function tPlan(r){
       const depart=wake&&afterMealH>0?new Date(wake.getTime()+afterMealH*3600000):wake;
       const wakeDay=wake&&sdt?dayOff(wake,sdt):'';
       const departDay=depart&&sdt?dayOff(depart,sdt):'';
-      const col=s.type==='stop'&&!(s.sleepAt||s.sleepH)?'#94856a':'#b39ddb';
+      const col='var(--text)';   // Restyle: sleep-card values are dark --text on the light tint (was purple, unreadable)
       const icon=s.type==='stop'&&!(s.sleepAt||s.sleepH)?'📍':'😴';
       const fmtChip=m=>`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24;display:inline-block;margin:2px 2px 2px 0;">${m.type==='snack'?ICON_SNACK:ICON_MEAL} ${m.name||m.type} · ${m.source==='here'?'buy here':m.source==='start'?'from start':'bought earlier'}${m.durationMin&&m.durationMin!==20?' · '+m.durationMin+'min':''}</span>`;
       const row=(label,val,color)=>`<div style="display:flex;align-items:baseline;gap:6px;margin-top:4px;font-family:var(--font);font-size:15px;"><span style="color:var(--text3);min-width:52px;">${label}</span><span style="color:${color||'var(--text)'};">${val}</span></div>`;
@@ -18141,10 +18167,10 @@ function tPlan(r){
         +'<div style="width:12px;height:12px;border-radius:50%;background:'+dotCol+';flex-shrink:0;"></div>'
         +spine
       +'</div>'
-      +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#94856a;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:#b39ddb;font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
+      +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;box-shadow:var(--shadow-float);cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:var(--text-muted);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:var(--sleep-deep);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:rgba(255,255,255,0.85);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:rgba(10,15,10,0.85);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
-            +'<div style="font-size:18px;font-weight:500;color:var(--text);line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+((node.clusterAll||node.cluster)?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.clusterAll||node.cluster)):'')+'</div>'
+            +'<div style="font-size:18px;font-weight:500;color:'+textCol+';line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+((node.clusterAll||node.cluster)?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.clusterAll||node.cluster)):'')+'</div>'
             +'<div style="font-size:18px;font-weight:500;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km</div>'
             +(node.isStart?
               '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">'
@@ -18155,7 +18181,7 @@ function tPlan(r){
               +'</div>'
             :
               (isSleep?'':
-                (eta?'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:'+(isLightBg?'#fff':'var(--accent)')+';margin-top:3px;">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>':'')
+                (eta?'<div style="font-family:var(--font);font-size:18px;font-weight:500;color:'+etaCol+';margin-top:3px;">'+(dayStr?dayStr+' ':'')+fmtT(eta)+'</div>':'')
                 +departDiv
               )
             )
