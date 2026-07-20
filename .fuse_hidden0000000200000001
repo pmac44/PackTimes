@@ -158,10 +158,6 @@
   --card-town-bg:#fffef8;--card-town-br:#cfc7ae;
   --card-finish-bg:#f0ddd8;--card-finish-br:#a04a3866;
   --sleep-deep:#55477c;--food-deep:#7c4e16;--water-deep:#35516f;--finish-deep:#7c352a;
-  /* Mission node cards: SATURATED semantic fills with LIGHT text (Peter — the pale tints read
-     weak, and text handling was inconsistent between themes). Medium-dark so white text sits on
-     them cleanly, same look in both themes. Sky (day/night) cards use dayNightBg. */
-  --mcard-start:#4d7a52;--mcard-sleep:#6a5a9c;--mcard-finish:#9a4636;
   /* THE single "contrast card" colour for light (Paper) mode: a mid-dark COOL SLATE. It's the
      complement of the warm OSM-tan page (so it lifts), but low-saturation so it reads as a
      neutral, not a new colour. Mid-dark (not near-black) so it's lighter/less heavy AND so the
@@ -209,7 +205,6 @@
   --card-finish-bg:#2f1d1c;--card-finish-br:#e06a5a66;
   --sleep-deep:#a08fe0;--food-deep:#ffd166;--water-deep:#5b9bd5;--finish-deep:#e06a5a;
   --stop-card-bg:#22252b;--stop-card-br:#3a3f47;   /* stop cards: raised over the dark page (already dark + light text) */
-  --mcard-start:#357a48;--mcard-sleep:#5f4f92;--mcard-finish:#8a3a30;   /* mission cards: saturated + light text */
   --sleep:#a08fe0;--food:#ffd166;--water:#5b9bd5;--finish:#e06a5a;
   --shadow-float:0 3px 10px rgba(0,0,0,.35);
   --z1:#8b939e;--z2:#4a7ab5;--z3:#6a9955;--z4:#d9a03c;--z5:#d96c2e;--z6:#cf4b3d;--z7:#8f7fd0;
@@ -609,7 +604,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .seg-meta{font-size:var(--fs-sm);color:var(--text3);margin-top:1px;}
 /* Card etc */
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);}
-.ctitle{font-size:var(--fs-base);font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);margin-bottom:var(--sp-3);}
+.ctitle{font-size:var(--fs-base);font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);margin-bottom:var(--sp-3);}
 .upload-zone{border:2px dashed var(--border2);border-radius:var(--r-card);padding:24px 14px;text-align:center;cursor:pointer;transition:all .2s;display:block;}
 .upload-zone:hover{border-color:var(--accent);background:rgba(74,222,128,.05);}
 .upload-zone input{display:none;}
@@ -678,7 +673,7 @@ select option{background:var(--bg3);}
 .d-food{background:var(--cat-food);}.d-water{background:var(--cat-water);}.d-crossing{background:var(--cat-crossing);}.d-sleep{background:var(--cat-sleep);}.d-accom{background:var(--cat-accom);}.d-wc{background:var(--cat-wc);}.d-hut{background:var(--cat-hut);}.d-fuel{background:var(--cat-fuel);}.d-peak{background:var(--cat-peak);}.d-camp{background:var(--cat-camp);}.d-caravan{background:var(--cat-caravan);}.d-stop{background:var(--cat-stop);}.d-town{background:var(--cat-town);}.d-shop{background:var(--cat-shop);}
 .si-inf{flex:1;min-width:0;}.si-name{font-weight:500;font-size:var(--fs-base);color:var(--text);line-height:1.35;}
 .si-meta{font-family:var(--font);font-size:var(--fs-sm);color:var(--text3);margin-top:2px;}
-.si-rt{text-align:right;flex-shrink:0;}.si-time,.si-eta{font-family:var(--font);font-size:var(--fs-base);font-weight:500;color:var(--accent);}
+.si-rt{text-align:right;flex-shrink:0;}.si-time{font-family:var(--font);font-size:var(--fs-base);font-weight:500;color:var(--accent);}
 .si-st{font-size:var(--fs-sm);margin-top:1px;}.s-op{color:var(--accent);}.s-cl{color:var(--red);}.s-uk{color:var(--amber);}
 .tag{display:inline-block;padding:2px 7px;border-radius:6px;font-size:var(--fs-xs);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;}
 .t-food{background:color-mix(in srgb,var(--cat-food) 15%,transparent);color:var(--cat-food);}.t-water{background:color-mix(in srgb,var(--cat-water) 15%,transparent);color:var(--cat-water);}
@@ -728,8 +723,8 @@ select option{background:var(--bg3);}
         <canvas id="desktop-elev" style="display:block;pointer-events:all;" width="100" height="80"></canvas>
       </div>
       <div id="desktop-sim-slider" style="position:absolute;bottom:100px;left:16px;right:16px;display:none;z-index:20;pointer-events:all;">
-        <div id="sim-sl-val" style="position:absolute;bottom:calc(100% + 4px);right:0;font-size:12px;color:var(--text3);font-family:var(--font);background:var(--overlay-bg);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;white-space:nowrap;">0.0km</div>
-        <div style="background:var(--overlay-bg);border-radius:6px;padding:3px 8px;">
+        <div id="sim-sl-val" style="position:absolute;bottom:calc(100% + 4px);right:0;font-size:12px;color:var(--text3);font-family:var(--font);background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;white-space:nowrap;">0.0km</div>
+        <div style="background:rgba(10,15,10,0.7);border-radius:6px;padding:3px 8px;">
           <!-- step="any" (was 0.5): a range input can only take min+step*n, so a 0.5 step
                could never reach a max like 137.2 — it stopped at 137.0 and stranded the
                last 200 m, which is why the sim could never ride to the finish. -->
@@ -743,14 +738,14 @@ select option{background:var(--bg3);}
            a slider so the pills, their zone colours and their widths can all be seen at a
            desk. Sim-only: it never touches the recording path, and disconnecting a real
            sensor still wins because connectPowerMeter sets powerConnected itself. -->
-      <div id="desktop-sim-sensors" style="position:absolute;bottom:180px;left:16px;z-index:20;display:none;flex-direction:row;gap:8px;align-items:center;background:var(--overlay-bg);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
+      <div id="desktop-sim-sensors" style="position:absolute;bottom:180px;left:16px;z-index:20;display:none;flex-direction:row;gap:8px;align-items:center;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
           <label style="font-size:12px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;cursor:pointer;display:flex;align-items:center;gap:5px;">
             <input type="checkbox" id="sim-sensors-on" style="accent-color:var(--accent);cursor:pointer;">Fake sensors
           </label>
           <input type="range" id="sim-sensors-w" min="0" max="450" step="5" value="200" style="width:130px;accent-color:var(--accent);height:14px;">
           <span id="sim-sensors-val" style="font-size:12px;color:var(--text);font-family:var(--font);white-space:nowrap;min-width:96px;">200 W · 138 bpm</span>
       </div>
-      <div id="desktop-sim-ctrl" style="position:absolute;bottom:130px;left:16px;z-index:20;display:none;flex-direction:row;gap:6px;align-items:center;background:var(--overlay-bg);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
+      <div id="desktop-sim-ctrl" style="position:absolute;bottom:130px;left:16px;z-index:20;display:none;flex-direction:row;gap:6px;align-items:center;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:5px 10px;">
           <span style="font-size:12px;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">Sim</span>
           <select id="sim-speed" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 4px;font-family:var(--font);font-size:13px;">
             <option value="1">1×</option>
@@ -858,7 +853,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Edit stop modal -->
-<div id="edit-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:flex-end;justify-content:center;">
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Edit Stop</span>
@@ -905,7 +900,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Add stop modal -->
-<div id="stop-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:998;align-items:flex-end;justify-content:center;">
+<div id="stop-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);">Add Stop</span>
@@ -971,7 +966,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Recording recovery modal — shown on launch when an unfinished recording is found -->
-<div id="rec-recovery-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:flex-end;justify-content:center;">
+<div id="rec-recovery-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);" id="rrm-title">Unfinished recording</span>
@@ -999,7 +994,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Recording detail modal — opened from a ride row on the Routes tab -->
-<div id="rec-detail-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:998;align-items:flex-end;justify-content:center;">
+<div id="rec-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;align-items:flex-end;justify-content:center;">
   <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:19px;font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="rdm-title">Ride</span>
@@ -1042,7 +1037,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Gap-fill modal — offered after a ride ends when GPS gaps were detected -->
-<div id="rec-gap-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:flex-end;justify-content:center;">
+<div id="rec-gap-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
     <div style="margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);" id="rgm-title">Missing GPS section</span>
@@ -1069,7 +1064,7 @@ select option{background:var(--bg3);}
        3. SAMPLE   — genuinely optional; a distinct dashed "optional" card.
      One button: Done. The old "Save / Dismiss" pair implied a fork that didn't exist —
      and worse, Dismiss silently THREW AWAY the name you'd just typed. -->
-<div id="rec-save-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:flex-end;justify-content:center;">
+<div id="rec-save-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90dvh;display:flex;flex-direction:column;">
 
     <!-- ── 1. Confirmation — it's done, nothing to decide ── -->
@@ -1137,7 +1132,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Pace segment modal -->
-<div id="pace-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:flex-end;justify-content:center;">
+<div id="pace-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:90vh;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Hike-a-bike Section</span>
@@ -1187,7 +1182,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Advanced Calibration modal (sample rides) -->
-<div id="calib-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:flex-end;justify-content:center;">
+<div id="calib-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <!-- Titled "Sample Rides", NOT "Advanced Estimation" — that name already belongs to the
@@ -1253,7 +1248,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Help modal — "How PackTimes works", opened from the header "?" button or Settings -->
-<div id="help-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:flex-end;justify-content:center;">
+<div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:flex-end;justify-content:center;">
   <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:18px;font-weight:600;color:var(--text);">How PackTimes works</span>
@@ -1264,7 +1259,7 @@ select option{background:var(--bg3);}
 </div>
 
 <!-- Speed Estimation modal (rider / load / final adjustment) -->
-<div id="speed-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:998;align-items:flex-end;justify-content:center;">
+<div id="speed-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;align-items:flex-end;justify-content:center;">
   <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Speed Estimation</span>
@@ -1316,7 +1311,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v296';
+window.APP_VERSION='v292';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3426,7 +3421,7 @@ function showSurfHelp(){
     <b style="color:var(--text2);">How this works.</b> Surface types come from OpenStreetMap tags, so they're only as good as what local mappers have entered. The road / track / singletrack split is reliable almost everywhere. The <i>technical</i> grade (Singletrack tech) only shows where someone tagged trail difficulty — common on popular mountain-bike trails, sparse elsewhere; where it's missing a trail just shows as plain Singletrack. Stretches with no usable tag show as <b style="color:var(--text2);">Unknown</b> rather than a guess. Re-fetch with Refresh after editing a route or when a gap appears.</div>`;
   const ov=document.createElement('div');
   ov.id='surf-help-ov';
-  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
   ov.innerHTML=`<div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Surface types</span>
@@ -5286,7 +5281,7 @@ function _ridesCardHTML(){
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text3);"><polyline points="9 6 15 12 9 18"/></svg>
   </div>`;
   const popup=_ridesModalOpen?`
-  <div id="rides-modal-overlay" style="position:fixed;inset:0;background:var(--scrim);z-index:997;display:flex;align-items:flex-end;justify-content:center;">
+  <div id="rides-modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:997;display:flex;align-items:flex-end;justify-content:center;">
     <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
         <span class="ctitle" style="margin-bottom:0;">Recorded Rides <span style="color:var(--text3);font-weight:500;">(${RECS.length})</span></span>
@@ -7468,7 +7463,7 @@ function _shareBtnSync(){
     UI.shareBubbleSeen = true; _shareSaveAuth();
     const tip = document.createElement('div');
     tip.id = 'share-btn-tip';
-    tip.style.cssText = 'position:absolute;z-index:23;background:var(--overlay-strong);'
+    tip.style.cssText = 'position:absolute;z-index:23;background:rgba(10,15,10,.92);'
       + 'border:1px solid rgba(74,222,128,.4);border-radius:var(--r-ctrl);padding:8px 12px;'
       + 'font-family:var(--sans);font-size:13px;color:var(--text);white-space:nowrap;';
     // v273 — this was a hard-coded left:70px: the share button's right edge plus a gap,
@@ -7936,7 +7931,7 @@ function _packBtnSync(){
     el = document.createElement('div');
     el.id = 'pack-btn';
     el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;'
-      + 'border-radius:0 0 var(--r-ctrl) var(--r-ctrl);background:var(--overlay-bg);display:flex;flex-direction:column;'  // top corners flat: bottom of the merged record+pack pill
+      + 'border-radius:0 0 var(--r-ctrl) var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;flex-direction:column;'  // top corners flat: bottom of the merged record+pack pill
       + 'align-items:center;justify-content:center;gap:1px;cursor:pointer;box-sizing:border-box;'
       + 'border:2px solid #fde047;color:#fde047;';
     sec.appendChild(el);
@@ -8120,7 +8115,7 @@ function _packListRender(){
     if(x.isYou || x.r.lat == null || focus.has(x.r.id || x.r.name)) continue;
     if(x.dist != null && myDist != null)
       (x.dist >= myDist ? chips.ahead : chips.behind).push(
-        `<div style="background:var(--overlay-bg);border:2px solid ${x.col};color:${x.col};border-radius:14px;padding:3px 10px;font-family:var(--sans);font-size:12px;font-weight:600;white-space:nowrap;">${(x.r.name||'Rider')} ${_packGapTxt(x.dist-myDist).replace('+','').replace('−','')} ${x.dist>=myDist?'›':'‹'}</div>`);
+        `<div style="background:rgba(10,15,10,.88);border:2px solid ${x.col};color:${x.col};border-radius:14px;padding:3px 10px;font-family:var(--sans);font-size:12px;font-weight:600;white-space:nowrap;">${(x.r.name||'Rider')} ${_packGapTxt(x.dist-myDist).replace('+','').replace('−','')} ${x.dist>=myDist?'›':'‹'}</div>`);
   }
   const row = x => {
     const gap = (x.dist != null && myDist != null && !x.isYou) ? _packGapTxt(x.dist - myDist) : (x.isYou ? '' : '—');
@@ -8137,7 +8132,7 @@ function _packListRender(){
     <div id="pack-strip" style="height:25%;flex-shrink:0;position:relative;cursor:pointer;border-bottom:3px solid #fde047;">
       <div style="position:absolute;left:8px;top:8px;display:flex;flex-direction:column;gap:5px;align-items:flex-start;">${chips.behind.join('')}</div>
       <div style="position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:5px;align-items:flex-end;">${chips.ahead.join('')}</div>
-      <div style="position:absolute;right:10px;bottom:8px;background:var(--overlay-bg);border:1px solid rgba(253,224,71,.5);border-radius:var(--r-ctrl);padding:5px 11px;font-family:var(--sans);font-size:13px;font-weight:600;color:#fde047;">Tap for map</div>
+      <div style="position:absolute;right:10px;bottom:8px;background:rgba(10,15,10,.85);border:1px solid rgba(253,224,71,.5);border-radius:var(--r-ctrl);padding:5px 11px;font-family:var(--sans);font-size:13px;font-weight:600;color:#fde047;">Tap for map</div>
     </div>
     <div id="pack-list" style="flex:1;min-height:0;background:rgba(8,12,8,.97);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;overflow:hidden;">
       <div style="height:4px;background:#243024;border-radius:2px;margin-bottom:10px;overflow:hidden;"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;border-radius:2px;"></div></div>
@@ -8738,13 +8733,13 @@ async function renderViewer(code){
       <div id="view-stats" style="display:flex;border-bottom:1px solid var(--border);flex-shrink:0;"></div>
       <div id="view-mapwrap" style="flex:1;min-height:0;position:relative;">
         <canvas id="view-map" style="width:100%;height:100%;display:block;"></canvas>
-        <div id="view-tip" style="display:none;position:absolute;z-index:10;pointer-events:none;background:var(--overlay-strong);border:1px solid var(--border2);border-radius:var(--r-ctrl);padding:6px 10px;font-family:var(--sans);color:var(--text);white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.5);"></div>
-        <div id="view-tiles" style="position:absolute;top:10px;left:10px;z-index:10;display:flex;gap:0;background:var(--overlay-bg);border:1px solid var(--border2);border-radius:var(--r-ctrl);overflow:hidden;"></div>
+        <div id="view-tip" style="display:none;position:absolute;z-index:10;pointer-events:none;background:rgba(10,15,10,.94);border:1px solid var(--border2);border-radius:var(--r-ctrl);padding:6px 10px;font-family:var(--sans);color:var(--text);white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.5);"></div>
+        <div id="view-tiles" style="position:absolute;top:10px;left:10px;z-index:10;display:flex;gap:0;background:rgba(10,15,10,.9);border:1px solid var(--border2);border-radius:var(--r-ctrl);overflow:hidden;"></div>
         <!-- LAYER toggles on their own row, below the map-background row — different
              jobs, different levels (Peter). -->
-        <div id="view-layers" style="position:absolute;top:50px;left:10px;z-index:10;display:flex;gap:0;background:var(--overlay-bg);border:1px solid var(--border2);border-radius:var(--r-ctrl);overflow:hidden;"></div>
-        <div id="view-lagnote" style="position:absolute;bottom:14px;left:10px;z-index:10;background:var(--overlay-bg);border-radius:var(--r-ctrl);padding:4px 9px;font-family:var(--sans);font-size:11px;color:var(--text3);pointer-events:none;">The moving dot runs a little behind the newest fix · tap a trail dot for its time</div>
-        <button id="view-recentre" style="display:none;position:absolute;bottom:14px;right:14px;z-index:10;align-items:center;gap:6px;background:var(--overlay-bg);border:1px solid var(--border2);color:var(--text);border-radius:var(--r-ctrl);padding:8px 12px;font-family:var(--sans);font-size:14px;cursor:pointer;">
+        <div id="view-layers" style="position:absolute;top:50px;left:10px;z-index:10;display:flex;gap:0;background:rgba(10,15,10,.9);border:1px solid var(--border2);border-radius:var(--r-ctrl);overflow:hidden;"></div>
+        <div id="view-lagnote" style="position:absolute;bottom:14px;left:10px;z-index:10;background:rgba(10,15,10,.75);border-radius:var(--r-ctrl);padding:4px 9px;font-family:var(--sans);font-size:11px;color:var(--text3);pointer-events:none;">The moving dot runs a little behind the newest fix · tap a trail dot for its time</div>
+        <button id="view-recentre" style="display:none;position:absolute;bottom:14px;right:14px;z-index:10;align-items:center;gap:6px;background:rgba(10,15,10,.9);border:1px solid var(--border2);color:var(--text);border-radius:var(--r-ctrl);padding:8px 12px;font-family:var(--sans);font-size:14px;cursor:pointer;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/></svg>
           Recentre
         </button>
@@ -12539,7 +12534,7 @@ function showFatigueHelp(){
     +p('Fatigue is deeply personal and the science is broad-brush, so take all of this as a sensible guide rather than a precise promise.');
   const ov=document.createElement('div');
   ov.id='fatigue-help-ov';
-  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
   ov.innerHTML=`<div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Fatigue</span>
@@ -12940,18 +12935,18 @@ function renderDesktopMap(){
       const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
       const allVisible=filtered.every(t=>!UI.hiddenMapTypes.has(t.type));
       // "All" toggle row — same style as layer rows, white dot when all visible, empty when any hidden
-      legend.innerHTML=`<div id="desktop-legend-all" class="map-legend-item" data-ltype="__all__" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:var(--overlay-soft);margin-bottom:2px;opacity:${allHidden?0.45:1};">
+      legend.innerHTML=`<div id="desktop-legend-all" class="map-legend-item" data-ltype="__all__" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);margin-bottom:2px;opacity:${allHidden?0.45:1};">
           <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="rgba(255,255,255,0.85)" stroke="rgba(255,255,255,0.85)" stroke-width="1.5"/></svg>
           <span style="font-size:12px;color:${allHidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;font-weight:600;">All</span>
         </div>`
         +filtered.map(t=>{
         const hidden=UI.hiddenMapTypes.has(t.type);
-        return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:var(--overlay-soft);opacity:${hidden?0.45:1};">
+        return`<div class="map-legend-item" data-ltype="${t.type}" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(10,15,10,0.6);opacity:${hidden?0.45:1};">
           <svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><circle cx="6" cy="6" r="5" fill="${t.col}" stroke="${t.col}" stroke-width="1.5"/></svg>
           <span style="font-size:12px;color:${hidden?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.85)'};font-family:var(--font);white-space:nowrap;">${t.label}</span>
         </div>`;
       }).join('')
-      +(startDT(r)?`<div style="margin-top:6px;padding:4px 6px;background:var(--overlay-soft);border-radius:4px;max-width:130px;">
+      +(startDT(r)?`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
         <div style="display:flex;align-items:center;gap:4px;">
           <svg width="30" height="6"><line x1="0" y1="3" x2="30" y2="3" stroke="#22d3ee" stroke-width="2.5"/></svg>
           <span style="font-size:10px;color:rgba(255,255,255,0.4);font-family:var(--font);">day</span>
@@ -12959,7 +12954,7 @@ function renderDesktopMap(){
           <span style="font-size:10px;color:rgba(255,255,255,0.4);font-family:var(--font);">night</span>
         </div>
       </div>`:'')
-      +(!UI.hiddenMapTypes.has('weather')?`<div style="margin-top:6px;padding:4px 6px;background:var(--overlay-soft);border-radius:4px;max-width:130px;">
+      +(!UI.hiddenMapTypes.has('weather')?`<div style="margin-top:6px;padding:4px 6px;background:rgba(10,15,10,0.6);border-radius:4px;max-width:130px;">
         <div style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);margin-bottom:3px;line-height:1.5;">Weather at ETA · faded = low confidence (4+ days)</div>
         ${[['rgba(234,179,8,0.92)','rgba(253,224,71,0.8)','#fefce8','Sun'],['rgba(71,85,105,0.88)','rgba(148,163,184,0.4)','#e2e8f0','Cloud'],['rgba(37,99,235,0.88)','rgba(147,197,253,0.5)','#bfdbfe','Rain'],['rgba(30,64,175,0.92)','rgba(147,197,253,0.6)','#bfdbfe','Heavy'],['rgba(91,33,182,0.92)','rgba(196,181,253,0.8)','#ddd6fe','Storm !']].map(([bg,border,tc,lbl])=>`
           <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;">
@@ -14591,7 +14586,7 @@ function drawElevProfile(r,liveDist){
 
 // Fork & knife food icon — use currentColor so context controls colour
 const ICON_FOOD=`<svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>`;
-const ICON_FOOD_BTN=`<span style="display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;padding:3px 5px;color:var(--on-dark);">${ICON_FOOD}</span>`;
+const ICON_FOOD_BTN=`<span style="display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;background:var(--overlay-bg);border:1px solid rgba(255,255,255,0.22);border-radius:6px;padding:3px 5px;color:var(--on-dark);">${ICON_FOOD}</span>`;
 const ICON_MEAL=`<svg width="16" height="16" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M8 38 Q8 54 30 54 Q52 54 52 38"/><line x1="8" y1="38" x2="52" y2="38"/><path d="M18 30 Q15 23 18 16 Q21 9 18 3"/><path d="M30 30 Q27 23 30 16 Q33 9 30 3"/><path d="M42 30 Q39 23 42 16 Q45 9 42 3"/></svg>`;
 const ICON_SNACK=`<svg width="16" height="16" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M30 18 C14 18 4 28 4 40 C4 52 14 58 24 58 C27 58 30 56 30 56 C30 56 33 58 36 58 C46 58 56 52 56 40 C56 30 46 22 38 19 C35 23 31 25 27 23 C25 21 23 19 30 18 Z"/><path d="M30 18 C28 20 25 21 27 23 C31 25 35 23 38 19"/><path d="M24 18 C27 12 30 10 30 10"/><path d="M30 10 C32 5 40 3 42 8 C39 10 33 10 30 10"/></svg>`;
 // Pencil edit icon — white on dark, solid background applied by button style
@@ -14955,7 +14950,7 @@ function tStopsShell(r){
       ${r.stops.length?`<div class="card">
         <div class="secrow">
           <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).length:r.stops.length})</div>
-          <button class="btn btn-sm" id="btn-toggle-starred" title="${UI.stopsShowStarred?'Showing starred only':'Showing all stops'}" style="background:var(--stop-card-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;${UI.stopsShowStarred?'border-color:rgba(251,191,36,0.7);color:#fbbf24;':'border-color:var(--hair-light);color:var(--on-dark);'}">${UI.stopsShowStarred?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
+          <button class="btn btn-sm" id="btn-toggle-starred" title="${UI.stopsShowStarred?'Showing starred only':'Showing all stops'}" style="${UI.stopsShowStarred?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);'}">${UI.stopsShowStarred?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
         </div>
         <div id="stops-list-rows">${clusteredStopRows(r,sdt)}</div>
       </div>`:''}
@@ -15316,7 +15311,7 @@ function showTurnHelp(){
     +p('Bottom line: for turn alerts, export a FIT Course (or a TCX Course) from RideWithGPS or Komoot.');
   const ov=document.createElement('div');
   ov.id='turn-help-ov';
-  ov.style.cssText='position:fixed;inset:0;z-index:10010;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.style.cssText='position:fixed;inset:0;z-index:10010;background:rgba(0,0,0,0.45);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
   ov.innerHTML=`<div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
       <span style="font-size:18px;font-weight:600;color:var(--text);">Turn data</span>
@@ -15342,7 +15337,7 @@ function renderTurnReview(){
     <div style="position:absolute;top:12px;right:12px;z-index:10001;">
       <button id="trv-exit" style="width:48px;height:48px;background:rgba(248,113,113,0.15);border:2px solid rgba(248,113,113,0.6);border-radius:50%;color:#f87171;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">✕</button>
     </div>
-    <div style="position:absolute;top:12px;left:12px;z-index:10001;background:var(--overlay-bg);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;">
+    <div style="position:absolute;top:12px;left:12px;z-index:10001;background:rgba(10,15,10,0.88);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;">
       <div style="display:flex;align-items:center;gap:6px;">
         <div style="font-size:13px;color:var(--text3);font-family:var(--font);">TURN REVIEW</div>
         <button id="trv-help" title="How turn data works — GPX vs TCX" style="background:transparent;border:1px solid var(--border2);border-radius:6px;cursor:pointer;padding:0 6px;color:var(--text3);font-family:var(--font);font-size:12px;font-weight:700;line-height:1.5;-webkit-tap-highlight-color:transparent;">?</button>
@@ -15351,12 +15346,12 @@ function renderTurnReview(){
       <div class="trv-src-lbl" style="font-size:12px;color:var(--text3);margin-top:2px;">${confirmed.length} confirmed${r.nearMissTurns&&r.nearMissTurns.length?' · '+r.nearMissTurns.length+' possible':''}</div>
       ${IS_DESKTOP()?`<div style="font-size:11px;color:var(--text3);margin-top:4px;opacity:.8;font-family:var(--font);">← → step · Space toggle</div>`:''}
     </div>
-    ${all.length===0?`<div style="position:absolute;top:50%;left:16px;right:16px;transform:translateY(-50%);z-index:10001;background:var(--overlay-strong);border:1px solid var(--border2);border-radius:12px;padding:18px 16px;text-align:center;max-width:420px;margin:0 auto;">
+    ${all.length===0?`<div style="position:absolute;top:50%;left:16px;right:16px;transform:translateY(-50%);z-index:10001;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:12px;padding:18px 16px;text-align:center;max-width:420px;margin:0 auto;">
       <div style="font-size:15px;color:var(--text);font-weight:600;margin-bottom:6px;">No turn cues on this route</div>
       <div style="font-size:13px;color:var(--text3);line-height:1.5;margin-bottom:14px;">That's normal for a GPX — it has no turn instructions. PackTimes can estimate turns from the shape of the track, but it's guesswork, not as reliable as a TCX with real cues. Tap <b>?</b> above to learn more.</div>
       <button id="trv-generate" class="btn btn-p" style="width:100%;justify-content:center;">Generate turns from the track</button>
     </div>`:''}
-    <div id="trv-settings-panel" style="display:none;position:absolute;top:12px;left:12px;right:12px;z-index:10002;background:var(--overlay-strong);border:1px solid var(--border2);border-radius:10px;padding:14px 14px 10px;touch-action:auto;pointer-events:all;">
+    <div id="trv-settings-panel" style="display:none;position:absolute;top:12px;left:12px;right:12px;z-index:10002;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:10px;padding:14px 14px 10px;touch-action:auto;pointer-events:all;">
       <div style="font-size:13px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Detection Settings</div>
       <div style="display:flex;gap:6px;margin-bottom:10px;">
         ${(()=>{const to=r.turnDetectOpts||{};const md=to.minTurnDeg!==undefined?to.minTurnDeg:45,rt=to.recoveryTol!==undefined?to.recoveryTol:30,sm=to.slightMax!==undefined?to.slightMax:60;return[['Minimal',55,40,45],['Standard',45,30,60],['Detailed',35,20,75],['All',25,10,90]].map(([l,d,rv,s])=>'<button class="btn btn-sm trv-preset" data-d="'+d+'" data-r="'+rv+'" data-s="'+s+'" style="flex:1;justify-content:center;font-size:13px;padding:5px 2px;'+(d===md&&rv===rt&&s===sm?'border-color:var(--accent);color:var(--accent);':'')+'">'+l+'</button>').join('');})()}
@@ -15375,7 +15370,7 @@ function renderTurnReview(){
         <button id="trv-settings-close" class="btn btn-sm" style="flex-shrink:0;">Done</button>
       </div>
     </div>
-    <div style="position:absolute;bottom:0;left:0;right:0;z-index:10001;background:var(--overlay-bg);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:8px;touch-action:auto;pointer-events:all;">
+    <div style="position:absolute;bottom:0;left:0;right:0;z-index:10001;background:rgba(10,15,10,0.9);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:space-between;gap:8px;touch-action:auto;pointer-events:all;">
       <button id="trv-prev" class="btn" style="flex:1;justify-content:center;font-size:22px;padding:10px;">◀</button>
       <div style="text-align:center;flex:2;">
         <div style="font-size:12px;color:var(--text3);font-family:var(--font);line-height:1.5;">tap <span style="color:#4ade80;">▲</span> delete · <span style="color:#dcd464;">▲</span> confirm · tap map to add</div>
@@ -16257,7 +16252,7 @@ function tLiveShell(r){
           // target with cold hands in gloves. Order is deliberate — the safe, expected
           // action (Stop & save) is the biggest and first; the destructive one is last.
           // Panel font is var(--sans); only the pts/km readout stays var(--font) (numbers).
-          return `<div id="rec-stop-confirm" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:41;background:var(--overlay-strong);border:1px solid var(--border2);border-radius:var(--r-card);padding:16px;font-family:var(--sans);box-shadow:0 6px 24px rgba(0,0,0,0.6);flex-direction:column;gap:10px;width:min(300px,calc(100vw - 32px));box-sizing:border-box;">
+          return `<div id="rec-stop-confirm" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:41;background:rgba(10,15,10,0.97);border:1px solid var(--border2);border-radius:var(--r-card);padding:16px;font-family:var(--sans);box-shadow:0 6px 24px rgba(0,0,0,0.6);flex-direction:column;gap:10px;width:min(300px,calc(100vw - 32px));box-sizing:border-box;">
             <div style="text-align:center;color:var(--text);line-height:1.3;">
               <div style="font-weight:700;font-size:17px;margin-bottom:3px;">Stop ride?</div>
               <div style="font-size:13px;color:var(--text3);font-family:var(--font);">${ptsStr}${ptsStr&&distStr?' · ':''}${distStr}</div>
@@ -16273,7 +16268,7 @@ function tLiveShell(r){
         ${(()=>{
           // 5-second Undo strip — only visible right after a recording is finalised.
           // Sits at the bottom-centre. _recStopConfirm shows it; the undo timer hides it.
-          return `<div id="rec-undo-strip" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:40;background:var(--overlay-strong);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;font-family:var(--sans);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:14px;">
+          return `<div id="rec-undo-strip" style="display:none;position:absolute;bottom:160px;left:50%;transform:translateX(-50%);z-index:40;background:rgba(10,15,10,0.96);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;font-family:var(--sans);box-shadow:0 4px 16px rgba(0,0,0,0.5);align-items:center;gap:14px;">
             <span style="font-size:15px;font-weight:600;color:var(--text);">Recording saved</span>
             <button class="btn btn-sm" id="btn-recstop-undo" style="flex-shrink:0;">Undo</button>
           </div>`;
@@ -16516,7 +16511,7 @@ function tRoutes(r){
       <button class="btn btn-sm btn-p" id="btn-upload-route" style="flex:1;">↑ Upload FIT / TCX / GPX / KML</button>
       <button class="btn btn-sm" id="btn-new-plan" style="white-space:nowrap;" title="Start a plan with no route loaded — search an area and drop stops to scout a ride before you have a route file">+ New Empty Plan</button>
     </div>
-    <div style="font-size:12px;color:var(--text3);line-height:1.55;margin-top:6px;background:var(--overlay-soft);border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+    <div style="font-size:12px;color:var(--text3);line-height:1.55;margin-top:6px;background:rgba(10,15,10,0.4);border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
       <div style="margin-bottom:2px;color:var(--text2);">Best file for turn alerts:</div>
       <div><span style="color:var(--accent);font-weight:600;">1. FIT Course</span> — smallest file, with turns</div>
       <div><span style="color:var(--text2);font-weight:600;">2. TCX Course</span> — also has turns, much bigger file</div>
@@ -16573,7 +16568,7 @@ function tRoutes(r){
   </div>`+fileInputs;
   // Popup route picker — opened via the Switch route button, closes on selection or ✕
   const pickerPopup=_routePickerOpen?`
-  <div id="route-picker-overlay" style="position:fixed;inset:0;background:var(--scrim);z-index:997;display:flex;align-items:flex-end;justify-content:center;">
+  <div id="route-picker-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:997;display:flex;align-items:flex-end;justify-content:center;">
     <div style="background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card) var(--r-card) 0 0;padding:var(--sp-4);width:100%;max-width:520px;max-height:88dvh;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-3);flex-shrink:0;">
         <span class="ctitle" style="margin-bottom:0;">Routes</span>
@@ -16615,7 +16610,7 @@ function tRoutes(r){
           +'<span style="'+lbl+'">Start</span>'
           +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
             +'<span style="'+accent+'">'+(startStr||'<span style="font-size:15px;color:var(--text3);">Not set</span>')+'</span>'
-            +'<button id="btn-open-dt-picker" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 6px;color:var(--on-dark);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">'+ICON_EDIT+'</button>'
+            +'<button id="btn-open-dt-picker" style="background:var(--overlay-bg);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;color:var(--on-dark);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">'+ICON_EDIT+'</button>'
           +'</div>'
           +'<span style="'+lbl+'margin-top:10px;">Finish</span>'
           +(finishStr?`<span style="font-size:18px;font-weight:600;color:var(--text2);font-family:var(--font);" id="rt-finish">${finishStr}</span>`:'<span style="font-size:15px;color:var(--text3);">Set start date →</span>')
@@ -16687,9 +16682,9 @@ function tRoutes(r){
     <div class="secrow">
       <div class="ctitle">Surface Data</div>
       <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
-        <button type="button" title="What do these surface types mean?" onclick="showSurfHelp()" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 8px;color:var(--on-dark);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font);font-size:13px;font-weight:700;line-height:1;-webkit-tap-highlight-color:transparent;">?</button>
+        <button type="button" title="What do these surface types mean?" onclick="showSurfHelp()" style="background:var(--overlay-bg);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 8px;color:var(--on-dark);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font);font-size:13px;font-weight:700;line-height:1;-webkit-tap-highlight-color:transparent;">?</button>
       ${r&&r.surfaceSegs&&UI.surfaceStatus!=='loading'
-        ?`<button id="btn-fetch-surface" onclick="fetchSurfaceData(true)" title="Refresh surface data" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 6px;color:var(--on-dark);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>`
+        ?`<button id="btn-fetch-surface" onclick="fetchSurfaceData(true)" title="Refresh surface data" style="background:var(--overlay-bg);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;color:var(--on-dark);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>`
         :`<button class="btn btn-sm btn-p" id="btn-fetch-surface" onclick="fetchSurfaceData(true)" ${UI.surfaceStatus==='loading'?'disabled':''}>
         ${UI.surfaceStatus==='loading'?'<div class="spin"></div> Loading…':'⛰ Fetch Surface'}
       </button>`}
@@ -16724,7 +16719,7 @@ function tRoutes(r){
             <div style="font-size:14px;color:var(--accent);font-family:var(--font);">${hh}h ${mm}m · ${spd} km/h avg</div>
           </div>
           <div style="display:flex;gap:5px;">
-            <button class="btn btn-sm edit-pace" data-idx="${i}" title="Rename" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);">${ICON_EDIT}</button>
+            <button class="btn btn-sm edit-pace" data-idx="${i}" title="Rename" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);">${ICON_EDIT}</button>
             <button class="btn btn-r btn-sm del-pace" data-idx="${i}">✕</button>
           </div>
         </div>`;
@@ -16734,7 +16729,7 @@ function tRoutes(r){
   <div class="card">
     <div class="secrow">
       <div class="ctitle">Speed Estimation</div>
-      <button onclick="openSpeedModal()" title="Edit speed estimation" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 6px;color:var(--on-dark);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">${ICON_EDIT}</button>
+      <button onclick="openSpeedModal()" title="Edit speed estimation" style="background:var(--overlay-bg);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;color:var(--on-dark);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">${ICON_EDIT}</button>
     </div>
     ${!r.surfaceSegs?`<div style="display:flex;align-items:center;justify-content:space-between;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:7px;padding:7px 10px;margin-bottom:10px;"><span style="font-size:13px;color:#f97316;">⛰ Surface data not loaded — fetch it for more accurate off-road estimates</span><button class="btn btn-sm" onclick="fetchSurfaceData()" style="font-size:12px;padding:3px 8px;flex-shrink:0;">Fetch</button></div>`:''}
     <div id="speed-summary">${_speedSummaryHTML(r)}</div>
@@ -17231,7 +17226,7 @@ function stopRow(s,r,sdt,inCluster){
   const sleepBadge=s.type==='sleep'?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH||10}h bivi</span>`:(s.type==='stop'&&(s.sleepAt||s.sleepH))?`<span style="color:#b39ddb;font-size:15px;font-family:var(--font);">😴 ${s.sleepH?s.sleepH+'h sleep':'sleep'}</span>`:
     '';
   const orBadge=s.offRouteM?` <span style="font-size:16px;color:var(--text3);font-family:var(--font);">(${s.offRouteM<1000?s.offRouteM+'m':(s.offRouteM/1000).toFixed(1)+'km'} off route)</span>`:'';
-  const autoBadge=s.auto?`<span style="font-size:12px;color:var(--text2);font-family:var(--font);background:transparent;border:1px solid var(--text3);border-radius:3px;padding:0 4px;margin-left:3px;">OSM</span>`:'';
+  const autoBadge=s.auto?`<span style="font-size:12px;color:var(--text3);font-family:var(--font);background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:0 4px;margin-left:3px;">OSM</span>`:'';
   const isTown=s.type==='town';
   // For sleep stops show departure time too
   const depart=s.type==='sleep'&&eta?new Date(eta.getTime()+(s.sleepH||10)*3600000):null;
@@ -17246,7 +17241,7 @@ function stopRow(s,r,sdt,inCluster){
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">
         <div style="flex:1;min-width:0;">
           <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}${autoBadge}</div>
-          <div class="si-meta">${r.points.length?'<span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">'+s.dist.toFixed(1)+' km</span> · ':''}<span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
+          <div class="si-meta">${r.points.length?s.dist.toFixed(1)+' km · ':''}<span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
           ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
           <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='accom')&&s.ohRules?stEl:''}</div>
         </div>
@@ -17256,14 +17251,14 @@ function stopRow(s,r,sdt,inCluster){
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
-        <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="${s.starred!==false?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}">${s.starred!==false?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
-        ${s.type!=='sleep'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}">${s.sleepAt?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
-        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="${s.meals&&s.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>
+        <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="${s.starred!==false?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);'}">${s.starred!==false?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
+        ${s.type!=='sleep'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);'}">${s.sleepAt?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
+        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="${s.meals&&s.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);'}"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>
         ${(()=>{if(s.type==='water')return'';const on=waterAssigned(s);const bc=on?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)';const cc=on?'#60a5fa':'rgba(255,255,255,0.85)';return'<button class="btn btn-sm water-at-stop" data-sid="'+s.id+'" title="Water available here? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+bc+';color:'+cc+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(on?'#60a5fa':'none')+'" stroke="'+(on?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})()}
-        <button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);">${ICON_EDIT}</button>
-        <button class="btn btn-r btn-sm del-stop" data-sid="${s.id}" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.5" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);">${ICON_EDIT}</button>
+        <button class="btn btn-r btn-sm del-stop" data-sid="${s.id}" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.5" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
-      ${(()=>{const lat=s.lat||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lat;const lon=s.lon||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lon;const gmap=lat&&lon?`<a href="https://maps.google.com/?q=${lat.toFixed(5)},${lon.toFixed(5)}" target="_blank" class="btn btn-sm" title="Open in Google Maps" style="text-decoration:none;font-size:12px;font-family:var(--font);font-weight:600;padding:3px 8px;background:var(--overlay-bg);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);gap:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>GMap</a>`:'';const book=s.bookingUrl?`<a href="${s.bookingUrl}" target="_blank" class="btn btn-sm" title="Search on Booking.com" style="text-decoration:none;font-size:12px;font-family:var(--font);font-weight:600;padding:3px 8px;background:var(--overlay-bg);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(192,132,252,0.5);color:#c084fc;gap:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>Book</a>`:'';return(gmap||book)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${gmap}${book}</div>`:'';})()}
+      ${(()=>{const lat=s.lat||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lat;const lon=s.lon||r.points[Math.max(0,r.points.findIndex(p=>p.dist>=s.dist)-1)]?.lon;const gmap=lat&&lon?`<a href="https://maps.google.com/?q=${lat.toFixed(5)},${lon.toFixed(5)}" target="_blank" class="btn btn-sm" title="Open in Google Maps" style="text-decoration:none;font-size:12px;font-family:var(--font);font-weight:600;padding:3px 8px;background:var(--overlay-bg);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);gap:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>GMap</a>`:'';const book=s.bookingUrl?`<a href="${s.bookingUrl}" target="_blank" class="btn btn-sm" title="Search on Booking.com" style="text-decoration:none;font-size:12px;font-family:var(--font);font-weight:600;padding:3px 8px;background:var(--overlay-bg);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(192,132,252,0.5);color:#c084fc;gap:3px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" xmlns="http://www.w3.org/2000/svg"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>Book</a>`:'';return(gmap||book)?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">${gmap}${book}</div>`:'';})()}
     </div>
   </div>`;
 }
@@ -17962,10 +17957,8 @@ function dayNightBg(dt,sun){
   const lerp=(a,b,f)=>Math.round(a+(b-a)*f);
   const rgb=(r,g,b,a)=>`rgba(${r},${g},${b},${a})`;
   // Key colours: night=navy, twilight=warm purple, golden hour=soft blue, midday=light sky blue
-  // Restyle: saturated + fairly opaque so the sky colour dominates (same look in both themes)
-  // and white text always reads. Daytime darkened from the old pale blues for that reason.
-  const night=[14,24,58],twi=[70,78,150],gold=[74,120,178],day=[64,128,190];
-  const nightA=0.94,twilA=0.92,goldA=0.92,dayA=0.92;
+  const night=[8,18,45],twi=[60,120,180],gold=[80,150,200],day=[100,170,220];
+  const nightA=0.82,twilA=0.72,goldA=0.72,dayA=0.78;
   if(t<=dawn){return rgb(...night,nightA);}
   if(t>=dusk){return rgb(...night,nightA);}
   if(t<=sunrise){
@@ -18145,18 +18138,16 @@ function tPlan(r){
     // it — it shows the time of day you arrive). Start/finish/sleep use the semantic tint tokens.
     // Text colour is picked for contrast by compositing the sky over the theme surface
     // (dnTextCol); tinted states use dark --text. Semantic colour still only in border + dot.
-    // Restyle: all mission cards are SATURATED (sky gradient for regular nodes, solid semantic
-    // fills for start/sleep/finish) with LIGHT text — same look in both themes (Peter: the pale
-    // tints read weak and the text was dark-here / light-there). No sun data → dark slate fallback.
     const sky=(!node.isStart&&!node.isFinish&&!isSleep&&dnBg&&dnBg.indexOf('rgba')===0)?dnBg:'';
-    const bgCol=node.isStart?'var(--mcard-start)':node.isFinish?'var(--mcard-finish)':isSleep?'var(--mcard-sleep)':(sky||'var(--stop-card-bg)');
-    const borderCol='rgba(255,255,255,0.18)';   // subtle light edge on the saturated cards
-    const dotCol=node.isStart?'var(--mcard-start)':node.isFinish?'var(--mcard-finish)':isSleep?'var(--mcard-sleep)':'var(--text-muted)';
+    const bgCol=node.isStart?'var(--card-start-bg)':node.isFinish?'var(--card-finish-bg)':isSleep?'var(--card-sleep-bg)':(sky||'var(--card-town-bg)');
+    const borderCol=node.isStart?'var(--card-start-br)':node.isFinish?'var(--card-finish-br)':isSleep?'var(--card-sleep-br)':'var(--card-town-br)';
+    const dotCol=node.isStart?'var(--accent)':node.isFinish?'var(--finish-deep)':isSleep?'var(--sleep-deep)':'var(--text-muted)';
     const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--hairline);margin-top:2px;"></div>';
-    const isLightBg=false;
-    const textCol='#f6f4ef';
-    const text3Col='rgba(246,244,239,0.78)';
-    const etaCol='#f6f4ef';
+    const _dn=sky?dnTextCol(sky):null;
+    const isLightBg=_dn?(_dn.text!=='#f6f4ef'):true;   // true = tile reads light → dark text/ETA
+    const textCol=_dn?_dn.text:'var(--text)';
+    const text3Col=_dn?_dn.soft:'var(--text-soft)';
+    const etaCol=_dn?_dn.text:'var(--accent)';
     const daydiv=dayStr?'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);">'+dayStr+'</div>':'';
     const metaCount=node.cluster&&node.cluster.stops.length>1?' · '+node.cluster.stops.length+' stops':'';
     const chips=node.cluster?node.cluster.stops.map(s=>stopChip(s,r)).join(''):'';
@@ -18193,14 +18184,13 @@ function tPlan(r){
         +(s.departTime?'':row('',''+hrs.toFixed(1)+'h '+icon,col))
         // Actually just show sleep line cleanly
         +'</div>';
-      // Rebuild more cleanly — light text on the saturated purple bivi card (labels muted-light).
-      const _slbl='color:rgba(246,244,239,0.7);min-width:52px;',_sval='color:#f6f4ef;';
+      // Rebuild more cleanly
       sleepDiv='<div style="margin-top:8px;font-family:var(--font);font-size:15px;">'
-        +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="${_slbl}">Arrive</span><span style="${_sval}">${(dayStr?dayStr+' ':'')+fmtT(eta)}</span></div>`
+        +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="color:var(--text3);min-width:52px;">Arrive</span><span style="color:var(--text);">${(dayStr?dayStr+' ':'')+fmtT(eta)}</span></div>`
         +(beforeMeals.length?'<div style="margin:4px 0;">'+beforeMeals.map(fmtChip).join('')+'</div>':'')
-        +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="${_slbl}">${s.departTime?'Wake':'Sleep'}</span><span style="${_sval}">${s.departTime?(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake)+' ('+hrs.toFixed(1)+'h) '+icon:hrs.toFixed(1)+'h '+icon}</span></div>`
+        +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="color:var(--text3);min-width:52px;">${s.departTime?'Wake':'Sleep'}</span><span style="color:${col};">${s.departTime?(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake)+' ('+hrs.toFixed(1)+'h) '+icon:hrs.toFixed(1)+'h '+icon}</span></div>`
         +(afterMeals.length?'<div style="margin:4px 0;">'+afterMeals.map(fmtChip).join('')+'</div>':'')
-        +(depart?`<div style="display:flex;gap:6px;"><span style="${_slbl}">Depart</span><span style="${_sval}">${(departDay?departDay.trim()+' ':'')+fmtT(depart)}</span></div>`:'')
+        +(depart?`<div style="display:flex;gap:6px;"><span style="color:var(--text3);min-width:52px;">Depart</span><span style="color:var(--accent);">${(departDay?departDay.trim()+' ':'')+fmtT(depart)}</span></div>`:'')
         +'</div>';
     }
     // Cluster sleep departure
@@ -18215,7 +18205,7 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;box-shadow:var(--shadow-float);cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.72);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.9);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:var(--text-muted);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:var(--sleep-deep);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
             +'<div style="font-size:18px;font-weight:500;color:'+textCol+';line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+((node.clusterAll||node.cluster)?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.clusterAll||node.cluster)):'')+'</div>'
             +'<div style="font-size:18px;font-weight:500;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km</div>'
@@ -18235,8 +18225,8 @@ function tPlan(r){
           +'</div>'
           +(isSleep?'':
           '<div style="display:flex;align-items:flex-start;gap:4px;flex-shrink:0;margin-left:8px;">'
-            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="'+(node.cluster.stops.some(s=>s.sleepAt)?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')+'</button>':''})():'')
-            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="'+(hasMeals?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food here"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="'+(node.cluster.stops.some(s=>s.sleepAt)?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);')+'" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')+'</button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="'+(hasMeals?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.22);color:var(--on-dark);')+'" title="Add food here"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':''})():'')
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const clWater=node.cluster.stops.some(waterAssigned);return ts?'<button class="water-at-stop" data-node="1" data-sid="'+ts.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clWater?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clWater?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clWater?'#60a5fa':'none')+'" stroke="'+(clWater?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>':''})():'')
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const isEditing=UI.planEditCluster===ts.id;return ts?'<button class="cluster-edit-btn" data-sid="'+ts.id+'" style="background:'+(isEditing?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(isEditing?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:'+(isEditing?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':''})():'')
           +'</div>')
@@ -18257,7 +18247,7 @@ function tPlan(r){
                   +(warnings.length?'<div style="font-size:12px;color:var(--text3);">has: '+warnings.join(', ')+'</div>':'')
                 +'</div>'
                 +'<div style="display:flex;gap:4px;flex-shrink:0;">'
-                  +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:var(--on-dark);" title="Edit stop">'+ICON_EDIT+'</button>'
+                  +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:var(--on-dark);" title="Edit stop">'+ICON_EDIT+'</button>'
                   +'<button class="no-cluster-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 8px;display:flex;align-items:center;justify-content:center;border:1px solid '+(s.noCluster?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.22)')+';color:'+(s.noCluster?'#fbbf24':'rgba(255,255,255,0.85)')+';font-size:12px;font-family:var(--font);" title="'+(s.noCluster?'Re-join cluster':'Split from cluster')+'">'+(s.noCluster?'⊞ rejoin':'⊟ split')+'</button>'
                   +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
                 +'</div>'
@@ -18285,7 +18275,7 @@ function tPlan(r){
                   +'</div>'
                   +'<div style="display:flex;gap:4px;flex-shrink:0;">'
                     +'<button class="food-at-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border:1px solid '+foodBorder+';border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:'+foodCol+';" title="Add food">'+foodSvg+'</button>'
-                    +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:var(--on-dark);" title="Edit stop">'+ICON_EDIT+'</button>'
+                    +'<button class="cluster-edit-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border:1px solid rgba(255,255,255,0.22);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:var(--on-dark);" title="Edit stop">'+ICON_EDIT+'</button>'
                     +'<button class="no-cluster-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 8px;display:flex;align-items:center;justify-content:center;border:1px solid '+(s.noCluster?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.22)')+';color:'+(s.noCluster?'#fbbf24':'rgba(255,255,255,0.85)')+';font-size:12px;font-family:var(--font);" title="'+(s.noCluster?'Re-join cluster':'Split from cluster')+'">'+(s.noCluster?'⊞ rejoin':'⊟ split')+'</button>'
                     +'<button class="cluster-unstar-stop" data-sid="'+s.id+'" style="background:var(--overlay-bg);border:1px solid rgba(248,113,113,0.6);border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:rgba(248,113,113,0.9);" title="Remove from mission">'+ICON_REMOVE+'</button>'
                   +'</div>'
@@ -18350,8 +18340,8 @@ function tPlan(r){
       _planLeg++;
       const dayLabel=!node.isFinish?(
         UI.planSleepOnly?
-          '<div style="font-size:12px;font-weight:600;color:var(--text2);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' ride</div>':
-          '<div style="font-size:12px;font-weight:600;color:var(--text2);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' · Leg '+curLeg+'</div>'
+          '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' ride</div>':
+          '<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' · Leg '+curLeg+'</div>'
       ):'';
 
       const segPts=r.points.filter(p=>p.dist>=node.dist&&p.dist<=next.dist);
@@ -18366,9 +18356,9 @@ function tPlan(r){
         +'<div style="flex:1;padding:4px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +dayLabel
-            +'<span style="font-size:19px;font-weight:600;color:var(--accent);font-family:var(--font);">'+segDist.toFixed(1)+' km</span>'
-            +(rideStr?'<br><span style="font-size:15px;font-weight:500;color:var(--text-soft);font-family:var(--font);">'+rideStr+'</span>':'')
-            +(elevStr?'<br><span style="font-size:15px;font-weight:500;color:var(--text-soft);font-family:var(--font);">'+elevStr+'</span>':'')
+            +'<span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+segDist.toFixed(1)+' km</span>'
+            +(rideStr?'<br><span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+rideStr+'</span>':'')
+            +(elevStr?'<br><span style="font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);">'+elevStr+'</span>':'')
           +'</div>'
           +'<div style="display:flex;gap:4px;">'+foodIcon+waterIcon+'</div>'
         +'</div>'
@@ -18405,17 +18395,17 @@ function tPlan(r){
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
         +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
-        +'<button class="btn btn-sm" id="btn-plan-sleep-filter" style="background:var(--stop-card-bg);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planSleepOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show bivi stops only">'
+        +'<button class="btn btn-sm" id="btn-plan-sleep-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planSleepOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show bivi stops only">'
         +(UI.planSleepOnly
           ?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
           :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')
         +'</button>'
-        +'<button class="btn btn-sm" id="btn-plan-food-filter" style="background:var(--stop-card-bg);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planFoodOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show food stops only">'
+        +'<button class="btn btn-sm" id="btn-plan-food-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planFoodOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show food stops only">'
         +(UI.planFoodOnly
           ?'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>'
           :'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>')
         +'</button>'
-        +'<button class="btn btn-sm" id="btn-plan-water-filter" style="background:var(--stop-card-bg);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planWaterOnly?'border-color:rgba(96,165,250,0.7);':'')+'" title="Show water stops only">'
+        +'<button class="btn btn-sm" id="btn-plan-water-filter" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planWaterOnly?'border-color:rgba(96,165,250,0.7);':'')+'" title="Show water stops only">'
         +(UI.planWaterOnly
           ?'<svg viewBox="0 0 16 16" width="16" height="16" fill="#60a5fa" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5C8 1.5 3 7 3 10.5a5 5 0 0 0 10 0C13 7 8 1.5 8 1.5z"/></svg>'
           :'<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.2" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5C8 1.5 3 7 3 10.5a5 5 0 0 0 10 0C13 7 8 1.5 8 1.5z"/></svg>')
@@ -19872,7 +19862,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       if(existing){existing.remove();return;}
       const overlay=document.createElement('div');
       overlay.id='sleep-modal-overlay';
-      overlay.style.cssText='position:fixed;inset:0;background:var(--scrim);z-index:1000;display:flex;align-items:flex-end;justify-content:center;';
+      overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-end;justify-content:center;';
       const picker=document.createElement('div');
       picker.className='sleep-dur-picker';
       picker.style.cssText='display:flex;flex-direction:column;gap:12px;padding:16px 16px 24px;background:var(--card);border:1px solid rgba(130,100,220,0.6);border-radius:12px 12px 0 0;width:100%;max-width:420px;';
@@ -19961,7 +19951,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       const clusterList=_fCl?_fCl.stops:[s];
       const overlay=document.createElement('div');
       overlay.id='food-modal-overlay';
-      overlay.style.cssText='position:fixed;inset:0;background:var(--scrim);z-index:1000;display:flex;align-items:flex-end;justify-content:center;';
+      overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-end;justify-content:center;';
       const picker=document.createElement('div');
       picker.className='food-picker';
       picker.style.cssText='display:flex;flex-direction:column;gap:8px;padding:16px 16px 24px;background:var(--card);border:1px solid rgba(251,191,36,0.5);border-radius:12px 12px 0 0;width:100%;max-width:420px;max-height:85dvh;overflow-y:auto;';
