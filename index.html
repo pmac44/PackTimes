@@ -122,7 +122,10 @@
 
 [data-theme="paper"]{
   /* canonical */
-  --surface:#eae5d5;--surface-raised:#fffef8;--surface-sunken:#dcd5c0;
+  /* --surface set to the OSM default-map "land" colour (#f2efe9) so the chrome blends into the
+     map (Peter). Tune this single value if you want it warmer (#eae5d5 was the original Paper
+     tan); raised/sunken keep the tonal hierarchy. */
+  --surface:#f2efe9;--surface-raised:#fffef8;--surface-sunken:#dcd5c0;
   --hairline:#cfc7ae;--border-strong:#48562f;
   --text:#2a2721;--text-muted:#8a8271;
   --accent:#48562f;--accent-mid:#6d8446;--accent-on:#ffffff;
@@ -131,6 +134,7 @@
   --cell-top:#2a2721;--cell-top-text:#fffef8;--cell-top-muted:#b5ac99;
   --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;--mspeed-bg:#e4dfcb; /* moving-avg pill: stepped-down warm light */
   --chev-off:rgba(72,86,47,0.28); /* unlit progress chevron — faint olive, visible on the light surface */
+  --elev-bg:rgba(220,213,192,0.92); /* elevation stat strip — semi-opaque sunken surface over the map */
   --sleep:#6f5f96;--food:#a8622d;--water:#46688f;--finish:#a04a38;
   --shadow-float:0 3px 10px rgba(90,80,50,.18);
   --z1:#8a8271;--z2:#46688f;--z3:#5d7a3a;--z4:#c98a2e;--z5:#b5501f;--z6:#a8382c;--z7:#6f5f96;
@@ -161,6 +165,7 @@
   --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;   /* stays light in BOTH themes — the B&W pairing is the legibility feature */
   --mspeed-bg:#ccd6cf; /* moving-avg pill's stepped tone — the value v272 tuned on the OLED */
   --chev-off:rgba(255,255,255,0.24); /* unlit progress chevron — the value v261 tuned on the OLED */
+  --elev-bg:rgba(16,18,22,0.9); /* elevation stat strip — semi-opaque sunken surface over the map */
   --sleep:#a08fe0;--food:#ffd166;--water:#5b9bd5;--finish:#e06a5a;
   --shadow-float:0 3px 10px rgba(0,0,0,.35);
   --z1:#8b939e;--z2:#4a7ab5;--z3:#6a9955;--z4:#d9a03c;--z5:#d96c2e;--z6:#cf4b3d;--z7:#8f7fd0;
@@ -241,7 +246,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .pack-peeking #live-weather-bar-wrap,.pack-peeking #turn-cue,.pack-peeking .turn-cue,
 .pack-peeking #pack-btn,.pack-peeking #share-btn,.pack-peeking #rec-stop-confirm,
 .pack-peeking #rec-ctrl{visibility:hidden;}
-.tabs{display:flex;justify-content:space-around;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;padding:0;}
+.tabs{display:flex;justify-content:space-around;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;padding:0;padding-top:env(safe-area-inset-top,0px);}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:0 1 auto;min-width:0;padding:8px 6px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
@@ -260,7 +265,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 @keyframes stop-alert-pulse{0%{box-shadow:0 0 0 0 rgba(251,191,36,0.6);}50%{box-shadow:0 0 8px 3px rgba(251,191,36,0.45);}100%{box-shadow:0 0 0 0 rgba(251,191,36,0.0);}}
 .live-next-row.alerting{background:rgba(251,191,36,0.15);border-radius:6px;animation:stop-alert-pulse 1.5s ease-in-out 3;}
 .live-next-icons{display:flex;gap:4px;align-items:center;flex-shrink:0;}
-.live-next-name{flex:1;min-width:0;font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.live-next-name{flex:1;min-width:0;font-size:16px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .live-next-right{text-align:right;flex-shrink:0;}
 .live-next-km{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font-slow);}
 .live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font-slow);}
@@ -401,11 +406,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    each, no overlap.
    So this rule now only swaps the chequer's grain for a crescent — the colours come from
    .live-dist-chev / .done exactly as they do for every other chevron. */
+/* Restyle: themed via TOKENS, no hardcoded theme colour. The crescent is a MASK, so the
+   chevron's own colour (--chev-off ghost ahead / --accent behind) shows through it — it works
+   in both Paper and Graphite with nothing to duplicate. (Was a negative punch in a fixed dark,
+   which vanished on the light Paper bar.) */
 .live-dist-chev.fin.moon{
-  background-color:rgba(255,255,255,0.24);   /* ahead: the same ghost every chevron wears */
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%230e140e'/></svg>");
-  background-size:100% 100%;background-repeat:no-repeat;background-position:center;}
-/* ridden: green, like everything behind you. Arriving at the bed lights the moon. */
+  background-color:var(--chev-off);
+  background-image:none;
+  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23000'/></svg>") center/86% 86% no-repeat;
+  mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23000'/></svg>") center/86% 86% no-repeat;}
+/* ridden: accent, like everything behind you. Arriving at the bed lights the moon. */
 .live-dist-chev.fin.moon.done{background-color:var(--accent);}
 /* The numbers are a plain flex row — no absolute positioning, because nothing about
    where they sit depends on the fill any more. That is the whole point of v261. */
@@ -476,7 +486,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    would be daft. Same value, two homes: centre when there's a route, left when there isn't. */
 .live-dist-bar.no-route .live-dist-actual{display:none;}
 .live-elev-strip{position:absolute;bottom:0;left:0;right:0;z-index:10;background:transparent;cursor:pointer;user-select:none;border-radius:0;}
-.live-elev-bar{background:rgba(10,15,10,0.88);}
+.live-elev-bar{background:var(--elev-bg);}
 .live-elev-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px;}
 .live-elev-stat{font-family:var(--font);font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;}
 .live-elev-unit{font-size:14px;color:var(--text3);font-weight:400;}
@@ -537,6 +547,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   flex-direction:column;align-items:center;justify-content:center;}
 .zbtn{width:38px;height:38px;background:var(--surface-raised);border:1px solid var(--hairline);border-radius:7px;color:var(--text);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-float);-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;}
 .zbtn:active{background:var(--card2);}
+/* Restyle: a MERGED button group — one raised pill, its buttons flush with hairline dividers
+   (matches the sample's grouped control rail). Buttons inside drop their own border/radius/shadow. */
+.zbtn-group{display:flex;flex-direction:column;pointer-events:auto;background:var(--surface-raised);border:1px solid var(--hairline);border-radius:var(--r-ctrl);box-shadow:var(--shadow-float);overflow:hidden;}
+.zbtn-group .zbtn{background:transparent;border:none;border-radius:0;box-shadow:none;}
+.zbtn-group .zbtn+.zbtn{border-top:1px solid var(--hairline);}
+.zbtn-group .zbtn:active{background:var(--card2);}
 .map-ctrl{position:absolute;top:50%;left:8px;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;pointer-events:none;}
 .map-ctrl-right{left:auto;right:8px;}
 .map-ctrl .zbtn{pointer-events:all;}
@@ -603,6 +619,21 @@ select option{background:var(--bg3);}
 .si-meta{font-family:var(--font);font-size:var(--fs-sm);color:var(--text3);margin-top:2px;}
 .si-rt{text-align:right;flex-shrink:0;}.si-time{font-family:var(--font);font-size:var(--fs-base);font-weight:500;color:var(--accent);}
 .si-st{font-size:var(--fs-sm);margin-top:1px;}.s-op{color:var(--accent);}.s-cl{color:var(--red);}.s-uk{color:var(--amber);}
+/* Restyle: the ride-tab stops list gets an EARTHY dark-row / light-text look in Paper (Peter).
+   Done by rebinding the row's tokens ONCE — every sub-element (name=--text, meta=--text3,
+   ETA=--accent, bg=--card2, tags=--cat-*) flips to the lifted values automatically, no
+   per-element edits. Scoped to #live-stop-list so the planning tabs are untouched for now;
+   drop the `#live-stop-list ` prefix to apply everywhere. Graphite rows are already dark. */
+[data-theme="paper"] #live-stop-list .si{
+  --card2:#5c4d37;--border:#77664a;--border2:#8c7a5a;
+  --text:#f3ede1;--text2:#d9cdb5;--text3:#c2b596;
+  --accent:#bcd08a;--accent2:#bcd08a;--accent3:#a7c06f;
+  --amber:#ffd166;--red:#f2a08f;--blue:#8fbfe8;--purple:#c3b2ec;
+  --cat-town:#8fd3a4;--cat-food:#ffd166;--cat-water:#8fbfe8;--cat-sleep:#c3b2ec;
+  --cat-accom:#c3b2ec;--cat-fuel:#f0a86a;--cat-hut:#d8be8e;--cat-camp:#9fc98a;
+  --cat-caravan:#c3d68a;--cat-peak:#b6c2ce;--cat-crossing:#93bcc9;--cat-wc:#b6c2ce;
+  --cat-stop:#cabf9f;--cat-church:#d9b8e8;--cat-school:#a9c9f5;--cat-hall:#dcc08a;
+  --cat-fire:#f28b7a;--cat-police:#8fb0e0;}
 .tag{display:inline-block;padding:2px 7px;border-radius:6px;font-size:var(--fs-xs);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;}
 .t-food{background:color-mix(in srgb,var(--cat-food) 15%,transparent);color:var(--cat-food);}.t-water{background:color-mix(in srgb,var(--cat-water) 15%,transparent);color:var(--cat-water);}
 .t-sleep{background:color-mix(in srgb,var(--cat-sleep) 15%,transparent);color:var(--cat-sleep);}.t-accom{background:color-mix(in srgb,var(--cat-accom) 15%,transparent);color:var(--cat-accom);}.t-wc{background:color-mix(in srgb,var(--cat-wc) 15%,transparent);color:var(--cat-wc);}.t-town{background:color-mix(in srgb,var(--cat-town) 15%,transparent);color:var(--cat-town);}.t-shop{background:color-mix(in srgb,var(--cat-shop) 15%,transparent);color:var(--cat-shop);}.t-hut{background:color-mix(in srgb,var(--cat-hut) 15%,transparent);color:var(--cat-hut);}.t-fuel{background:color-mix(in srgb,var(--cat-fuel) 15%,transparent);color:var(--cat-fuel);}.t-peak{background:color-mix(in srgb,var(--cat-peak) 15%,transparent);color:var(--cat-peak);}.t-camp{background:color-mix(in srgb,var(--cat-camp) 15%,transparent);color:var(--cat-camp);}.t-stop{background:color-mix(in srgb,var(--cat-stop) 15%,transparent);color:var(--cat-stop);}.t-crossing{background:color-mix(in srgb,var(--cat-crossing) 15%,transparent);color:var(--cat-crossing);}.t-church{background:color-mix(in srgb,var(--cat-church) 15%,transparent);color:var(--cat-church);}.t-school{background:color-mix(in srgb,var(--cat-school) 15%,transparent);color:var(--cat-school);}.t-hall{background:color-mix(in srgb,var(--cat-hall) 15%,transparent);color:var(--cat-hall);}.t-fire{background:color-mix(in srgb,var(--cat-fire) 15%,transparent);color:var(--cat-fire);}.t-police{background:color-mix(in srgb,var(--cat-police) 15%,transparent);color:var(--cat-police);}.t-caravan{background:color-mix(in srgb,var(--cat-caravan) 15%,transparent);color:var(--cat-caravan);}
@@ -1239,7 +1270,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v277';
+window.APP_VERSION='v286';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7108,7 +7139,14 @@ function recCtrlHTML(){
   const recActive = _rec && _rec.status === 'active';
   const recPaused = _rec && _rec.status === 'paused';
   const pauseSvg='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;margin:auto;"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg>';
-  const shadow='box-shadow:0 2px 8px rgba(0,0,0,.45);';
+  const shadow='box-shadow:var(--shadow-float);';
+  // Restyle (Peter): recording + share are ONE merged pill ("separate but related"). The
+  // SQUARE record states (idle dot / recording pause) sit flush ON the share button below —
+  // flat bottom, no bottom border, so the share button's own top border is the single divider.
+  const mergeBtm='border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none;';
+  // Idle is now ICON-ONLY (Strava is the gold standard), and it keeps PackTimes' record DOT
+  // rather than a play triangle (v245: the triangle read as "play a video", not "record").
+  const bigDot='<svg viewBox="0 0 24 24" width="22" height="22" style="display:block;margin:auto;"><circle cx="12" cy="12" r="8" fill="#ef4444"/></svg>';
   // Wide text-button shell for the stationary states. Height matches the 52px icon buttons
   // so the column stays aligned whichever state you're in.
   const wide=mob?'width:auto;height:52px;min-width:52px;padding:0 14px;font-size:15px;'
@@ -7133,7 +7171,7 @@ function recCtrlHTML(){
   if(recActive){
     // RECORDING — icon only. Small, solid TRUE red (--red2; the old --red #f87171 is a
     // salmon that fills PINK), blinking via .rec-pulse. Tap = pause.
-    return`<button class="zbtn rec-pulse" id="btn-gpstoggle" title="Pause recording" style="${btnSize}padding:0;overflow:hidden;color:#fff;background:var(--red2);border-color:var(--red2);${shadow}">${pauseSvg}</button>`;
+    return`<button class="zbtn rec-pulse" id="btn-gpstoggle" title="Pause recording" style="${btnSize}padding:0;overflow:hidden;color:#fff;background:var(--red2);border-color:var(--red2);${shadow}${mergeBtm}">${pauseSvg}</button>`;
   }
   if(recPaused){
     // PAUSED — say so. GREEN "Resume ride" (v245): a button's colour should describe its
@@ -7160,7 +7198,7 @@ function recCtrlHTML(){
   // version looked pasted on); the red dot carries the "record" meaning. Deliberately NOT a
   // red button: RECORDING is red, and idle-vs-recording is the one distinction this button
   // absolutely must make at a glance.
-  return`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${wide}color:var(--text);border-color:var(--border2);${shadow}"><span style="${row}">${dot}${label('Start ride')}</span></button>`;
+  return`<button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${btnSize}padding:0;overflow:hidden;color:var(--text);border-color:var(--border2);${shadow}${mergeBtm}">${bigDot}</button>`;
 }
 
 // Position the record control above whichever 54px button owns the bottom-left slot.
@@ -7187,7 +7225,10 @@ function _recBtnSync(){
   }
   const sr = sec.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
   el.style.top = 'auto';
-  el.style.bottom = Math.max(8, sr.bottom - ar.top + LEFT_COL_GAP) + 'px';
+  // Restyle: square record states (idle/recording) sit FLUSH on the share/pack button to form
+  // one pill — gap 0. The paused state (two wide Resume/Stop buttons) keeps the normal gap.
+  const _mergeGap = (_rec && _rec.status === 'paused') ? LEFT_COL_GAP : 0;
+  el.style.bottom = Math.max(8, sr.bottom - ar.top + _mergeGap) + 'px';
   // Only rewrite when the STATE changes — this runs on every live tick via the share/pack
   // syncs, and blowing away the buttons each time would restart the .rec-pulse blink and
   // eat taps mid-press.
@@ -7348,7 +7389,7 @@ function _shareBtnSync(){
     el = document.createElement('div');
     el.id = 'share-btn';
     el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;'
-      + 'border-radius:var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;'
+      + 'border-radius:0 0 var(--r-ctrl) var(--r-ctrl);background:var(--surface-raised);display:flex;'  // top corners flat: it's the BOTTOM of the merged record+share pill
       + 'align-items:center;justify-content:center;cursor:pointer;box-sizing:border-box;';
     sec.appendChild(el);
   }
@@ -7371,7 +7412,7 @@ function _shareBtnSync(){
     el.style.color = C[1];
     el.style.animation = 'none';
     el.classList.toggle('pulse', st === 'live');   // v276 — CSS breathes the svg (see .pulse)
-    el.style.boxShadow = 'none';
+    el.style.boxShadow = 'var(--shadow-float)';
     el.innerHTML = SHARE_BTN_ICON + (st === 'off'
       ? '<span style="position:absolute;width:34px;height:3px;background:#6a8a6a;border-radius:2px;transform:rotate(-45deg);"></span>' : '');
   }
@@ -7849,7 +7890,7 @@ function _packBtnSync(){
     el = document.createElement('div');
     el.id = 'pack-btn';
     el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;'
-      + 'border-radius:var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;flex-direction:column;'
+      + 'border-radius:0 0 var(--r-ctrl) var(--r-ctrl);background:rgba(10,15,10,.88);display:flex;flex-direction:column;'  // top corners flat: bottom of the merged record+pack pill
       + 'align-items:center;justify-content:center;gap:1px;cursor:pointer;box-sizing:border-box;'
       + 'border:2px solid #fde047;color:#fde047;';
     sec.appendChild(el);
@@ -11611,15 +11652,14 @@ function mapCtrlHTML(mapId,showGPS){
   // and shrinking it to fit "OSM", so it sat visibly narrower than its neighbour. Elsewhere
   // (planning maps, 38px buttons) width:auto is fine — nothing square sits next to it.
   const tileSquare=(mapId==='live-map')?'padding:0;':'width:auto;padding:0 8px;';
-  return`<div class="map-ctrl" style="${pos}${ctrlAlign}" id="${mapId==='live-map'?'live-map-ctrl':''}">
-    ${expandBtn}
-    ${fitBtn}
-    <button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${TILE_LABELS[_tileMode]}</button>
-    ${recenterBtn}
-    ${gpsBtn}
-    ${stopBtn}
-    ${(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:''}
-  </div>`;
+  const tileBtn=`<button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${TILE_LABELS[_tileMode]}</button>`;
+  const surfBtn=(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:'';
+  // Restyle: on the ride map, fit-route + tile toggle MERGE into one pill (Peter). Elsewhere
+  // (planning maps) they stay separate buttons — those columns also carry the surface toggle.
+  const inner = (mapId==='live-map')
+    ? `<div class="zbtn-group">${fitBtn}${tileBtn}</div>`
+    : `${expandBtn}${fitBtn}${tileBtn}${recenterBtn}${gpsBtn}${stopBtn}${surfBtn}`;
+  return`<div class="map-ctrl" style="${pos}${ctrlAlign}" id="${mapId==='live-map'?'live-map-ctrl':''}">${inner}</div>`;
 }
 function zoomBtnsHTML(mapId){return mapCtrlHTML(mapId,false);}
 
@@ -14642,7 +14682,7 @@ const FPILL_CELL_H=110;             // px — must match grid-auto-rows below
 // with a real zone pill sitting next to it — the exact thing v260 was protecting.
 // Contrast against #101510 stays ~12:1, so nothing is traded for the identity.
 const FPILL_MSPEED_BG='var(--mspeed-bg)';    // moving-avg pill's reversed half — a stepped tone (token per theme). ⚠ JUDGE ON THE PHONE (OLED) — v260's dirty-green lesson
-const FPILL_BORDER='var(--border-w) solid var(--cell-border)';   // dark 1.5px, per Peter: "dark 1.5px borders are good" — floats over the map, so dark in both themes
+const FPILL_BORDER='var(--border-w) solid var(--border-strong)';   // 1.5px — matches the style-guide cell sample (#48562f in Paper); a subtle grey in Graphite
 // Assigned by tLiveShell when the live shell is built. It closes over nothing (it reads
 // UI and _legVals only, never the route), so it is safe to call from anywhere once set.
 let _renderFloatingPill=null;
@@ -15570,10 +15610,13 @@ function tLiveShell(r){
     // decides it: the pan bug bites every rider who turns a pill off and then wonders why
     // the map is stuck, whereas the small chip only bites on the one tap that leaves the
     // empty state — a tap you make while stopped, not while riding.
+    // Restyle: each cell is now a self-contained floating card (border all round, radius,
+    // shadow) instead of v270c's shared boundary lines. _bR/_bB above are left computed but
+    // unused — harmless, and cheap to restore if the connected grid is ever wanted back.
     const base='cursor:pointer;-webkit-tap-highlight-color:transparent;box-sizing:border-box;'
               +'pointer-events:auto;'
               +'width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;'
-              +'border-right:'+_bR+';border-bottom:'+_bB+';';
+              +'border:'+FPILL_BORDER+';border-radius:var(--r-card);box-shadow:var(--shadow-float);';
     const pos='';
     if(type==='off'){
       // A HOLE WITH A HANDLE, not a black box (Peter). The cell is transparent — the map
@@ -15595,9 +15638,12 @@ function tLiveShell(r){
       // rest of the cell is map in every sense, not just visually.
       // The chip is INSIDE the cell, so the delegator's closest('.live-fpill') still finds
       // the slot from a chip tap — the cycle handler needs no change at all.
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}pointer-events:none;align-items:center;justify-content:flex-start;padding-top:4px;">
-        <div style="pointer-events:auto;width:28px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:rgba(10,15,10,0.7);border:1px solid rgba(255,255,255,0.15);border-radius:7px;">
-          <span style="font-size:18px;color:rgba(255,255,255,0.5);line-height:1;">+</span>
+      // The blank slot is the small "+" chip at the TOP of the cell area (v272, Peter: keep this
+      // — the empty cell stays transparent so the map pans straight through it, and only the chip
+      // is a tap target). Themed to match the cells: a small raised square with a muted +.
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}border:none;box-shadow:none;background:transparent;pointer-events:none;align-items:center;justify-content:flex-start;padding-top:2px;">
+        <div style="pointer-events:auto;width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--surface-raised);border:1px solid var(--hairline);border-radius:8px;box-shadow:var(--shadow-float);color:var(--text-muted);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display:block;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </div></div>`;
     }
     // ── COLOUR ON THE PILLS IS SPOKEN FOR. DON'T ADD MORE. ──────────────────────────
@@ -15652,16 +15698,16 @@ function tLiveShell(r){
         <div style="padding:5px 8px 3px;">
           <!-- numbers RIGHT-JUSTIFIED in a fixed 4-character box (DM Mono = equal
                widths), so the decimal point never moves between 9.2 and 18.0 -->
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-speed-cur">${curSpd}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-speed-cur">${curSpd}</span></div>
           <!-- v260 (Peter, from the ride): "we actually can't read that grey km/h… it should be
                white, with full contrast. I think for all those pills, I'd just use black and
                white." Right — SIZE carries the hierarchy here (34px vs 11px), so the colour
                doesn't need to as well, and grey on a moving map at arm's length is unreadable.
                Also moved off var(--font): these are WORDS, and mono is for figures (v244). -->
-          <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">km/h</div>
+          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">km/h</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
           <!-- v272: "km/h avg" -> "km/h avg. incl. stops". Two changes in one label, and
                they came from opposite ends.
                · "incl. stops" is v260's own settled decision, written down and never built.
@@ -15683,7 +15729,7 @@ function tLiveShell(r){
                "incl. stops" also needs no domain knowledge, which is the point: the rider who
                reaches for a moving average BECAUSE it flatters is exactly the one who won't
                decode jargon. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;">km/h avg. incl. stops</div>
+          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">km/h avg. incl. stops</div>
         </div>
       </div>`;
     }
@@ -15727,15 +15773,15 @@ function tLiveShell(r){
       const mAvg=(L&&L.movingMs>60000&&mvH>0&&L.distKm>0)?(L.distKm/mvH).toFixed(1):'—';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-mspeed">
         <div style="padding:5px 8px 3px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-mspeed-cur">${curSpd}</span></div>
-          <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">km/h</div>
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-mspeed-cur">${curSpd}</span></div>
+          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">km/h</div>
         </div>
         <!-- Geometry is the speed pill's, property for property — 34px in a 4ch box, same
              paddings, same label sizes. ONLY the background tone differs. That is what makes
              the tone read as an identity rather than as damage: change anything else and it
              stops being the same object wearing a different coat. -->
         <div style="background:${FPILL_MSPEED_BG};padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--font);" id="live-mspeed-avg">${mAvg}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-mspeed-avg">${mAvg}</span></div>
           <!-- Peter: "'moving avg.' is clear enough." So this one says what it IS, and the
                speed pill says what the DIFFERENCE is. Both are his words; neither needs a
                glossary. The word order flips between the two pills ON PURPOSE — "moving avg."
@@ -15747,7 +15793,7 @@ function tLiveShell(r){
                ⚠ "avg." IS LOAD-BEARING, not decoration — see the note in the speed pill.
                Without it this read "km/h moving", which parses as your moving SPEED, and the
                figure right above it is the actual current speed. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;">km/h moving avg.</div>
+          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">km/h moving avg.</div>
         </div>
       </div>`;
     }
@@ -15783,16 +15829,17 @@ function tLiveShell(r){
       // label below is just "to top".
       const clb=gLive?climbAt(gr,UI.gpsDistKm):null;
       const[toNum,toUnit]=_toTopParts(clb?Math.max(0,clb.top-UI.gpsDistKm):null);
-      const F='font-size:34px;font-weight:500;font-family:var(--font);';
-      const U='font-size:20px;font-weight:500;font-family:var(--font);margin-left:3px;';
+      const F='font-size:34px;font-weight:700;font-family:var(--font);';   // top (kept 34px: "-12%" is width-sensitive)
+      const Fb='font-size:30px;font-weight:600;font-family:var(--font);';  // bottom secondary
+      const U='font-size:18px;font-weight:600;font-family:var(--font);margin-left:3px;';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-grade">
         <div id="live-grade-top" style="padding:5px 8px 3px;${gLive?`background:${gBg};`:''}">
           <div style="line-height:1.0;"><span style="${F}color:${gDark?'#000':'#fff'};" id="live-grade-cur">${gTxt}</span></div>
-          <div style="font-size:11px;font-weight:400;color:${gDark?'#000':'#fff'};font-family:var(--sans);line-height:1.1;">grade</div>
+          <div style="font-size:11px;font-weight:500;color:${gDark?'#000':'#fff'};font-family:var(--sans);line-height:1.1;">grade</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="${F}color:var(--cell-bottom-text);" id="live-grade-totop">${toNum}</span><span style="${U}color:var(--cell-bottom-text);" id="live-grade-tounit">${toUnit}</span></div>
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;">to top</div>
+          <div style="line-height:1.0;"><span style="${Fb}color:var(--cell-bottom-text);" id="live-grade-totop">${toNum}</span><span style="${U}color:var(--cell-bottom-text);" id="live-grade-tounit">${toUnit}</span></div>
+          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">to top</div>
         </div>
       </div>`;
     }
@@ -15852,16 +15899,16 @@ function tLiveShell(r){
         <div style="padding:5px 8px 3px;">
           <!-- min-width, not width: holds the 4ch column like the speed pill for any
                normal ride, and simply grows past 99h ("120h34") rather than clipping. -->
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-stop-ela">${ev}</span></div>
-          <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;" id="live-stop-elbl">${elbl}</div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-stop-ela">${ev}</span></div>
+          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;" id="live-stop-elbl">${elbl}</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <!-- min-width: 1dp makes the typical value 5ch ("12.3%") and 6ch at "100.0%",
                so the box has to be allowed to grow — same reasoning as elapsed. -->
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
           <!-- v260e: the label no longer changes. It said "record to measure" when idle;
                now the figures are honest zeros, so the label just names them, always. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">stoppage</div>
+          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">stoppage</div>
         </div>
       </div>`;
     }
@@ -15918,10 +15965,10 @@ function tLiveShell(r){
         return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};text-align:center;" id="live-fpill-power">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x26A1;</span></div>
-            <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">W &middot; 3 sec</div>
+            <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">W &middot; 3 sec</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
@@ -15969,7 +16016,7 @@ function tLiveShell(r){
           <!-- v260b CENTRED, not right-justified. The 4ch right-aligned box exists to stop a
                DECIMAL POINT moving (speed: 9.2 → 18.0). Watts have no decimal, so there was
                nothing to hold still — it was just off-centre for no reason (Peter). -->
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-power-cur">${curVal}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:36px;font-weight:700;color:${col};font-family:var(--font);" id="live-power-cur">${curVal}</span></div>
           <div style="font-size:11px;font-weight:400;color:${lblCol};font-family:var(--sans);line-height:1.1;">W · 3 sec</div>
         </div>
         <!-- v260e — THE HAIRLINE THAT KEEPS THE TWO HALVES TWO. Found the moment all five
@@ -15993,7 +16040,7 @@ function tLiveShell(r){
              replaces. Only the two ZONE pills get this — the others don't need it, and the
              unpaired states can't flood either half. -->
         <div id="live-power-bot" style="background:${npBg};border-top:1px solid rgba(10,15,10,0.85);padding:2px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${npCol};font-family:var(--font);" id="live-power-np">${np}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:30px;font-weight:600;color:${npCol};font-family:var(--font);" id="live-power-np">${np}</span></div>
           <div style="font-size:10px;font-weight:500;color:${npCol};font-family:var(--sans);line-height:1.1;" id="live-power-nplbl">W weighted</div>
         </div>
       </div>`;
@@ -16015,10 +16062,10 @@ function tLiveShell(r){
         return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};text-align:center;" id="live-fpill-cad">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:15px;font-weight:600;color:var(--text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">Cadence</span></div>
-            <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
+            <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">rpm</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
@@ -16029,8 +16076,8 @@ function tLiveShell(r){
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-cad">
         <div style="padding:5px 8px 3px;">
           <!-- centred: no decimal point to hold still (same rule as the power pill) -->
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-cad-cur">${cadTxt}</span></div>
-          <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-cad-cur">${cadTxt}</span></div>
+          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">rpm</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <!-- v260c — the balance figure is 28px, not the family's 34px. Peter: "the left
@@ -16050,12 +16097,12 @@ function tLiveShell(r){
                once: the pill matches the family paired, AND it no longer changes height when
                it pairs (the empty state uses the same 34px box). The rule generalises — the
                LINE BOX is the family constant, the glyph size is free. -->
-          <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:28px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
+          <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:28px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
           <!-- v260c "L/R" → "Left/Right %" (Peter: "there is plenty of room for it"). Measured:
                58px in an 84px slot, and the 49/51 figure above is 84px, so the label was never
                what governed this pill's width — no cost. "L/R" is bike-computer shorthand that
                assumes you already know; the words don't. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;">Left / Right %</div>
+          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">Left / Right %</div>
         </div>
       </div>`;
     }
@@ -16066,10 +16113,10 @@ function tLiveShell(r){
         return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="hr" style="${base}background:${pillBg};text-align:center;" id="live-fpill-hr">
           <div style="padding:5px 8px 3px;">
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x2764;&#xFE0F;</span></div>
-            <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">bpm</div>
+            <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">bpm</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
@@ -16094,14 +16141,14 @@ function tLiveShell(r){
       const aCol=az?(az.textDark?'#000':'#fff'):'var(--cell-bottom-text)';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-hr">
         <div id="live-hr-top" style="padding:5px 8px 3px;${hz?`background:${hz.bg};`:''}">
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-hr-cur">${val}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:36px;font-weight:700;color:${col};font-family:var(--font);" id="live-hr-cur">${val}</span></div>
           <div style="font-size:11px;font-weight:400;color:${col};font-family:var(--sans);line-height:1.1;" id="live-hr-lbl">bpm</div>
         </div>
         <!-- Hairline divide + the 3px→2px padding that pays for it — see the power pill's
              note. This is the pill the problem showed up on: 136 over 145, same zone, one
              yellow slab. -->
         <div id="live-hr-bot" style="background:${aBg};border-top:1px solid rgba(10,15,10,0.85);padding:2px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${aCol};font-family:var(--font);" id="live-hr-avg">${avgV}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:30px;font-weight:600;color:${aCol};font-family:var(--font);" id="live-hr-avg">${avgV}</span></div>
           <div style="font-size:10px;font-weight:500;color:${aCol};font-family:var(--sans);line-height:1.1;" id="live-hr-avglbl">bpm avg</div>
         </div>
       </div>`;
@@ -16129,9 +16176,14 @@ function tLiveShell(r){
   // CONTAINER over the map, and a bare div with no background swallows taps just as
   // thoroughly as a painted one — so with every pill off the band would still have been
   // dead. Cells opt back in via `base`; see the note there.
-  const gridStyle='position:absolute;top:var(--fpill-top,64px);left:0;right:0;z-index:12;'
-                 +'pointer-events:none;'
-                 +'display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:'+FPILL_CELL_H+'px;';
+  // Restyle: the mockup's "floating paired cells" — separate rounded cards with 8px gaps and
+  // a 10px screen margin (was v269's edge-to-edge connected grid). Each cell now draws its own
+  // full border + radius + shadow (see `base`), so the v270c per-boundary line logic is retired.
+  // top = the distance bar's band height (--fpill-top) PLUS a 10px gap so the cards clear the
+  // bar instead of butting against it (Peter). calc keeps the gap in both route/no-route bands.
+  const gridStyle='position:absolute;top:calc(var(--fpill-top,58px) + 10px);left:0;right:0;z-index:12;'
+                 +'pointer-events:none;box-sizing:border-box;padding:0 10px;'
+                 +'display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:'+FPILL_CELL_H+'px;gap:8px;';
   const floatingPills=`<div id="fpill-grid" style="${gridStyle}">`
     +[0,1,2,3,4,5].map(i=>_renderFloatingPill(i)).join('')+`</div>`;
 
@@ -17560,8 +17612,10 @@ function weatherBarHTML(){
   const isHeavyRain=code>=65&&code<80;
   const isRain=wmoIsRainy(code)&&!isStorm;
   const isCloud=code>=3&&code<51;
-  const condBg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(202,138,4,1)';
-  const condText=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fefce8';
+  // Restyle: clear/sunny is now a NEUTRAL raised pill (matches the sample's plain temp badge);
+  // rain/storm/cloud keep their at-a-glance condition colours (a real feature).
+  const condBg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'var(--surface-raised)';
+  const condText=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'var(--warm)';
   const condLabel=isStorm?'Storm':isHeavyRain?'Heavy rain':isRain?'Rain':isCloud?'Cloud':'Clear';
 
   // Expanded panel — hourly forecast + extra details
@@ -17674,7 +17728,7 @@ function weatherBarHTML(){
     // inner space goes 34→36 and "-12°" is 34. Not cosmetic — it is why the size is uniform.
     const _wxB=_leftColW();
     return`<div id="live-weather-bar" style="position:absolute;bottom:8px;left:${LEFT_COL_X}px;z-index:10;cursor:pointer;-webkit-tap-highlight-color:transparent;pointer-events:auto;">
-      <div style="width:${_wxB}px;height:${_wxB}px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:${condBg};border:1px solid rgba(255,255,255,0.15);border-radius:var(--r-ctrl);font-family:var(--font);box-shadow:0 2px 8px rgba(0,0,0,0.4);${alertBorder}">
+      <div style="width:${_wxB}px;height:${_wxB}px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:${condBg};border:1px solid var(--hairline);border-radius:var(--r-ctrl);font-family:var(--font);box-shadow:var(--shadow-float);${alertBorder}">
         <span style="font-size:${WX_TEMP_PX}px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
       </div>
     </div>`;
@@ -17774,7 +17828,7 @@ function _sunApprox(lat,dateStr){
 //  flash next launch, updates the status-bar colour, and repaints the canvases
 //  (map/elevation) that bake their colours in JS. THEME_PAL is read by the draw
 //  code (see the canvas palette section).
-const _THEME_STATUS={paper:'#eae5d5',graphite:'#0d1a0d'};
+const _THEME_STATUS={paper:'#f2efe9',graphite:'#16181d'};
 // Read a CSS custom property's live value — lets canvas code (which can't use var())
 // pick up theme colours. Cheap values are cached on the elements below via applyTheme.
 function cssVar(name,fallback){
