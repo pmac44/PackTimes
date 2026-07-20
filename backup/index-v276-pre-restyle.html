@@ -9,7 +9,7 @@
 
   https://pmac44.github.io/PackTimes
 -->
-<html lang="en" data-theme="graphite">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
@@ -51,132 +51,35 @@
 @font-face{font-family:'DM Sans';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/dm-sans-latin-700-normal.woff2') format('woff2');}
 @font-face{font-family:'DM Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/dm-mono-latin-400-normal.woff2') format('woff2');}
 @font-face{font-family:'DM Mono';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/dm-mono-latin-500-normal.woff2') format('woff2');}
-/* ── Restyle (Jul 2026): new families. Archivo = UI/prose · IBM Plex Mono = fast
-   digits (speed/power/cadence/HR) · Space Grotesk = slow digits (distance/time/
-   stoppage/ETA). DM Sans/Mono kept above as fallbacks so nothing breaks if a
-   reference is missed. All self-hosted + SW-precached, same as before. */
-@font-face{font-family:'Archivo';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/archivo-latin-400-normal.woff2') format('woff2');}
-@font-face{font-family:'Archivo';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/archivo-latin-500-normal.woff2') format('woff2');}
-@font-face{font-family:'Archivo';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/archivo-latin-600-normal.woff2') format('woff2');}
-@font-face{font-family:'Archivo';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/archivo-latin-700-normal.woff2') format('woff2');}
-@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');}
-@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');}
-@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2');}
-@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/ibm-plex-mono-latin-700-normal.woff2') format('woff2');}
-@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/space-grotesk-latin-400-normal.woff2') format('woff2');}
-@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/space-grotesk-latin-500-normal.woff2') format('woff2');}
-@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/space-grotesk-latin-600-normal.woff2') format('woff2');}
-@font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/space-grotesk-latin-700-normal.woff2') format('woff2');}
 </style>
-<script>
-/* Restyle: set the colour theme BEFORE first paint so there's no flash.
-   'pt_theme_resolved' is a lightweight localStorage mirror the app writes whenever
-   the resolved theme changes (the real setting — paper/graphite/auto — lives in
-   uiPrefs/IndexedDB, which is async and can't be read pre-paint). If it's missing,
-   fall back to a cheap time-of-day guess; the app refines it once loaded. */
-(function(){try{
-  var t=localStorage.getItem('pt_theme_resolved');
-  if(t!=='paper'&&t!=='graphite'){var h=new Date().getHours();t=(h>=7&&h<18)?'paper':'graphite';}
-  document.documentElement.setAttribute('data-theme',t);
-}catch(e){document.documentElement.setAttribute('data-theme','graphite');}
-})();
-</script>
 <style>
-/* ═══════════════════════════════════════════════════════════════════════
-   THEME SYSTEM (restyle, Jul 2026 — "Paper & Graphite")
-   Two themes switched by <html data-theme="paper|graphite">. Theme-INVARIANT
-   tokens (fonts, type scale, spacing, radius, the sacred recording reds, the
-   orange turn highlight) live in :root; every COLOUR that changes with the
-   theme lives in the two [data-theme] blocks below.
-
-   Design intent, so future edits don't undo it:
-   · One surface family per theme; hierarchy via raised/sunken + hairlines,
-     never new hues. Green (--accent) is demoted to "accent only": active tab,
-     progress, primary values.
-   · The old token names (--bg,--card,--border,--accent2/3,--text2/3,--amber,
-     --blue,--purple,--cat-*) are kept and ALIASED onto the new canonical
-     tokens (--surface,--hairline,--warm,--route,--sleep…) so the hundreds of
-     existing var() references just adopt theme values. New code should prefer
-     the canonical names.
-═══════════════════════════════════════════════════════════════════════════ */
 :root{
-  /* fonts — Archivo (UI) · IBM Plex Mono (fast digits) · Space Grotesk (slow digits).
-     DM Sans/Mono kept as fallbacks in the stacks (still @font-face'd above). */
-  --sans:'Archivo','DM Sans',system-ui,sans-serif;         /* UI / prose */
-  --font:'IBM Plex Mono','DM Mono','Courier New',monospace;/* fast numbers: speed/power/cadence/HR */
-  --font-slow:'Space Grotesk','DM Sans',system-ui,sans-serif;/* slow numbers: distance/time/stoppage/ETA */
+  --bg:#0a0f0a;--bg2:#111811;--bg3:#1a231a;
+  --card:#141d14;--card2:#1e2a1e;
+  --border:#2a3d2a;--border2:#3a523a;
+  --accent:#4ade80;--accent2:#22c55e;--accent3:#16a34a;
+  --amber:#fbbf24;--red:#f87171;--blue:#60a5fa;--purple:#c084fc;
+  /* --red is a light salmon — fine for text/outlines on dark, but as a FILL it reads
+     pink. --red2/--red3 are the true reds used for solid destructive buttons and the
+     recording state. */
+  --red2:#dc2626;--red3:#991b1b;
+  --turn:#f2740c;  /* turn-cue highlight (orange) */
+  --text:#e8f5e8;--text2:#9db89d;--text3:#6a8a6a;
+  --font:'DM Mono','Courier New',monospace;   /* numbers / metrics — digits all one width, so they don't jiggle */
+  --sans:'DM Sans',system-ui,sans-serif;      /* UI / prose */
   --sab:env(safe-area-inset-bottom,0px);
-  /* theme-invariant colours */
-  --turn:#f2740c;   /* on-map turn-cue highlight (orange) — same on both themes; the map (OSM) is identical */
-  --red2:#dc2626;   /* solid destructive / recording red — SACRED, same both themes */
-  --red3:#991b1b;
-  --cell-border:rgba(6,10,6,0.95);  /* floating data-cell border — dark both themes (cells float over the map) */
   /* Type scale — 5 steps. Large by design: glanceable on the bike. */
   --fs-xs:13px;--fs-sm:15px;--fs-base:17px;--fs-lg:20px;--fs-xl:26px;
   /* Spacing — 4px grid */
   --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;
-  /* Radius */
-  --r-ctrl:8px;--r-card:12px;--r-panel:14px;
-  --border-w:1.5px;--hit-min:44px;
-}
-
-[data-theme="paper"]{
-  /* canonical */
-  --surface:#eae5d5;--surface-raised:#fffef8;--surface-sunken:#dcd5c0;
-  --hairline:#cfc7ae;--border-strong:#48562f;
-  --text:#2a2721;--text-muted:#8a8271;
-  --accent:#48562f;--accent-mid:#6d8446;--accent-on:#ffffff;
-  --warm:#a8622d;--warm-deep:#7c4e16;
-  --route:#2f5f9e;
-  --cell-top:#2a2721;--cell-top-text:#fffef8;--cell-top-muted:#b5ac99;
-  --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;--mspeed-bg:#e4dfcb; /* moving-avg pill: stepped-down warm light */
-  --chev-off:rgba(72,86,47,0.28); /* unlit progress chevron — faint olive, visible on the light surface */
-  --sleep:#6f5f96;--food:#a8622d;--water:#46688f;--finish:#a04a38;
-  --shadow-float:0 3px 10px rgba(90,80,50,.18);
-  --z1:#8a8271;--z2:#46688f;--z3:#5d7a3a;--z4:#c98a2e;--z5:#b5501f;--z6:#a8382c;--z7:#6f5f96;
-  /* aliases: old names → canonical */
-  --bg:var(--surface);--bg2:var(--surface-sunken);--bg3:var(--surface-raised);
-  --card:var(--surface-raised);--card2:#f4f0e3;
-  --border:var(--hairline);--border2:#b8ad8f;
-  --accent2:var(--accent-mid);--accent3:var(--accent-mid);
-  --text2:var(--text-muted);--text3:#a39a86;
-  --amber:var(--warm);--red:#b23b2e;--blue:var(--route);--purple:var(--sleep);
-  /* stop-category hues (earth-tuned for light) */
-  --cat-town:var(--accent);--cat-food:var(--food);--cat-water:var(--water);--cat-shop:#7a5aa0;
-  --cat-sleep:var(--sleep);--cat-accom:#7a5aa0;--cat-fuel:#c26a24;--cat-hut:#9c7b4a;
-  --cat-camp:#3f6b4d;--cat-caravan:#6d8f2e;--cat-peak:#6b7684;--cat-crossing:#4f7f8f;
-  --cat-wc:#6b7680;--cat-stop:#8a7a5e;--cat-church:#9a6fb0;--cat-school:#4a6fa5;
-  --cat-hall:#a07845;--cat-fire:#c0392b;--cat-police:#2f5f9e;
-}
-
-[data-theme="graphite"]{
-  /* canonical */
-  --surface:#16181d;--surface-raised:#22252b;--surface-sunken:#101216;
-  --hairline:#262a31;--border-strong:#3a3f47;
-  --text:#eef1f4;--text-muted:#8b939e;
-  --accent:#4cd97b;--accent-mid:#2c8a4f;--accent-on:#101216;
-  --warm:#ffd166;--warm-deep:#ffd166;
-  --route:#5b9bd5;
-  --cell-top:#101216;--cell-top-text:#eef1f4;--cell-top-muted:#8b939e;
-  --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;   /* stays light in BOTH themes — the B&W pairing is the legibility feature */
-  --mspeed-bg:#ccd6cf; /* moving-avg pill's stepped tone — the value v272 tuned on the OLED */
-  --chev-off:rgba(255,255,255,0.24); /* unlit progress chevron — the value v261 tuned on the OLED */
-  --sleep:#a08fe0;--food:#ffd166;--water:#5b9bd5;--finish:#e06a5a;
-  --shadow-float:0 3px 10px rgba(0,0,0,.35);
-  --z1:#8b939e;--z2:#4a7ab5;--z3:#6a9955;--z4:#d9a03c;--z5:#d96c2e;--z6:#cf4b3d;--z7:#8f7fd0;
-  /* aliases: old names → canonical */
-  --bg:var(--surface);--bg2:var(--surface-sunken);--bg3:var(--surface-raised);
-  --card:var(--surface-raised);--card2:#2a2e35;
-  --border:var(--hairline);--border2:var(--border-strong);
-  --accent2:var(--accent-mid);--accent3:var(--accent-mid);
-  --text2:var(--text-muted);--text3:#6b727c;
-  --amber:var(--warm);--red:#f87171;--blue:var(--route);--purple:var(--sleep);
-  /* stop-category hues (lifted for dark) */
-  --cat-town:var(--accent);--cat-food:var(--food);--cat-water:var(--water);--cat-shop:#c8a6f0;
-  --cat-sleep:var(--sleep);--cat-accom:#c8a6f0;--cat-fuel:#f08a3c;--cat-hut:#c8a96e;
-  --cat-camp:#6a9955;--cat-caravan:#9ccc4a;--cat-peak:#94a3b8;--cat-crossing:#6b9eb0;
-  --cat-wc:#8b98a5;--cat-stop:#a89a80;--cat-church:#d9b8e8;--cat-school:#93c5fd;
-  --cat-hall:#d4a373;--cat-fire:#ef4444;--cat-police:#5b8ce0;
+  /* Radius — two only: controls vs surfaces */
+  --r-ctrl:8px;--r-card:12px;
+  /* Stop-category hues — single source; dots & tags both derive from these */
+  --cat-town:#4ade80;--cat-food:#fbbf24;--cat-water:#60a5fa;--cat-shop:#c084fc;
+  --cat-sleep:#f87171;--cat-accom:#c084fc;--cat-fuel:#f97316;--cat-hut:#c8a96e;
+  --cat-camp:#4a7c59;--cat-caravan:#84cc16;--cat-peak:#94a3b8;--cat-crossing:#6b9eb0;
+  --cat-wc:#78909c;--cat-stop:#94856a;--cat-church:#e8c4f0;--cat-school:#93c5fd;
+  --cat-hall:#d4a373;--cat-fire:#ef4444;--cat-police:#3b82f6;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--fs-base);overscroll-behavior-y:contain;}
@@ -253,7 +156,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 /* Live tab */
 .live-outer{overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;}
 .live-stop-list{padding:11px 13px 8px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
-.live-map-section{flex-shrink:0;background:var(--surface-sunken);position:relative;}
+.live-map-section{flex-shrink:0;background:#0a0f0a;position:relative;}
 .live-next-strip{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 10px;}
 .live-next-row{display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--border);}
 .live-next-row:last-child{border-bottom:none;}
@@ -262,11 +165,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-next-icons{display:flex;gap:4px;align-items:center;flex-shrink:0;}
 .live-next-name{flex:1;min-width:0;font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .live-next-right{text-align:right;flex-shrink:0;}
-.live-next-km{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font-slow);}
-.live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font-slow);}
-.live-next-in{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font-slow);}
+.live-next-km{font-size:15px;font-weight:500;color:var(--accent);font-family:var(--font);}
+.live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font);}
+.live-next-in{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font);}
 .turn-cue{position:absolute;inset:0;z-index:20;pointer-events:none;}
-.tc-box{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:var(--surface-raised);border:var(--border-w) solid var(--accent);border-radius:var(--r-panel);padding:9px 18px 9px 14px;box-shadow:var(--shadow-float);}
+.tc-box{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:rgba(18,22,26,0.82);border-radius:var(--r-card);padding:9px 18px 9px 14px;box-shadow:0 3px 14px rgba(0,0,0,0.45);}
 /* v276c — THE ARROW USES THE BOX'S PADDING. Peter: "the arrow could be taller."
    Measured, and he's right twice over:
    · The glyph was 47px because that MATCHES THE TEXT COLUMN (30px distance + 14px road ≈ 48),
@@ -306,10 +209,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    same width, so the number can't shuffle sideways as it ticks. (v243 had this on --sans because
    Peter disliked the PLEX mono figures — different font; DM Mono gets a fair hearing. Flip
    font-family back to var(--sans) if the mono figures don't suit at this size.) */
-.tc-box .tc-dist{font-family:var(--font-slow);font-weight:700;color:var(--text);font-size:34px;letter-spacing:-.5px;}
-.tc-box .tc-dist .tc-unit{font-size:16px;color:var(--text-muted);font-weight:500;margin-left:3px;}
-.tc-box .tc-road{font-family:var(--sans);font-weight:500;color:var(--text-muted);font-size:14px;margin-top:2px;}
-.live-progress-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
+.tc-box .tc-dist{font-family:var(--font);font-weight:500;color:#fff;font-size:30px;letter-spacing:-.5px;}
+.tc-box .tc-dist .tc-unit{font-size:16px;color:#c2c8ce;font-weight:500;margin-left:3px;}
+.tc-box .tc-road{font-family:var(--sans);font-weight:500;color:#ccd2d8;font-size:14px;margin-top:2px;}
+.live-progress-bar{background:#000;border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
 /* v261 — the distance bar: a CHEVRON RULER, edge to edge, with its numbers in their
    own row BELOW it. Full width, no radius, no map showing around it (Peter).
    The geometry (chevron count, pitch, gap, clip-path) is computed in _distBarSync —
@@ -338,7 +241,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    full-width band since v261 with no map around it, so the alpha stopped softening anything
    and only made black grey. Both are now rgb(10,15,10) — they were always meant to be the
    same colour; only the alpha differed. */
-.live-dist-bar{position:absolute;top:0;left:0;right:0;height:58px;background:var(--surface);border-top:1px solid var(--hairline);border-bottom:1px solid var(--border-strong);z-index:10;}
+.live-dist-bar{position:absolute;top:0;left:0;right:0;height:58px;background:rgb(10,15,10);border-top:1px solid rgba(255,255,255,0.10);border-bottom:1px solid rgba(255,255,255,0.22);z-index:10;}
 /* v261c: the row no longer runs off either end — the pitch is solved so the first
    chevron's flat back sits on x=0 and the last one's point lands on the right edge.
    overflow:hidden stays as a guard against a sub-pixel rounding overshoot; it is no
@@ -349,7 +252,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    a live tick is one class toggle and no layout.
    background-COLOR, never the `background` shorthand — the shorthand would wipe the
    chequer's background-image on the last chevron below. */
-.live-dist-chev{position:absolute;top:0;height:20px;background-color:var(--chev-off);}
+.live-dist-chev{position:absolute;top:0;height:20px;background-color:rgba(255,255,255,0.24);}
 .live-dist-chev.done{background-color:var(--accent);}
 /* THE LAST CHEVRON IS CHEQUERED — the finish (Peter's idea, and I was wrong about it: I
    judged it at 3× zoom and called it damage. Nobody rides at 3×. At TRUE SIZE it reads as
@@ -361,7 +264,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    lets one rule serve both the ghost and the done state.
    THE TILE IS SET INLINE BY _distBarSync, NOT HERE — it scales with the chevron. See the
    note there; the value below is only a fallback for the first paint. */
-.live-dist-chev.fin{background-color:transparent;color:var(--chev-off);
+.live-dist-chev.fin{background-color:transparent;color:rgba(255,255,255,0.24);
   background-image:conic-gradient(currentColor 0 25%,transparent 0 50%,currentColor 0 75%,transparent 0);
   /* TWO values — --chq is a single length, and `background-size:<one value>` means
      "that width, height AUTO", which stretches the conic-gradient to full height and
@@ -429,7 +332,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    Stack height is 20 + 2 + 11 = 33px, inside the band's 38. */
 .live-dist-sub{display:none;text-align:center;line-height:1;}
 .live-dist-bar.no-route .live-dist-sub{display:block;}
-.live-dist-actual .v,.live-dist-sub .v{display:block;font-family:var(--font-slow);font-weight:600;font-size:20px;color:var(--text);}
+.live-dist-actual .v,.live-dist-sub .v{display:block;font-family:var(--font);font-weight:500;font-size:20px;color:var(--text);}
 /* No grey (v260, Peter: "I'd just use black and white. I wouldn't use the grey"). SIZE does
    the ranking here — 20px against the ends' 34px — so the caption can be full contrast. */
 .live-dist-actual .c,.live-dist-sub .c{display:block;font-size:11px;font-family:var(--sans);color:var(--text);margin-top:2px;}
@@ -441,7 +344,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    = 34px. A 38px row holds it because these glyphs have no descenders.
    "300.6 km" at 34px is ~131px, so both ends fit a 393px bar with ~130px of middle spare
    — see the note at the template about that gap. */
-.live-dist-done,.live-dist-left{font-family:var(--font-slow);font-weight:700;font-size:34px;white-space:nowrap;}
+.live-dist-done,.live-dist-left{font-family:var(--font);font-weight:500;font-size:34px;white-space:nowrap;}
 /* Colour says which side of the ruler the figure belongs to — done is the accent the
    ridden chevrons wear, to go is the plain text colour. */
 .live-dist-done{color:var(--accent);}
@@ -483,7 +386,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-elev-profile{width:100%;display:block;touch-action:none;}
 /* Stops tab: fixed map + scrollable below */
 .stops-outer{flex:1;display:flex;flex-direction:column;overflow:hidden;}
-.stops-map-panel{flex-shrink:0;background:var(--surface-sunken);position:relative;}
+.stops-map-panel{flex-shrink:0;background:#0a0f0a;position:relative;}
 .stops-scroll{flex:1;overflow-y:auto;padding:11px 13px 20px;display:flex;flex-direction:column;gap:11px;-webkit-overflow-scrolling:touch;}
 /* v260e — the grab strip that replaced the expand/collapse button (Peter). It sits BETWEEN
    the map panel and the list, in the 6px spacer's slot, and is the whole reason the list
@@ -507,7 +410,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .stops-drag:active .stops-drag-grip svg{stroke:rgba(255,255,255,0.85);}
 /* map is big and the list is parked at the bottom, so a tap brings the list UP */
 .stops-drag-grip.up{transform:rotate(180deg);}
-.map-wrap{position:relative;background:var(--surface-sunken);overflow:hidden;touch-action:none;}
+.map-wrap{position:relative;background:#0d1a0d;overflow:hidden;touch-action:none;}
 .map-wrap canvas{display:block;width:100%;height:100%;touch-action:none;}
 /* v262: .mhint ("tap to add stop · drag to pan") DELETED — it was 35% white over a map we
    don't control the colour of, so it was unreadable (Peter). Two reasons it isn't coming
@@ -519,12 +422,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    Standing shape, 4th occurrence (cf. v260's grey pill labels): translucent text laid over
    content whose colour we don't control is not a subtle label, it's an invisible one. */
 .zoom-btns{position:absolute;bottom:8px;right:8px;display:flex;flex-direction:column;gap:4px;}
-.live-fpill{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;
-  /* Restyle: the cell's DARK top half carries light text in BOTH themes (the design's
-     black/white pairing). The top-half markup uses color:var(--text); rebinding --text
-     locally to the light cell-top-text makes every one of them light without editing each
-     inline style. The light BOTTOM half sets its own dark colour explicitly, so it's untouched. */
-  --text:var(--cell-top-text);}
+.live-fpill{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;}
 /* v270b — the two halves SPLIT the cell. Without this the halves keep their natural heights
    and any slack shows as a strip of the cell's own dark under the reversed (light) half —
    and the types don't agree on their padding, so the strip would be a different size in
@@ -535,7 +433,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-fpill>div:first-child:not(:last-child),
 .live-fpill>div:last-child:not(:first-child){flex:1 1 0;min-height:0;display:flex;
   flex-direction:column;align-items:center;justify-content:center;}
-.zbtn{width:38px;height:38px;background:var(--surface-raised);border:1px solid var(--hairline);border-radius:7px;color:var(--text);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-float);-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;}
+.zbtn{width:38px;height:38px;background:rgba(10,15,10,.82);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;}
 .zbtn:active{background:var(--card2);}
 .map-ctrl{position:absolute;top:50%;left:8px;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;pointer-events:none;}
 .map-ctrl-right{left:auto;right:8px;}
@@ -558,7 +456,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .warn{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:var(--amber);}
 .info{background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.3);color:var(--blue);}
 .ok{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:var(--accent);}
-.ok-bright{background:color-mix(in srgb,var(--accent) 15%,transparent);border:1px solid color-mix(in srgb,var(--accent) 50%,transparent);color:var(--accent);}
+.ok-bright{background:rgba(163,230,53,.15);border:1px solid rgba(163,230,53,.5);color:#a3e635;}
 .err{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);}
 .srow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;}
 .sbox{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px;text-align:center;}
@@ -1239,7 +1137,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v277';
+window.APP_VERSION='v276';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1253,7 +1151,6 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   calibRides:[],   // Advanced Calibration sample rides — global (rider property, not route)
   estModeAdv:false, // Basic vs Advanced estimation — global (rider property, not route); syncs via plan.json
   fatigueMode:'off', // Optional fatigue model: off|mild|moderate|strong — global rider setting
-  themeMode:'auto', // Colour theme: auto (paper by day / graphite after sunset) | paper | graphite
   ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
@@ -1264,7 +1161,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   gpsTravelledKm:0,
   _lastSnapIdx:null,                       // route point index of last snap (for directional bias)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,turnAlertM:50,turnMarkerOffsetM:30,
-  settingsExp:{appearance:true,sharing:false,packride:false,strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
+  settingsExp:{sharing:false,packride:false,strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,
   // v274 — crank length. ⚠ DELIBERATELY NOT IN uiPrefs: the PEDAL stores this, not us. A
@@ -1381,7 +1278,7 @@ async function saveAll(){
   await DB.setKV('dbxExpiresAt',UI.dbxExpiresAt||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -1455,7 +1352,6 @@ async function loadAll(){
       if(Array.isArray(prefs.calibRides))UI.calibRides=prefs.calibRides;
       if(prefs.estModeAdv!==undefined)UI.estModeAdv=prefs.estModeAdv;
       if(prefs.fatigueMode)UI.fatigueMode=prefs.fatigueMode;
-      if(prefs.themeMode)UI.themeMode=prefs.themeMode;
     }
     // Estimation mode is global (v166). Older versions stored it per-route as
     // riderPreset='custom' — if the pref was never saved, infer it from the routes
@@ -10201,8 +10097,8 @@ function drawTiles(ctx,W,H,cLon,cLat,scale,kx,ky,anchor,cvsId){
         ctx.drawImage(tile,sx,sy,tw,th);
         ctx.globalAlpha=1;
       } else {
-        // Placeholder (theme backdrop while a tile loads)
-        ctx.fillStyle=_mapCanvasBg;
+        // Placeholder
+        ctx.fillStyle='#1a2a1a';
         ctx.fillRect(sx,sy,tw,th);
       }
     }
@@ -10303,7 +10199,7 @@ function drawMap(cvs,r,opts){
   if(_tileMode>0){
     drawTiles(ctx,W,H,cLon,cLat,scale,kx,ky,effectiveAnchor,id);
   } else {
-    ctx.fillStyle=_mapCanvasBg;ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#0d1a0d';ctx.fillRect(0,0,W,H);
   }
 
   // ── Route line + overlays (only when route geometry exists) ──
@@ -12424,13 +12320,6 @@ function speedSetFatigue(mode){
   // Global rider setting — every route's ETAs move with it
   for(const rt of ROUTES)rebuildPace(rt);
   saveAll();_speedRefresh();
-}
-// Colour theme picker (Settings → Appearance). auto|paper|graphite.
-function setTheme(mode){
-  UI.themeMode=mode;
-  saveAll();
-  applyTheme();      // resolves + repaints (canvases too)
-  if(UI.tab==='settings')render();  // refresh the Appearance buttons + "now showing" line
 }
 // Fatigue "?" help sheet — mirrors showSurfHelp so it reads as the same control.
 // Keeps the Speed modal panel uncluttered; the detail lives here for whoever digs in.
@@ -14641,8 +14530,8 @@ const FPILL_CELL_H=110;             // px — must match grid-auto-rows below
 // down in lightness while staying the same colour. A saturated half would read as a zone
 // with a real zone pill sitting next to it — the exact thing v260 was protecting.
 // Contrast against #101510 stays ~12:1, so nothing is traded for the identity.
-const FPILL_MSPEED_BG='var(--mspeed-bg)';    // moving-avg pill's reversed half — a stepped tone (token per theme). ⚠ JUDGE ON THE PHONE (OLED) — v260's dirty-green lesson
-const FPILL_BORDER='var(--border-w) solid var(--cell-border)';   // dark 1.5px, per Peter: "dark 1.5px borders are good" — floats over the map, so dark in both themes
+const FPILL_MSPEED_BG='#ccd6cf';    // ⚠ JUDGE THIS ON THE PHONE (OLED), not the desktop — v260's dirty-green lesson
+const FPILL_BORDER='1.5px solid rgba(6,10,6,0.95)';   // dark, per Peter: "dark 1.5px borders are good"
 // Assigned by tLiveShell when the live shell is built. It closes over nothing (it reads
 // UI and _legVals only, never the route), so it is safe to call from anywhere once set.
 let _renderFloatingPill=null;
@@ -15626,7 +15515,7 @@ function tLiveShell(r){
     // The 0.85 alpha existed so a FLOATING pill never completely hid the map beneath it.
     // A grid cell has no map beneath it, so the alpha wasn't softening anything — it was
     // just letting the dark bar bleed through and turning black into grey.
-    const pillBg='var(--cell-top)';
+    const pillBg='rgb(10,15,10)';
     // v269: pillBorder/pillStyle are GONE with the free-floating pill they described. Every
     // cell now uses FPILL_BORDER (dark 1.5px, Peter's call) and fills its grid area — see
     // `base` above. The old 1px rgba(255,255,255,0.15) ring existed so a pill never touched
@@ -15660,8 +15549,8 @@ function tLiveShell(r){
                Also moved off var(--font): these are WORDS, and mono is for figures (v244). -->
           <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">km/h</div>
         </div>
-        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
+        <div style="background:#eef3ee;padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
           <!-- v272: "km/h avg" -> "km/h avg. incl. stops". Two changes in one label, and
                they came from opposite ends.
                · "incl. stops" is v260's own settled decision, written down and never built.
@@ -15683,7 +15572,7 @@ function tLiveShell(r){
                "incl. stops" also needs no domain knowledge, which is the point: the rider who
                reaches for a moving average BECAUSE it flatters is exactly the one who won't
                decode jargon. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;">km/h avg. incl. stops</div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">km/h avg. incl. stops</div>
         </div>
       </div>`;
     }
@@ -15735,7 +15624,7 @@ function tLiveShell(r){
              the tone read as an identity rather than as damage: change anything else and it
              stops being the same object wearing a different coat. -->
         <div style="background:${FPILL_MSPEED_BG};padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--font);" id="live-mspeed-avg">${mAvg}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-mspeed-avg">${mAvg}</span></div>
           <!-- Peter: "'moving avg.' is clear enough." So this one says what it IS, and the
                speed pill says what the DIFFERENCE is. Both are his words; neither needs a
                glossary. The word order flips between the two pills ON PURPOSE — "moving avg."
@@ -15747,7 +15636,7 @@ function tLiveShell(r){
                ⚠ "avg." IS LOAD-BEARING, not decoration — see the note in the speed pill.
                Without it this read "km/h moving", which parses as your moving SPEED, and the
                figure right above it is the actual current speed. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;">km/h moving avg.</div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">km/h moving avg.</div>
         </div>
       </div>`;
     }
@@ -15790,9 +15679,9 @@ function tLiveShell(r){
           <div style="line-height:1.0;"><span style="${F}color:${gDark?'#000':'#fff'};" id="live-grade-cur">${gTxt}</span></div>
           <div style="font-size:11px;font-weight:400;color:${gDark?'#000':'#fff'};font-family:var(--sans);line-height:1.1;">grade</div>
         </div>
-        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="${F}color:var(--cell-bottom-text);" id="live-grade-totop">${toNum}</span><span style="${U}color:var(--cell-bottom-text);" id="live-grade-tounit">${toUnit}</span></div>
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;">to top</div>
+        <div style="background:#eef3ee;padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="${F}color:#101510;" id="live-grade-totop">${toNum}</span><span style="${U}color:#101510;" id="live-grade-tounit">${toUnit}</span></div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">to top</div>
         </div>
       </div>`;
     }
@@ -15855,13 +15744,13 @@ function tLiveShell(r){
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-stop-ela">${ev}</span></div>
           <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;" id="live-stop-elbl">${elbl}</div>
         </div>
-        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+        <div style="background:#eef3ee;padding:3px 8px 4px;">
           <!-- min-width: 1dp makes the typical value 5ch ("12.3%") and 6ch at "100.0%",
                so the box has to be allowed to grow — same reasoning as elapsed. -->
-          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:34px;font-weight:500;color:#101510;font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
           <!-- v260e: the label no longer changes. It said "record to measure" when idle;
                now the figures are honest zeros, so the label just names them, always. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">stoppage</div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">stoppage</div>
         </div>
       </div>`;
     }
@@ -15920,8 +15809,8 @@ function tLiveShell(r){
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x26A1;</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">W &middot; 3 sec</div>
           </div>
-          <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+          <div style="background:#eef3ee;padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
@@ -15962,8 +15851,8 @@ function tLiveShell(r){
       // reasoning beating information, which is the wrong way round when the colour IS
       // the information.
       const npz=(np!=='—')?powerZone(np,UI.ftp):null;
-      const npBg=npz?npz.bg:'var(--cell-bottom)';
-      const npCol=npz?(npz.textDark?'#000':'#fff'):'var(--cell-bottom-text)';
+      const npBg=npz?npz.bg:'#eef3ee';
+      const npCol=npz?(npz.textDark?'#000':'#fff'):'#101510';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-power">
         <div id="live-power-top" style="padding:5px 8px 3px;${pz?`background:${pz.bg};`:''}">
           <!-- v260b CENTRED, not right-justified. The 4ch right-aligned box exists to stop a
@@ -16017,8 +15906,8 @@ function tLiveShell(r){
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:15px;font-weight:600;color:var(--text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">Cadence</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
           </div>
-          <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+          <div style="background:#eef3ee;padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
@@ -16032,7 +15921,7 @@ function tLiveShell(r){
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:var(--text);font-family:var(--font);" id="live-cad-cur">${cadTxt}</span></div>
           <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">rpm</div>
         </div>
-        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+        <div style="background:#eef3ee;padding:3px 8px 4px;">
           <!-- v260c — the balance figure is 28px, not the family's 34px. Peter: "the left
                right pedalling percentage pill is very wide. I don't see a way of reducing
                that except for reducing the font size for the left right. The RPM font can
@@ -16050,12 +15939,12 @@ function tLiveShell(r){
                once: the pill matches the family paired, AND it no longer changes height when
                it pairs (the empty state uses the same 34px box). The rule generalises — the
                LINE BOX is the family constant, the glyph size is free. -->
-          <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:28px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
+          <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:28px;font-weight:500;color:#101510;font-family:var(--font);" id="live-cad-bal">${balTxt}</span></div>
           <!-- v260c "L/R" → "Left/Right %" (Peter: "there is plenty of room for it"). Measured:
                58px in an 84px slot, and the 49/51 figure above is 84px, so the label was never
                what governed this pill's width — no cost. "L/R" is bike-computer shorthand that
                assumes you already know; the words don't. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;">Left / Right %</div>
+          <div style="font-size:10px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;">Left / Right %</div>
         </div>
       </div>`;
     }
@@ -16068,8 +15957,8 @@ function tLiveShell(r){
             <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:26px;line-height:1;">&#x2764;&#xFE0F;</span></div>
             <div style="font-size:11px;font-weight:400;color:var(--text);font-family:var(--sans);line-height:1.1;">bpm</div>
           </div>
-          <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+          <div style="background:#eef3ee;padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:#101510;font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
@@ -16090,8 +15979,8 @@ function tLiveShell(r){
       const avgN=UI._hrCount>0?Math.round(UI._hrSum/UI._hrCount):null;
       const avgV=avgN!==null?avgN:'—';
       const az=avgN!==null?hrZone(avgN,UI.maxHr):null;
-      const aBg=az?az.bg:'var(--cell-bottom)';
-      const aCol=az?(az.textDark?'#000':'#fff'):'var(--cell-bottom-text)';
+      const aBg=az?az.bg:'#eef3ee';
+      const aCol=az?(az.textDark?'#000':'#fff'):'#101510';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-hr">
         <div id="live-hr-top" style="padding:5px 8px 3px;${hz?`background:${hz.bg};`:''}">
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:34px;font-weight:500;color:${col};font-family:var(--font);" id="live-hr-cur">${val}</span></div>
@@ -17032,28 +16921,12 @@ function tSettings(r){
         +'</div>';
     })();
 
-  // ── Appearance (theme) ──
-  const _themeOpt=(val,label,sub)=>{
-    const on=(UI.themeMode||'auto')===val;
-    return`<button class="btn btn-sm" onclick="setTheme('${val}')" style="flex:1;flex-direction:column;gap:2px;justify-content:center;padding:9px 4px;${on?'border-color:var(--accent);color:var(--accent);':''}">
-      <span style="font-weight:600;">${label}</span><span style="font-size:11px;color:var(--text3);">${sub}</span></button>`;
-  };
-  const appearanceBody=`
-    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Choose the colour theme. <strong>Auto</strong> uses a warm light look by day and a dark look after sunset.</p>
-    <div style="display:flex;gap:8px;">
-      ${_themeOpt('auto','Auto','Day / night')}
-      ${_themeOpt('paper','Paper','Light — day')}
-      ${_themeOpt('graphite','Graphite','Dark — night')}
-    </div>
-    <p style="font-size:13px;color:var(--text3);margin-top:10px;line-height:1.5;">Now showing: <strong>${(UI._theme||'graphite')==='paper'?'Paper (light)':'Graphite (dark)'}</strong>.</p>`;
-
   return`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="color:var(--accent);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--accent);letter-spacing:-.5px;">PackTimes</span>
     <span style="flex:1;"></span>
     <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
   </div>
-  ${section('appearance','🎨 Appearance',appearanceBody)}
   ${section('sharing','📍 Location Sharing',sharingBody)}
   ${section('packride','👥 Group Rides (PackRide)',packrideBody)}
   ${section('strava','Strava',(()=>{
@@ -17764,64 +17637,6 @@ function _sunApprox(lat,dateStr){
     dusk:new Date(sunset.getTime()+60*60000)
   };
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-//  COLOUR THEME (restyle, Jul 2026) — Paper (day) / Graphite (night)
-//  UI.themeMode = 'auto' | 'paper' | 'graphite'. On 'auto' we pick from real
-//  sun times when we have them (rider's area, today), else a 07:00–18:00 guess.
-//  applyTheme() sets data-theme on <html> (CSS repaints instantly), mirrors the
-//  RESOLVED theme to localStorage so the pre-paint script in <head> can avoid a
-//  flash next launch, updates the status-bar colour, and repaints the canvases
-//  (map/elevation) that bake their colours in JS. THEME_PAL is read by the draw
-//  code (see the canvas palette section).
-const _THEME_STATUS={paper:'#eae5d5',graphite:'#0d1a0d'};
-// Read a CSS custom property's live value — lets canvas code (which can't use var())
-// pick up theme colours. Cheap values are cached on the elements below via applyTheme.
-function cssVar(name,fallback){
-  try{const v=getComputedStyle(document.documentElement).getPropertyValue(name).trim();return v||fallback||'';}catch(e){return fallback||'';}
-}
-// Cached map-canvas background (the colour behind tiles / while they load). The map
-// itself (route line, markers, elevation strip) is drawn OVER OSM tiles and stays the
-// SAME in both themes on purpose — it must contrast with the map, not the app chrome
-// (see v273d: the live route line is deliberately cyan). Only this backdrop follows the theme.
-let _mapCanvasBg='#0d1a0d';
-function _resolveTheme(){
-  const m=(UI&&UI.themeMode)||'auto';
-  if(m==='paper'||m==='graphite')return m;
-  try{
-    const now=new Date();
-    if(Object.keys(_sunCache).length){
-      const dateStr=now.toISOString().slice(0,10);
-      let sr=null,ss=null;
-      for(const k in _sunCache){ if(k.endsWith(','+dateStr)){ const v=_sunCache[k]; sr=v.sunrise; ss=v.sunset; break; } }
-      if(sr&&ss)return (now>=sr&&now<ss)?'paper':'graphite';
-    }
-  }catch(e){}
-  const h=new Date().getHours();
-  return (h>=7&&h<18)?'paper':'graphite';
-}
-function applyTheme(repaint){
-  const t=_resolveTheme();
-  const prev=document.documentElement.getAttribute('data-theme');
-  document.documentElement.setAttribute('data-theme',t);
-  UI._theme=t;
-  _mapCanvasBg=cssVar('--surface-sunken',t==='paper'?'#dcd5c0':'#0d1a0d');
-  try{localStorage.setItem('pt_theme_resolved',t);}catch(e){}
-  try{const mc=document.querySelector('meta[name="theme-color"]'); if(mc)mc.setAttribute('content',_THEME_STATUS[t]||'#0d1a0d');}catch(e){}
-  // Repaint canvas-drawn chrome (CSS updates on its own; canvas does not).
-  if(repaint!==false&&prev!==t)_themeRepaint();
-}
-function _themeRepaint(){
-  ['live-map','stops-map','desktop-map','rec-detail-map','view-map'].forEach(id=>{
-    if(document.getElementById(id)){ try{ redrawMap(id); }catch(e){} }
-  });
-  // Elevation strips + pills live in HTML/canvas rebuilt by the tab render.
-  try{ if(UI.gpsActive&&typeof updateLive==='function') updateLive(); else if(typeof render==='function') render(); }catch(e){}
-}
-// Re-evaluate 'auto' periodically so the theme flips around sunrise/sunset without
-// a manual toggle. Cheap (a Date compare); only repaints when the resolved theme
-// actually changes.
-setInterval(()=>{ try{ if((UI&&UI.themeMode)==='auto') applyTheme(); }catch(e){} }, 5*60*1000);
 
 // Get day/night background colour for a given time
 // Returns true if a background colour string is light enough to need dark/white text
@@ -19145,7 +18960,7 @@ function updateLive(){
       const zk=npz?String(npz.z):'0';
       if(bot._zk!==zk){
         bot._zk=zk;
-        const bg=npz?npz.bg:'var(--cell-bottom)', col=npz?(npz.textDark?'#000':'#fff'):'var(--cell-bottom-text)';
+        const bg=npz?npz.bg:'#eef3ee', col=npz?(npz.textDark?'#000':'#fff'):'#101510';
         bot.style.background=bg;
         npEl.style.color=col;
         const lbl=document.getElementById('live-power-nplbl');
@@ -19212,8 +19027,8 @@ function updateLive(){
         const zk=az?String(az.z):'0';
         if(bot._zk!==zk){
           bot._zk=zk;
-          const c=az?(az.textDark?'#000':'#fff'):'var(--cell-bottom-text)';
-          bot.style.background=az?az.bg:'var(--cell-bottom)';
+          const c=az?(az.textDark?'#000':'#fff'):'#101510';
+          bot.style.background=az?az.bg:'#eef3ee';
           avgEl.style.color=c;
           const l=document.getElementById('live-hr-avglbl'); if(l)l.style.color=c;
         }
@@ -21467,8 +21282,8 @@ async function connectPowerMeter(){
         const zk=npz?String(npz.z):'0';
         if(bot._zk!==zk){
           bot._zk=zk;
-          const col=npz?(npz.textDark?'#000':'#fff'):'var(--cell-bottom-text)';
-          bot.style.background=npz?npz.bg:'var(--cell-bottom)';
+          const col=npz?(npz.textDark?'#000':'#fff'):'#101510';
+          bot.style.background=npz?npz.bg:'#eef3ee';
           if(npEl)npEl.style.color=col;
           const npLbl=document.getElementById('live-power-nplbl');
           if(npLbl)npLbl.style.color=col;
@@ -21552,8 +21367,8 @@ async function connectHRMonitor(){
         const zk=az?String(az.z):'0';
         if(hrBot._zk!==zk){
           hrBot._zk=zk;
-          const c=az?(az.textDark?'#000':'#fff'):'var(--cell-bottom-text)';
-          hrBot.style.background=az?az.bg:'var(--cell-bottom)';
+          const c=az?(az.textDark?'#000':'#fff'):'#101510';
+          hrBot.style.background=az?az.bg:'#eef3ee';
           if(hrAvgEl)hrAvgEl.style.color=c;
           const l=document.getElementById('live-hr-avglbl'); if(l)l.style.color=c;
         }
@@ -21615,7 +21430,6 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
   UI.simRunning=false;UI.simPaused=false;_simPts=null;_simIdx=0;
   UI.gpsActive=false;UI.gpsPos=null;UI.gpsDistKm=null;
   DB.setKV('lastGpsState',null).catch(()=>{});
-  applyTheme(false); // resolve theme from the loaded setting before first paint (no repaint — render() draws fresh next)
   initDesktop();render();
   // Watching the pack starts as soon as you're in an event — not when you press
   // record. You want to see people arriving at the start, not a blank map.
@@ -21642,13 +21456,7 @@ if('serviceWorker' in navigator && window.self===window.top){
     const BASE=PAGE_URL.replace(/[^/]*$/,'');
     const FONTS=['dm-sans-latin-400-normal.woff2','dm-sans-latin-500-normal.woff2',
                  'dm-sans-latin-600-normal.woff2','dm-sans-latin-700-normal.woff2',
-                 'dm-mono-latin-400-normal.woff2','dm-mono-latin-500-normal.woff2',
-                 'archivo-latin-400-normal.woff2','archivo-latin-500-normal.woff2',
-                 'archivo-latin-600-normal.woff2','archivo-latin-700-normal.woff2',
-                 'ibm-plex-mono-latin-400-normal.woff2','ibm-plex-mono-latin-500-normal.woff2',
-                 'ibm-plex-mono-latin-600-normal.woff2','ibm-plex-mono-latin-700-normal.woff2',
-                 'space-grotesk-latin-400-normal.woff2','space-grotesk-latin-500-normal.woff2',
-                 'space-grotesk-latin-600-normal.woff2','space-grotesk-latin-700-normal.woff2']
+                 'dm-mono-latin-400-normal.woff2','dm-mono-latin-500-normal.woff2']
                  .map(f=>BASE+'fonts/'+f);
     self.addEventListener('install',e=>{
       e.waitUntil(

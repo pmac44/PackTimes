@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+html, body { margin:0; background:#f4f2ec; }
+body { font-family:'Archivo',sans-serif; color:#2a2721; }
+a { color:#48562f; } a:hover { color:#6d8446; }
+</style>
+</helmet>
+<div style="max-width:880px; margin:0 auto; padding:56px 32px 96px">
+  <div style="font-size:12px; font-weight:700; letter-spacing:1.5px; color:#8a8271">PACKTIMES</div>
+  <h1 style="font-size:38px; font-weight:700; margin:6px 0 4px; letter-spacing:-.5px">Style Guide</h1>
+  <p style="font-size:15px; color:#6d6759; margin:0 0 8px; max-width:60ch">Two themes — <strong>Paper</strong> (day) and <strong>Graphite</strong> (night). Same layout, same rules; only tokens change. Implementation: <span style="font-family:'IBM Plex Mono'; font-size:13px; background:#e8e4d4; padding:1px 6px; border-radius:4px">tokens.css</span> in this project, switched via <span style="font-family:'IBM Plex Mono'; font-size:13px; background:#e8e4d4; padding:1px 6px; border-radius:4px">&lt;html data-theme="paper|graphite"&gt;</span>.</p>
+
+  <h2 style="font-size:22px; font-weight:700; margin:44px 0 4px">1 · Color</h2>
+  <p style="font-size:14px; color:#6d6759; margin:0 0 16px; max-width:65ch">One surface family per theme; hierarchy comes from raised/sunken steps and hairlines, never from new hues. Green is demoted from “text color” to accent: it marks the active tab, progress, and primary values only.</p>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px">
+    <div>
+      <div style="font-size:13px; font-weight:700; margin-bottom:8px">Paper</div>
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px">
+        <div><div style="height:52px; border-radius:8px; background:#eae5d5; border:1px solid #cfc7ae"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">surface<br>#eae5d5</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#fffef8; border:1px solid #cfc7ae"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">raised<br>#fffef8</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#dcd5c0"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">sunken<br>#dcd5c0</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#2a2721"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">text / cell-top<br>#2a2721</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#48562f"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">accent<br>#48562f</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#a8622d"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">warm<br>#a8622d</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#2f5f9e"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">route<br>#2f5f9e</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#8a8271"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">muted<br>#8a8271</div></div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:13px; font-weight:700; margin-bottom:8px">Graphite</div>
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px">
+        <div><div style="height:52px; border-radius:8px; background:#16181d"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">surface<br>#16181d</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#22252b"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">raised<br>#22252b</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#101216"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">sunken / cell-top<br>#101216</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#eef1f4; border:1px solid #cfc7ae"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">text<br>#eef1f4</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#4cd97b"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">accent<br>#4cd97b</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#ffd166"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">warm<br>#ffd166</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#5b9bd5"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">route<br>#5b9bd5</div></div>
+        <div><div style="height:52px; border-radius:8px; background:#8b939e"></div><div style="font-size:10.5px; margin-top:4px; color:#6d6759">muted<br>#8b939e</div></div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:20px; display:grid; grid-template-columns:1fr 1fr; gap:24px">
+    <div>
+      <div style="font-size:13px; font-weight:700; margin-bottom:8px">Semantic stop colors (both themes)</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <span style="font-size:11px; font-weight:700; color:#6f5f96; border:1.5px solid #6f5f96; border-radius:6px; padding:3px 10px">SLEEP</span>
+        <span style="font-size:11px; font-weight:700; color:#a8622d; border:1.5px solid #a8622d; border-radius:6px; padding:3px 10px">FOOD</span>
+        <span style="font-size:11px; font-weight:700; color:#46688f; border:1.5px solid #46688f; border-radius:6px; padding:3px 10px">WATER</span>
+        <span style="font-size:11px; font-weight:700; color:#a04a38; border:1.5px solid #a04a38; border-radius:6px; padding:3px 10px">FINISH</span>
+      </div>
+      <p style="font-size:12.5px; color:#6d6759; margin:10px 0 0; max-width:44ch">Outlined tags, not filled chips. Emoji icons kept — they are wayfinding, not decoration.</p>
+    </div>
+    <div>
+      <div style="font-size:13px; font-weight:700; margin-bottom:8px">Training zones (Paper values)</div>
+      <div style="display:flex; gap:4px">
+        <div style="flex:1; text-align:center"><div style="height:34px; border-radius:6px; background:#8a8271"></div><div style="font-size:10px; margin-top:3px; color:#6d6759">Z1</div></div>
+        <div style="flex:1; text-align:center"><div style="height:34px; border-radius:6px; background:#46688f"></div><div style="font-size:10px; margin-top:3px; color:#6d6759">Z2</div></div>
+        <div style="flex:1; text-align:center"><div style="height:34px; border-radius:6px; background:#5d7a3a"></div><div style="font-size:10px; margin-top:3px; color:#6d6759">Z3</div></div>
+        <div style="flex:1; text-align:center"><div style="height:34px; border-radius:6px; background:#c98a2e"></div><div style="font-size:10px; margin-top:3px; color:#6d6759">Z4</div></div>
+        <div style="flex:1; text-align:center"><div style="height:34px; border-radius:6px; background:#b5501f"></div><div style="font-size:10px; margin-top:3px; color:#6d6759">Z5</div></div>
+        <div style="flex:1; text-align:center"><div style="height:34px; border-radius:6px; background:#a8382c"></div><div style="font-size:10px; margin-top:3px; color:#6d6759">Z6</div></div>
+        <div style="flex:1; text-align:center"><div style="height:34px; border-radius:6px; background:#6f5f96"></div><div style="font-size:10px; margin-top:3px; color:#6d6759">Z7</div></div>
+      </div>
+      <p style="font-size:12.5px; color:#6d6759; margin:10px 0 0; max-width:44ch">Standard hue semantics (grey→blue→green→amber→red→purple), muted to sit in the palette. A zoned cell paints its <em>top half</em> in the zone color with white digits; non-zoned cells keep the dark top. Never use warm-deep amber on power in a zoned context — false Z4 read.</p>
+    </div>
+  </div>
+
+  <h2 style="font-size:22px; font-weight:700; margin:44px 0 4px">2 · Typography</h2>
+  <p style="font-size:14px; color:#6d6759; margin:0 0 16px; max-width:65ch"><strong>Mono for physics, proportional for accumulation.</strong> Values that churn every second (speed, power, cadence, HR) use fixed-width digits so they don't jump; values that sit still (distance, time, stoppage, ETA) use the warmer proportional face.</p>
+  <div style="background:#fffef8; border:1.5px solid #cfc7ae; border-radius:12px; padding:20px 24px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px">
+    <div>
+      <div style="font-family:'IBM Plex Mono'; font-size:36px; font-weight:700">39.6</div>
+      <div style="font-size:11px; color:#8a8271; margin-top:2px">IBM Plex Mono · fast numbers<br>speed · power · cadence · HR</div>
+    </div>
+    <div>
+      <div style="font-family:'Space Grotesk'; font-size:36px; font-weight:700">14.7</div>
+      <div style="font-size:11px; color:#8a8271; margin-top:2px">Space Grotesk · slow numbers<br>distance · time · stoppage · ETA</div>
+    </div>
+    <div>
+      <div style="font-size:24px; font-weight:600; margin-top:9px">Mission</div>
+      <div style="font-size:11px; color:#8a8271; margin-top:5px">Archivo · UI, labels, body<br>never for data digits</div>
+    </div>
+  </div>
+  <ul style="font-size:14px; color:#3d3a33; line-height:1.7; margin:16px 0 0; padding-left:20px">
+    <li>Cell digits: <strong>36px</strong> primary / <strong>30px</strong> secondary (head-unit legible at handlebar distance).</li>
+    <li>Values over 5 characters step down one size (36→30). Only distance triggers this; alternatively drop the decimal above 1,000 km (<span style="font-family:'Space Grotesk'">1235 km</span>) and never shrink.</li>
+    <li>Labels 11px, always below the number, always muted. Units ride the baseline at ~40% of digit size.</li>
+    <li>Worst-case widths to test: 99.9 speed · 1234.5 distance · 111.1h time · 4-digit watts.</li>
+  </ul>
+
+  <h2 style="font-size:22px; font-weight:700; margin:44px 0 4px">3 · Paired data cells</h2>
+  <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap">
+    <div style="width:130px">
+      <div style="border:1.5px solid #48562f; border-radius:12px; overflow:hidden; box-shadow:0 3px 10px rgba(90,80,50,.18)">
+        <div style="padding:8px 6px 6px; text-align:center; background:#2a2721; color:#fffef8">
+          <div style="font-family:'IBM Plex Mono'; font-size:36px; font-weight:700; line-height:1">39.6</div>
+          <div style="font-size:10px; color:#b5ac99; margin-top:1px">km/h</div>
+        </div>
+        <div style="padding:6px 6px 7px; text-align:center; background:#fffef8">
+          <div style="font-family:'IBM Plex Mono'; font-size:30px; font-weight:600; line-height:1">27.2</div>
+          <div style="font-size:9.5px; color:#8a8271">km/h avg</div>
+        </div>
+      </div>
+    </div>
+    <ul style="flex:1; min-width:280px; font-size:14px; color:#3d3a33; line-height:1.7; margin:0; padding-left:20px">
+      <li>Two-tone: dark top = live value, light bottom = paired/average. The B&W split is the legibility feature — it survives both themes (bottom stays light even in Graphite).</li>
+      <li>All 6 cell locations identical size — cells are interchangeable; tap cycles the metric, one state is blank (dashed outline, “+”).</li>
+      <li>Floating over the map: 1.5px border + shadow, ~95% opaque. OSM tiles are a fixed given — chrome must win contrast against them, not assume a styled map.</li>
+      <li>Zone-capable cells (power, HR) tint the top half with the zone color.</li>
+    </ul>
+  </div>
+
+  <h2 style="font-size:22px; font-weight:700; margin:44px 0 4px">4 · Layout rules</h2>
+  <ul style="font-size:14px; color:#3d3a33; line-height:1.7; margin:8px 0 0; padding-left:20px">
+    <li><strong>Chevron progress bar stays</strong> — signature element, full-width under the tab bar.</li>
+    <li>Progress row: distance-to-go (accent, left) · ridden (small, center) · total (right), 36px Space Grotesk.</li>
+    <li>Tab bar: icon + short label, 6 tabs, full-column hit areas ≥ 44px. Never icon-only.</li>
+    <li>Map controls grouped in one vertical rail (Komoot pattern), positioned below the cell grid — never scattered circles.</li>
+    <li>Bottom stack: elevation strip (with position marker + day-split band) above FOOD/SLEEP next-stop rows.</li>
+    <li>Hit targets ≥ 44px everywhere; primary ride actions bigger (gloved, one-handed).</li>
+    <li>Max two surface colors per screen; hierarchy via raised/sunken + hairlines, not new colors.</li>
+  </ul>
+
+  <h2 style="font-size:22px; font-weight:700; margin:44px 0 4px">5 · Night &amp; battery</h2>
+  <p style="font-size:14px; color:#3d3a33; margin:8px 0 0; max-width:65ch">Graphite's sunken surface (#101216) is near-black for OLED savings; a "pure black" variant (surface → #000) is a one-token change if you want maximum battery mode. Auto-switch themes on sunset or ambient light; the toggle lives in Settings and writes <span style="font-family:'IBM Plex Mono'; font-size:13px; background:#e8e4d4; padding:1px 6px; border-radius:4px">data-theme</span>.</p>
+
+  <p style="font-size:13px; color:#8a8271; margin:48px 0 0">Reference mockups: <a href="Packtimes Ride Explorations.dc.html">Ride explorations</a> — 4b (Paper) and 5a (Graphite) are the canonical screens. Tokens: tokens.css.</p>
+</div>
+</x-dc>
+</body>
+</html>
