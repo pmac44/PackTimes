@@ -53,6 +53,34 @@ derive their tint from the SAME token so they can never drift:
 ```
 When you add a new stop category, add ONE `--cat-*` token and follow this pattern.
 
+### Card surfaces — the one contrast slate
+There is ONE contrast-card colour, `--stop-card-bg` (a mid-dark cool slate on Paper,
+already-dark on Graphite). It is the card background across the app: Stops, Mission, **and
+(from v305) the Route, Supplies and Settings tabs**. Those three tabs used to sit on a near-
+white card that barely lifted off the warm page; they now match the rest.
+
+Cards on those three tabs get the slate by **rebinding the colour tokens on the `.card`
+element itself** (see `.content.tab-routes/.tab-food/.tab-settings .card` in `index.html`):
+
+```
+--card:var(--stop-card-bg); --card2:var(--slate-card2); --border:var(--stop-card-br);
+--text:var(--slate-text); --text2/3:…; --bg3:var(--slate-inset); --accent:var(--slate-accent);
+```
+
+Because the tokens are set on the card (not the tab container), the page gaps between cards
+stay the normal page colour, and everything INSIDE the card — text, buttons, inputs, stat
+boxes — inherits the light-on-slate palette automatically. **Never hard-code a card colour or
+its text colour** — tune `--stop-card-bg` or the `--slate-*` tokens (defined per theme in
+`:root`) and every card follows. On Graphite the `--slate-*` values mirror the existing dark
+card, so it's a near-no-op there.
+
+### Chrome on the light page must be theme-aware, never white-alpha
+Controls that overlay the page (e.g. the Stops drag-grip) must NOT use bare
+`rgba(255,255,255,…)` — that shows up in dark mode but is invisible on the Paper page. Drive
+them from per-theme tokens instead (`--grip-bg`, `--grip-stroke`, …): dark marks on light in
+Paper, the white-alpha look in Graphite. Same rule as the deleted `.mhint` (translucent text
+over content whose colour we don't control is an invisible label, not a subtle one).
+
 ---
 
 ## Iconography

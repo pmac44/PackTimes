@@ -184,6 +184,16 @@
   --cat-camp:#3f6b4d;--cat-caravan:#6d8f2e;--cat-peak:#6b7684;--cat-crossing:#4f7f8f;
   --cat-wc:#6b7680;--cat-stop:#8a7a5e;--cat-church:#9a6fb0;--cat-school:#4a6fa5;
   --cat-hall:#a07845;--cat-fire:#c0392b;--cat-police:#2f5f9e;
+  /* Slate-card palette — Route/Supplies/Settings cards use the ONE contrast slate
+     (--stop-card-bg). These lift the text/insets light so copy stays readable on it.
+     One knob per aspect; tune here and every card on those tabs follows. (Peter, Jul 2026) */
+  --slate-card2:#4c5561;--slate-inset:#2f353f;
+  --slate-text:#eceef1;--slate-text2:#c3c9d1;--slate-text3:#99a1ac;
+  --slate-border2:#5f6a78;--slate-accent:#8fbf6a;
+  /* Stops drag-grip — theme-aware so it has contrast on the light page (was white-alpha,
+     invisible on Paper). */
+  --grip-bg:rgba(61,69,81,0.16);--grip-bg-active:rgba(61,69,81,0.32);
+  --grip-stroke:rgba(61,69,81,0.85);--grip-stroke-active:var(--stop-card-bg);
 }
 
 [data-theme="graphite"]{
@@ -226,6 +236,14 @@
   --cat-camp:#6a9955;--cat-caravan:#9ccc4a;--cat-peak:#94a3b8;--cat-crossing:#6b9eb0;
   --cat-wc:#8b98a5;--cat-stop:#a89a80;--cat-church:#d9b8e8;--cat-school:#93c5fd;
   --cat-hall:#d4a373;--cat-fire:#ef4444;--cat-police:#5b8ce0;
+  /* Slate-card palette — on Graphite the cards are already dark, so these mirror the
+     existing card look (near-no-op); kept as tokens so both themes share one rule. */
+  --slate-card2:#2f343c;--slate-inset:#1a1d22;
+  --slate-text:#eef1f4;--slate-text2:#b9c0c9;--slate-text3:#8b939e;
+  --slate-border2:#3a3f47;--slate-accent:#4cd97b;
+  /* Stops drag-grip — keep the dark-mode white-alpha look */
+  --grip-bg:rgba(255,255,255,0.10);--grip-bg-active:rgba(255,255,255,0.22);
+  --grip-stroke:rgba(255,255,255,0.55);--grip-stroke-active:rgba(255,255,255,0.85);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--fs-base);overscroll-behavior-y:contain;}
@@ -556,11 +574,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    tapping. The chevron points the way this strip is about to travel, so the control
    states its own outcome and needs no label - which is what kills the option of moving
    the Stops count in here and paying for it with permanent screen space. */
-.stops-drag{flex-shrink:0;background:var(--bg);height:32px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;-webkit-tap-highlight-color:transparent;}
-.stops-drag-grip{width:64px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:rgba(255,255,255,0.10);pointer-events:none;transition:transform .14s ease;}
-.stops-drag-grip svg{stroke:rgba(255,255,255,0.55);display:block;}
-.stops-drag:active .stops-drag-grip{background:rgba(255,255,255,0.22);}
-.stops-drag:active .stops-drag-grip svg{stroke:rgba(255,255,255,0.85);}
+.stops-drag{flex-shrink:0;background:var(--bg);height:30px;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;-webkit-tap-highlight-color:transparent;}
+.stops-drag-grip{width:64px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:7px;background:var(--grip-bg);pointer-events:none;transition:transform .14s ease;}
+.stops-drag-grip svg{stroke:var(--grip-stroke);display:block;}
+.stops-drag:active .stops-drag-grip{background:var(--grip-bg-active);}
+.stops-drag:active .stops-drag-grip svg{stroke:var(--grip-stroke-active);}
 /* map is big and the list is parked at the bottom, so a tap brings the list UP */
 .stops-drag-grip.up{transform:rotate(180deg);}
 .map-wrap{position:relative;background:var(--surface-sunken);overflow:hidden;touch-action:none;}
@@ -611,6 +629,25 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .seg-meta{font-size:var(--fs-sm);color:var(--text3);margin-top:1px;}
 /* Card etc */
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);}
+/* Route / Supplies / Settings: cards use the single contrast slate. Rebinding the colour
+   tokens ON the card (not the tab container) keeps the page gaps between cards on the normal
+   page colour, while everything INSIDE the card — text, buttons, inputs, stat boxes — inherits
+   the light-on-slate palette automatically. Every colour stays variable-driven. */
+.content.tab-routes .card,
+.content.tab-food .card,
+.content.tab-settings .card{
+  --card:var(--stop-card-bg);
+  --card2:var(--slate-card2);
+  --border:var(--stop-card-br);
+  --border2:var(--slate-border2);
+  --bg3:var(--slate-inset);
+  --text:var(--slate-text);
+  --text2:var(--slate-text2);
+  --text3:var(--slate-text3);
+  --accent:var(--slate-accent);
+  background:var(--card);
+  border-color:var(--border);
+}
 .ctitle{font-size:var(--fs-base);font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);margin-bottom:var(--sp-3);}
 .upload-zone{border:2px dashed var(--border2);border-radius:var(--r-card);padding:24px 14px;text-align:center;cursor:pointer;transition:all .2s;display:block;}
 .upload-zone:hover{border-color:var(--accent);background:rgba(74,222,128,.05);}
@@ -1318,7 +1355,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v304';
+window.APP_VERSION='v305';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -14857,7 +14894,7 @@ function _render(){
     else if(UI.tab==='food')html=r?tFood(r):`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`;
     else if(UI.tab==='settings')html=tSettings(r);
     else html=`<div class="banner info"><span>ℹ️</span><span>Select a route first.</span></div>`;
-    wrap.innerHTML=`<div class="content" style="flex:1;">${html}</div>`;
+    wrap.innerHTML=`<div class="content tab-${UI.tab}" style="flex:1;">${html}</div>`;
     setTimeout(()=>{
       if(!r)return;
       const ec=document.getElementById('elev-cvs');if(ec)drawElev(ec,r);
