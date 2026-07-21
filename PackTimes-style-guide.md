@@ -46,12 +46,25 @@ Card/modal padding = `--sp-4`. Between fields = `--sp-3`. List gaps = `--sp-2`.
 --cat-fuel --cat-hut --cat-camp --cat-caravan --cat-peak --cat-crossing
 --cat-wc --cat-stop --cat-church --cat-school --cat-hall --cat-fire --cat-police
 ```
-Dots read the token directly (`.d-food{background:var(--cat-food)}`). Tag chips
-derive their tint from the SAME token so they can never drift:
+Dots read the token directly (`.d-food{background:var(--cat-food)}`). Tag chips name
+their hue once via `--c` and let the base `.tag` render it, so they can never drift:
 ```
-.t-food{background:color-mix(in srgb,var(--cat-food) 15%,transparent);color:var(--cat-food);}
+.t-food{--c:var(--cat-food);}                       /* each chip only names its hue */
+.tag{background:color-mix(in srgb,var(--c) 15%,transparent);color:var(--c);}  /* wash */
 ```
-When you add a new stop category, add ONE `--cat-*` token and follow this pattern.
+**Chips are per-theme (v306):** the wash above is the DARK (Graphite) look — bright hues
+glowing on a dark card. In **Paper (light)** a single override inverts every chip to a solid
+fill with white ink, so it reads as a badge on the light Ride strip AND on the dark slate
+cards (a 15% wash of a dark hue on a light page is nearly invisible):
+```
+[data-theme="paper"] .tag{background:var(--c);color:#fff;}
+```
+This is the general rule: **colour treatments are chosen per theme, not shared.** A value that
+works on dark rarely works on light — set it in each theme's `:root` (or a `[data-theme=…]`
+override), never once for both.
+
+When you add a new stop category, add ONE `--cat-*` token + one `.t-x{--c:…}` line — both
+themes then just work.
 
 ### Card surfaces — the one contrast slate
 There is ONE contrast-card colour, `--stop-card-bg` (a mid-dark cool slate on Paper,

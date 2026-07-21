@@ -719,9 +719,15 @@ select option{background:var(--bg3);}
 .si-meta{font-family:var(--font);font-size:var(--fs-sm);color:var(--text3);margin-top:2px;}
 .si-rt{text-align:right;flex-shrink:0;}.si-time,.si-eta{font-family:var(--font);font-size:var(--fs-base);font-weight:500;color:var(--accent);}
 .si-st{font-size:var(--fs-sm);margin-top:1px;}.s-op{color:var(--accent);}.s-cl{color:var(--red);}.s-uk{color:var(--amber);}
-.tag{display:inline-block;padding:2px 7px;border-radius:6px;font-size:var(--fs-xs);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;}
-.t-food{background:color-mix(in srgb,var(--cat-food) 15%,transparent);color:var(--cat-food);}.t-water{background:color-mix(in srgb,var(--cat-water) 15%,transparent);color:var(--cat-water);}
-.t-sleep{background:color-mix(in srgb,var(--cat-sleep) 15%,transparent);color:var(--cat-sleep);}.t-accom{background:color-mix(in srgb,var(--cat-accom) 15%,transparent);color:var(--cat-accom);}.t-wc{background:color-mix(in srgb,var(--cat-wc) 15%,transparent);color:var(--cat-wc);}.t-town{background:color-mix(in srgb,var(--cat-town) 15%,transparent);color:var(--cat-town);}.t-shop{background:color-mix(in srgb,var(--cat-shop) 15%,transparent);color:var(--cat-shop);}.t-hut{background:color-mix(in srgb,var(--cat-hut) 15%,transparent);color:var(--cat-hut);}.t-fuel{background:color-mix(in srgb,var(--cat-fuel) 15%,transparent);color:var(--cat-fuel);}.t-peak{background:color-mix(in srgb,var(--cat-peak) 15%,transparent);color:var(--cat-peak);}.t-camp{background:color-mix(in srgb,var(--cat-camp) 15%,transparent);color:var(--cat-camp);}.t-stop{background:color-mix(in srgb,var(--cat-stop) 15%,transparent);color:var(--cat-stop);}.t-crossing{background:color-mix(in srgb,var(--cat-crossing) 15%,transparent);color:var(--cat-crossing);}.t-church{background:color-mix(in srgb,var(--cat-church) 15%,transparent);color:var(--cat-church);}.t-school{background:color-mix(in srgb,var(--cat-school) 15%,transparent);color:var(--cat-school);}.t-hall{background:color-mix(in srgb,var(--cat-hall) 15%,transparent);color:var(--cat-hall);}.t-fire{background:color-mix(in srgb,var(--cat-fire) 15%,transparent);color:var(--cat-fire);}.t-police{background:color-mix(in srgb,var(--cat-police) 15%,transparent);color:var(--cat-police);}.t-caravan{background:color-mix(in srgb,var(--cat-caravan) 15%,transparent);color:var(--cat-caravan);}
+.tag{display:inline-block;padding:2px 7px;border-radius:6px;font-size:var(--fs-xs);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;--c:var(--text2);background:color-mix(in srgb,var(--c) 15%,transparent);color:var(--c);}
+/* Each chip only names its category hue via --c; the .tag base turns it into the wash. Add a
+   new category = add ONE --cat-* token + one .t-x{--c:...} line, and both themes just work. */
+.t-food{--c:var(--cat-food);}.t-water{--c:var(--cat-water);}.t-sleep{--c:var(--cat-sleep);}.t-accom{--c:var(--cat-accom);}.t-wc{--c:var(--cat-wc);}.t-town{--c:var(--cat-town);}.t-shop{--c:var(--cat-shop);}.t-hut{--c:var(--cat-hut);}.t-fuel{--c:var(--cat-fuel);}.t-peak{--c:var(--cat-peak);}.t-camp{--c:var(--cat-camp);}.t-stop{--c:var(--cat-stop);}.t-crossing{--c:var(--cat-crossing);}.t-church{--c:var(--cat-church);}.t-school{--c:var(--cat-school);}.t-hall{--c:var(--cat-hall);}.t-fire{--c:var(--cat-fire);}.t-police{--c:var(--cat-police);}.t-caravan{--c:var(--cat-caravan);}
+/* Paper (light) theme ONLY: chips invert to a SOLID category fill with white ink, so they read
+   as proper badges on the light Ride strip AND on the dark slate cards. The dark (Graphite)
+   theme keeps the wash above — its brighter hues suit white-on-tint and already worked well.
+   (Peter, v306 — 21 Jul 2026.) */
+[data-theme="paper"] .tag{background:var(--c);color:#fff;}
 .slr{display:flex;align-items:center;gap:8px;}.slv{font-family:var(--font);font-size:var(--fs-sm);color:var(--accent);min-width:52px;text-align:right;}
 .next-card{background:var(--card2);border:1px solid var(--accent3);border-radius:var(--r-card);padding:12px 14px;}
 .nlbl{font-size:var(--fs-xs);color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-family:var(--font);margin-bottom:2px;}
@@ -1355,7 +1361,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v305';
+window.APP_VERSION='v306';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
