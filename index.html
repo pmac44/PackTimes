@@ -141,7 +141,7 @@
   --surface:#f2efe9;--surface-raised:#fffef8;--surface-sunken:#dcd5c0;
   --hairline:#cfc7ae;--border-strong:#48562f;
   --text:#2a2721;--text-muted:#8a8271;
-  --accent:#48562f;--accent-mid:#6d8446;--accent-on:#ffffff;
+  --accent:#46505e;--accent-mid:#6d8446;--accent-on:#ffffff;
   --warm:#a8622d;--warm-deep:#7c4e16;
   --route:#2f5f9e;
   --cell-top:#3d4551;--cell-top-text:#f2f4f7;--cell-top-muted:#aab2bd;   /* slate — same neutral as the stop cards (palette reinforcement, Peter) */
@@ -184,6 +184,9 @@
   --cat-camp:#3f6b4d;--cat-caravan:#6d8f2e;--cat-peak:#6b7684;--cat-crossing:#4f7f8f;
   --cat-wc:#6b7680;--cat-stop:#8a7a5e;--cat-church:#9a6fb0;--cat-school:#4a6fa5;
   --cat-hall:#a07845;--cat-fire:#c0392b;--cat-police:#2f5f9e;
+  /* Active tab indicator (icon + label + underline) — the neutral slate, NOT the olive accent
+     (Peter): green is accent-only, the active tab is a neutral. */
+  --tab-active:var(--stop-card-bg);
   /* CHIP fills — vibrant, mid-saturation category colours for the SOLID tag chips (Paper). ONE
      consistent colour per category, used the same on the light strip AND the dark stop cards, so
      they no longer read olive/pastel. White text stays legible on all of them. --cat-* stays the
@@ -245,6 +248,9 @@
   --cat-camp:#6a9955;--cat-caravan:#9ccc4a;--cat-peak:#94a3b8;--cat-crossing:#6b9eb0;
   --cat-wc:#8b98a5;--cat-stop:#a89a80;--cat-church:#d9b8e8;--cat-school:#93c5fd;
   --cat-hall:#d4a373;--cat-fire:#ef4444;--cat-police:#5b8ce0;
+  /* Active tab indicator — a LIGHT neutral slate (the dark-mode tab bar needs a light mark; the
+     Paper slate would vanish on it). Neutral, not green. */
+  --tab-active:#c3c9d1;
   /* Slate-card palette — on Graphite the cards are already dark, so these mirror the
      existing card look (near-no-op); kept as tokens so both themes share one rule. */
   --slate-card2:#2f343c;--slate-inset:#1a1d22;
@@ -317,10 +323,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .pack-peeking #live-weather-bar-wrap,.pack-peeking #turn-cue,.pack-peeking .turn-cue,
 .pack-peeking #pack-btn,.pack-peeking #share-btn,.pack-peeking #rec-stop-confirm,
 .pack-peeking #rec-ctrl{visibility:hidden;}
-.tabs{display:flex;justify-content:space-around;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow:hidden;padding:0;padding-top:env(safe-area-inset-top,0px);}
+.tabs{display:flex;justify-content:space-around;background:var(--surface);flex-shrink:0;overflow:hidden;padding:0;padding-top:env(safe-area-inset-top,0px);}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex:0 1 auto;min-width:0;padding:8px 6px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab.active{color:var(--tab-active);border-bottom-color:var(--tab-active);}
 .tab-icon{display:flex;align-items:center;justify-content:center;font-size:18px;height:20px;margin-bottom:1px;}
 /* Normal scrolling content (most tabs) */
 .content{flex:1;overflow-y:auto;padding:13px 13px 80px;padding-bottom:calc(80px + env(safe-area-inset-bottom, 0px));display:block;-webkit-overflow-scrolling:touch;min-height:0;}
@@ -343,6 +349,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-next-in{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font-slow);}
 .turn-cue{position:absolute;inset:0;z-index:20;pointer-events:none;}
 .tc-box{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:var(--surface-raised);border:var(--border-w) solid var(--accent);border-radius:var(--r-panel);padding:9px 18px 9px 14px;box-shadow:var(--shadow-float);}
+/* v314 — while a turn is active the box is the whole story: hide the floating data cells and
+   lift the box to the top-centre (where the middle cell sat), so the map opens up and the turn
+   crystallises. `turn-active` is toggled on #live-map-section by renderTurnCue. (Peter) */
+.live-map-section .live-fpill{transition:opacity .22s ease;}
+#live-map-section.turn-active .live-fpill{opacity:0!important;pointer-events:none!important;}   /* fade out, not display:none, so it can transition */
+#live-map-section.turn-active #tc-box{top:calc(var(--fpill-top,58px) + 10px)!important;bottom:auto!important;height:110px!important;animation:tcIn .22s ease;}  /* top gap + height match the data-cell grid (FPILL_CELL_H=110) */
+@keyframes tcIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 /* v276c — THE ARROW USES THE BOX'S PADDING. Peter: "the arrow could be taller."
    Measured, and he's right twice over:
    · The glyph was 47px because that MATCHES THE TEXT COLUMN (30px distance + 14px road ≈ 48),
@@ -602,6 +615,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    Standing shape, 4th occurrence (cf. v260's grey pill labels): translucent text laid over
    content whose colour we don't control is not a subtle label, it's an invisible one. */
 .zoom-btns{position:absolute;bottom:8px;right:8px;display:flex;flex-direction:column;gap:4px;}
+/* Mobile map-layer legend scrolls when there are more layers than the map panel is tall (Peter).
+   Hide the scrollbar — the clipped pill at the bottom edge is the affordance. */
+#mobile-map-legend::-webkit-scrollbar{width:0;height:0;display:none;}
 .live-fpill{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;
   /* Restyle: the cell's DARK top half carries light text in BOTH themes (the design's
      black/white pairing). The top-half markup uses color:var(--text); rebinding --text
@@ -1380,7 +1396,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v310';
+window.APP_VERSION='v324';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4577,7 +4593,7 @@ function runAdaptiveCalibration(){
   const dir=rounded>oldFactor?'slower':'faster';
   const msg=drift>=ADAPTIVE_WARN_DRIFT
     ?`⚠️ Speed adjusted ${Math.abs(pct)}% ${dir} — significant drift from your baseline. Check conditions.`
-    :`🔄 Speed adjusted ${Math.abs(pct)}% ${dir} based on recent riding pace.`;
+    :`Speed estimate updated — ${Math.abs(pct)}% ${dir}, based on your recent pace.`;
   // Surface as a non-blocking banner on the live tab
   UI._adaptiveMsg={msg,ts:now};
   if(UI.tab==='live')renderKeepScroll();
@@ -7328,17 +7344,12 @@ function _recBtnSync(){
       + 'flex-direction:column;align-items:flex-start;gap:8px;';
     sec.appendChild(el);
   }
-  // Restyle (Peter): in a SOLO ride the RECORD control is the BASE of the left column (bottom),
-  // starting as a "Start ride" text button that blocks less of the map. In an EVENT the pack
-  // button is the base, so the record control stays anchored above it (unchanged).
+  // Restyle (Peter): the RECORD control is the BASE of the left column (bottom) in BOTH solo and
+  // event. The share OR pack button anchors FLUSH above it — paw/share on TOP (rounded top),
+  // record below (rounded bottom). (Earlier the event case flipped this and floated the record
+  // above the pack with a gap, which is what read as "the buttons are the wrong way around".)
   const solo = !!document.getElementById('share-btn');
-  if(solo){
-    _leftColBottom(sec, el);
-  } else {
-    const sr = sec.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
-    el.style.top = 'auto';
-    el.style.bottom = Math.max(8, sr.bottom - ar.top + LEFT_COL_GAP) + 'px';
-  }
+  _leftColBottom(sec, el);
   // Only rewrite when the STATE changes — this runs on every live tick via the share/pack
   // syncs, and blowing away the buttons each time would restart the .rec-pulse blink and
   // eat taps mid-press.
@@ -8025,17 +8036,20 @@ function _packBtnSync(){
     el = document.createElement('div');
     el.id = 'pack-btn';
     el.style.cssText = 'position:absolute;left:'+LEFT_COL_X+'px;z-index:22;'
-      + 'border-radius:0 0 var(--r-ctrl) var(--r-ctrl);background:var(--overlay-bg);display:flex;flex-direction:column;'  // top corners flat: bottom of the merged record+pack pill
+      + 'border-radius:var(--r-ctrl) var(--r-ctrl) 0 0;background:var(--overlay-bg);display:flex;flex-direction:column;'  // bottom corners flat: TOP of the merged pill (the paw sits ABOVE the record, exactly like the share button it replaces)
       + 'align-items:center;justify-content:center;gap:1px;cursor:pointer;box-sizing:border-box;'
       + 'border:2px solid #fde047;color:#fde047;';
     sec.appendChild(el);
   }
   const _w = _leftColW();
   el.style.width = _w + 'px'; el.style.height = _w + 'px';
-  // v273: the same one authority the share button uses. This slot holds whichever of the two
-  // is live, so they must land on the identical pixel — otherwise the whole left column
-  // would shift the moment you joined or left a group ride.
-  _leftColBottom(sec, el);
+  // Record is the BASE; the pack (paw) button anchors FLUSH above it — exactly like the share
+  // button (see _shareBtnSync), so joining/leaving a group ride keeps the pill's geometry
+  // identical. (Was _leftColBottom, which made the PAW the base — the wrong way up.)
+  _recBtnSync();
+  const rc = document.getElementById('rec-ctrl');
+  if(rc){ const sr = sec.getBoundingClientRect(), rr = rc.getBoundingClientRect(); el.style.top='auto'; el.style.bottom = Math.max(8, sr.bottom - rr.top) + 'px'; }
+  else { _leftColBottom(sec, el); }
   const rs = (_packData && _packData.riders) || [];
   const meIdx = rs.findIndex(x => x.isYou);
   const place = rs.length ? (meIdx >= 0 ? (meIdx + 1) + '/' + rs.length : String(rs.length)) : '';
@@ -8058,7 +8072,7 @@ function _packBtnSync(){
     el.innerHTML = _packMark(mark)
       + (place ? '<span style="font-size:' + lbl + 'px;font-family:var(--font);font-weight:600;color:#fde047;line-height:1;">' + place + '</span>' : '');
   }
-  _recBtnSync();   // the record control hangs off this button's rect — see the chain note
+  // (record already synced above — it's the base of the column; the paw was anchored flush over it)
 }
 
 // ── The peek itself: ¾ list + ¼ strip, then full map ─────────────────────────
@@ -8282,7 +8296,7 @@ function _packOvOnClick(e){
       .catch(() => _recToast('Couldn\'t leave — check your connection'));
     return;
   }
-  if(_packListOpen) _packCdReset();   // any other list touch buys more reading time
+  if(_packListOpen) _packOvClose();   // v318 — a tap anywhere else closes straight away (Peter); the 8 s auto-close still runs on its own
 }
 
 // ── PACKRIDE CREATION (v257 slice 3) ─────────────────────────────────────────
@@ -14766,7 +14780,11 @@ function sortedLayers(r){
 // average, and a cycle should put like next to like.
 // v276 — 'grade' sits with the other no-hardware metrics (speed/mspeed/stop), before the
 // paired sensors, because it's the road rider's metric and needs nothing plugged in.
-const PILL_CYCLE=['speed','mspeed','stop','grade','power','cad','hr','off'];
+const PILL_CYCLE=['speed','pace','mspeed','stop','grade','power','cad','hr','off'];
+// PACE (min/km) from speed (km/h) as MM:SS. '—' below 1 km/h (a crawl — pace is meaningless
+// there, and it keeps the value inside the pill's 5-char box). SS always 2 digits so the colon
+// holds its column when right-justified, same trick the speed pill uses for its decimal point.
+function fmtPaceMinKm(kmh){ if(!(kmh&&kmh>=1))return'—'; let p=60/kmh,m=Math.floor(p),sec=Math.round((p-m)*60); if(sec===60){m++;sec=0;} return m+':'+String(sec).padStart(2,'0'); }
 // v260c — FIVE slots, in three columns. Peter: "we now have more pills than spots, can we
 // add some spots below the current ones, on left and right, perhaps not centre as it blocks
 // the route line." Right on the centre: the live map is heading-up, so the route runs
@@ -14948,7 +14966,7 @@ function tStopsShell(r){
         <canvas id="stops-map"></canvas>
         ${mapCtrlHTML('stops-map',true)}
         ${!IS_DESKTOP()?`
-        <div id="mobile-map-legend" style="position:absolute;top:8px;left:6px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;z-index:20;">
+        <div id="mobile-map-legend" style="position:absolute;top:8px;left:6px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;z-index:20;max-height:calc(100% - 16px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-right:3px;scrollbar-width:none;">
           ${(()=>{
             const filtered=sortedLayers(r);
             const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
@@ -15296,7 +15314,7 @@ function powerZone(watts,ftp){
   if(pct<0.55)return{z:1,label:'Z1 Recovery',   color:'#000',bg:'#BDBDBD',border:'#9E9E9E',textDark:true};
   if(pct<0.75)return{z:2,label:'Z2 Endurance',  color:'#fff',bg:'#283593',border:'#3949AB',textDark:false};
   if(pct<0.85)return{z:3,label:'Z3 Tempo',      color:'#fff',bg:'#1E88E5',border:'#42A5F5',textDark:false};
-  if(pct<0.95)return{z:4,label:'Z4 Sweet Spot', color:'#000',bg:'#43A047',border:'#66BB6A',textDark:true};
+  if(pct<0.95)return{z:4,label:'Z4 Sweet Spot', color:'#000',bg:'#4ade80',border:'#86efac',textDark:true};
   if(pct<1.05)return{z:5,label:'Z5 Threshold',  color:'#000',bg:'#FDD835',border:'#FFEE58',textDark:true};
   if(pct<1.20)return{z:6,label:'Z6 VO2 Max',    color:'#fff',bg:'#F4511E',border:'#FF7043',textDark:false};
   return          {z:7,label:'Z7 Anaerobic',   color:'#fff',bg:'#BF360C',border:'#E64A19',textDark:false};
@@ -15878,7 +15896,30 @@ function tLiveShell(r){
                "incl. stops" also needs no domain knowledge, which is the point: the rider who
                reaches for a moving average BECAUSE it flatters is exactly the one who won't
                decode jargon. -->
-          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">km/h avg. incl. stops</div>
+          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">avg. incl. stops</div>
+        </div>
+      </div>`;
+    }
+    if(type==='pace'){
+      // PACEOMETER (Peter, v319) — the speed pill reframed as PACE (min/km), like runners use.
+      // Monochrome, exactly like the speed pill (pace has no zones, so no colour). Same two
+      // readings as speed, just inverted units: current pace on top, average-incl-stops below.
+      // MM:SS right-justified in a 5-char box so the colon never moves between "4:03" and "12:30".
+      const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
+      const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
+      const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
+      const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
+      const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
+      const avgKmh=totalH>0.01?(totalKm/totalH):null;
+      const curPace=fmtPaceMinKm(s), avgPace=fmtPaceMinKm(avgKmh);
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-pace">
+        <div style="padding:5px 8px 3px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:5ch;text-align:right;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-pace-cur">${curPace}</span></div>
+          <div style="font-size:11px;font-weight:600;color:#2dd4bf;font-family:var(--sans);line-height:1.1;">min/km</div>
+        </div>
+        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:5ch;text-align:right;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-pace-avg">${avgPace}</span></div>
+          <div style="font-size:10px;font-weight:600;color:#0d9488;font-family:var(--sans);line-height:1.1;">avg. incl. stops</div>
         </div>
       </div>`;
     }
@@ -15942,7 +15983,7 @@ function tLiveShell(r){
                ⚠ "avg." IS LOAD-BEARING, not decoration — see the note in the speed pill.
                Without it this read "km/h moving", which parses as your moving SPEED, and the
                figure right above it is the actual current speed. -->
-          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">km/h moving avg.</div>
+          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">moving avg.</div>
         </div>
       </div>`;
     }
@@ -16410,9 +16451,9 @@ function tLiveShell(r){
           const age=Date.now()-UI._adaptiveMsg.ts;
           if(age>30000){UI._adaptiveMsg=null;return'';} // auto-dismiss after 30s
           const isWarn=UI._adaptiveMsg.msg.startsWith('⚠️');
-          return`<div style="padding:12px 14px;font-size:17px;font-weight:500;font-family:var(--font);line-height:1.45;display:flex;align-items:center;justify-content:space-between;gap:10px;background:${isWarn?'rgba(20,15,5,0.95)':'rgba(5,10,20,0.95)'};border:1px solid ${isWarn?'rgba(251,191,36,0.6)':'rgba(96,165,250,0.5)'};border-radius:10px;color:${isWarn?'var(--amber)':'var(--blue)'};box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+          return`<div id="adaptive-msg-dismiss" style="padding:12px 14px;font-size:16px;font-weight:500;font-family:var(--font);line-height:1.45;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;background:${isWarn?'rgba(30,22,8,0.96)':'rgba(24,29,38,0.96)'};border:1px solid ${isWarn?'rgba(251,191,36,0.75)':'rgba(120,178,255,0.65)'};border-radius:10px;color:${isWarn?'#ffe09a':'#d6e6fb'};box-shadow:0 4px 20px rgba(0,0,0,0.5);">
             <span>${UI._adaptiveMsg.msg}</span>
-            <button class="btn btn-sm" id="adaptive-msg-dismiss" style="flex-shrink:0;font-size:14px;padding:4px 10px;">✕</button>
+            <span style="flex-shrink:0;font-size:12px;opacity:0.65;white-space:nowrap;">tap to dismiss ✕</span>
           </div>`;
         })()}
         </div>
@@ -19205,6 +19246,10 @@ function _activeTurn(r,liveDist){
   // route (i.e. we demonstrably took the right road). At/just past the turn we show no ✓ (Peter).
   const onRoute=UI._snapOffKm!=null&&UI._snapOffKm<0.03;
   const confirmed=past&&alongM<-20&&onRoute;
+  // v313 — NO turn box until we're inside the turn-alert distance (Peter's setting, 50–200 m).
+  // Before that the box just stares at you from km away; the route line + off-route alarm cover
+  // the gap. The linger/✓ AFTER the corner (past) still shows — that's the confirmation Peter values.
+  if(!past && alongM > showM) return null;
   return {nt:ot,cornerDist:cd,mode:past?'linger':'approach',remM,alertM,confirmed,
     afterKm,                                     // v260: ONE authority for the exit length —
                                                  // drawMap had its own hard-coded 0.06, so a
@@ -19221,11 +19266,12 @@ function renderTurnCue(r,liveDist){
   const sec=document.getElementById('live-map-section');
   let cue=document.getElementById('turn-cue');
   const stopBlink=()=>{if(UI._tcBlinkTimer){clearInterval(UI._tcBlinkTimer);UI._tcBlinkTimer=null;}};
-  const kill=()=>{if(cue)cue.remove();stopBlink();UI._tcOrangeOn=false;};
+  const kill=()=>{if(cue)cue.remove();stopBlink();UI._tcOrangeOn=false;if(sec)sec.classList.remove('turn-active');};
   if(!sec||!UI.gpsActive||!r.turns||!r.turns.length){kill();return;}
   const at=_activeTurn(r,liveDist);
   if(!at){const had=UI._tcOrangeOn;kill();if(had&&document.getElementById('live-map'))redrawMap('live-map');return;}
   const {nt,mode,remM,showOrange,blink,confirmed}=at;
+  sec.classList.add('turn-active');   // v314 — box showing → hide cells + lift box to top
   if(!cue){
     cue=document.createElement('div');cue.id='turn-cue';cue.className='turn-cue';
     cue.innerHTML='<div id="tc-box" class="tc-box"><span id="tc-glyph" class="tc-glyph"></span>'
@@ -19307,6 +19353,23 @@ function updateLive(){
     const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
     const av=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
     if(avgEl.textContent!==av)avgEl.textContent=av;
+  }
+  // Floating PACE pill (min/km) — same readings as the speed pill, reframed as MM:SS. Both can
+  // be on at once, so patch its ids every tick too.
+  const paceCurEl=document.getElementById('live-pace-cur');
+  if(paceCurEl){
+    const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
+    const v=fmtPaceMinKm(s);
+    if(paceCurEl.textContent!==v)paceCurEl.textContent=v;
+  }
+  const paceAvgEl=document.getElementById('live-pace-avg');
+  if(paceAvgEl){
+    const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
+    const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
+    const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
+    const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
+    const av=fmtPaceMinKm(totalH>0.01?(totalKm/totalH):null);
+    if(paceAvgEl.textContent!==av)paceAvgEl.textContent=av;
   }
   // ── v272 — the moving-speed pill's two figures. ──────────────────────────────────────
   // Both pills can be on at once, so BOTH sets of ids get patched every tick. The current
