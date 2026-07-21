@@ -147,7 +147,7 @@
   --cell-top:#3d4551;--cell-top-text:#f2f4f7;--cell-top-muted:#aab2bd;   /* slate — same neutral as the stop cards (palette reinforcement, Peter) */
   --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;--mspeed-bg:#e4dfcb; /* moving-avg pill: stepped-down warm light */
   --chev-off:rgba(61,69,81,0.3); /* unlit progress chevron — faint neutral slate (matches the ridden slate) */
-  --elev-bg:var(--stop-card-bg); /* v304 — locked to the one neutral slate (Peter: "those greys are different, is there an alpha channel?" — yes, this used to be rgba(45,51,60,0.96)). Opaque now, matches the descent fill. Text rebinds light in .live-elev-bar */
+  --elev-bg:rgba(45,51,60,0.96); /* elevation stat strip — DARK slate (Peter: numbers/green grade were unreadable on the light tan); text rebinds light in .live-elev-bar */
   /* Planning tabs (20b spec): stop cards are TINTS with --text body copy; semantic colour lives
      only in the border/dot/tag. -deep tokens are the ONLY legal coloured text on Paper tints (>=4.5:1). */
   --text-soft:#6d6759;
@@ -198,7 +198,7 @@
   --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;   /* stays light in BOTH themes — the B&W pairing is the legibility feature */
   --mspeed-bg:#ccd6cf; /* moving-avg pill's stepped tone — the value v272 tuned on the OLED */
   --chev-off:rgba(255,255,255,0.24); /* unlit progress chevron — the value v261 tuned on the OLED */
-  --elev-bg:var(--stop-card-bg); /* v304 — locked to the one neutral slate (was rgba(34,37,43,0.94)) */
+  --elev-bg:rgba(34,37,43,0.94); /* elevation stat strip — dark slate over the map */
   /* Planning tabs (20b spec) — dark tints; on Graphite the semantic colours themselves pass 4.5:1 */
   --text-soft:#b9c0c9;
   --card-start-bg:#1c2f22;--card-start-br:#4cd97b66;
@@ -1318,7 +1318,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v304';
+window.APP_VERSION='v303';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7232,7 +7232,7 @@ function recCtrlHTML(){
     // and "▶ Resume ride" floats to its right as a TAPPABLE label (btn-gpstoggle → resume). One
     // square, no stacked pair. The stop still needs a confirm because it's the irreversible one.
     const stopWhite='<svg viewBox="0 0 24 24" width="20" height="20" style="display:block;margin:auto;"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></svg>';
-    return`<div style="position:relative;"><button class="zbtn" id="btn-recstop" title="Stop ride" style="${btnSize}padding:0;overflow:hidden;color:#fff;background:var(--red2);border-color:var(--red2);${shadow}${mergeTop}">${stopWhite}</button><span id="btn-gpstoggle" title="Resume ride" style="position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;cursor:pointer;pointer-events:auto;display:inline-flex;align-items:center;gap:6px;color:var(--text);background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-ctrl);padding:3px 10px;box-shadow:var(--shadow-float);font-family:var(--sans);font-weight:700;font-size:15px;">${tri}Resume ride</span></div>`;
+    return`<div style="position:relative;"><button class="zbtn" id="btn-recstop" title="Stop ride" style="${btnSize}padding:0;overflow:hidden;color:#fff;background:var(--red2);border-color:var(--red2);${shadow}${mergeTop}">${stopWhite}</button><span id="btn-gpstoggle" title="Resume ride" style="position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;cursor:pointer;pointer-events:auto;display:inline-flex;align-items:center;gap:6px;color:var(--text);text-shadow:0 1px 4px var(--surface),0 0 8px var(--surface);font-family:var(--sans);font-weight:700;font-size:16px;">${tri}Resume ride</span></div>`;
   }
   // IDLE — say what it does. Dark .zbtn body so it sits with the other controls (the white
   // version looked pasted on); the red dot carries the "record" meaning. Deliberately NOT a
@@ -7241,7 +7241,7 @@ function recCtrlHTML(){
   // Restyle (Peter): idle is a SQUARE record-dot button (so it merges cleanly with the square
   // share button above it) with the "Start ride" text FLOATING to its right — not inside the
   // button. The text-shadow (surface colour) keeps it legible over the OSM map.
-  return`<div style="position:relative;"><button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${btnSize}padding:0;overflow:hidden;background:var(--stop-card-bg);color:var(--on-dark);border-color:var(--hair-light);${shadow}${mergeTop}">${bigDot}</button><span style="position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;pointer-events:none;color:var(--text);background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-ctrl);padding:3px 10px;box-shadow:var(--shadow-float);font-family:var(--sans);font-weight:700;font-size:15px;">Start ride</span></div>`;
+  return`<div style="position:relative;"><button class="zbtn" id="btn-gpstoggle" title="Start ride (GPS + recording)" style="${btnSize}padding:0;overflow:hidden;background:var(--stop-card-bg);color:var(--on-dark);border-color:var(--hair-light);${shadow}${mergeTop}">${bigDot}</button><span style="position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;pointer-events:none;color:var(--text);text-shadow:0 1px 4px var(--surface),0 0 8px var(--surface);font-family:var(--sans);font-weight:700;font-size:16px;">Start ride</span></div>`;
 }
 
 // Position the record control above whichever 54px button owns the bottom-left slot.
@@ -7479,7 +7479,7 @@ function _shareBtnSync(){
                armed :['var(--hair-light)','#a6e05f'],
                live  :['var(--hair-light)','#a6e05f'],
                off   :['var(--hair-light)','var(--on-dark-mut)']}[st];
-    const shareLbl = {notset:'Set up share',armed:'',live:'',off:''}[st] || '';   // Peter: sharing only starts WITH recording, so "Start share"/"Share off" labels are redundant — the pulse shows live, the slashed icon shows off. Only "Set up share" (never configured) remains.
+    const shareLbl = {notset:'Set up share',armed:'Start share',live:'',off:'Share off'}[st] || '';   // Peter: no text when sharing is ACTIVE (live) — the pulse says it
     el.style.border = '1px solid ' + C[0];
     el.style.color = C[1];
     el.style.animation = 'none';
@@ -7487,7 +7487,7 @@ function _shareBtnSync(){
     el.style.boxShadow = 'var(--shadow-float)';
     el.innerHTML = SHARE_BTN_ICON + (st === 'off'
       ? '<span style="position:absolute;width:34px;height:3px;background:var(--on-dark-mut);border-radius:2px;transform:rotate(-45deg);"></span>' : '')
-      + (shareLbl ? '<span style="position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;pointer-events:none;color:var(--text);background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-ctrl);padding:3px 10px;box-shadow:var(--shadow-float);font-family:var(--sans);font-weight:700;font-size:15px;">'+shareLbl+'</span>' : '');
+      + '<span style="position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;pointer-events:none;color:var(--text);text-shadow:0 1px 4px var(--surface),0 0 8px var(--surface);font-family:var(--sans);font-weight:700;font-size:16px;">'+shareLbl+'</span>';
   }
   // One-time bubble: the recording↔sharing coupling, explained at the moment it
   // matters (set up, not yet rolling) instead of left as a mystery.
@@ -10816,12 +10816,12 @@ function drawMap(cvs,r,opts){
       // Now relative to the dot at (0,0) — the pill still sits just above its marker, and it
       // stays above it on screen whichever way the map is pointing.
       const pillH=fSize+4,pillY=-pillH-4;
-      ctx.fillStyle=isDesktopMap?_neutralGrey:'rgba(255,255,255,0.92)';   // v304 — the dark km pill is the ONE neutral slate now (was rgba(10,15,10,0.72))
+      ctx.fillStyle=isDesktopMap?'rgba(10,15,10,0.72)':'rgba(255,255,255,0.92)';
       ctx.beginPath();
       if(ctx.roundRect){ctx.roundRect(-tw/2-3,pillY,tw+6,pillH,3);}
       else{ctx.rect(-tw/2-3,pillY,tw+6,pillH);}
       ctx.fill();
-      ctx.fillStyle=isDesktopMap?'rgba(255,255,255,0.92)':'#111';   // v304 — clean light text on the slate pill (was green-tinted)
+      ctx.fillStyle=isDesktopMap?'rgba(200,230,200,0.9)':'#111';
       ctx.fillText(lbl,0,pillY+pillH-1);
       ctx.restore();
     }
@@ -14133,7 +14133,7 @@ function buildLiveStrip(r,liveDist,sdt){
 // ─── Elevation profile for ride tab ───
 // Grade colour: uphill green 0-3.9%, yellow 4-7.9%, orange 8-11.9%, red 12-19.9%, brown 20%+; downhill grey
 function gradeCol(g){
-  if(g<0.5)return _neutralGrey; // v304 — downhill/flat uses the ONE neutral slate (was #555), so the profile fill, map grade overlay and grade cell all match. Wahoo convention, our grey.
+  if(g<0.5)return'#555'; // downhill or flat — grey (Wahoo convention)
   if(g<4)return'#4ade80';
   if(g<8)return'#fbbf24';
   if(g<12)return'#f97316';
@@ -14614,21 +14614,10 @@ function drawElevProfile(r,liveDist){
     window.addEventListener('mousemove',e=>{if(startX!==null)onMove(e);});
     window.addEventListener('mouseup',onEnd);
   }
-  // v304 — RE-ANCHOR AFTER THE STRIP IS SIZED. The elevation strip's final height is only
-  // settled once THIS function has sized the profile canvas. Everything hanging off the strip
-  // (the left button column, weather pill, map controls, turn box) must re-measure AFTER the
-  // draw. updateLive already does this (drawElevProfile → _adjustWeatherForElev), but the IDLE
-  // Ride tab never runs updateLive — so idle placed the buttons off whatever height the strip
-  // had at render time (before the canvas laid out) and never corrected it, and they visibly
-  // "dropped" onto their true position the instant a ride started and updateLive re-anchored.
-  // Peter, v304: "there is a different gap … after I start the ride it drops down." Same rule
-  // as everywhere else in this file: the thing that sizes an anchor re-anchors what hangs off
-  // it. Non-recursive — _adjustWeatherForElev never draws the profile.
-  try{ _adjustWeatherForElev(); }catch(e){}
 }
 
 // Fork & knife food icon — use currentColor so context controls colour
-const ICON_FOOD=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>`;
+const ICON_FOOD=`<svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>`;
 const ICON_FOOD_BTN=`<span style="display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;padding:3px 5px;color:var(--on-dark);">${ICON_FOOD}</span>`;
 const ICON_MEAL=`<svg width="16" height="16" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M8 38 Q8 54 30 54 Q52 54 52 38"/><line x1="8" y1="38" x2="52" y2="38"/><path d="M18 30 Q15 23 18 16 Q21 9 18 3"/><path d="M30 30 Q27 23 30 16 Q33 9 30 3"/><path d="M42 30 Q39 23 42 16 Q45 9 42 3"/></svg>`;
 const ICON_SNACK=`<svg width="16" height="16" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M30 18 C14 18 4 28 4 40 C4 52 14 58 24 58 C27 58 30 56 30 56 C30 56 33 58 36 58 C46 58 56 52 56 40 C56 30 46 22 38 19 C35 23 31 25 27 23 C25 21 23 19 30 18 Z"/><path d="M30 18 C28 20 25 21 27 23 C31 25 35 23 38 19"/><path d="M24 18 C27 12 30 10 30 10"/><path d="M30 10 C32 5 40 3 42 8 C39 10 33 10 30 10"/></svg>`;
@@ -15898,7 +15887,7 @@ function tLiveShell(r){
       const gr=cur();
       const gLive=(gr&&gr.points&&gr.points.length>1&&UI.gpsDistKm!=null);
       const g=gLive?gradeAt(gr,UI.gpsDistKm):0;
-      const gBg=gLive?gradeCol(g):_neutralGrey;   // v304 — not-live falls back to the same neutral slate
+      const gBg=gLive?gradeCol(g):'#555';
       const gDark=(gBg==='#4ade80'||gBg==='#fbbf24');      // light zones -> black text
       // Signed grade, NO arrow: the sign gives up/down and the zone colour already says
       // climb-vs-flat. The % is FULL SIZE and part of the string, exactly like the stoppage
@@ -17295,9 +17284,9 @@ function stopRow(s,r,sdt,inCluster){
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="${s.starred!==false?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}">${s.starred!==false?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
-        ${s.type!=='sleep'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}">${s.sleepAt?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
-        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="${s.meals&&s.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>
-        ${(()=>{if(s.type==='water')return'';const on=waterAssigned(s);const bc=on?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)';const cc=on?'#60a5fa':'rgba(255,255,255,0.85)';return'<button class="btn btn-sm water-at-stop" data-sid="'+s.id+'" title="Water available here? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+bc+';color:'+cc+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(on?'#60a5fa':'none')+'" stroke="'+(on?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})()}
+        ${s.type!=='sleep'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}">${s.sleepAt?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
+        <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="${s.meals&&s.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>
+        ${(()=>{if(s.type==='water')return'';const on=waterAssigned(s);const bc=on?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)';const cc=on?'#60a5fa':'rgba(255,255,255,0.85)';return'<button class="btn btn-sm water-at-stop" data-sid="'+s.id+'" title="Water available here? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+bc+';color:'+cc+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(on?'#60a5fa':'none')+'" stroke="'+(on?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})()}
         <button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);">${ICON_EDIT}</button>
         <button class="btn btn-r btn-sm del-stop" data-sid="${s.id}" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.5" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
@@ -17372,10 +17361,7 @@ function stopChip(s,r){
   const stOpen=s.ohRules?shopSt(s,r):'';
   const openDot=stOpen==='open'?'<span style="color:var(--accent)">●</span>':stOpen==='closed'?'<span style="color:var(--red)">●</span>':'';
   const sleepTag=s.type==='sleep'?' 😴'+(s.sleepH||10)+'h':s.sleepAt?' 😴'+(s.sleepH||10)+'h':'';
-  // v304 — the cluster chips sit INSIDE the saturated mission node cards (blue/green/purple),
-  // so a light --bg3 chip read as a jarring white slab. Subtle translucent-light chip + light
-  // text instead, so it belongs to the card it's on.
-  return '<span style="font-size:15px;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.25);border-radius:4px;padding:1px 6px;color:#f6f4ef;display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+popBadge(s,'chip')+openDot+sleepTag+'</span>';
+  return '<span style="font-size:15px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text2);display:inline-flex;align-items:center;gap:2px;">'+s.icon+' '+s.name+popBadge(s,'chip')+openDot+sleepTag+'</span>';
 }
 
 // ─── Weather radar URL (auto-detected from GPS country) ───
@@ -17926,11 +17912,6 @@ function cssVar(name,fallback){
 // SAME in both themes on purpose — it must contrast with the map, not the app chrome
 // (see v273d: the live route line is deliberately cyan). Only this backdrop follows the theme.
 let _mapCanvasBg='#0d1a0d';
-// v304 — the ONE neutral slate, resolved from --stop-card-bg and cached (gradeCol and the km
-// markers are drawn in tight per-point loops, so a getComputedStyle per call is out). Used for
-// the elevation-profile descent fill, the map grade overlay, the grade data-cell and the
-// dark-background km markers, so every "neutral grey" in the app is literally the same colour.
-let _neutralGrey='#3d4551';
 function _resolveTheme(){
   const m=(UI&&UI.themeMode)||'auto';
   if(m==='paper'||m==='graphite')return m;
@@ -17952,7 +17933,6 @@ function applyTheme(repaint){
   document.documentElement.setAttribute('data-theme',t);
   UI._theme=t;
   _mapCanvasBg=cssVar('--surface-sunken',t==='paper'?'#dcd5c0':'#0d1a0d');
-  _neutralGrey=cssVar('--stop-card-bg',t==='paper'?'#3d4551':'#22252b');
   try{localStorage.setItem('pt_theme_resolved',t);}catch(e){}
   try{const mc=document.querySelector('meta[name="theme-color"]'); if(mc)mc.setAttribute('content',_THEME_STATUS[t]||'#0d1a0d');}catch(e){}
   // Repaint canvas-drawn chrome (CSS updates on its own; canvas does not).
@@ -18206,11 +18186,7 @@ function tPlan(r){
     const etaCol='#f6f4ef';
     const daydiv=dayStr?'<div style="font-size:15px;color:'+text3Col+';font-family:var(--font);">'+dayStr+'</div>':'';
     const metaCount=node.cluster&&node.cluster.stops.length>1?' · '+node.cluster.stops.length+' stops':'';
-    // v304 — show the cluster's chips, but drop the ONE that just repeats the card's own town
-    // title (Peter: "it's just duplication" — but "default to showing chips"). Same rule the
-    // sleep-cluster branch already applies (it filters townStop out). A single-stop town has
-    // only its own name, so it shows no chip; a multi-stop cluster still shows the extra stops.
-    const chips=node.cluster?(()=>{const prim=node.cluster.stops.find(s=>s.name===node.name);return node.cluster.stops.filter(s=>s!==prim).map(s=>stopChip(s,r)).join('');})():'';
+    const chips=node.cluster?node.cluster.stops.map(s=>stopChip(s,r)).join(''):'';
     const chipsDiv=chips?'<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;">'+chips+'</div>':'';
     // Sleep node: show arrive + depart times prominently
     let sleepDiv='';
@@ -18266,16 +18242,16 @@ function tPlan(r){
         +spine
       +'</div>'
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;box-shadow:var(--shadow-float);cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
-        +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.72);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.9);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
+        +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.72);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.9);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
             +'<div style="font-size:18px;font-weight:500;color:'+textCol+';line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+((node.clusterAll||node.cluster)?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.clusterAll||node.cluster)):'')+'</div>'
             +'<div style="font-size:18px;font-weight:500;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km</div>'
             +(node.isStart?
               '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">'
-                +'<div style="flex:1;font-family:var(--font);font-size:16px;font-weight:500;color:rgba(246,244,239,0.92);">'
+                +'<div style="flex:1;font-family:var(--font);font-size:16px;font-weight:500;color:var(--accent);">'
                   +(r.startDate&&r.startTime?(()=>{const d=new Date(r.startDate+'T'+r.startTime);return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+' · '+r.startTime;})():'Tap ✏️ to set start')
                 +'</div>'
-                +'<button class="btn btn-sm" id="btn-mission-dt-edit" style="background:var(--overlay-bg);border:1px solid var(--hair-light);color:var(--on-dark);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;">'+ICON_EDIT+'</button>'
+                +'<button class="btn btn-sm" id="btn-mission-dt-edit" style="padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;">'+ICON_EDIT+'</button>'
               +'</div>'
             :
               (isSleep?'':
@@ -18286,9 +18262,9 @@ function tPlan(r){
           +'</div>'
           +(isSleep?'':
           '<div style="display:flex;align-items:flex-start;gap:4px;flex-shrink:0;margin-left:8px;">'
-            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="'+(node.cluster.stops.some(s=>s.sleepAt)?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')+'</button>':''})():'')
-            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="'+(hasMeals?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food here"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':''})():'')
-            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const clWater=node.cluster.stops.some(waterAssigned);return ts?'<button class="water-at-stop" data-node="1" data-sid="'+ts.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clWater?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clWater?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(clWater?'#60a5fa':'none')+'" stroke="'+(clWater?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];return ts?'<button class="sleep-at-stop" data-sid="'+ts.id+'" style="'+(node.cluster.stops.some(s=>s.sleepAt)?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Sleep here">'+(node.cluster.stops.some(s=>s.sleepAt)?'<svg width="17" height="17" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')+'</button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const hasMeals=node.cluster.stops.some(s=>s.meals&&s.meals.length);return ts?'<button class="food-at-stop" data-sid="'+ts.id+'" style="'+(hasMeals?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food here"><svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':''})():'')
+            +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const clWater=node.cluster.stops.some(waterAssigned);return ts?'<button class="water-at-stop" data-node="1" data-sid="'+ts.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clWater?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clWater?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="15" height="17" viewBox="0 0 24 24" fill="'+(clWater?'#60a5fa':'none')+'" stroke="'+(clWater?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>':''})():'')
             +(node.cluster?(()=>{const ts=node.cluster.stops.find(s=>s.type==='town')||node.cluster.stops[0];const isEditing=UI.planEditCluster===ts.id;return ts?'<button class="cluster-edit-btn" data-sid="'+ts.id+'" style="background:'+(isEditing?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(isEditing?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:4px 6px;display:flex;align-items:center;justify-content:center;color:'+(isEditing?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':''})():'')
           +'</div>')
         +'</div>'
@@ -18321,7 +18297,7 @@ function tPlan(r){
           // assigned to the town, a cafe, etc. (each gets the before/after-sleep toggle).
           +(node.sleepStop&&UI.planEditCluster===node.sleepStop.id?(()=>{
             const editStops=node.clusterAll?node.clusterAll.stops:[node.sleepStop];
-            const foodSvg='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>';
+            const foodSvg='<svg width="15" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg>';
             return'<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px;">'
               +editStops.map(s=>{
                 const warnings=[];
@@ -18394,15 +18370,15 @@ function tPlan(r){
       const rh=Math.floor(segRideH),rm=Math.round((segRideH-rh)*60);
       const rideHM=segRideH>0.05?(rh>0?(rh+'h'+(rm>0?' '+String(rm).padStart(2,'0')+'m':'')):(rm+'m')):'';
       const rideStr=rideHM+(r.cumRiding&&segAvgSpd&&rideHM?' · '+segAvgSpd+' km/h':'');
-      const foodIcon='<span style="display:inline-flex;align-items:center;'+(hasFood?'color:#fbbf24;':'opacity:.3;color:#eceef1;')+'">'+ICON_FOOD+'</span>';
+      const foodIcon='<span style="display:inline-flex;align-items:center;'+(hasFood?'color:#fbbf24;':'opacity:.22;color:var(--text2);')+'">'+ICON_FOOD+'</span>';
       const waterIcon='<span style="font-size:18px;'+(hasWater?'':'opacity:.22;')+'">💧</span>';
       // Day/leg label using simple counters
       const curDay=_planDay,curLeg=_planLeg;
       _planLeg++;
       const dayLabel=!node.isFinish?(
         UI.planSleepOnly?
-          '<div style="font-size:12px;font-weight:600;color:rgba(236,238,241,0.65);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' ride</div>':
-          '<div style="font-size:12px;font-weight:600;color:rgba(236,238,241,0.65);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' · Leg '+curLeg+'</div>'
+          '<div style="font-size:12px;font-weight:600;color:var(--text2);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' ride</div>':
+          '<div style="font-size:12px;font-weight:600;color:var(--text2);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' · Leg '+curLeg+'</div>'
       ):'';
 
       const segPts=r.points.filter(p=>p.dist>=node.dist&&p.dist<=next.dist);
@@ -18412,14 +18388,14 @@ function tPlan(r){
 
       rows+='<div style="display:flex;align-items:stretch;gap:10px;">'
         +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;">'
-          +'<div style="width:2px;flex:1;min-height:40px;background:rgba(255,255,255,0.18);"></div>'
+          +'<div style="width:2px;flex:1;min-height:40px;background:var(--border2);"></div>'
         +'</div>'
         +'<div style="flex:1;padding:4px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +dayLabel
-            +'<span style="font-size:19px;font-weight:600;color:#8bc34a;font-family:var(--font);">'+segDist.toFixed(1)+' km</span>'
-            +(rideStr?'<br><span style="font-size:15px;font-weight:500;color:rgba(236,238,241,0.72);font-family:var(--font);">'+rideStr+'</span>':'')
-            +(elevStr?'<br><span style="font-size:15px;font-weight:500;color:rgba(236,238,241,0.72);font-family:var(--font);">'+elevStr+'</span>':'')
+            +'<span style="font-size:19px;font-weight:600;color:var(--accent);font-family:var(--font);">'+segDist.toFixed(1)+' km</span>'
+            +(rideStr?'<br><span style="font-size:15px;font-weight:500;color:var(--text-soft);font-family:var(--font);">'+rideStr+'</span>':'')
+            +(elevStr?'<br><span style="font-size:15px;font-weight:500;color:var(--text-soft);font-family:var(--font);">'+elevStr+'</span>':'')
           +'</div>'
           +'<div style="display:flex;gap:4px;">'+foodIcon+waterIcon+'</div>'
         +'</div>'
@@ -18450,23 +18426,23 @@ function tPlan(r){
   }
 
   const printBtn='<button class="btn btn-sm" id="btn-print-mission" style="font-size:12px;padding:3px 8px;font-family:var(--font);letter-spacing:.3px;">Print</button>';
-  return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;"><div style="display:flex;align-items:center;gap:6px;"><span style="background:var(--stop-card-bg);border:1px solid rgba(251,191,36,0.7);border-radius:6px;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span>Starred stops appear here</span></div>${printBtn}</div>`:`<div style="padding:2px 4px 8px;display:flex;justify-content:flex-end;">${printBtn}</div>`)
+  return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;"><div style="display:flex;align-items:center;gap:6px;"><span style="background:var(--overlay-bg);border:1px solid rgba(251,191,36,0.7);border-radius:6px;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span>Starred stops appear here</span></div>${printBtn}</div>`:`<div style="padding:2px 4px 8px;display:flex;justify-content:flex-end;">${printBtn}</div>`)
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
-    +'<div class="card" style="padding:14px 12px;background:var(--stop-card-bg);border-color:var(--stop-card-br);">'
+    +'<div class="card" style="padding:14px 12px;">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
-        +'<div class="ctitle" style="margin-bottom:0;color:#eceef1;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
+        +'<div class="ctitle" style="margin-bottom:0;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
-        +'<button class="btn btn-sm" id="btn-plan-sleep-filter" style="background:var(--overlay-bg);border:1px solid var(--hair-light);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planSleepOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show bivi stops only">'
+        +'<button class="btn btn-sm" id="btn-plan-sleep-filter" style="background:var(--stop-card-bg);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planSleepOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show bivi stops only">'
         +(UI.planSleepOnly
           ?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
           :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')
         +'</button>'
-        +'<button class="btn btn-sm" id="btn-plan-food-filter" style="background:var(--overlay-bg);border:1px solid var(--hair-light);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planFoodOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show food stops only">'
+        +'<button class="btn btn-sm" id="btn-plan-food-filter" style="background:var(--stop-card-bg);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planFoodOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show food stops only">'
         +(UI.planFoodOnly
           ?'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>'
           :'<svg viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="7"/><path d="M3 2v4a2 2 0 0 0 4 0V2"/><line x1="5" y1="9" x2="5" y2="16"/><line x1="13" y1="2" x2="13" y2="16"/><path d="M10 2c0 0 3 1.5 3 5"/></svg>')
         +'</button>'
-        +'<button class="btn btn-sm" id="btn-plan-water-filter" style="background:var(--overlay-bg);border:1px solid var(--hair-light);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planWaterOnly?'border-color:rgba(96,165,250,0.7);':'')+'" title="Show water stops only">'
+        +'<button class="btn btn-sm" id="btn-plan-water-filter" style="background:var(--stop-card-bg);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planWaterOnly?'border-color:rgba(96,165,250,0.7);':'')+'" title="Show water stops only">'
         +(UI.planWaterOnly
           ?'<svg viewBox="0 0 16 16" width="16" height="16" fill="#60a5fa" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5C8 1.5 3 7 3 10.5a5 5 0 0 0 10 0C13 7 8 1.5 8 1.5z"/></svg>'
           :'<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.2" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5C8 1.5 3 7 3 10.5a5 5 0 0 0 10 0C13 7 8 1.5 8 1.5z"/></svg>')
@@ -18475,8 +18451,8 @@ function tPlan(r){
       +'</div>'
       +rows
     +((adjDur||summaryParts.length)?(()=>{
-      const accent='font-size:18px;font-weight:600;color:#8bc34a;font-family:var(--font);';   // v304 — light green on the dark mission card
-      const lbl='font-size:12px;font-weight:600;color:rgba(236,238,241,0.6);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
+      const accent='font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);';
+      const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
       const totalGain=elevGain(r.points);
       const avgGainPerKm=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
       const totRideH=Math.floor(adjDur||0),totRideM=Math.round(((adjDur||0)-totRideH)*60);
@@ -18493,7 +18469,7 @@ function tPlan(r){
       const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
       const avgSpd=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
       const avgGain=Math.round(totalGain/dayCount);
-      const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:rgba(255,255,255,0.18);"></div></div>';
+      const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:var(--border2);"></div></div>';
       return'<div style="display:flex;align-items:stretch;gap:10px;margin-top:4px;">'
         +spine
         +'<div style="flex:1;padding:4px 0 4px 2px;">'
@@ -18510,7 +18486,7 @@ function tPlan(r){
           +(adjDur?(()=>{
             const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
-            return'<br><span style="'+accent+'color:rgba(236,238,241,0.7);">≈ '+totalHM+' · '+daysHM+' total</span>';
+            return'<br><span style="'+accent+'color:var(--text2);">≈ '+totalHM+' · '+daysHM+' total</span>';
           })():'')
           +(sleepStops<nights&&nights>0?'<br><span style="font-size:14px;color:rgba(179,157,219,0.7);">😴 '+sleepStops+' of '+nights+' nights planned — '+(nights-sleepStops)+' unplanned</span>':'')
         +'</div>'
@@ -19270,7 +19246,7 @@ function updateLive(){
   if(gCurEl){
     const gLive=(r.points&&r.points.length>1&&UI.gpsDistKm!=null);
     const g=gLive?gradeAt(r,UI.gpsDistKm):0;
-    const gBg=gLive?gradeCol(g):_neutralGrey;   // v304 — same neutral slate as everywhere else
+    const gBg=gLive?gradeCol(g):'#555';
     const gDark=(gBg==='#4ade80'||gBg==='#fbbf24');
     const gTxt=gLive?((Math.abs(g)<0.05?'0.0':Math.abs(g)<10?g.toFixed(1):String(Math.round(g)))+'%'):'—';
     if(gCurEl.textContent!==gTxt){gCurEl.textContent=gTxt;}
