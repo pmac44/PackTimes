@@ -46,25 +46,32 @@ Card/modal padding = `--sp-4`. Between fields = `--sp-3`. List gaps = `--sp-2`.
 --cat-fuel --cat-hut --cat-camp --cat-caravan --cat-peak --cat-crossing
 --cat-wc --cat-stop --cat-church --cat-school --cat-hall --cat-fire --cat-police
 ```
-Dots read the token directly (`.d-food{background:var(--cat-food)}`). Tag chips name
-their hue once via `--c` and let the base `.tag` render it, so they can never drift:
+Dots read the token directly (`.d-food{background:var(--cat-food)}`). Tag chips carry TWO
+hue vars: `--c` (the dot/text hue, for the dark wash) and `--cs` (the solid CHIP fill):
 ```
-.t-food{--c:var(--cat-food);}                       /* each chip only names its hue */
-.tag{background:color-mix(in srgb,var(--c) 15%,transparent);color:var(--c);}  /* wash */
+.t-food{--c:var(--cat-food);--cs:var(--chip-food);}
+.tag{background:color-mix(in srgb,var(--c) 15%,transparent);color:var(--c);}  /* wash = DARK look */
 ```
-**Chips are per-theme (v306):** the wash above is the DARK (Graphite) look — bright hues
-glowing on a dark card. In **Paper (light)** a single override inverts every chip to a solid
-fill with white ink, so it reads as a badge on the light Ride strip AND on the dark slate
-cards (a 15% wash of a dark hue on a light page is nearly invisible):
+**Chips are per-theme (v306/v308):** the wash above is the DARK (Graphite) look — bright hues
+glowing on a dark card. In **Paper (light)** a single override inverts every chip to a SOLID
+fill with white ink, so it reads as a badge on the light Ride strip AND on the dark slate cards
+(a 15% wash of a dark hue on a light page is nearly invisible):
 ```
-[data-theme="paper"] .tag{background:var(--c);color:#fff;}
+[data-theme="paper"] .tag{background:var(--cs,var(--c));color:#fff;}
 ```
-This is the general rule: **colour treatments are chosen per theme, not shared.** A value that
-works on dark rarely works on light — set it in each theme's `:root` (or a `[data-theme=…]`
-override), never once for both.
+**Why a separate `--chip-*` set (not just `--cat-*`) — important:** `--cat-*` is tuned two ways
+that both fail as a solid fill. Top-level Paper `--cat-town` is a dark *olive* (tuned as dark
+TEXT on the light page) → a dull chip; and inside `[data-theme="paper"] .si` the cats are
+rebound to *pastels* (tuned as bright dots/text on the dark stop card) → a washed-out chip. So
+solid chips use `--chip-*`: ONE vibrant mid-tone per category, defined in the Paper `:root` and
+NOT rebound by `.si`, so the chip is identical and saturated on the strip and the cards. White
+text stays legible on every one. `--cat-*` still drives dots and text; `--chip-*` drives chips.
 
-When you add a new stop category, add ONE `--cat-*` token + one `.t-x{--c:…}` line — both
-themes then just work.
+This is the general rule: **colour treatments are chosen per theme, not shared** — and a colour
+tuned for text/dots is not automatically right as a fill. Set each in the theme's `:root`.
+
+When you add a new stop category: add `--cat-*` (dot/text) + `--chip-*` (chip fill) + one
+`.t-x{--c:…;--cs:…}` line — both themes then just work.
 
 ### Card surfaces — the one contrast slate
 There is ONE contrast-card colour, `--stop-card-bg` (a mid-dark cool slate on Paper,
