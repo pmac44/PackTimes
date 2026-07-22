@@ -348,7 +348,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font-slow);}
 .live-next-in{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font-slow);}
 .turn-cue{position:absolute;inset:0;z-index:20;pointer-events:none;}
-.tc-box{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:var(--surface-raised);border:var(--border-w) solid var(--accent);border-radius:var(--r-panel);padding:9px 18px 9px 14px;box-shadow:var(--shadow-float);}
+.tc-box{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:var(--surface-raised);border:var(--border-w) solid var(--accent);border-radius:var(--r-panel);padding:9px 18px 9px 14px;box-shadow:var(--shadow-float);cursor:pointer;}   /* v326 — tappable: tap to dismiss this turn's box and bring the data cells back */
 /* v314 — while a turn is active the box is the whole story: hide the floating data cells and
    lift the box to the top-centre (where the middle cell sat), so the map opens up and the turn
    crystallises. `turn-active` is toggled on #live-map-section by renderTurnCue. (Peter) */
@@ -1396,7 +1396,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v325';
+window.APP_VERSION='v326';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1459,7 +1459,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   // recId so a mid-ride reload or crash recovery doesn't silently restart the leg (and
   // report 0% stoppage on a ride where you'd already lost an hour). _legStopT is NOT
   // persisted: a reload during a stop loses that one stop's start, same as _recStop.
-  legStartTS:null,legStartKm:null,legStoppedMs:0,
+  legStartTS:null,legStartKm:null,legStartRouteKm:null,legStoppedMs:0,
   // Location sharing (Phase 2). shareToken is the SECRET write token — it lives in
   // its own `shareAuth` KV row, NOT in uiPrefs, so it never syncs out to Dropbox.
   // No token = never opted in = no code path can transmit a position. That's the
@@ -1538,7 +1538,7 @@ async function saveAll(){
   await DB.setKV('dbxExpiresAt',UI.dbxExpiresAt||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -1606,6 +1606,7 @@ async function loadAll(){
       if(prefs.rideNowTs)UI.rideNowTs=prefs.rideNowTs;
       if(prefs.legStartTS)UI.legStartTS=prefs.legStartTS;
       if(prefs.legStartKm!=null)UI.legStartKm=prefs.legStartKm;
+      if(prefs.legStartRouteKm!=null)UI.legStartRouteKm=prefs.legStartRouteKm;
       if(prefs.legStoppedMs)UI.legStoppedMs=prefs.legStoppedMs;
       if(prefs.recMinMoveM)UI.recMinMoveM=prefs.recMinMoveM;
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
@@ -4717,6 +4718,11 @@ let _legStopT = null;               // when the CURRENT stop began (null = movin
 function _legReset(ts, km){
   UI.legStartTS  = ts;
   UI.legStartKm  = (km !== undefined && km !== null) ? km : (UI.gpsTravelledKm || 0);
+  // v326 — the ALONG-ROUTE position the leg started at (distinct from legStartKm, which is the
+  // ridden-distance odometer baseline). The grade pill's "avg grade so far" measures from here,
+  // so it means "since you started this recording, or since you last slept". Null if GPS hasn't
+  // given a fix yet at ride start — avgGradeSoFar anchors it lazily on the first fix.
+  UI.legStartRouteKm = (UI.gpsDistKm != null) ? UI.gpsDistKm : null;
   UI.legStoppedMs = 0;
   _legStopT = null;
 }
@@ -14398,6 +14404,40 @@ function _toTopParts(km){
   if(km<10)return[km.toFixed(1),'km'];
   return[String(Math.round(km)),'km'];
 }
+// v326 — AVERAGE GRADE SO FAR (Peter): "the average grade you have ridden so far up to that
+// point… how far you've ridden today, or since you last [slept], or since you started that
+// recording." Net rise over run, measured from where THIS RECORDING/LEG started (not the route
+// start): _legReset snapshots UI.legStartRouteKm at ride start and again at each sleep, so the
+// number resets when you begin today's ride and again each morning. With no recording it falls
+// back to the route start. Uses smEleAt so it agrees with the smoothed profile line; can be
+// negative. Needs ~50 m ridden before it means anything (the mspeed/stoppage "a ratio over a
+// few metres is a wild number" rule), else null → "—".
+function avgGradeSoFar(r,d){
+  const pts=r&&r.points;if(!pts||pts.length<2||d==null)return null;
+  const d0=pts[0].dist,dN=pts[pts.length-1].dist;
+  let base=d0;
+  if(_rec){
+    if(UI.legStartRouteKm==null) UI.legStartRouteKm=d;   // cold-GPS start: anchor on the first fix we see
+    base=Math.min(Math.max(UI.legStartRouteKm,d0),dN);
+  }
+  const x=Math.min(Math.max(d,base),dN),run=(x-base)*1000;
+  if(run<50)return null;
+  return (smEleAt(r,x)-smEleAt(r,base))/run*100;
+}
+// Adaptive-precision % — the grade pill top's own rule, factored out so the bottom half matches:
+// one decimal under 10, whole number at/above, so a steep "-12%" still fits the cell.
+function _fmtGradePct(g){return (Math.abs(g)<0.05?'0.0':Math.abs(g)<10?g.toFixed(1):String(Math.round(g)))+'%';}
+// v326 — what the grade pill's BOTTOM half shows. ON a detected climb → distance to its top
+// (unchanged). OFF any climb → the average grade ridden so far. Peter: "when you come into a
+// climb that bottom cell flips to the distance to the top." One authority so the template and the
+// live-patch path can never disagree about which reading (or label) is showing.
+function _gradeBottom(r,d,gLive){
+  if(!gLive)return{num:'—',unit:'',label:'avg grade'};
+  const clb=climbAt(r,d);
+  if(clb)return(()=>{const[n,u]=_toTopParts(Math.max(0,clb.top-d));return{num:n,unit:u,label:'to top'};})();
+  const ag=avgGradeSoFar(r,d);
+  return{num:ag==null?'—':_fmtGradePct(ag),unit:'',label:'avg grade'};
+}
 
 // Compute grade segments (~50m) from route points — cached on route object.
 // v276 — the grade of each segment now comes from gradeAt (smoothed), so the map/desktop
@@ -14834,6 +14874,17 @@ const PILL_CYCLE=['speed','pace','mspeed','stop','grade','power','cad','hr','off
 // there, and it keeps the value inside the pill's 5-char box). SS always 2 digits so the colon
 // holds its column when right-justified, same trick the speed pill uses for its decimal point.
 function fmtPaceMinKm(kmh){ if(!(kmh&&kmh>=1))return'—'; let p=60/kmh,m=Math.floor(p),sec=Math.round((p-m)*60); if(sec===60){m++;sec=0;} return m+':'+String(sec).padStart(2,'0'); }
+// v326 — pace value split so the COLON sits dead-centre of the cell (Peter: units "off to one
+// side… I'd like them centred"). The two flanks are equal flex:1 boxes — minutes right-aligned
+// against the colon, seconds left-aligned — so the colon never moves and the SECONDS never move;
+// a 1- vs 2-digit minute just grows LEFTWARD (Peter's own worry: "it's going to jump left and
+// right"). A non-pace value (the "—" crawl case) just centres whole. Parent span must be
+// display:flex;width:100% for the flanks to have room to balance.
+function _paceCells(v){
+  if(!v||v.indexOf(':')<0)return`<span style="flex:1;text-align:center;">${v}</span>`;
+  const i=v.indexOf(':');
+  return`<span style="flex:1;text-align:right;">${v.slice(0,i)}</span><span style="flex:0 0 auto;">:</span><span style="flex:1;text-align:left;">${v.slice(i+1)}</span>`;
+}
 // v260c — FIVE slots, in three columns. Peter: "we now have more pills than spots, can we
 // add some spots below the current ones, on left and right, perhaps not centre as it blocks
 // the route line." Right on the centre: the live map is heading-up, so the route runs
@@ -15962,12 +16013,12 @@ function tLiveShell(r){
       const avgKmh=totalH>0.01?(totalKm/totalH):null;
       const curPace=fmtPaceMinKm(s), avgPace=fmtPaceMinKm(avgKmh);
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-pace">
-        <div style="padding:5px 8px 3px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:5ch;text-align:right;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-pace-cur">${curPace}</span></div>
-          <div style="font-size:11px;font-weight:600;color:#2dd4bf;font-family:var(--sans);line-height:1.1;">min/km</div>
+        <div style="padding:5px 8px 3px;background:#2dd4bf;">
+          <div style="line-height:1.0;"><span style="display:flex;width:100%;justify-content:center;font-size:36px;font-weight:700;color:#000;font-family:var(--font);" id="live-pace-cur">${_paceCells(curPace)}</span></div>
+          <div style="font-size:11px;font-weight:600;color:#083b37;font-family:var(--sans);line-height:1.1;">min/km</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:5ch;text-align:right;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-pace-avg">${avgPace}</span></div>
+          <div style="line-height:1.0;"><span style="display:flex;width:100%;justify-content:center;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-pace-avg">${_paceCells(avgPace)}</span></div>
           <div style="font-size:10px;font-weight:600;color:#0d9488;font-family:var(--sans);line-height:1.1;">avg. incl. stops</div>
         </div>
       </div>`;
@@ -16066,8 +16117,7 @@ function tLiveShell(r){
       // are CENTRED, not right-aligned in a 4ch box: a short value like "800" looked shoved
       // right in that box. Centre + inline unit means the unit is part of the token, so the
       // label below is just "to top".
-      const clb=gLive?climbAt(gr,UI.gpsDistKm):null;
-      const[toNum,toUnit]=_toTopParts(clb?Math.max(0,clb.top-UI.gpsDistKm):null);
+      const gb=_gradeBottom(gr,UI.gpsDistKm,gLive);   // v326 — to-top on a climb, else avg grade so far
       const F='font-size:34px;font-weight:700;font-family:var(--font);';   // top (kept 34px: "-12%" is width-sensitive)
       const Fb='font-size:30px;font-weight:600;font-family:var(--font);';  // bottom secondary
       const U='font-size:18px;font-weight:600;font-family:var(--font);margin-left:3px;';
@@ -16077,8 +16127,8 @@ function tLiveShell(r){
           <div style="font-size:11px;font-weight:500;color:${gDark?'#000':'#fff'};font-family:var(--sans);line-height:1.1;">grade</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="${Fb}color:var(--cell-bottom-text);" id="live-grade-totop">${toNum}</span><span style="${U}color:var(--cell-bottom-text);" id="live-grade-tounit">${toUnit}</span></div>
-          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">to top</div>
+          <div style="line-height:1.0;"><span style="${Fb}color:var(--cell-bottom-text);" id="live-grade-totop">${gb.num}</span><span style="${U}color:var(--cell-bottom-text);" id="live-grade-tounit">${gb.unit}</span></div>
+          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;" id="live-grade-botlbl">${gb.label}</div>
         </div>
       </div>`;
     }
@@ -19311,21 +19361,45 @@ function _activeTurn(r,liveDist){
 // The ORANGE ROUTE HIGHLIGHT is drawn on the map canvas inside drawMap's rotated frame (see the
 // turn-highlight block there) so it rides the route line exactly, and only while `showOrange`. Here
 // we manage the box and drive the blink/redraws.
+// v326 — Peter tapped the turn box to dismiss it: hide the box, bring the data cells back, and
+// remember THIS turn (keyed by its corner distance) so it stays hidden for the rest of the turn.
+// The next turn (a different corner) shows normally; renderTurnCue clears the memory once no turn
+// is active. Keeps the cells visible mid-turn when Peter would rather see his numbers.
+function _dismissTurnBox(){
+  UI._tcDismissedKey=UI._tcCurrentKey;
+  const sec=document.getElementById('live-map-section'),cue=document.getElementById('turn-cue');
+  if(cue)cue.remove();
+  if(sec)sec.classList.remove('turn-active');
+  if(UI._tcBlinkTimer){clearInterval(UI._tcBlinkTimer);UI._tcBlinkTimer=null;}
+  if(UI._tcOrangeOn){UI._tcOrangeOn=false;if(document.getElementById('live-map'))redrawMap('live-map');}
+}
 function renderTurnCue(r,liveDist){
   const sec=document.getElementById('live-map-section');
   let cue=document.getElementById('turn-cue');
   const stopBlink=()=>{if(UI._tcBlinkTimer){clearInterval(UI._tcBlinkTimer);UI._tcBlinkTimer=null;}};
-  const kill=()=>{if(cue)cue.remove();stopBlink();UI._tcOrangeOn=false;if(sec)sec.classList.remove('turn-active');};
+  const kill=()=>{if(cue)cue.remove();stopBlink();UI._tcOrangeOn=false;if(sec)sec.classList.remove('turn-active');UI._tcDismissedKey=null;};   // v326 — no active turn resets the dismissal
   if(!sec||!UI.gpsActive||!r.turns||!r.turns.length){kill();return;}
   const at=_activeTurn(r,liveDist);
   if(!at){const had=UI._tcOrangeOn;kill();if(had&&document.getElementById('live-map'))redrawMap('live-map');return;}
-  const {nt,mode,remM,showOrange,blink,confirmed}=at;
+  const {nt,mode,remM,showOrange,blink,confirmed,cornerDist}=at;
+  // v326 — a stable per-turn key (the corner's along-route distance). If Peter dismissed THIS
+  // turn, keep the box hidden and the cells visible until the next corner comes up.
+  UI._tcCurrentKey=Math.round((cornerDist!=null?cornerDist:0)*1000);
+  if(UI._tcDismissedKey===UI._tcCurrentKey){
+    if(cue)cue.remove();
+    stopBlink();
+    if(UI._tcOrangeOn){UI._tcOrangeOn=false;if(document.getElementById('live-map'))redrawMap('live-map');}
+    sec.classList.remove('turn-active');
+    return;
+  }
   sec.classList.add('turn-active');   // v314 — box showing → hide cells + lift box to top
   if(!cue){
     cue=document.createElement('div');cue.id='turn-cue';cue.className='turn-cue';
     cue.innerHTML='<div id="tc-box" class="tc-box"><span id="tc-glyph" class="tc-glyph"></span>'
       +'<span class="tc-txt"><span id="tc-dist" class="tc-dist"></span><span id="tc-road" class="tc-road"></span></span></div>';
     sec.appendChild(cue);
+    const _box=cue.querySelector('#tc-box');
+    if(_box)_box.addEventListener('click',e=>{e.stopPropagation();_dismissTurnBox();});
   }
   // On-map orange highlight: redraw so it tracks the map while it's showing, and once more when it
   // stops (to clear it). When far from a turn the box shows alone — no map redraw needed.
@@ -19409,7 +19483,7 @@ function updateLive(){
   if(paceCurEl){
     const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
     const v=fmtPaceMinKm(s);
-    if(paceCurEl.textContent!==v)paceCurEl.textContent=v;
+    if(paceCurEl._v!==v){paceCurEl._v=v;paceCurEl.innerHTML=_paceCells(v);}
   }
   const paceAvgEl=document.getElementById('live-pace-avg');
   if(paceAvgEl){
@@ -19418,7 +19492,7 @@ function updateLive(){
     const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
     const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
     const av=fmtPaceMinKm(totalH>0.01?(totalKm/totalH):null);
-    if(paceAvgEl.textContent!==av)paceAvgEl.textContent=av;
+    if(paceAvgEl._v!==av){paceAvgEl._v=av;paceAvgEl.innerHTML=_paceCells(av);}
   }
   // ── v272 — the moving-speed pill's two figures. ──────────────────────────────────────
   // Both pills can be on at once, so BOTH sets of ids get patched every tick. The current
@@ -19456,10 +19530,11 @@ function updateLive(){
     if(top){const bg=gLive?gBg:'';if(top._bg!==bg){top._bg=bg;top.style.background=bg;
       const lbl=top.querySelector('div:last-child');if(lbl)lbl.style.color=gDark?'#000':'#fff';}}
     const totop=document.getElementById('live-grade-totop'),tounit=document.getElementById('live-grade-tounit');
-    if(totop){const clb=gLive?climbAt(r,UI.gpsDistKm):null;
-      const[n,u]=_toTopParts(clb?Math.max(0,clb.top-UI.gpsDistKm):null);
-      if(totop.textContent!==n)totop.textContent=n;
-      if(tounit&&tounit.textContent!==u)tounit.textContent=u;}
+    if(totop){const gb=_gradeBottom(r,UI.gpsDistKm,gLive);
+      if(totop.textContent!==gb.num)totop.textContent=gb.num;
+      if(tounit&&tounit.textContent!==gb.unit)tounit.textContent=gb.unit;
+      const bl=document.getElementById('live-grade-botlbl');
+      if(bl&&bl.textContent!==gb.label)bl.textContent=gb.label;}
   }
   // Update power/hr spans similarly (textContent on the span is safe since unit is a sibling)
   // Update floating power pill value (if visible)

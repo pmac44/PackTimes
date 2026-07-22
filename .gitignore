@@ -1,3 +1,6 @@
 # Planning notes, design docs, decision logs — kept locally in Dropbox,
 # never pushed to GitHub Pages.
 _planning/
+
+# Orphaned copies left by the desktop file-bridge when a file is overwritten while open.
+.fuse_hidden*
