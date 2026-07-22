@@ -1396,7 +1396,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v324';
+window.APP_VERSION='v325';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4062,6 +4062,8 @@ async function fetchAccommodation(){
 // _snapDir tracks travel direction: 1=forward (normal), -1=reverse, 0=unknown.
 // Direction is inferred from consecutive snap indices.
 let _snapDir=0,_snapDirAccum=0;
+// v325 out-and-back leg-picker state (reset on GPS start / new ride, like _snapDir above)
+let _snapPendKm=null,_snapPendCnt=0,_snapMaxKm=0,_snapLeftStart=false,_snapOdoKm=0,_snapRiderLat=null,_snapRiderLon=null;
 
 // How far (deg) the given heading is from the route's LOCAL bearing at vertex i —
 // one point either side, so tens of metres, not the ±20-point (±1.6 km on an 80 m
@@ -4112,8 +4114,53 @@ function _snapRefine(r,lat,lon,best){
 // snaps also omit lastIdx, and they are emphatically NOT "starting a ride".
 const SNAP_ENDS_MEET_KM=0.25;   // start and finish this close = the route doubles back
 const SNAP_TIE_M=8;             // v276: two candidates this close = the same physical spot (the two legs of an out-and-back sit ~2-3 m apart)
+// v325 out-and-back leg picker (see block in snapTo)
+const SNAP_NEAR_KM=0.060, SNAP_FWD_DEG=90, SNAP_SWITCH_KM=1.0, SNAP_SWITCH_HOLD=2, SNAP_STARTAWAY_KM=0.40, SNAP_WARMUP_KM=0.50;
 function snapTo(r,lat,lon,lastIdx,liveFix){
   if(!r.points.length)return null;
+  // ══ v325 OUT-AND-BACK LEG PICKER (Peter's rule) ══════════════════════════════════════════════
+  // A route that doubles back maps every physical spot to TWO route points (outbound + return leg);
+  // geometry alone can't say which you're on. RULE: prefer the reading where you're going FORWARDS
+  // along the route (your heading agrees with that leg's direction). Only accept "going backwards"
+  // when there is NO forward option (a genuine dead-end backtrack — km winds down honestly). Switching
+  // legs is a big route-km jump (a real U-turn / bail-out — legitimately leaping to the return leg to
+  // count up to the finish); it must hold SNAP_SWITCH_HOLD fixes, and never fires until you've ridden a
+  // little (odometer warm-up), so start/finish milling can't fling the position between km 0 and km end.
+  // Runs ONLY for the live rider on-route; POI/gap-fill and off-route fixes fall through to the window
+  // search below. Diagnosed + validated against Peter's real 21 Jul ride + RideWithGPS route (Majura Pkwy).
+  if(liveFix&&lastIdx!=null&&UI.gpsHeading!=null&&UI.gpsDistKm!=null){
+    if(_snapRiderLat!=null){const mv=hav({lat:_snapRiderLat,lon:_snapRiderLon},{lat,lon});if(mv<0.5)_snapOdoKm+=mv;}
+    _snapRiderLat=lat;_snapRiderLon=lon;
+    const total=r.points[r.points.length-1].dist,lastKm=UI.gpsDistKm;
+    const cands=[];
+    for(let i=0;i<r.points.length;i++){const p=r.points[i];
+      if(Math.abs(p.lat-lat)>0.001||Math.abs(p.lon-lon)>0.001)continue;   // cheap prefilter (~110 m box)
+      const offKm=hav({lat,lon},p);if(offKm>SNAP_NEAR_KM)continue;
+      cands.push({idx:i,dist:p.dist,off:offKm,fwd:_snapBrgDiff(r,i,UI.gpsHeading)<SNAP_FWD_DEG});}
+    if(cands.length){
+      const fwd=cands.filter(c=>c.fwd);let pool=fwd.length?fwd:cands;   // prefer going forwards
+      // start guard (Peter rule 2): at the start of an out-and-back both ENDS share one spot; until you
+      // have genuinely ridden AWAY from the start (leftStart latches on real distance, un-poisonable) you
+      // are "starting out" -> take the low-km (start) end, never the finish.
+      const endsMeet=hav(r.points[0],r.points[r.points.length-1])<SNAP_ENDS_MEET_KM;
+      if(hav({lat,lon},r.points[0])>SNAP_STARTAWAY_KM)_snapLeftStart=true;
+      if(endsMeet&&!_snapLeftStart){const f=cands.filter(c=>c.dist<total*0.5);if(f.length)pool=f;}
+      if(_snapOdoKm<SNAP_WARMUP_KM){const f=cands.filter(c=>Math.abs(c.dist-lastKm)<=SNAP_SWITCH_KM);if(f.length)pool=f;}
+      let pick=pool[0];for(const c of pool)if(Math.abs(c.dist-lastKm)<Math.abs(pick.dist-lastKm))pick=c;  // continuity
+      let lb;
+      if(Math.abs(pick.dist-lastKm)>SNAP_SWITCH_KM){                                  // a leg switch (big km jump)
+        if(_snapOdoKm<SNAP_WARMUP_KM){lb={idx:lastIdx,dist:lastKm,off:pick.off};_snapPendKm=null;_snapPendCnt=0;}
+        else{if(_snapPendKm!=null&&Math.abs(pick.dist-_snapPendKm)<0.5)_snapPendCnt++;else{_snapPendKm=pick.dist;_snapPendCnt=1;}
+          if(_snapPendCnt>=SNAP_SWITCH_HOLD){lb={idx:pick.idx,dist:pick.dist,off:pick.off};_snapPendKm=null;_snapPendCnt=0;}
+          else lb={idx:lastIdx,dist:lastKm,off:pick.off};}                            // hold while confirming
+      } else {lb={idx:pick.idx,dist:pick.dist,off:pick.off};_snapPendKm=null;_snapPendCnt=0;}
+      if(lb.dist>_snapMaxKm)_snapMaxKm=lb.dist;
+      const delta=lb.idx-lastIdx;
+      if(delta>0){_snapDirAccum=Math.min(3,_snapDirAccum+1);if(_snapDirAccum>=3)_snapDir=1;}
+      else if(delta<0){_snapDirAccum=Math.max(-3,_snapDirAccum-1);if(_snapDirAccum<=-3)_snapDir=-1;}
+      return _snapRefine(r,lat,lon,lb);
+    }
+  }
   let best=null,bd=Infinity;
 
   if(lastIdx!=null&&lastIdx>=0){
@@ -4300,6 +4347,7 @@ function _doStartGPS(){
   UI._gpsAutoPaused=false;
   UI._lastMovedTs=Date.now();
   _snapDir=0;_snapDirAccum=0; // reset direction detection on GPS start
+  _snapPendKm=null;_snapPendCnt=0;_snapMaxKm=0;_snapLeftStart=false;_snapOdoKm=0;_snapRiderLat=null;_snapRiderLon=null; // v325 leg-picker reset
   // ── v263: RESET THE SNAP INDEX TOO. This is the bug behind Peter's 17 Jul ride. ──────
   // UI._lastSnapIdx is persisted to lastGps (~3752) and restored on app load (~1206).
   // That restore is legitimate — it exists so a mid-ride reload doesn't lose your place.
@@ -9407,6 +9455,7 @@ function simStart(){
     // seeded from _simIdx: that indexes _simPts, which is not necessarily r.points.
     UI._lastSnapIdx=null;
     _snapDir=0;_snapDirAccum=0;   // and the direction latch, exactly as startGPS does
+    _snapPendKm=null;_snapPendCnt=0;_snapMaxKm=0;_snapLeftStart=false;_snapOdoKm=0;_snapRiderLat=null;_snapRiderLon=null; // v325 leg-picker reset
   }
   UI.simPaused=false;
   UI.gpsActive=true;
