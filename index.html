@@ -1396,7 +1396,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v326';
+window.APP_VERSION='v327';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -11043,9 +11043,8 @@ function drawMap(cvs,r,opts){
     // north-up map (desktop big map, stops map) the arrow swung into a corner half
     // a kilometre before the rider did. That's the v243 map-rotation bug, which
     // survived here as a private copy after v252 fixed the map itself.
-    // _rideHeadingDeg = interpolated ±30 m chord centred on the rider, eased,
-    // flip-rejected, rate-capped. One authority for "which way am I going".
-    // (Extra calls are safe: its easing is time-based, so call count doesn't matter.)
+    // _rideHeadingDeg = the centred ±15 m route tangent at the rider, flip-rejected,
+    // set directly (no easing/rate-cap since v327). One authority for "which way am I going".
     let travelDeg=null;
     if(hasRoute&&heading===null)travelDeg=_rideHeadingDeg(pts);   // rotated maps don't need it (arrow cancels the frame)
     if(travelDeg==null&&UI.gpsHeading!=null)travelDeg=UI.gpsHeading;
@@ -11242,9 +11241,9 @@ function _rideHeadingDeg(pts){
   let deg=null;
   const onRoute = UI._snapOffKm!=null && UI._snapOffKm < 0.06;   // within ~60 m of the line
   if(onRoute && UI.gpsDistKm!=null && pts && pts.length>1){
-    // v252: chord from ~30 m behind to ~30 m ahead of the rider's along-route position,
+    // v252: a chord centred on the rider's along-route position (arm length below),
     // with INTERPOLATED endpoints (binary search, same idea as _ptAtDist). The old
-    // version walked route VERTICES within a ±30 m window — wherever the points are
+    // version walked route VERTICES within a fixed window — wherever the points are
     // spaced wider than that it found nothing and silently fell back to the raw GPS
     // heading, so the map's target flickered between "route bearing" and "phone
     // heading" at bends (the jitter Peter saw, sim and phone alike). Interpolated
@@ -11258,16 +11257,17 @@ function _rideHeadingDeg(pts){
       const a=pts[lo],b=pts[hi],t=(d-a.dist)/((b.dist-a.dist)||1);
       return{lat:a.lat+(b.lat-a.lat)*t,lon:a.lon+(b.lon-a.lon)*t};
     };
-    // v257: ASYMMETRIC arms — 25 m behind, only 10 m ahead. The symmetric ±30 m
-    // chord had its forward arm around a hairpin's apex while the rider was still
-    // approaching it, so the map rotated EARLY (node-measured: 24° before even
-    // entering a 15 m-radius hairpin; asym = 3.5°, still perfectly continuous
-    // through the corner). Heading should say where you ARE going, which is mostly
-    // where you've just been — the map turns AS you turn, never before (Peter's
-    // 15 Jul desktop-sim test: mid-hairpin the early rotation read as riding
-    // backwards).
-    const dir=_snapDir>=0?1:-1,HB=0.025,HF=0.010;                 // behind / ahead arms (km)
-    const A=at(UI.gpsDistKm-dir*HB),B=at(UI.gpsDistKm+dir*HF);
+    // v327: SYMMETRIC ±15 m chord, centred on the rider — the route tangent right where you
+    // are. Peter, after riding v326: the map "doesn't rotate fast enough… you're moving
+    // sideways in the route" through a corner. Cause was the old 25 m-behind / 10 m-ahead
+    // ASYMMETRIC arm (v257): weighted behind, so "up" pointed where you'd just been and the map
+    // only finished turning ~25 m AFTER you'd left the corner. Centring it makes the target the
+    // tangent you're actually on, so the map sweeps with you. (v257's opposite worry was a long
+    // FORWARD arm rotating early into a hairpin; ±15 m keeps the forward reach short, so early
+    // rotation stays small while the lag is gone. If a tight hairpin ever rotates early again,
+    // shorten HALF before adding any behind-weighting back — don't reinstate the old asymmetry.)
+    const dir=_snapDir>=0?1:-1,HALF=0.015;                        // symmetric ±15 m, centred on you
+    const A=at(UI.gpsDistKm-dir*HALF),B=at(UI.gpsDistKm+dir*HALF);
     const dLon=(B.lon-A.lon)*Math.cos(A.lat*Math.PI/180),dLat=B.lat-A.lat;
     if(dLon||dLat) deg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
   }
@@ -11289,75 +11289,16 @@ function _rideHeadingDeg(pts){
     if(!UI._flipHoldT) UI._flipHoldT=now;
     if(now-UI._flipHoldT<2500) return UI._mapOrient;
   } else UI._flipHoldT=null;
-  // v252: TIME-BASED easing + rate cap. The old step was a fixed fraction PER CALL,
-  // but live-map redraws come from several timers at once (sim tween ~110 ms, pack
-  // frames 120 ms, turn blink 130 ms, tile loads) — irregular call spacing made
-  // irregular step sizes, which read as jitter. Now the step depends only on
-  // wall-clock time: close ~2× the remaining error per second, and never rotate
-  // faster than 60°/s however fast the target moves (20× sim, snap jitter).
-  const dtS=Math.min(0.5,Math.max(0,(now-(UI._orientT||now))/1000));
-  UI._orientT=now;
-  // ── v271: EASING 2 → 5 (Peter, after riding it). ────────────────────────────────────
-  // "The jittering is long gone, and I think what is happening is that there is a left over
-  // delay or dampening function. This was to tame the jittering, but now that it is solved,
-  // this delay is giving off strange lagging map rotations." Right, and it measures out:
-  // this is a first-order filter, so the steady-state error is TURN RATE / EASE, held for
-  // the whole corner —
-  //     20°/s (an ordinary corner)  ->  8.0° behind at ease=2,  3.2° at ease=5
-  //     50°/s (a hairpin)           -> 20.0° behind at ease=2,  8.0° at ease=5
-  // and after you straighten it took 1.9 s to come within 2°, now 0.7 s.
-  // WHY IT'S SAFE TO RAISE NOW: the easing exists to smooth a NOISY target, and the target
-  // isn't noisy any more. v252 was fighting three things that have since been fixed at the
-  // cause — v257 gated the first-fix direction guess (the per-tick coin flip that made the
-  // heading flap), v257's _snapRefine cut the position error from 49 m to ~0, and v263
-  // stopped a stale _lastSnapIdx feeding the detector lies. A filter that smooths something
-  // already smooth removes nothing and costs 8°.
-  // 5, not "off": the chord still inherits a couple of degrees of snap jitter on a curve,
-  // and this is one constant — if the jitter ever returns, lower it before touching anything
-  // else. ⚠ Judge it at 1× on a real ride (v257's standing rule), never off the 20× sim.
-  // ── v276e — THE EASE FOLLOWS THE SIM'S CLOCK. Peter: "there seems to be a delay or a cap
-  // or something… It seems to rotate too slowly in a turn and it takes a while after the turn
-  // to align with the route. It's probably more an issue on the sim." ────────────────────
-  // He's right, and it is ONLY a sim issue. This is a first-order filter that closes per
-  // WALL-CLOCK second, while the sim moves the rider — and therefore the target bearing — N
-  // times faster than real time. So the lag multiplies by the playback rate.
-  // ⚠ MEASURED, because my first estimate was wrong and worth recording. The steady-state
-  // lag is TURN RATE / EASE, which at 20x would be 80° — but a 20x corner NEVER REACHES
-  // steady state: it lasts 0.225 s of wall clock, about two frames. Simulated frame by frame:
-  //     ordinary corner (20°/s)        hairpin (50°/s)
-  //     1x    1.8° behind               4.5°       <- the road. Invisible; v271 called it fixed.
-  //     20x  32.7°, + 0.44 s catch-up  49.5°, + 0.55 s   <- the sim's DEFAULT, what Peter watched
-  // Smaller than the steady-state maths suggests, and still exactly what he described: the
-  // map lags through the corner and then you watch it come around afterwards.
-  // Scaling the ease by the playback rate makes every speed track the target at least as well
-  // as the road does — which is the sim's whole job, to show you the ride, not the playback.
-  // Above 1x the step simply clamps to 1 and the map follows the target exactly. That is
-  // correct rather than a cheat: the target is smooth (v252's interpolated chord), so there
-  // is nothing left to filter, and at 20x a corner IS two frames — no filter can show a
-  // smooth sweep through it.
-  // ⚠ THE CLOCK, AGAIN. v259 wrote the rule after the fourth occurrence — "ANY ride-time
-  // measurement must ask the sim for the time" — and this dt never did. Fifth occurrence.
-  // Deliberately NOT _simElapsedMs: that accrues per STEP, so it is flat during a tween and
-  // would freeze the rotation between points and then jump. The multiplier keeps the smooth
-  // wall-clock dt and just re-scales it, which is the same thing without the staircase.
-  // The dtS clamp above (0.5 s) still catches a backgrounded tab; at 20x it also means a very
-  // slow frame simply snaps to the target, which is correct — the target is smooth (v252's
-  // interpolated chord), so there is nothing to filter, only noise that no longer exists.
-  const simMult=(UI.simRunning||UI.simPaused)
-    ? Math.max(1,+(document.getElementById('sim-speed')?.value||1)) : 1;
-  const stepDeg=d*Math.min(1,5*simMult*dtS);
-  // ── v271: THE 60°/s RATE CAP IS DELETED. Both reasons for it are gone. ───────────────
-  // v252 added it so that "20× sim or snap jitter can't whip" the map. The snap jitter was
-  // fixed at the CAUSE (v257's _snapRefine + direction gating, v263's stale index), and
-  // Peter asked for the sim half to go: "I find it annoying on the sim."
-  // MEASURED before removing: a bike corners at 8–50°/s at 25 km/h across every radius from
-  // an 8 m hairpin to an 80 m sweeper. **The cap never once fired on a real ride.** It only
-  // ever engaged in the SIM, where 20× playback multiplies the rate to ~400°/s and the cap
-  // clamped it to 60 — so the sim showed a lag the road never had, which is the worst
-  // possible place for it, because the sim is where the rotation gets judged.
-  // The >120° flip rejection above is still the safety net for a genuine ±180° leg flip, and
-  // it is the one that was doing that job all along.
-  UI._mapOrient=(UI._mapOrient+stepDeg+360)%360;
+  // v327 — SIMPLE, DIRECT rotation. Peter (after riding v326): "when you go around a corner
+  // the map just doesn't rotate fast enough… it's far too slow," and it shows on the real ride,
+  // not only the sim. Every damper that used to tame the old jitter is now pure lag, so it's
+  // gone: no first-order easing, no degrees-per-second rate cap, no sim-speed scaling. The
+  // target (v327's centred ±15 m tangent) is already smooth — nothing left to filter — so the
+  // map simply faces it. The >120° flip rejection above is the ONE guard kept: it holds through
+  // an out-and-back leg-flip (v325) and never fires on a real corner, which sweeps through the
+  // in-between angles. If corner JITTER ever returns, it's the chord to fix at the cause — do
+  // NOT reintroduce an easing constant here.
+  UI._mapOrient=deg;
   return UI._mapOrient;
 }
 
