@@ -15,6 +15,100 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+### v333 (23 July) — THE STRANDED RIDE. GPS auto-pause could kill an active recording,
+### and a fresh ride wore the old ride's questions. Both from one real ride of Peter's.
+
+**⚠ NEXT CODE CHANGE IS v334.** v332 and v333 are on disk, NOT pushed, NOT ride-tested.
+They are deliberately separate versions: v332 is a UI fix, v333 touches the recording/GPS
+engine — a pill bug and a record bug must not arrive together (v272's rule).
+
+**BUG 1 — Peter, from the ride:** *"I think I took a photo, and then maybe the phone screen
+went off… there was no way for me to restart the recording. The GPS wasn't really running…
+the pause button was still flashing… no speed reading even though I was still moving."*
+- **ROOT CAUSE: the 5-minute GPS idle auto-pause (`GPS_IDLE_STOP_MS`) fired on wake and
+  killed the watch while the RECORDING stayed `'active'`.** His exact sequence: photo stop
+  ≥5 min → screen off → wake → the visibilitychange Case A sees idle ≥ 5 min, takes a fresh
+  fix, he's still standing at the photo spot (<50 m moved) → `_doGpsAutoPause()` →
+  `gpsActive=false`, watch cleared, wake lock released. The red recording square keeps
+  flashing (recording state was never touched), but no fix ever arrives again.
+- **WHY THERE WAS NO WAY BACK: the only auto-resume (Case B) fires on a screen-WAKE after
+  moving 50 m.** His screen was already ON — he was staring at the broken app — so no wake
+  event ever fired, and nothing else polls for movement (there's no GPS running to notice
+  it). Riding off with the screen on = stranded forever.
+- A tap on the record control WOULD have restarted GPS (the `#btn-gpstoggle` delegator's
+  `_gpsAutoPaused` branch — someone had already half-fixed this) — but the control shows a
+  flashing recording square mid-ride, and tapping it reads as "pause my ride". Undiscoverable
+  is the same as absent.
+- **THE STRUCTURAL POINT: since v260 removed the plain GPS toggle, GPS only ever runs during
+  a ride or the sim — so the idle auto-pause could ONLY ever strand a ride.** It's a battery
+  measure from the pre-recording era that had become pure landmine for active recordings.
+- **THE FIX — one rule: an ACTIVE recording owns the GPS.** Like any bike computer, it stays
+  locked on through a long café stop (the sampler's own `_stop`/`_resume` markers already
+  handle stationary time). Gated in BOTH places that auto-pause (the idle timer body and
+  wake Case A — they are near-duplicate copies, this file's favourite shape). A rider-PAUSED
+  recording keeps the battery saver, and its resume path genuinely works (the Resume button
+  restarts GPS first). Reliability over battery — Peter's standing rule.
+- ⚠ **OBSERVED, NOT FIXED (don't fix blind):** the two auto-pause copies accumulate the ride
+  average differently — the idle timer uses `gpsTravelledKm−_rideAvgSessionKm` (odometer vs
+  odometer baseline, correct) but `_doGpsAutoPause` uses `gpsDistKm−_rideAvgSessionKm`
+  (route-snapped dist vs odometer baseline — looks wrong). Same-shape bug as v268. Flagged
+  here so it isn't rediscovered from scratch.
+
+**BUG 2 — Peter:** *"It stopped the ride. It uploaded to Strava… then I went to restart, and
+it asked me whether I wanted to fill in the gaps. That's not correct… If you stop it, the
+ride actually stops. You really should, from there, start a fresh ride."*
+- **ROOT CAUSE: the undo-window race.** `_recStopConfirm` defers ALL end-of-ride questions
+  behind the 5-second undo window, and its `render()` puts "Start ride" straight back on
+  screen — so a rider who stops and restarts promptly starts a NEW ride, and then the OLD
+  ride's timer fires its gap-fill prompt (and after that its name prompt) over the fresh
+  ride. Reproduced in the model FIRST (the standing rule): old code shows the old ride's gap
+  modal 3 s into the new ride AND holds the Strava upload hostage to the unanswered prompt.
+- **THE FIX: `_recFlushEndOfRide()`, called at the top of `startRecording`.** Starting a new
+  ride resolves the previous ride's business NOW: undo timer cleared, strip hidden, pending
+  gap + save prompts dropped unshown, **auto-upload fires immediately with the ride as
+  ridden**, and one toast says where the ride went ("Last ride saved — fill its GPS gaps any
+  time from the Rides card"). RESOLUTION, not cancellation — the ride is already finalised
+  on disk, queued gaps stay queued for the detail modal's Fill gaps button, Rename covers
+  the name. **A completed normal stop makes the flush a no-op by construction** (every
+  variable it reads is already null), so the designed stop flow is untouched.
+- Note the two fixes compound: with Bug 1 gone, the photo stop never strands the ride, so
+  the stop/save/restart dance that exposed Bug 2 shouldn't be needed at all.
+
+**Verified: whole-file `node --check`** (22,161 lines, ends `</html>`, all 3 blocks clean,
+CSS 263/263 braces, 110/110 comment pairs) **+ 16/16 truth-table** against the REAL extracted
+`_recFlushEndOfRide` and idle-timer body: the race reproduced on old behaviour first; new
+behaviour shows no modal over the new ride, uploads exactly once, toasts once; the clean-ride
+race; the normal stop flow byte-identical incl. upload-waits-on-gap-decisions; flush no-op
+after a completed flow; and the idle gate ordered before `clearWatch`, testing `'active'`
+specifically so rider-paused rides keep the battery saver. **NOT ride-tested.**
+
+### v332 (23 July) — THE TURN BOX TAP NEVER WORKED. One missing CSS property.
+
+(This file's changelog stalled at v276 — versions v277–v331 were built in sessions that
+didn't write entries here. v331 was the version on disk when v332 was made; grep the code's
+own comments for that history.)
+
+Peter, from a real ride: *"when you tap the turn box, it does not dismiss the turn box and
+show the data cells. Nothing happened."* The v326 tap-to-dismiss feature could **never have
+fired, anywhere, on any device** — desktop included.
+- **ROOT CAUSE:** `.turn-cue` (the full-map overlay the box lives in) is `pointer-events:none`
+  so it never blocks map gestures — correct. But **`pointer-events` INHERITS**, and `.tc-box`
+  never set its own value, so the box was tap-transparent: the v326 click listener
+  (`renderTurnCue`, bound on `#tc-box` at creation) sat on an element no tap could reach.
+  Every tap fell straight through to the map.
+- **FIX: `pointer-events:auto` on `.tc-box`.** One property. The precedent was already in the
+  file — `.map-ctrl{pointer-events:none}` + `.map-ctrl .zbtn{pointer-events:all}` is the same
+  shape: overlay opts out, the interactive child opts back in.
+- **STANDING RULE THIS ADDS: a click listener inside a `pointer-events:none` overlay is dead
+  code until the child opts back in.** `cursor:pointer` on the same rule was the tell that the
+  intent was there and only the plumbing was missing — the cursor property is inert on an
+  element the pointer can't hit, so it can't be used as evidence a tap target works.
+- The overlay itself stays `pointer-events:none`, so map gestures still pass through
+  everywhere except the box.
+- Verified: whole-file `node --check` (22,110 lines, ends `</html>`, all 3 script blocks
+  clean), CSS braces 263/263, comment pairs 110/110, the property present exactly once.
+  **NOT ride-tested** — needs one tap on the phone to confirm.
+
 ### v274 (18 July) — CRANK LENGTH. PackTimes sets the pedals. CONFIRMED ON REAL ASSIOMAS.
 
 **⚠ NEXT CODE CHANGE IS v276.** v272, v273, v274 (incl. v274b) and v275 are all PUSHED and live.

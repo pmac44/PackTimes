@@ -348,7 +348,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-next-eta{font-size:14px;color:var(--text3);font-family:var(--font-slow);}
 .live-next-in{font-size:15px;font-weight:600;color:var(--accent);font-family:var(--font-slow);}
 .turn-cue{position:absolute;inset:0;z-index:20;pointer-events:none;}
-.tc-box{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:var(--surface-raised);border:var(--border-w) solid var(--accent);border-radius:var(--r-panel);padding:9px 18px 9px 14px;box-shadow:var(--shadow-float);cursor:pointer;}   /* v326 — tappable: tap to dismiss this turn's box and bring the data cells back */
+.tc-box{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:var(--surface-raised);border:var(--border-w) solid var(--accent);border-radius:var(--r-panel);padding:9px 18px 9px 14px;box-shadow:var(--shadow-float);cursor:pointer;pointer-events:auto;}   /* v326 — tappable: tap to dismiss this turn's box and bring the data cells back. v332 — pointer-events:auto is LOAD-BEARING: the parent .turn-cue is pointer-events:none (so the overlay never blocks map gestures) and pointer-events INHERITS, so without this the box was tap-transparent and the v326 click listener could never fire. Same shape as .map-ctrl none + .zbtn all. */
 /* v314 — while a turn is active the box is the whole story: hide the floating data cells and
    lift the box to the top-centre (where the middle cell sat), so the map opens up and the turn
    crystallises. `turn-active` is toggled on #live-map-section by renderTurnCue. (Peter) */
@@ -1396,7 +1396,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v331';
+window.APP_VERSION='v333';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4314,6 +4314,21 @@ function _resetGpsIdleTimer(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
   if(!UI.gpsActive)return;
   _gpsIdleTimer=setTimeout(()=>{
+    _gpsIdleTimer=null;   // this firing is spent — lets the fix callback re-arm a fresh window
+    // ── v333 — NEVER auto-stop GPS while a ride is actively RECORDING. ──────────────────
+    // Peter's 23 Jul ride: photo stop → screen off → on wake this idle machinery killed the
+    // watch (gpsActive=false) while the recording stayed 'active' — red square flashing, no
+    // fixes, no speed, and NOTHING on screen to bring GPS back. The only auto-resume (the
+    // visibilitychange Case B) fires on a screen-WAKE after moving 50 m; with the screen
+    // already on and the rider moving, it never runs, so the ride was stranded until a full
+    // stop/save/restart. Since v260 removed the plain GPS toggle, GPS only ever runs during
+    // a ride or sim — so this auto-pause could ONLY ever strand a ride.
+    // The rule: an ACTIVE recording owns the GPS — like any bike computer, it stays locked
+    // on through a long café stop (the sampler's own stop markers handle the stationary
+    // time). Battery saving via auto-pause still applies when the rider has DELIBERATELY
+    // paused the recording (status 'paused') — that resume path works: the Resume button's
+    // handler restarts GPS first (see the #btn-gpstoggle delegator).
+    if(_rec && _rec.status==='active') return;
     // Auto-stop GPS and release wake lock — show banner
     if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
     UI.gpsWatchId=null;
@@ -4770,6 +4785,9 @@ function _recDist(a, b){
 
 async function startRecording(routeId){
   if(_rec) return _rec;  // already recording — do nothing
+  // v333 — the previous ride's deferred end-of-ride prompts must not outlive it.
+  // See _recFlushEndOfRide for the full story (the undo-window race Peter hit on 23 Jul).
+  _recFlushEndOfRide();
   _rec = {
     // If a PackView link was copied BEFORE the ride existed, its ride id was
     // pre-minted (v257) — use it, so that link points at THIS ride. Ride ids are
@@ -6793,6 +6811,33 @@ async function _recStopDelete(){
   await saveAll().catch(()=>{});
   render();
   _recToast('Ride deleted');
+}
+
+// v333 — starting a NEW ride ends the PREVIOUS ride's business immediately (Peter's rule
+// from the 23 Jul ride: "If you stop it, the ride actually stops"). Stop & save defers its
+// questions behind the 5-second undo window (_recStopConfirm's timer), and the render()
+// there puts "Start ride" straight back on screen — so a rider who stops and restarts
+// promptly gets the OLD ride's gap-fill prompt (and then its name prompt) popping up over
+// the NEW ride. That is exactly what Peter saw: "after pressing play... it asked me if I
+// wanted to fill in the gap." The new ride must never wear the old ride's questions.
+// This is RESOLUTION, not cancellation: the old ride is already finalised and on disk.
+// Its queued gaps stay queued (the Rides card's Fill gaps button covers them later), the
+// Strava auto-upload fires NOW with the ride as ridden, and the default name stands
+// (Rename lives in the detail modal). One toast says where the ride went.
+// No-op when the undo window already ran its course — every variable here is then null.
+function _recFlushEndOfRide(){
+  const justFinished = _recLastFinalised;
+  if(_recUndoTimer){ clearTimeout(_recUndoTimer); _recUndoTimer=null; }
+  _recLastFinalised = null;
+  _recShowUndoStrip(false);
+  const hadGaps = !!_recGapPending;
+  _recGapPending = null;    // its prompt dies unshown — deliberate, see above
+  _recSavePending = null;   // ditto the name/save prompt
+  if(justFinished && UI.stravaToken && UI.stravaAutoUpload!==false) stravaQueue(justFinished);
+  if(justFinished || hadGaps){
+    _recToast(hadGaps ? 'Last ride saved — fill its GPS gaps any time from the Rides card'
+                      : 'Last ride saved');
+  }
 }
 
 // Tap "Stop & save" in the confirm strip → finalise the recording, show the undo strip.
@@ -9780,13 +9825,18 @@ document.addEventListener('visibilitychange',()=>{
         navigator.geolocation.getCurrentPosition(pos=>{
           const here={lat:pos.coords.latitude,lon:pos.coords.longitude};
           const moved=before?hav(before,here):Infinity;// no prior fix → assume moving
-          if(moved>=WAKE_MOVE_KM){
+          if(moved>=WAKE_MOVE_KM || (_rec && _rec.status==='active')){
             // Rider moved while the screen was off → still riding. Keep GPS going,
             // just refresh the movement clock so we don't pause spuriously.
+            // v333 — an ACTIVE recording also keeps GPS alive even when stationary
+            // (Peter's photo stop: he woke the screen while still standing at the spot,
+            // this branch's else auto-paused GPS mid-ride, and with the screen then
+            // staying ON, Case B's wake-triggered auto-resume never had a wake to fire
+            // on). Same rule as the idle timer: an active recording owns the GPS.
             UI._lastMovedTs=Date.now();
             _resetGpsIdleTimer();
           } else {
-            // Genuinely hasn't moved → safe to auto-pause now.
+            // Genuinely hasn't moved, and no active recording → safe to auto-pause now.
             _doGpsAutoPause();
           }
         },()=>{
