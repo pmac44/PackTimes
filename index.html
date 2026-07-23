@@ -1396,7 +1396,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v327';
+window.APP_VERSION='v331';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -9510,13 +9510,23 @@ function simStart(){
         _simElapsedMs+=stepKm/18*3600000; // fallback 18 km/h
       }
     }
-    // Compute heading from consecutive sim points
-    if(_simIdx>0){
-      const prev=_simPts[_simIdx-1];
-      const dLon=(p.lon-prev.lon)*Math.cos(p.lat*Math.PI/180);
-      const dLat=p.lat-prev.lat;
-      if(Math.abs(dLon)>1e-8||Math.abs(dLat)>1e-8){
-        UI.gpsHeading=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
+    // v330 — heading = the OUTGOING segment (current point → NEXT point): the way you're about
+    // to go, i.e. direction of travel. Was bearing(prev→current) = the way you just CAME, and the
+    // sim parks on each route vertex for that segment's whole duration — so at a corner the map
+    // faced the road BEHIND you until it hopped to the next vertex, leaving the road ahead
+    // sticking out sideways for ages (Peter, v329 sim). Real GPS reports course-over-ground (where
+    // you're heading), so this also makes the sim faithful to the phone. Last point → fall back to
+    // the trailing segment so a final heading still exists.
+    {
+      let from=null,to=null;
+      if(_simIdx+1<_simPts.length){ from=p; to=_simPts[_simIdx+1]; }   // normal: face the next point
+      else if(_simIdx>0){ from=_simPts[_simIdx-1]; to=p; }             // last point: keep trailing
+      if(from&&to){
+        const dLon=(to.lon-from.lon)*Math.cos(from.lat*Math.PI/180);
+        const dLat=to.lat-from.lat;
+        if(Math.abs(dLon)>1e-8||Math.abs(dLat)>1e-8){
+          UI.gpsHeading=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
+        }
       }
     }
     UI.gpsPos={lat:p.lat,lon:p.lon,acc:5,speed:spd,ts:Date.now()};
@@ -11043,8 +11053,8 @@ function drawMap(cvs,r,opts){
     // north-up map (desktop big map, stops map) the arrow swung into a corner half
     // a kilometre before the rider did. That's the v243 map-rotation bug, which
     // survived here as a private copy after v252 fixed the map itself.
-    // _rideHeadingDeg = the centred ±15 m route tangent at the rider, flip-rejected,
-    // set directly (no easing/rate-cap since v327). One authority for "which way am I going".
+    // _rideHeadingDeg = direction of travel (UI.gpsHeading), set directly — no chord/easing/
+    // flip-reject since v329. One authority for "which way am I going".
     let travelDeg=null;
     if(hasRoute&&heading===null)travelDeg=_rideHeadingDeg(pts);   // rotated maps don't need it (arrow cancels the frame)
     if(travelDeg==null&&UI.gpsHeading!=null)travelDeg=UI.gpsHeading;
@@ -11232,73 +11242,34 @@ function peekLiveStop(s,r){
 }
 
 // Which way should the ride map face? ONE reliable number, not two jittery ones.
-// Prefer the ROUTE's direction at our snapped position (smooth, from the route
-// geometry) while we're on the route; fall back to the GPS travel heading only
-// when we've strayed off it. Eased along the shortest angular path so the map
-// turns smoothly. The "you" triangle is always drawn pointing up, so this is the
-// single source of truth for orientation. Returns null very early (→ north-up).
+// v329 — SIMPLEST POSSIBLE. Peter: the chord + easing + flip-rejection were all a hangover
+// from a jitter problem that's long since fixed at the cause, and on the sim they made the map
+// lag, lead, and "move sideways" through a corner. All deleted. The map just faces the
+// direction of travel, set directly. `UI.gpsHeading` is that bearing: on the SIM it's the exact
+// point-to-point route bearing (zero lag, zero lead, sweeps cleanly through corners); on the
+// phone it's the GPS course (or a >5 m movement bearing). It is also immune to the out-and-back
+// snap leg-flip (v325) — that fed the old route CHORD, not this — so the flip guard goes too.
+// The "you" triangle is always drawn UP, so this is the single source of truth for orientation.
+// IF a sharp single-vertex corner ever snaps too hard, the ONE thing to add back is a simple
+// degrees-per-second cap right here (Peter's call) — nothing else, and only if we have to.
 function _rideHeadingDeg(pts){
-  let deg=null;
-  const onRoute = UI._snapOffKm!=null && UI._snapOffKm < 0.06;   // within ~60 m of the line
-  if(onRoute && UI.gpsDistKm!=null && pts && pts.length>1){
-    // v252: a chord centred on the rider's along-route position (arm length below),
-    // with INTERPOLATED endpoints (binary search, same idea as _ptAtDist). The old
-    // version walked route VERTICES within a fixed window — wherever the points are
-    // spaced wider than that it found nothing and silently fell back to the raw GPS
-    // heading, so the map's target flickered between "route bearing" and "phone
-    // heading" at bends (the jitter Peter saw, sim and phone alike). Interpolated
-    // arms can never be degenerate while on route, and the bearing sweeps
-    // CONTINUOUSLY through a corner instead of jumping vertex to vertex.
-    const at=d=>{
-      if(d<=pts[0].dist)return pts[0];
-      const last=pts[pts.length-1];if(d>=last.dist)return last;
-      let lo=0,hi=pts.length-1;
-      while(hi-lo>1){const m=(lo+hi)>>1;if(pts[m].dist<d)lo=m;else hi=m;}
-      const a=pts[lo],b=pts[hi],t=(d-a.dist)/((b.dist-a.dist)||1);
-      return{lat:a.lat+(b.lat-a.lat)*t,lon:a.lon+(b.lon-a.lon)*t};
-    };
-    // v327: SYMMETRIC ±15 m chord, centred on the rider — the route tangent right where you
-    // are. Peter, after riding v326: the map "doesn't rotate fast enough… you're moving
-    // sideways in the route" through a corner. Cause was the old 25 m-behind / 10 m-ahead
-    // ASYMMETRIC arm (v257): weighted behind, so "up" pointed where you'd just been and the map
-    // only finished turning ~25 m AFTER you'd left the corner. Centring it makes the target the
-    // tangent you're actually on, so the map sweeps with you. (v257's opposite worry was a long
-    // FORWARD arm rotating early into a hairpin; ±15 m keeps the forward reach short, so early
-    // rotation stays small while the lag is gone. If a tight hairpin ever rotates early again,
-    // shorten HALF before adding any behind-weighting back — don't reinstate the old asymmetry.)
-    const dir=_snapDir>=0?1:-1,HALF=0.015;                        // symmetric ±15 m, centred on you
-    const A=at(UI.gpsDistKm-dir*HALF),B=at(UI.gpsDistKm+dir*HALF);
-    const dLon=(B.lon-A.lon)*Math.cos(A.lat*Math.PI/180),dLat=B.lat-A.lat;
-    if(dLon||dLat) deg=(Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
-  }
-  if(deg==null && UI.gpsHeading!=null) deg=UI.gpsHeading;         // off-route → best-effort GPS heading
-  if(deg==null) return UI._mapOrient!=null?UI._mapOrient:null;    // nothing yet → hold last (or north-up)
-  if(UI._mapOrient==null){ UI._mapOrient=deg; return UI._mapOrient; }
-  const d=((deg-UI._mapOrient+540)%360)-180;
+  const target=UI.gpsHeading;
+  if(target==null) return UI._mapOrient!=null ? UI._mapOrient : null;   // no heading yet → hold last (or north-up)
   const now=Date.now();
-  // v251: FLIP REJECTION. Where the route doubles back past itself (start/finish
-  // overlap, out-and-back legs), the snap can jump to the other leg and the target
-  // heading flips ~180° — then flips back — and the easing swung the whole map
-  // violently to and fro (Peter, sim test near Canberra at ~324 km). A near-reversal
-  // is almost never the rider genuinely turning around within one fix, so hold the
-  // current heading and only accept the flip once it has PERSISTED ~2.5 s. A real
-  // U-turn just means the map takes a couple of seconds to come around — fine. A
-  // ridden switchback never trips this: its bearing sweeps through the intermediate
-  // angles rather than jumping.
-  if(Math.abs(d)>120){
-    if(!UI._flipHoldT) UI._flipHoldT=now;
-    if(now-UI._flipHoldT<2500) return UI._mapOrient;
-  } else UI._flipHoldT=null;
-  // v327 — SIMPLE, DIRECT rotation. Peter (after riding v326): "when you go around a corner
-  // the map just doesn't rotate fast enough… it's far too slow," and it shows on the real ride,
-  // not only the sim. Every damper that used to tame the old jitter is now pure lag, so it's
-  // gone: no first-order easing, no degrees-per-second rate cap, no sim-speed scaling. The
-  // target (v327's centred ±15 m tangent) is already smooth — nothing left to filter — so the
-  // map simply faces it. The >120° flip rejection above is the ONE guard kept: it holds through
-  // an out-and-back leg-flip (v325) and never fires on a real corner, which sweeps through the
-  // in-between angles. If corner JITTER ever returns, it's the chord to fix at the cause — do
-  // NOT reintroduce an easing constant here.
-  UI._mapOrient=deg;
+  if(UI._mapOrient==null){ UI._mapOrient=target; UI._orientT=now; return UI._mapOrient; }
+  // v331 — the ONE bit of smoothing, and the only one (Peter): a flat rate cap so a sharp corner
+  // turns in ~0.5 s instead of snapping in a single frame. NOT easing (no ease-curve, no chord,
+  // no filter) — just a ceiling on how fast "up" may turn, in real degrees per real second. dt is
+  // clamped so a slow/backgrounded frame can't produce one huge jump. Within the cap it snaps
+  // EXACTLY to target (no residual drift). TUNE only ROT_CAP_DEG_S if it feels off.
+  const ROT_CAP_DEG_S=180;
+  const dt=Math.min(0.5,Math.max(0,(now-(UI._orientT||now))/1000));
+  UI._orientT=now;
+  let d=((target-UI._mapOrient+540)%360)-180;   // shortest signed turn to target
+  const maxStep=ROT_CAP_DEG_S*dt;
+  if(d>maxStep) d=maxStep; else if(d<-maxStep) d=-maxStep;
+  else { UI._mapOrient=target; return UI._mapOrient; }
+  UI._mapOrient=(UI._mapOrient+d+360)%360;
   return UI._mapOrient;
 }
 
