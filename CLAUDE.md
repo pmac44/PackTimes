@@ -15,6 +15,45 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 - Works offline after first install (service worker caches app + map tiles).
 - Optional Dropbox sync of plans across devices.
 
+### v334 (23 July) — WEATHER BAR: readable on Paper, 12-hour clock, BIKE-RELATIVE wind.
+
+**⚠ NEXT CODE CHANGE IS v335.** v332–v334 all on disk. From Peter's 23 Jul ride screenshot:
+*"The weather pill text is hard to read."*
+- **COLOURS — the bar was wearing dark-theme values on the light theme.** The expanded bar
+  sits on `--bg2` (Paper: sunken tan #dcd5c0); measured there, `--text3` was **1.9:1** and
+  the hard-coded pastels `#93c5fd`/`#fca5a5` **1.2:1** — invisible. New per-theme tokens
+  (`--wx-text/-hint/-colder/-colder-mild/-warmer/-warn`, defined in BOTH theme `:root`s per
+  the style-guide rule "colour treatments are per-theme, never shared") — Paper values
+  measured 4.0–10.2:1; Graphite keeps its exact old hexes (only --wx-text stepped up
+  text3→text2). weatherBarHTML is now hex-free EXCEPT `condText`/`weatherPillHTML` chip
+  text, which sit on their own solid dark chip fills and are correct in both themes.
+- **TIMES — hour chips now "1pm 2pm", not "14:00"** (`fmt12h`, next to fmtT). Sunrise/sunset
+  follow ("7:03am · 5:15pm") for consistency.
+- **WIND — the arrow is now BIKE-RELATIVE FLOW.** Peter: *"I would want that arrow pointing
+  straight down"* for a straight headwind — i.e. rider at screen centre facing up, arrow =
+  where the air is going: headwind streams DOWN at you, tailwind points up with you, wind
+  from your right streams leftward. `_wxWindRel(winddeg)`: d = wind-FROM off the bike's
+  nose, arrow rot = d+180, word Headwind (±45°)/Tailwind/Crosswind from the same d — ONE
+  authority so arrow and word can't disagree. Heading: `UI.gpsHeading` (fixes + sim set it)
+  → route bearing fallback (`_wxRouteBearing`, extracted from the old expanded-panel block
+  **and cos(lat)-corrected** — the raw dLon version squashed east–west ~17% at our
+  latitudes) → with neither, absolute flow and NO word (a relative word without a heading
+  would be a lie).
+- The Headwind/Crosswind word MOVED from the details row to the header row beside arrow +
+  speed (Peter: "the wind comment should be near the wind direction and speed"). Emoji
+  variants (🙌😬↔) dropped — style guide, no emoji in chrome.
+- **LIVENESS: updateLive re-aims arrow + word EVERY FIX** via `#wx-arrow[data-deg]`/`#wx-rel`
+  — the bar template only rebuilds every 30 s (_wxBarRender), a whole roundabout too slow
+  for a relative arrow. Ids live in the template, so rebuilds can't orphan the patch.
+- Verified: whole-file node --check (3 blocks), CSS 263/263 + 112/112, **28/28 truth-table**
+  on the REAL extracted helpers (Peter's headwind example, all four quadrants, bike-turn
+  cases, ±45°/135°/225°/315° boundaries, wraparound, route fallback incl. cos-correction at
+  lat −34, degenerate route → absolute+no-word, 12am/12pm edge cases). **NOT ride-tested;
+  colour check on a real Paper-theme phone screen still owed.**
+- ⚠ Session note: the cloud file-staging layer served a STALE v331 replica of index.html
+  while the true disk was v333 — `device_bash` + grep was the tie-breaker. Trust disk, not
+  the staged copy, when they disagree (same lesson as the v329 scare).
+
 ### v333 (23 July) — THE STRANDED RIDE. GPS auto-pause could kill an active recording,
 ### and a fresh ride wore the old ride's questions. Both from one real ride of Peter's.
 

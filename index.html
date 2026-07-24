@@ -206,6 +206,14 @@
      invisible on Paper). */
   --grip-bg:rgba(61,69,81,0.16);--grip-bg-active:rgba(61,69,81,0.32);
   --grip-stroke:rgba(61,69,81,0.85);--grip-stroke-active:var(--stop-card-bg);
+  /* Weather bar text (v334) — the expanded bar sits on --bg2 (sunken tan #dcd5c0), and the
+     old shared colours were dark-theme values: text3 measured 1.9:1 there and the pastel
+     blue/red (#93c5fd/#fca5a5) 1.2:1 — invisible, per Peter's 23 Jul ride screenshot.
+     These are measured on #dcd5c0: --wx-text 10.2:1, colder 5.6:1, warmer 4.0:1. Colder/
+     warmer keep the blue=cold red=warm semantics; the style-guide rule applies — colour
+     treatments are per-theme, so weatherBarHTML now reads ONLY these tokens, no hex. */
+  --wx-text:var(--text);--wx-hint:var(--text-soft);
+  --wx-colder:#35516f;--wx-colder-mild:#46688f;--wx-warmer:#b23b2e;--wx-warn:var(--warm-deep);
 }
 
 [data-theme="graphite"]{
@@ -259,6 +267,12 @@
   /* Stops drag-grip — keep the dark-mode white-alpha look */
   --grip-bg:rgba(255,255,255,0.10);--grip-bg-active:rgba(255,255,255,0.22);
   --grip-stroke:rgba(255,255,255,0.55);--grip-stroke-active:rgba(255,255,255,0.85);
+  /* Weather bar text (v334) — Graphite keeps its established look; the values here are the
+     hexes weatherBarHTML used to hard-code, just moved into tokens so the Paper theme can
+     differ (the style-guide rule: colour treatments are per-theme, never shared hex).
+     Only --wx-text is a step brighter than before (text2, was text3 at 3.4:1). */
+  --wx-text:var(--text2);--wx-hint:var(--text3);
+  --wx-colder:#93c5fd;--wx-colder-mild:#bfdbfe;--wx-warmer:#fca5a5;--wx-warn:#f97316;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--fs-base);overscroll-behavior-y:contain;}
@@ -1396,7 +1410,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v333';
+window.APP_VERSION='v334';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3385,6 +3399,10 @@ function _riddenKm(){ return _rec ? _rec.totalDist : 0; }
 //     threshold, the threshold must be tested against the formatted output.
 function fmtDistKm(v){ const d=v.toFixed(1); return +d>=1000 ? v.toFixed(0) : d; }
 function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
+// v334 — 12-hour clock for the weather panel (Peter: "change the time format to 1pm 2pm").
+// hh is 0–23; with mm omitted you get the bare hour ("2pm"), with mm you get "7:03am".
+// Lowercase am/pm, no space — compact enough for the hourly chips.
+function fmt12h(hh,mm){const h=(hh%12)||12,ap=hh<12?'am':'pm';return mm==null?h+ap:h+':'+String(mm).padStart(2,'0')+ap;}
 function fmtDT(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
 function fmtDTY(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
 function fmtHM(h){if(!h)return'—';const hh=Math.floor(h),mm=Math.round((h-hh)*60);return hh+'h'+(mm>0?' '+mm+'m':'');}
@@ -17592,8 +17610,46 @@ function wmoIcon(code){
 }
 
 function windArrow(deg){
-  // Returns a small SVG arrow pointing in wind direction
-  return`<svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${deg}deg);display:inline-block;vertical-align:middle;"><line x1="12" y1="20" x2="12" y2="4" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/><polyline points="7,9 12,4 17,9" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  // A small SVG arrow, drawn pointing UP at 0° and rotated by `deg`. The MEANING of the
+  // rotation is the caller's business — since v334 the weather bar passes a bike-relative
+  // FLOW angle from _wxWindRel, not the raw compass winddeg. stroke is currentColor so the
+  // arrow takes the text colour of whatever row it sits in (theme-aware for free).
+  return`<svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="transform:rotate(${deg}deg);display:inline-block;vertical-align:middle;"><line x1="12" y1="20" x2="12" y2="4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="7,9 12,4 17,9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+// v334 — bearing of the route at the rider's current position (deg, 0 = north), or null.
+// Extracted from the old expanded-panel windRel block, with one fix: dLon is now
+// cos(lat)-corrected like the GPS heading derivation in the watch callback — the raw
+// version squashes east–west by ~17% at Sydney latitudes, which is enough to move a
+// quartering wind across the Headwind/Crosswind boundary.
+function _wxRouteBearing(){
+  const r=cur();
+  if(!r||UI.gpsDistKm===null||!r.points||!r.points.length)return null;
+  const idx=cidx(r,UI.gpsDistKm);
+  const a=r.points[idx],b=r.points[Math.min(idx+5,r.points.length-1)];
+  if(!a||!b||(a.lat===b.lat&&a.lon===b.lon))return null;
+  const dLon=(b.lon-a.lon)*Math.cos(a.lat*Math.PI/180),dLat=b.lat-a.lat;
+  return (Math.atan2(dLon,dLat)*180/Math.PI+360)%360;
+}
+
+// v334 — wind relative to the BIKE (Peter: "if it is a straight headwind, I would want
+// that arrow pointing straight down"). The drawn arrow is the FLOW of the air in the
+// bike's frame — imagine yourself at the centre of the screen facing up: a headwind
+// streams DOWN the screen at you, a tailwind points up (with you), wind from your right
+// streams leftward. d = where the wind comes FROM measured off the bike's nose (0 = dead
+// ahead), so flow = d+180. The word uses the same d: from ahead ±45° = Headwind, from
+// behind ±45° = Tailwind, the rest Crosswind.
+// Heading source: UI.gpsHeading (real fixes and the sim both set it; null when stationary
+// from cold or GPS off) → falls back to the route's bearing here → with neither, the
+// arrow shows absolute flow (up = north) and label is null, because a relative word
+// without a heading would be a lie.
+function _wxWindRel(winddeg){
+  let head=UI.gpsHeading;
+  if(head==null)head=_wxRouteBearing();
+  if(head==null)return{rot:(((winddeg||0)+180)%360),label:null};
+  const d=((((winddeg||0)-head)%360)+360)%360;
+  const label=(d<45||d>315)?'Headwind':(d>135&&d<225)?'Tailwind':'Crosswind';
+  return{rot:(d+180)%360,label};
 }
 
 function isSignificantWeatherChange(current,next3h){
@@ -17827,7 +17883,7 @@ function weatherPillHTML(code,temp,label){
            is genuinely one step away if the font ever fails to load. -->
       <span style="font-size:${WX_TEMP_PX}px;font-weight:500;color:${tc};">${Math.round(temp)}°</span>
     </div>
-    <div style="font-size:13px;color:var(--text2);font-family:var(--font);font-weight:500;">${label}</div>
+    <div style="font-size:13px;color:var(--wx-text);font-family:var(--font);font-weight:500;">${label}</div>
   </div>`;
 }
 
@@ -17860,7 +17916,7 @@ function weatherBarHTML(){
   const temp3h=next3h.length?next3h[next3h.length-1].temp:null;
   const tempDrop=temp3h!==null?Math.round(temp3h)-Math.round(c.temp):0;
   const showTrend=Math.abs(tempDrop)>=2;
-  const trendCol=tempDrop<=-4?'#93c5fd':tempDrop<=-2?'#bfdbfe':tempDrop>=2?'#fca5a5':'var(--text3)';
+  const trendCol=tempDrop<=-4?'var(--wx-colder)':tempDrop<=-2?'var(--wx-colder-mild)':tempDrop>=2?'var(--wx-warmer)':'var(--wx-text)';   // v334 — tokens, not dark-theme hex (1.2:1 on Paper)
   const code=c.code||0;
   const isStorm=wmoIsStorm(code);
   const isHeavyRain=code>=65&&code<80;
@@ -17879,8 +17935,10 @@ function weatherBarHTML(){
     const hours=hrs.slice(0,8);
     const hourChips=hours.map(h=>{
       // h.time is an ISO string like "2026-03-22T14:00" with no tz suffix —
-      // parse the hour directly from the string to avoid UTC/local ambiguity
-      const lbl=(h.time||'').slice(11,16)||'--:--';
+      // parse the hour directly from the string to avoid UTC/local ambiguity.
+      // v334 — shown as "2pm", not "14:00" (Peter).
+      const hh=parseInt((h.time||'').slice(11,13),10);
+      const lbl=isNaN(hh)?'--':fmt12h(hh);
       return weatherPillHTML(h.code,h.temp,lbl);
     }).join('');
 
@@ -17897,21 +17955,12 @@ function weatherBarHTML(){
       ?Math.round(Math.max(...next3h.map(h=>h.precip||0)))
       :null;
 
-    // Wind relative to route bearing
+    // v334 — the Headwind/Crosswind/Tailwind word MOVED to the header row, next to the
+    // arrow and speed it describes (Peter: "the wind comment should be near the wind
+    // direction and speed"). It's computed by _wxWindRel with the arrow — one authority,
+    // bike-heading based (route bearing only as fallback), so word and arrow can't
+    // disagree. r2 stays: the sunrise block below reads it.
     const r2=cur();
-    let windRelHTML='';
-    if(r2&&UI.gpsDistKm!==null){
-      const idx=cidx(r2,UI.gpsDistKm);
-      const next=r2.points[Math.min(idx+5,r2.points.length-1)];
-      const cur2=r2.points[idx];
-      if(next&&cur2){
-        const routeBearing=Math.atan2(next.lon-cur2.lon,next.lat-cur2.lat)*180/Math.PI;
-        const windDeg=c.winddeg||0;
-        const diff=((windDeg-routeBearing+360)%360);
-        const rel=diff<45||diff>315?'Tailwind 🙌':diff<135?'Crosswind ↔':diff<225?'Headwind 😬':'Crosswind ↔';
-        windRelHTML=`<span style="font-size:15px;color:var(--text2);">${rel}</span>`;
-      }
-    }
 
     // Sunrise/sunset from sun cache
     let sunHTML='';
@@ -17923,24 +17972,23 @@ function weatherBarHTML(){
       const dateStr=now.toLocaleDateString('en-CA');
       const sun=_sunCache[`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`];
       if(sun){
-        const fmt=d=>`${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-        sunHTML=`<span style="font-size:15px;color:var(--text2);">🌅 ${fmt(sun.sunrise)} · 🌇 ${fmt(sun.sunset)}</span>`;
+        const fmt=d=>fmt12h(d.getHours(),d.getMinutes());   // v334 — "7:03am", matching the chips
+        sunHTML=`<span style="font-size:15px;color:var(--wx-text);">🌅 ${fmt(sun.sunrise)} · 🌇 ${fmt(sun.sunset)}</span>`;
       }
     }
 
     expandedHTML=`
-    ${alert?`<div style="border-top:1px solid var(--border);padding:8px 10px;display:flex;align-items:center;gap:8px;background:rgba(249,115,22,0.08);"><span style="font-size:14px;">⚠</span><span style="font-size:14px;font-weight:600;color:#f97316;">${alert}</span></div>`:''}
+    ${alert?`<div style="border-top:1px solid var(--border);padding:8px 10px;display:flex;align-items:center;gap:8px;background:rgba(249,115,22,0.08);"><span style="font-size:14px;">⚠</span><span style="font-size:14px;font-weight:600;color:var(--wx-warn);">${alert}</span></div>`:''}
     <div style="border-top:1px solid var(--border);padding:10px 10px 8px;">
       <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">${hourChips}</div>
     </div>
     <div style="border-top:1px solid var(--border);padding:8px 10px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
-      ${c.feelsLike!=null&&Math.abs(Math.round(c.feelsLike)-Math.round(c.temp))>=2?`<span style="font-size:${WX_TEMP_PX}px;color:${Math.round(c.feelsLike)<Math.round(c.temp)?'#93c5fd':'#fca5a5'};">Feels ${Math.round(c.feelsLike)}°</span>`:''}
-      ${rainProb!=null?`<span style="font-size:15px;color:${rainProb>50?'#93c5fd':'var(--text2)'};">💧 ${rainProb}% rain</span>`:''}
-      ${lowWarning?`<span style="font-size:${WX_TEMP_PX}px;color:#93c5fd;">🥶 Low ${Math.round(tonightLow)}° tonight</span>`:(tonightLow!=null?`<span style="font-size:${WX_TEMP_PX}px;color:var(--text2);">Low ${Math.round(tonightLow)}° tonight</span>`:'')}
-      ${windRelHTML}
+      ${c.feelsLike!=null&&Math.abs(Math.round(c.feelsLike)-Math.round(c.temp))>=2?`<span style="font-size:${WX_TEMP_PX}px;color:${Math.round(c.feelsLike)<Math.round(c.temp)?'var(--wx-colder)':'var(--wx-warmer)'};">Feels ${Math.round(c.feelsLike)}°</span>`:''}
+      ${rainProb!=null?`<span style="font-size:15px;color:${rainProb>50?'var(--wx-colder)':'var(--wx-text)'};">💧 ${rainProb}% rain</span>`:''}
+      ${lowWarning?`<span style="font-size:${WX_TEMP_PX}px;color:var(--wx-colder);">🥶 Low ${Math.round(tonightLow)}° tonight</span>`:(tonightLow!=null?`<span style="font-size:${WX_TEMP_PX}px;color:var(--wx-text);">Low ${Math.round(tonightLow)}° tonight</span>`:'')}
       ${sunHTML}
       ${_radarUrl?`<a href="${_radarUrl}" target="_blank" rel="noopener" style="font-size:14px;color:var(--blue);text-decoration:none;font-weight:600;" onclick="event.stopPropagation();">Radar ↗</a>`:''}
-      <span style="margin-left:auto;font-size:13px;color:var(--text3);">▲ tap to close</span>
+      <span style="margin-left:auto;font-size:13px;color:var(--wx-hint);">▲ tap to close</span>
     </div>`;
   }
 
@@ -17987,15 +18035,20 @@ function weatherBarHTML(){
       </div>
     </div>`;
   }
+  // v334 — the wind arrow is BIKE-RELATIVE (headwind = straight down; see _wxWindRel) and
+  // the Headwind/Crosswind/Tailwind word sits right beside it. #wx-arrow carries the raw
+  // winddeg in data-deg so updateLive can re-aim arrow + word every fix as the bike turns —
+  // this template is rebuilt only every 30 s, which is a whole roundabout too slow.
+  const wxrel=_wxWindRel(c.winddeg);
   return`<div id="live-weather-bar" style="position:absolute;bottom:0;left:0;right:0;z-index:10;background:var(--bg2);border-top:1px solid var(--border);font-family:var(--font);cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 -4px 20px rgba(0,0,0,0.4);pointer-events:auto;">
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;">
       <div style="background:${condBg};border-radius:5px;padding:3px 8px;flex-shrink:0;">
         <span style="font-size:${WX_TEMP_PX}px;font-weight:500;color:${condText};">${Math.round(c.temp)}°</span>
       </div>
-      <div style="font-size:13px;color:var(--text3);flex-shrink:0;">${condLabel}</div>
+      <div style="font-size:13px;color:var(--wx-text);flex-shrink:0;">${condLabel}</div>
       ${showTrend?`<div style="font-size:${WX_TEMP_PX}px;color:${trendCol};flex-shrink:0;">→ ${Math.round(temp3h)}° in 3h</div>`:''}
-      <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--text3);flex-shrink:0;">${windArrow(c.winddeg)}<span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span></div>
-      ${alert?`<div style="margin-left:auto;font-size:16px;line-height:1;color:#f97316;">⚠</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--text3);">▼</div>`}
+      <div style="display:flex;align-items:center;gap:3px;font-size:13px;color:var(--wx-text);flex-shrink:0;"><span id="wx-arrow" data-deg="${c.winddeg||0}" style="display:inline-flex;">${windArrow(wxrel.rot)}</span><span>${Math.round(c.windspeed)}<span style="font-size:11px;margin-left:1px;">km/h</span></span><span id="wx-rel">${wxrel.label||''}</span></div>
+      ${alert?`<div style="margin-left:auto;font-size:16px;line-height:1;color:var(--wx-warn);">⚠</div>`:`<div style="margin-left:auto;font-size:11px;color:var(--wx-hint);">▼</div>`}
     </div>
     ${expandedHTML}
   </div>`;
@@ -19438,6 +19491,22 @@ function updateLive(){
     const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
     const av=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
     if(avgEl.textContent!==av)avgEl.textContent=av;
+  }
+  // v334 — the wind arrow is bike-relative, so it must turn WITH the bike between the
+  // weather bar's 30 s rebuilds. Patch rotation + word in place every fix; the ids are part
+  // of weatherBarHTML's template, so a _wxBarRender rebuild can never orphan this. Only
+  // present while the bar is expanded — the collapsed square has no arrow, and the null
+  // check makes this free then.
+  const waEl=document.getElementById('wx-arrow');
+  if(waEl){
+    const wd=parseFloat(waEl.dataset.deg);
+    if(!isNaN(wd)){
+      const wrel=_wxWindRel(wd);
+      const wsvg=waEl.querySelector('svg');
+      if(wsvg)wsvg.style.transform='rotate('+wrel.rot+'deg)';
+      const wrEl=document.getElementById('wx-rel');
+      if(wrEl){const wt=wrel.label||'';if(wrEl.textContent!==wt)wrEl.textContent=wt;}
+    }
   }
   // Floating PACE pill (min/km) — same readings as the speed pill, reframed as MM:SS. Both can
   // be on at once, so patch its ids every tick too.
