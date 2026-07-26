@@ -1410,7 +1410,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v334';
+window.APP_VERSION='v335';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -22088,129 +22088,16 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
 });
 </script>
 <script>
-// Register inline service worker for PWA installability (skip in iframes)
+// Register the service worker for offline use + PWA installability (skip in iframes).
+//
+// v335: sw.js is a REAL FILE next to index.html. It used to be inlined here and
+// registered from a Blob — but browsers reject blob: URLs for service worker scripts
+// (spec-level), the .catch() below ate the rejection, and so NO service worker ever
+// registered: the app had zero offline support from March 2026 to v334. Never inline it
+// again. The ?v= query keeps the one-place version bump: changing APP_VERSION changes
+// the URL, the browser sees a new worker, and the update flow runs.
 if('serviceWorker' in navigator && window.self===window.top){
-  // Pass the real page URL into the SW via the blob — blob's self.location.href
-  // is the ephemeral blob URL which dies on page close, so we must capture the
-  // real URL here in the page context and embed it in the SW code.
-  const PAGE_URL=location.href.split('?')[0].split('#')[0];
-  const CACHE_NAME='packtimes-'+(window.APP_VERSION||'v0');
-  const swCode=`
-    const CACHE='${CACHE_NAME}';
-    const PAGE_URL='${PAGE_URL}';
-    // Fonts are real files (v244, no longer base64 in the page), so the SW has to cache them
-    // itself or the app would fall back to a system font the moment you ride out of coverage.
-    const BASE=PAGE_URL.replace(/[^/]*$/,'');
-    const FONTS=['dm-sans-latin-400-normal.woff2','dm-sans-latin-500-normal.woff2',
-                 'dm-sans-latin-600-normal.woff2','dm-sans-latin-700-normal.woff2',
-                 'dm-mono-latin-400-normal.woff2','dm-mono-latin-500-normal.woff2',
-                 'archivo-latin-400-normal.woff2','archivo-latin-500-normal.woff2',
-                 'archivo-latin-600-normal.woff2','archivo-latin-700-normal.woff2',
-                 'ibm-plex-mono-latin-400-normal.woff2','ibm-plex-mono-latin-500-normal.woff2',
-                 'ibm-plex-mono-latin-600-normal.woff2','ibm-plex-mono-latin-700-normal.woff2',
-                 'space-grotesk-latin-400-normal.woff2','space-grotesk-latin-500-normal.woff2',
-                 'space-grotesk-latin-600-normal.woff2','space-grotesk-latin-700-normal.woff2']
-                 .map(f=>BASE+'fonts/'+f);
-    self.addEventListener('install',e=>{
-      e.waitUntil(
-        caches.open(CACHE)
-          .then(c=>c.add(new Request(PAGE_URL,{cache:'reload'}))
-                    .then(()=>c.addAll(FONTS).catch(()=>{})))   // a missing font must never fail the install
-          .then(()=>self.skipWaiting())
-          .catch(()=>self.skipWaiting()) // install succeeds even if offline
-      );
-    });
-    self.addEventListener('activate',e=>{
-      const TILE_CACHE='packtimes-tiles-v1';
-      // Clear old app caches but preserve the tile cache (user-downloaded maps)
-      e.waitUntil(
-        caches.keys().then(keys=>Promise.all(
-          keys.filter(k=>k!==CACHE&&k!==TILE_CACHE).map(k=>caches.delete(k))
-        )).then(()=>clients.claim())
-      );
-    });
-    self.addEventListener('fetch',e=>{
-      // Only handle same-origin navigation and the page itself
-      const url=new URL(e.request.url);
-      const isNavigate=e.request.mode==='navigate';
-      const isPage=url.href===PAGE_URL||url.pathname===new URL(PAGE_URL).pathname;
-      if(isNavigate||isPage){
-        // Network-first, BUT with a hard 2-second leash (v245).
-        //
-        // Why: with no mobile reception the radio does NOT fail fast — it sits there
-        // trying for 30-60s before fetch() rejects, and the app can't paint until this
-        // respondWith settles. Peter hit exactly this at the start of a ride: long blank
-        // startup, looked like a hang. So:
-        //   - navigator.onLine false  → skip the network entirely, straight to cache.
-        //   - otherwise               → race the network against a 2s timer. If the timer
-        //                               wins and we have a cached copy, serve the cache NOW
-        //                               and let the fetch keep running in the background to
-        //                               refresh the cache for the NEXT open.
-        // Trade-off (accepted): on a slow-but-working link a new push can land one open
-        // later than before. On a good link the fetch beats the 2s and nothing changes.
-        // cache:'no-cache' still forces revalidation with GitHub (beats the 10-min HTTP cache).
-        const NET_LEASH_MS=2000;
-        const fromCache=()=>caches.match(PAGE_URL).then(cached=>cached||new Response(
-          '<h2>Loading PackTimes...</h2><p>Open the app from your home screen while online first to enable offline use.</p>',
-          {headers:{'Content-Type':'text/html'}}
-        ));
-        if(!self.navigator.onLine){e.respondWith(fromCache());return;}
-        // Kick the network off once; both the race and the background refresh share it.
-        const net=fetch(e.request,{cache:'no-cache'}).then(res=>{
-          if(res&&res.ok){
-            const clone=res.clone();
-            caches.open(CACHE).then(c=>c.put(PAGE_URL,clone));
-          }
-          return res;
-        });
-        // Keep the SW alive long enough to finish the background refresh even if we
-        // already answered from cache.
-        e.waitUntil(net.catch(()=>{}));
-        const leash=new Promise(res=>setTimeout(()=>res(null),NET_LEASH_MS));
-        e.respondWith(
-          Promise.race([net.catch(()=>null),leash])
-            .then(res=>res||fromCache())   // network too slow, or it failed → cache
-            .catch(()=>fromCache())
-        );
-        return;
-      }
-      // Font files — cache-first. Part of the shell: must be there with no signal.
-      // (no regex here on purpose — swCode is a template literal, so a backslash escape
-      //  like /\.woff2$/ would be eaten before the SW ever sees it.)
-      if(url.origin===self.location.origin&&url.pathname.toLowerCase().endsWith('.woff2')){
-        e.respondWith(
-          caches.open(CACHE).then(c=>
-            c.match(e.request).then(cached=>cached||fetch(e.request).then(res=>{
-              if(res&&res.ok)c.put(e.request,res.clone());
-              return res;
-            }).catch(()=>new Response('',{status:404})))
-          )
-        );
-        return;
-      }
-      // Tile requests — cache-first for offline map use
-      const TILE_HOSTS=['tile.openstreetmap.org','server.arcgisonline.com','tile-cyclosm.openstreetmap.fr','a.tile-cyclosm.openstreetmap.fr','tile.opentopomap.org'];
-      if(TILE_HOSTS.some(h=>url.hostname.includes(h))){
-        const TILE_CACHE='packtimes-tiles-v1';
-        e.respondWith(
-          caches.open(TILE_CACHE).then(c=>
-            c.match(e.request).then(cached=>{
-              if(cached)return cached;
-              return fetch(e.request).then(res=>{
-                if(res&&res.ok)c.put(e.request,res.clone());
-                return res;
-              }).catch(()=>new Response('',{status:404}));
-            })
-          )
-        );
-        return;
-      }
-      // All other requests (weather, Overpass, Strava, …) — let them go to network normally.
-    });
-  `;
-  const blob=new Blob([swCode],{type:'application/javascript'});
-  const swUrl=URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swUrl,{scope:'./'})
+  navigator.serviceWorker.register('sw.js?v='+(window.APP_VERSION||'v0'),{scope:'./'})
     .then(reg=>{
       // When a new SW is waiting, activate it immediately
       if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});

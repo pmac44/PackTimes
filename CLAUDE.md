@@ -12,12 +12,50 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 
 - Deployed at https://pmac44.github.io/PackTimes (GitHub Pages).
 - Repo: https://github.com/pmac44/PackTimes.
-- Works offline after first install (service worker caches app + map tiles).
+- Works offline after first install **since v335** (service worker `sw.js` caches app + fonts + map tiles).
+  Before v335 offline NEVER worked — see the v335 changelog entry. `sw.js` must stay a real file.
 - Optional Dropbox sync of plans across devices.
+
+### v335 (26 July) — OFFLINE ACTUALLY WORKS NOW: the service worker NEVER existed.
+
+**⚠ NEXT CODE CHANGE IS v336.** Root-caused Peter's weekend failure (app showed the
+browser's "No internet" page when opened out of reception — second incident of its kind):
+
+- **The app has NEVER had a service worker.** The SW was inlined in index.html as a
+  template literal, wrapped in a Blob and registered via `URL.createObjectURL()`. Browsers
+  reject blob: URLs for SW scripts at spec level (verified empirically in Chromium:
+  `TypeError: The URL protocol of the script ('blob:...') is not supported`) and the
+  `.catch(()=>{})` on register() swallowed it — silently, on every load, since at least
+  14 March 2026. Consequences: no offline shell ever; the v245 "2s network leash" fix was
+  dead code (why the symptom recurred identically); pre-downloaded map tiles were stored
+  but unreadable offline (getTile uses `<img src>`, only a SW can answer those offline);
+  font caching + SKIP_WAITING flow dead too. "Push shows on next open" was never SW
+  revalidation — just GitHub Pages' plain HTTP cache.
+- **Fix: the SW is now a real file, `sw.js`,** registered as `sw.js?v='+APP_VERSION`
+  (scope `./`). The query string is the SW's only version input, so the "bump ONLY
+  APP_VERSION" discipline is unchanged; a bump changes the URL → browser treats it as a
+  new worker → install/activate cycle runs. `push.bat` does `git add .` so sw.js ships
+  automatically. **NEVER inline the SW again; the flight-mode test below is mandatory
+  after any SW change.**
+- Worker logic is the old inline code (2s leash, font cache-first, tile cache-first,
+  `packtimes-tiles-v1` survives updates) with three repairs: PAGE_URL/BASE now derive
+  from the SW's own location (not from however the page happened to be opened); a real
+  `message` listener for SKIP_WAITING (the page always posted it; the old worker never
+  listened); and **install carry-over** — if the page/font fetch fails mid-install (e.g.
+  updating right as reception drops), entries are copied from the previous version's
+  cache instead of activating with an EMPTY cache and then deleting the old one (which
+  would have bricked offline mode until the next online open).
+- Verified headless (Chromium + Playwright, real index.html): SW registers/activates;
+  offline reload and offline cold-open paint the full app; v-bump update flow creates the
+  new cache, deletes the old, PRESERVES tiles, serves the new version after one reload;
+  a cached OSM tile URL is served offline through the SW.
+- **Acceptance test on the phone (pending Peter):** open app once with reception →
+  flight mode → force-close → reopen. Must paint instantly from cache. This test would
+  have caught the whole thing on day one.
 
 ### v334 (23 July) — WEATHER BAR: readable on Paper, 12-hour clock, BIKE-RELATIVE wind.
 
-**⚠ NEXT CODE CHANGE IS v335.** v332–v334 all on disk. From Peter's 23 Jul ride screenshot:
+v332–v334 all on disk (since pushed 24 Jul). From Peter's 23 Jul ride screenshot:
 *"The weather pill text is hard to read."*
 - **COLOURS — the bar was wearing dark-theme values on the light theme.** The expanded bar
   sits on `--bg2` (Paper: sunken tan #dcd5c0); measured there, `--text3` was **1.9:1** and
@@ -4607,7 +4645,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
 | 11826 | `EVENT DELEGATION` | Document-level click delegator — most interaction routes through here (settings headers, ride rows, Strava buttons, route list, …). |
 | 13045+ | `BLANK PLAN` / `APPLY GPX` / `DEMO ROUTE` / `POWER METER` | Route creation from files/geocode; BLE sensors. |
 | 13545 | `INIT` | `loadAll().finally(...)`: reset sim/GPS, `initDesktop`, `render`, `_recRecoveryShow()` (crash-recovery prompt), `dbxAutoLoad`. |
-| 13560+ | Service worker (2nd `<script>`) | Registered from a Blob. `CACHE_NAME='packtimes-'+window.APP_VERSION` — **never edit here; bump `APP_VERSION` in STATE instead.** Page fetch is network-first with `cache:'no-cache'` revalidation; tile cache `packtimes-tiles-v1` survives updates. |
+| end of file | SW registration (2nd `<script>`) | Registers **`sw.js?v='+APP_VERSION`** (real file — blob registration never worked, see v335). Worker logic lives in `sw.js`: cache `'packtimes-'+v` from the query string — **never edit a version there; bump `APP_VERSION` in STATE.** Page fetch network-first w/ 2s leash + `cache:'no-cache'`; fonts cache-first; tile cache `packtimes-tiles-v1` survives updates. |
 
 ---
 
@@ -4740,7 +4778,7 @@ No analytics, no user accounts, no backend.
 - **Australian spelling** throughout user-facing strings ("kilometres", "metre"). Match that when writing new copy.
 - **Units are metric.** km / metres / °C / km/h / hours.
 - **`console.log` is used sparingly**, `catch(()=>{})` silent-swallow is common on IDB writes. Don't add noisy logging unless debugging.
-- **Ship a release by bumping `window.APP_VERSION` in STATE — nothing else.** The SW cache name derives from it and Settings displays it. Never hand-edit `CACHE_NAME`.
+- **Ship a release by bumping `window.APP_VERSION` in STATE — nothing else.** The SW cache name derives from it and Settings displays it. Never hand-edit `CACHE_NAME`. Since v335 the service worker is a real file (`sw.js`, registered with `?v=` from APP_VERSION) — **never inline it in index.html** (blob-URL SWs are rejected by all browsers and the failure is silent), and after ANY sw.js change run the flight-mode test: online open → flight mode → force-close → reopen → must paint.
 - **Recording is sacred.** Never delete a recording without typed confirmation; every recording state change persists via `DB.putRecording`; the `RECS[]` cache must be kept in sync with any mutation. Gap fill never invents a path — route-snapped or straight line only, always flagged `_synthetic`.
 - **Actuals follow the plan's start date (v189).** `actualStartTime` / `actualArrival` are "what really happened on the ride" stamps. They must only ever apply while the route is being ridden — i.e. its start date is today or past. A **future-dated plan** must never capture or use them (`planStartInFuture(r)` gates both the GPS-callback capture and the `etaAt` anchoring). Setting a new start **date** clears old stamps via `clearRouteActuals(r)`. These stamps live on the route/stops, NOT in the `recordings` store — clearing them never affects a saved ride. Note the capture is driven by GPS *tracking* being on, not by the Record button.
 - **Auto-upload ordering matters:** Strava upload fires only after gap-fill decisions (`_recGapFinish` / the post-undo timeout), so uploaded FITs include the fills. Recovery-saves and manual re-fills don't auto-upload.
