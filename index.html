@@ -412,6 +412,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .tc-box .tc-dist{font-family:var(--font);font-weight:700;color:var(--text);font-size:34px;letter-spacing:-.5px;}   /* IBM Plex Mono — fixed width; the metres countdown changes fast and mustn't jiggle (Peter) */
 .tc-box .tc-dist .tc-unit{font-size:16px;color:var(--text-muted);font-weight:500;margin-left:3px;}
 .tc-box .tc-road{font-family:var(--sans);font-weight:500;color:var(--text-muted);font-size:14px;margin-top:2px;}
+/* v336 — the tap-to-dismiss hint. v326 made the box tappable but nothing SAYS so (Peter: "without
+   the hint, most won't know about it"). Absolutely positioned along the box's bottom edge: the box
+   is a fixed 110px with its content vertically centred (~22px clear below the glyph), so the hint
+   lives in that spare band without pushing the glyph/distance/road layout around. pointer-events:none
+   so the hint itself never eats the tap it advertises. */
+.tc-box .tc-hint{position:absolute;left:0;right:0;bottom:5px;text-align:center;font-family:var(--sans);font-weight:500;font-size:10px;letter-spacing:.3px;color:var(--text-muted);opacity:.75;pointer-events:none;}
 .live-progress-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:5px 8px;flex-shrink:0;}
 /* v261 — the distance bar: a CHEVRON RULER, edge to edge, with its numbers in their
    own row BELOW it. Full width, no radius, no map showing around it (Peter).
@@ -1410,7 +1416,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v335';
+window.APP_VERSION='v336';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -19411,7 +19417,8 @@ function renderTurnCue(r,liveDist){
   if(!cue){
     cue=document.createElement('div');cue.id='turn-cue';cue.className='turn-cue';
     cue.innerHTML='<div id="tc-box" class="tc-box"><span id="tc-glyph" class="tc-glyph"></span>'
-      +'<span class="tc-txt"><span id="tc-dist" class="tc-dist"></span><span id="tc-road" class="tc-road"></span></span></div>';
+      +'<span class="tc-txt"><span id="tc-dist" class="tc-dist"></span><span id="tc-road" class="tc-road"></span></span>'
+      +'<span class="tc-hint">tap to dismiss</span></div>';   // v336 — see .tc-hint
     sec.appendChild(cue);
     const _box=cue.querySelector('#tc-box');
     if(_box)_box.addEventListener('click',e=>{e.stopPropagation();_dismissTurnBox();});

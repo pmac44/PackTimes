@@ -16,6 +16,17 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
   Before v335 offline NEVER worked — see the v335 changelog entry. `sw.js` must stay a real file.
 - Optional Dropbox sync of plans across devices.
 
+### v336 (30 July) — turn box: "tap to dismiss" hint.
+
+**⚠ NEXT CODE CHANGE IS v337.**
+
+- v326 made the turn box tappable (tap = dismiss this turn's box, data cells come back), but
+  nothing on screen said so — Peter: "without the hint, most won't know about it". A small
+  `tap to dismiss` label now sits along the box's bottom edge (`.tc-hint`, added in the cue
+  template in renderTurnCue). Absolutely positioned in the box's spare bottom band (box is a
+  fixed 110px, content centred), `pointer-events:none` so it can't eat the tap it advertises.
+- Not yet phone-tested.
+
 ### v335 (26 July) — OFFLINE ACTUALLY WORKS NOW: the service worker NEVER existed.
 
 **⚠ NEXT CODE CHANGE IS v336.** Root-caused Peter's weekend failure (app showed the
