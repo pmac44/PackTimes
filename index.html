@@ -677,6 +677,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 #sim-sl,#sim-sensors-w,#sim-sensors-on{accent-color:var(--slate-accent)!important;}
 .map-ctrl-row{display:flex;gap:4px;}
 .zbtn-sm{width:24px;height:24px;font-size:18px;}
+/* v338/v339 — the PLANNING-map column (desktop map, stops map, pace map) had four
+   different button widths: each text button was width:auto so it sized to its own label
+   (⛶ ~36, SAT ~44, crosshair 38, GRADE ~53 — Peter: "these buttons are not the same
+   size"). One class, one width. v338 made that width 52 to clear GRADE; v339 makes the
+   buttons SQUARE at .zbtn's native 38 (Peter: "I wish the buttons were square"), which
+   only works because the limiting label shrank with it (GRADE → GRD, his own
+   suggestion: 33.0px → 19.8px in the repo's 11px DM Mono, so 8px of air each side).
+   TOPO (31.2px) is the tightest survivor at 2.4px per side — measured at TRUE weight
+   500; these buttons used to ask DM Mono for 600, which it doesn't ship (the v244
+   rule), and the synthetic bold's smear would have eaten that margin. The RIDE map is
+   deliberately untouched (its zbtn-group / 52px squares are their own settled design).
+   If a wider label ever arrives, re-measure against the 36px inner box; don't let a
+   button go back to width:auto in this column. */
+.zbtn-w{width:38px;padding:0;}
 .recenter-btn{font-size:18px;padding:0 7px;height:24px;white-space:nowrap;}
 /* Plan tab */
 .seg-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;}
@@ -869,14 +883,14 @@ select option{background:var(--bg3);}
           <button id="btn-sim-stop" class="zbtn" style="width:58px;padding:0 4px;font-size:13px;background:var(--stop-card-bg);color:var(--on-dark);border-color:var(--hair-light);"><svg width="11" height="11" viewBox="0 0 12 12" fill="#f2a08f" style="vertical-align:-1px;margin-right:3px;"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>Stop</button>
       </div>
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
-        <button class="zbtn" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
-        <button class="zbtn tile-tog" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
+        <button class="zbtn zbtn-w" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);">⛶</button>
+        <button class="zbtn tile-tog zbtn-w" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:500;">OSM</button>
         <!-- Crosshair — centre the map on your GPS position. This map's controls are hand-written
              here rather than built by mapCtrlHTML, which is why it never had one. Handled by the
              [data-recenter] delegator. Deliberately NO GPS toggle: its id would collide with the
              Ride tab's recording button, which shares #btn-gpstoggle. -->
-        <button class="zbtn" data-recenter="desktop-map" title="Centre on GPS" style="padding:0;overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
-        <button class="zbtn" id="btn-surface-desktop-map" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">SURF</button>
+        <button class="zbtn zbtn-w" data-recenter="desktop-map" title="Centre on GPS" style="overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+        <button class="zbtn zbtn-w" id="btn-surface-desktop-map" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="font-size:11px;font-family:var(--font);font-weight:500;">SURF</button>
       </div>
     </div>
   </div>
@@ -1250,8 +1264,8 @@ select option{background:var(--bg3);}
     <div id="pace-map-wrap" style="position:relative;margin-bottom:10px;">
       <canvas id="pace-map" style="width:100%;height:200px;border-radius:8px;background:#0d1a0d;display:block;pointer-events:none;"></canvas>
       <div class="map-ctrl" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;">
-        <button class="zbtn" data-fitroute="pace-map" title="Fit whole route" style="font-size:20px;font-family:var(--font);width:auto;padding:0 8px;">⛶</button>
-        <button class="zbtn tile-tog" data-tilemap="pace-map" id="pace-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;">OSM</button>
+        <button class="zbtn zbtn-w" data-fitroute="pace-map" title="Fit whole route" style="font-size:20px;font-family:var(--font);">⛶</button>
+        <button class="zbtn tile-tog zbtn-w" data-tilemap="pace-map" id="pace-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:500;">OSM</button>
       </div>
     </div>
     <div style="font-size:14px;color:var(--text3);margin-bottom:10px;text-align:center;" id="pace-map-hint">Tap map to set start point</div>
@@ -1416,7 +1430,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v336';
+window.APP_VERSION='v339';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2497,7 +2511,7 @@ function isOpen(rules,dt){
 function fmtOHSummary(rules,ohRaw){
   if(!rules)return ohRaw||null;
   if(rules.length===1&&rules[0].days.size===7&&rules[0].open===0&&rules[0].close===24)return'24/7';
-  const fh=h=>`${String(Math.floor(h)).padStart(2,'0')}:${String(Math.round((h%1)*60)).padStart(2,'0')}`;
+  const fh=h=>{const t=Math.round(h*60);return`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;}; // v337 carry
   return`${fh(rules[0].open)}–${fh(rules[0].close)}`;
 }
 
@@ -3411,7 +3425,21 @@ function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-
 function fmt12h(hh,mm){const h=(hh%12)||12,ap=hh<12?'am':'pm';return mm==null?h+ap:h+':'+String(mm).padStart(2,'0')+ap;}
 function fmtDT(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
 function fmtDTY(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
-function fmtHM(h){if(!h)return'—';const hh=Math.floor(h),mm=Math.round((h-hh)*60);return hh+'h'+(mm>0?' '+mm+'m':'');}
+// ── v337 — THE CARRY. "2h 60m" (Peter's screenshot, Day 1 · Leg 3). Every h/m formatter
+// in the file did floor(hours) + round(fraction*60) SEPARATELY, so 2.9958 h formatted as
+// hours=2, minutes=60 — nobody carried the rounded 60 back into the hours. Fires whenever
+// a duration lands within ~15 s of a whole hour, at any of ~20 sites.
+// THE FIX: round TOTAL minutes first, then split. 60 minutes is impossible by
+// construction, and the same trick fixes the sibling bug ("60min" from the <1h branches):
+// decide the format from the ROUNDED value, never the raw one. Third occurrence of that
+// threshold rule — fmtStopPct (v260) and fmtDistKm (v261e) are the other two. The file
+// already carried correctly in ONE place (fmtPaceMinKm's if(sec===60){m++;sec=0;}) — these
+// two are now the shared authority; don't hand-roll floor/round pairs again.
+function hmParts(h){const t=Math.round(h*60);return[Math.floor(t/60),t%60];}
+// The repeated "Xmin under an hour, else Xh Ym" shape (next-stop countdowns, pace-segment
+// durations) — it was copy-pasted 8× with the bug in every copy.
+function fmtDurHM(h){const t=Math.round(h*60);if(t<60)return t+'min';const hh=Math.floor(t/60),mm=t%60;return hh+'h'+(mm>0?' '+mm+'m':'');}
+function fmtHM(h){if(!h)return'—';const[hh,mm]=hmParts(h);return hh+'h'+(mm>0?' '+mm+'m':'');}
 function dayOff(d,b){if(!d||!b)return'';const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];return ' '+days[d.getDay()];}
 
 // ═══════════════════════════════════════════
@@ -3568,7 +3596,7 @@ function snapToWay(lat,lon,ways,maxOffM){
 }
 
 function updateOverlayButtons(){
-  const labels={off:'DAY',surf:'SURF',grade:'GRADE'};
+  const labels={off:'DAY',surf:'SURF',grade:'GRAD'}; // v339 — GRAD so the label fits a 38px square (GRADE was 33px in a 36px inner box; GRAD is 26.4px, the same air as SURF). Not ELV — this overlay colours by STEEPNESS, not height, and ELV reads as elevation.
   const active=UI.routeOverlay!=='off';
   ['desktop-map','stops-map'].forEach(id=>{
     const btn=document.getElementById('btn-surface-'+id);
@@ -11818,8 +11846,11 @@ function mapCtrlHTML(mapId,showGPS){
   // emptiness that made Peter notice, which is its own argument that the slot is free.
   // The `rideLive` expression is GONE with the gate it fed — it had no other reader. The
   // crosshair half of v245's decision stands and is documented below; only fit-route is back.
-  const fitSquare=(mapId==='live-map')?'padding:0;':'width:auto;padding:0 8px;';
-  const fitBtn=`<button class="zbtn" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);${fitSquare}">⛶</button>`;
+  // v338 — non-live maps take .zbtn-w (one shared 52px width) instead of width:auto,
+  // which sized every text button to its own label and gave the column four widths.
+  const wCls=(mapId==='live-map')?'':' zbtn-w';
+  const fitSquare=(mapId==='live-map')?'padding:0;':'';
+  const fitBtn=`<button class="zbtn${wCls}" data-fitroute="${mapId}" title="Fit whole route" style="${btnSize}font-size:20px;font-family:var(--font);${fitSquare}">⛶</button>`;
   // ── NO CROSSHAIR HERE ANY MORE (v260e) ────────────────────────────────────────────
   // v245 gave the Stops map a crosshair on the argument that this map pans freely, so
   // "jump back to me" is a job fit-route can't do. Peter has now removed it, and the
@@ -11841,9 +11872,9 @@ function mapCtrlHTML(mapId,showGPS){
   // btnSize sets 52×52, but the trailing `width:auto;padding:0 8px` was overriding the width
   // and shrinking it to fit "OSM", so it sat visibly narrower than its neighbour. Elsewhere
   // (planning maps, 38px buttons) width:auto is fine — nothing square sits next to it.
-  const tileSquare=(mapId==='live-map')?'padding:0;':'width:auto;padding:0 8px;';
-  const tileBtn=`<button class="zbtn tile-tog" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:600;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${TILE_LABELS[_tileMode]}</button>`;
-  const surfBtn=(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:600;width:auto;padding:0 8px;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRADE':'SURF'}</button>`:'';
+  const tileSquare=(mapId==='live-map')?'padding:0;':''; // v338 — width now via .zbtn-w
+  const tileBtn=`<button class="zbtn tile-tog${wCls}" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:500;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${TILE_LABELS[_tileMode]}</button>`;
+  const surfBtn=(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn zbtn-w" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:500;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${UI.routeOverlay==='grade'?'GRAD':'SURF'}</button>`:'';
   // Restyle: on the ride map, fit-route + tile toggle MERGE into one pill (Peter). Elsewhere
   // (planning maps) they stay separate buttons — those columns also carry the surface toggle.
   const inner = (mapId==='live-map')
@@ -12169,7 +12200,7 @@ function _updatePaceDisplay(){
   if(fd)fd.textContent=_pace.from!==null?_pace.from.toFixed(2)+' km':'—';
   if(tl)tl.textContent=_pace.to!==null?_pace.to.toFixed(2)+' km':'not set';
   if(td)td.textContent=_pace.to!==null?_pace.to.toFixed(2)+' km':'—';
-  const hh=Math.floor(_pace.hours),mm=Math.round((_pace.hours-hh)*60);
+  const[hh,mm]=hmParts(_pace.hours); // v337 carry
   const timeStr=hh+'h '+mm+'m';
   if(hl)hl.textContent=timeStr;if(hd)hd.textContent=timeStr;
   if(sh){
@@ -12521,7 +12552,7 @@ function _speedSummaryHTML(r){
 function _speedLiveHTML(r){
   if(!r||!r.estDuration||!r.totalDist)return'';
   const adj=r.estDuration*r.timeFactor;
-  const h=Math.floor(adj),m=Math.round((adj-h)*60);
+  const[h,m]=hmParts(adj); // v337 carry
   const avg=(r.totalDist/adj).toFixed(1);
   return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:12px;text-align:center;">
     <span style="font-size:17px;font-weight:600;color:var(--accent);font-family:var(--font);">${h}h ${String(m).padStart(2,'0')}m riding · ${avg} km/h avg</span>
@@ -13696,8 +13727,8 @@ function dbxShowStaleBanner(cloudMs){
 function _dbxAgoStr(ms){
   const diffS=Math.round((Date.now()-ms)/1000);
   if(diffS<60)return diffS+'s ago';
-  if(diffS<3600)return Math.round(diffS/60)+'m ago';
-  if(diffS<86400)return Math.round(diffS/3600)+'h ago';
+  const agoM=Math.round(diffS/60);if(agoM<60)return agoM+'m ago';   // v337 — gate on the rounded value ("60m ago" was possible)
+  const agoH=Math.round(diffS/3600);if(agoH<24)return agoH+'h ago';
   return Math.round(diffS/86400)+'d ago';
 }
 
@@ -14108,8 +14139,7 @@ function buildLiveStrip(r,liveDist,sdt){
     const timeStr=(day?day.trim()+' ':'')+fmtT(eta);
     const remH=eta&&now?(eta-now)/3600000:null;
     const inStr=remH!==null&&remH>0
-      ?(remH<1?(Math.round(remH*60)+'min')
-        :(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':'')))
+      ?fmtDurHM(remH) // v337 — one authority, with the carry
       :null;
     // Destination name: a town/stop sitting on the finish (within CLUSTER_KM), else "Finish".
     const finStop=r.stops.reduce((b,s)=>(b===null||Math.abs(s.dist-finDist)<Math.abs(b.dist-finDist))?s:b,null);
@@ -14219,8 +14249,7 @@ function buildLiveStrip(r,liveDist,sdt){
     const remMs=eta&&now?(eta-now):null;
     const remH=remMs?remMs/3600000:null;
     const inStr=remH!==null&&remH>0
-      ?(remH<1?(Math.round(remH*60)+'min')
-        :(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':'')))
+      ?fmtDurHM(remH) // v337 — one authority, with the carry
       :null;
     const reason=rowReason[s.id]||'type';
     const icons=liveStripIcons(s,reason);
@@ -15653,7 +15682,7 @@ function tLiveShell(r){
         const lenKm=(seg.to-seg.from).toFixed(1);
         const durMs=etaTo&&etaFrom?etaTo-etaFrom:null;
         const durH=durMs?durMs/3600000:null;
-        const durStr=durH!==null?(durH<1?Math.round(durH*60)+'min':Math.floor(durH)+'h'+(Math.round((durH%1)*60)>0?' '+Math.round((durH%1)*60)+'m':'')):'';
+        const durStr=durH!==null?fmtDurHM(durH):''; // v337 carry
         const inProgress=liveDist>=seg.from&&liveDist<=seg.to;
         html+=`<div class="si" style="background:rgba(249,115,22,0.15);border-color:rgba(249,115,22,0.55);">
           <div style="width:8px;height:8px;border-radius:2px;background:#f97316;margin-top:4px;flex-shrink:0;"></div>
@@ -15689,7 +15718,7 @@ function tLiveShell(r){
         const now2=(UI.gpsActive&&UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):new Date();
         const remMs2=eta?eta-now2:null;
         const remH2=remMs2?remMs2/3600000:null;
-        const remStr2=remH2!==null&&remH2>0?(remH2<1?(Math.round(remH2*60)+'min'):(Math.floor(remH2)+'h'+(Math.round((remH2%1)*60)>0?' '+Math.round((remH2%1)*60)+'m':''))):'';
+        const remStr2=remH2!==null&&remH2>0?fmtDurHM(remH2):''; // v337 carry
         const tileBg=s.type==='sleep'||s.sleepAt?'border-color:rgba(179,158,236,0.9);':s.type==='stop'?'border-color:rgba(176,161,134,0.85);':
           hasSt&&s.ohRules?(st==='open'?'border-color:rgba(74,222,128,0.85);':st==='closed'?'border-color:rgba(248,113,113,0.85);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':'<span class="s-uk">? Hours unknown</span>'):'';
@@ -15728,7 +15757,7 @@ function tLiveShell(r){
     const now=(UI.gpsActive&&UI.gpsDistKm!==null&&cur())?etaAt(UI.gpsDistKm,cur()):new Date();
     const remMs=eta?eta-now:null;
     const remH=remMs?remMs/3600000:null;
-    const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
+    const remStr=remH!==null&&remH>0?fmtDurHM(remH):''; // v337 carry
     return`<div class="next-card live-summary-card" data-sid="${s.id}" style="flex:1;padding:8px 12px;cursor:pointer;">
       <div class="nlbl">${label}</div>
       <div class="nname" id="live-${idSuffix}-name">${s.icon} ${s.name}${popBadge(s)}</div>
@@ -16861,14 +16890,14 @@ function tRoutes(r){
       const totRideHM=adjDur?totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':''):'—';
       const totSpd=(adjDur&&adjDur>0.1)?(r.totalDist/adjDur).toFixed(1):null;
       const totalH=(adjDur||0)+totalSleepH+totalMealH;
-      const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
+      const[thh,thm]=hmParts(totalH); // v337 carry
       const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
       const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():0;
       const avgSleepPerNight=nights>0?(totalSleepH/nights).toFixed(1):null;
       const dayCount=nights?nights+1:1;
       const avgDist=(r.totalDist/dayCount).toFixed(1);
       const avgRideH=(adjDur||0)/dayCount;
-      const arh=Math.floor(avgRideH),arm=Math.round((avgRideH-arh)*60);
+      const[arh,arm]=hmParts(avgRideH); // v337 carry
       const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
       const avgSpd2=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
       const avgGain=Math.round(totalGain/dayCount);
@@ -16888,14 +16917,14 @@ function tRoutes(r){
           +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
           +(nights>0?'<span style="font-size:14px;color:rgba(179,157,219,0.7);display:block;margin-top:4px;">'+sleepStops+' of '+nights+' nights sleep planned'+(sleepStops<nights?' — '+(nights-sleepStops)+' unplanned':'')+'</span>':'')
           +(adjDur?(()=>{
-            const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
+            const totMin=Math.round(totalH*60),td=Math.floor(totMin/1440),th2=Math.floor((totMin%1440)/60),tm2=totMin%60; // v337 carry, cascades d←h←m
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
             return'<span style="'+accent+'color:var(--text2);display:block;margin-top:10px;" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>';
           })():'')
           +(adjDur?(()=>{
             const dsc=r.daySplitCount||0;
             const hpd=dsc>=1?(adjDur/dsc):0;
-            const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
+            const[hpdH,hpdM]=hmParts(hpd); // v337 carry
             const hpdStr=dsc>=1?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')):'';
             return'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
               +'<div style="'+lbl+'margin-bottom:2px;display:flex;align-items:center;gap:6px;">Day Split Guides<svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><polygon points="6,0 12,6 6,12 0,6" fill="#2dd4bf" stroke="#0a0f0a" stroke-width="1"/></svg></div>'
@@ -16946,7 +16975,7 @@ function tRoutes(r){
       (r.paceSegs||[]).map((seg,i)=>{
         const dist=seg.to-seg.from;
         const spd=(dist/seg.hours).toFixed(1);
-        const hh=Math.floor(seg.hours),mm=Math.round((seg.hours-hh)*60);
+        const[hh,mm]=hmParts(seg.hours); // v337 carry
         return`<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:5px;">
           <div>
             <div style="font-size:16px;font-weight:600;color:var(--text);">${seg.name||('Section '+(i+1))} <span style="font-size:13px;color:var(--text3);">${seg.from.toFixed(1)}–${seg.to.toFixed(1)} km (${dist.toFixed(1)} km)</span></div>
@@ -18381,7 +18410,7 @@ function tPlan(r){
       const lenKm=(seg.to-seg.from).toFixed(1);
       const durMs=etaTo&&etaFrom?etaTo-etaFrom:null;
       const durH=durMs?durMs/3600000:null;
-      const durStr=durH!==null?(durH<1?Math.round(durH*60)+'min':Math.floor(durH)+'h'+(Math.round((durH%1)*60)>0?' '+Math.round((durH%1)*60)+'m':'')):'';
+      const durStr=durH!==null?fmtDurHM(durH):''; // v337 carry
       const isLast=i===nodes.length-1;
       const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--border2);margin-top:2px;"></div>';
       rows+='<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:2px;">'
@@ -18617,7 +18646,7 @@ function tPlan(r){
       const segStops=r.stops.filter(s=>s.dist>node.distEnd&&s.dist<(next.cluster?next.cluster.dist:next.dist));
       const hasWater=segStops.some(stopHasWater)||(next.cluster&&next.cluster.stops.some(stopHasWater));
       const hasFood=segStops.some(s=>s.type==='food'||s.type==='shop')||(next.cluster&&next.cluster.stops.some(s=>s.type==='food'||s.type==='shop'));
-      const rh=Math.floor(segRideH),rm=Math.round((segRideH-rh)*60);
+      const[rh,rm]=hmParts(segRideH); // v337 carry — this line was the '2h 60m' in Peter's screenshot
       const rideHM=segRideH>0.05?(rh>0?(rh+'h'+(rm>0?' '+String(rm).padStart(2,'0')+'m':'')):(rm+'m')):'';
       const rideStr=rideHM+(r.cumRiding&&segAvgSpd&&rideHM?' · '+segAvgSpd+' km/h':'');
       const foodIcon='<span style="display:inline-flex;align-items:center;'+(hasFood?'color:#fbbf24;':'opacity:.3;color:#eceef1;')+'">'+ICON_FOOD+'</span>';
@@ -18709,13 +18738,13 @@ function tPlan(r){
       const totRideHM=(adjDur)?totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':''):'—';
       const totSpd=(adjDur&&adjDur>0.1)?(r.totalDist/adjDur).toFixed(1):null;
       const totalH=(adjDur||0)+(totalSleepH||0)+totalMealHours(r);
-      const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
+      const[thh,thm]=hmParts(totalH); // v337 carry
       const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
       const avgSleepPerNight=nights>0?(totalSleepH/nights).toFixed(1):null;
       const dayCount=nights?nights+1:1;
       const avgDist=(r.totalDist/dayCount).toFixed(1);
       const avgRideH=(adjDur||0)/dayCount;
-      const arh=Math.floor(avgRideH),arm=Math.round((avgRideH-arh)*60);
+      const[arh,arm]=hmParts(avgRideH); // v337 carry
       const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
       const avgSpd=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
       const avgGain=Math.round(totalGain/dayCount);
@@ -18734,7 +18763,7 @@ function tPlan(r){
           +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+totalSleepH.toFixed(1)+'h bivi</span>':'')
           +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
           +(adjDur?(()=>{
-            const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
+            const totMin=Math.round(totalH*60),td=Math.floor(totMin/1440),th2=Math.floor((totMin%1440)/60),tm2=totMin%60; // v337 carry, cascades d←h←m
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
             return'<br><span style="'+accent+'color:rgba(236,238,241,0.7);">≈ '+totalHM+' · '+daysHM+' total</span>';
           })():'')
@@ -19111,22 +19140,22 @@ function patchSpeedFactor(r){
   const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
   const totalGain=elevGain(r.points);
   const avgGainPerKm=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
-  const totRideH=Math.floor(adj),totRideM=Math.round((adj-totRideH)*60);
+  const[totRideH,totRideM]=hmParts(adj); // v337 carry
   const totRideHM=totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':'');
   const totSpd=(adj>0.1)?(r.totalDist/adj).toFixed(1):null;
-  const thh=Math.floor(totalH),thm=Math.round((totalH-thh)*60);
+  const[thh,thm]=hmParts(totalH); // v337 carry
   const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
   const nights=sdt&&finEta?(()=>{let n=0,dd=new Date(sdt);dd.setHours(24,0,0,0);while(dd<finEta){n++;dd.setDate(dd.getDate()+1);}return n;})():0;
   const avgSleepPerNight=nights>0?(sleepH/nights).toFixed(1):null;
   const dayCount=nights?nights+1:1;
   const avgDist=(r.totalDist/dayCount).toFixed(1);
   const avgRideH=adj/dayCount;
-  const arh=Math.floor(avgRideH),arm=Math.round((avgRideH-arh)*60);
+  const[arh,arm]=hmParts(avgRideH); // v337 carry
   const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
   const avgSpd2=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
   const avgGain=Math.round(totalGain/dayCount);
   const sleepStops=r.stops.filter(s=>s.type==='sleep'||s.sleepAt).length;
-  const td=Math.floor(totalH/24),th2=Math.floor(totalH%24),tm2=Math.round((totalH%1)*60);
+  const totMin=Math.round(totalH*60),td=Math.floor(totMin/1440),th2=Math.floor((totMin%1440)/60),tm2=totMin%60; // v337 carry, cascades d←h←m
   const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
   statsEl.innerHTML='<div style="flex:1;padding:4px 0;">'
     +(dayCount>1?'<div style="'+lbl+'">Daily average · '+dayCount+' day'+(dayCount!==1?'s':'')+'</div>'
@@ -19144,7 +19173,7 @@ function patchSpeedFactor(r){
     +(adj?(()=>{
       const dsc=r.daySplitCount||0;
       const hpd=dsc>=1?(adj/dsc):0;
-      const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
+      const[hpdH,hpdM]=hmParts(hpd); // v337 carry
       const hpdStr=dsc>=1?(hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')):'';
       return'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'
         +'<div style="'+lbl+'margin-bottom:2px;display:flex;align-items:center;gap:6px;">Day Split Guides<svg width="12" height="12" viewBox="0 0 12 12" style="flex-shrink:0;"><polygon points="6,0 12,6 6,12 0,6" fill="#2dd4bf" stroke="#0a0f0a" stroke-width="1"/></svg></div>'
@@ -19777,11 +19806,11 @@ function updateLive(){
             const lenKm=(seg.to-seg.from).toFixed(1);
             const durMs=etaTo&&etaFrom?etaTo-etaFrom:null;
             const durH=durMs?durMs/3600000:null;
-            const durStr=durH!==null?(durH<1?Math.round(durH*60)+'min':Math.floor(durH)+'h'+(Math.round((durH%1)*60)>0?' '+Math.round((durH%1)*60)+'m':'')):'';
+            const durStr=durH!==null?fmtDurHM(durH):''; // v337 carry
             const inProgress=liveDist>=seg.from&&liveDist<=seg.to;
             const remMs2=etaFrom?etaFrom-now:null;
             const remH2=remMs2?remMs2/3600000:null;
-            const remStr2=remH2!==null&&remH2>0?(remH2<1?Math.round(remH2*60)+'min':Math.floor(remH2)+'h'+(Math.round((remH2%1)*60)>0?' '+Math.round((remH2%1)*60)+'m':'')):'';
+            const remStr2=remH2!==null&&remH2>0?fmtDurHM(remH2):''; // v337 carry
             return`<div class="si" style="background:rgba(249,115,22,0.15);border-color:rgba(249,115,22,0.55);">
               <div style="width:8px;height:8px;border-radius:2px;background:#f97316;margin-top:4px;flex-shrink:0;"></div>
               <div class="si-inf">
@@ -19802,7 +19831,7 @@ function updateLive(){
           const dt=(s.dist-liveDist).toFixed(1);
           const remMs=eta?eta-now:null;
           const remH=remMs?remMs/3600000:null;
-          const remStr=remH!==null&&remH>0?(remH<1?(Math.round(remH*60)+'min'):(Math.floor(remH)+'h'+(Math.round((remH%1)*60)>0?' '+Math.round((remH%1)*60)+'m':''))):'';
+          const remStr=remH!==null&&remH>0?fmtDurHM(remH):''; // v337 carry
           const orBadge=s.offRouteM>50?`<span style="font-size:13px;color:var(--text3);"> (${s.offRouteM}m off route)</span>`:'';
           const tileBg=s.type==='sleep'||s.sleepAt?'border-color:rgba(179,158,236,0.9);':s.type==='stop'?'border-color:rgba(176,161,134,0.85);':'';
           const hasSt=s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='hut'||s.type==='pub'||s.type==='fuel';
@@ -21178,7 +21207,7 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     if(hpdEl&&r.estDuration&&r.daySplitCount>=1){
       const adjDur=r.estDuration*r.timeFactor;
       const hpd=adjDur/r.daySplitCount;
-      const hpdH=Math.floor(hpd),hpdM=Math.round((hpd-hpdH)*60);
+      const[hpdH,hpdM]=hmParts(hpd); // v337 carry
       hpdEl.textContent=hpdH+'h'+(hpdM>0?' '+String(hpdM).padStart(2,'0')+'m':'')+'/day';
     } else if(hpdEl){
       hpdEl.textContent='';

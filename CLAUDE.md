@@ -16,9 +16,88 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
   Before v335 offline NEVER worked — see the v335 changelog entry. `sw.js` must stay a real file.
 - Optional Dropbox sync of plans across devices.
 
-### v336 (30 July) — turn box: "tap to dismiss" hint.
+### v339 (1 Aug) — the planning buttons are SQUARE. GRADE → GRAD made it possible.
 
-**⚠ NEXT CODE CHANGE IS v337.**
+**⚠ NEXT CODE CHANGE IS v340.** v337 + v338 + v339 are on disk together, NOT pushed, NOT
+phone-tested. APP_VERSION reads v339; one push ships all three.
+
+- Peter, on seeing v338's uniform-52 column: *"I wish the buttons were square. If GRADE is
+  the limiter, could it change to GRD or something?"* Right on the diagnosis — GRADE was
+  the limiter (33.0px in a 38px button's 36px inner box = 1.5px of air a side, and the
+  synthetic bold would have eaten that). `.zbtn-w` is now **38px = .zbtn's own square**,
+  so the planning column finally matches the app's standard size on every button.
+- **The label is GRAD, not GRD and not ELV** (he floated both). Measured: GRAD (26.4px)
+  sits in the square with the SAME 4.8px air as SURF, so the shorter GRD buys nothing —
+  and **ELV was rejected on meaning, not fit**: the overlay colours the route by
+  STEEPNESS (the grade zones), not height, and ELV reads as elevation. A label that fits
+  but says the wrong thing is the worse trade. Changed at both authorities
+  (updateOverlayButtons' labels map + the surfBtn template ternary — grep confirmed those
+  are the only two).
+- **The five map-button `font-weight:600`s are now 500** — the v244/v265 rule ("DM Mono
+  only ships 400/500 — don't ask it for 600"), flagged in v338 and now load-bearing:
+  TOPO at true 500 is 31.2px (2.4px air, the tightest survivor); fake-bold smear would
+  have pressed it against the border. The other ~160 weight-600s in the file are on
+  var(--sans) or chip fills — not touched, not the same bug.
+- Verified: whole-file parse (3 blocks, ends `</html>`), CSS 267/267, no GRADE string
+  left, no fake bold left on tile/surf buttons, live map still excluded. True-size
+  mockup: map-buttons-v339.png.
+
+### v338 (1 Aug) — the planning maps' buttons are ONE WIDTH. Peter: "not the same size."
+
+**(Superseded the same day by v339's squares — kept because the width:auto diagnosis and
+the measurements are the record.)**
+
+- Peter's screenshot (desktop big map): ⛶ / SAT / crosshair / GRADE at FOUR widths. Cause:
+  every text button in the planning columns carried `width:auto;padding:0 8px`, so each
+  sized to its own label (⛶ ~36 · SAT ~40 · crosshair 38 · GRADE ~49). He guessed mobile
+  was the same — right: mapCtrlHTML's stops-map branch had the identical `width:auto`.
+- **Fix: one class, one width — `.zbtn-w{width:52px;padding:0}`** on every button in the
+  desktop-map static HTML (all four), the pace-map static HTML (both), and mapCtrlHTML's
+  non-live branch (fit/tile via a `wCls` ternary, surf directly). **52 is a MEASUREMENT,
+  not a taste call** (the v273e rule): GRADE — the widest label, 11px DM Mono — is 33.0px
+  in the repo's real font, so 52 clears everything with air, and it's already the app's
+  phone button constant. Height stays .zbtn's 38.
+- **The RIDE map is deliberately untouched** — `wCls` is empty for live-map, so its
+  zbtn-group / 52px-square design (v273) can't pick the class up by accident.
+- The crosshair's inline `padding:0` moved into the class; its SVG is width/height 100%
+  with default preserveAspectRatio, so the wider box scales it uniformly — no distortion.
+- ⚠ Observed, NOT fixed (flagging, not chasing): the tile + surf buttons ask DM Mono for
+  `font-weight:600`, and v244/v265's rule is "DM Mono only ships 400/500 — don't ask it
+  for 600" (the browser fakes the bold). Shipped that way for months without complaint;
+  left alone. If the labels ever look wrong, that's the first suspect.
+- Verified: whole-file parse (3 blocks clean, ends `</html>`), CSS 267/267 braces, zero
+  `width:auto` left on any map button, live-map branch proven excluded. Mockup at true
+  size against a paddock-green ground: `/outputs` (map-buttons-v338.png).
+
+### v337 (1 Aug) — "2h 60m": NO h/m FORMATTER EVER CARRIED THE ROUND. ~20 sites, one fix.
+
+- Peter's screenshot (mission plan, Day 1 · Leg 3): **"2h 60m · 19.4 km/h"**. The leg is
+  2h 59.7m, and the site did `floor(hours)` + `round(fraction*60)` SEPARATELY — 59.7
+  rounds to 60 and nobody carried it into the hours. **Grep found the same hand-rolled
+  pair at ~20 sites**: fmtHM, the pace modal, _speedLiveHTML, the live strip's finish/stop
+  countdowns, the stops-list durations ×2 copies, the route-summary block ×3 copies
+  (thh/thm, arh/arm, the d/h/m cascade), hours-per-day ×3, pace-segment rows, the mission
+  leg row (his screenshot), fmtOHSummary's HH:MM, and _dbxAgoStr ("60m ago").
+- **THE FIX: round TOTAL minutes FIRST, then split — 60 minutes is impossible by
+  construction.** Two shared helpers next to fmtHM (TIME CALC): `hmParts(h)` →
+  `[floor(round(h*60)/60), round(h*60)%60]`, and `fmtDurHM(h)` for the copy-pasted-8×
+  "Xmin under an hour, else Xh Ym" shape (whose `<1h` branches had the sibling bug:
+  0.995h → "60min"; now "1h" — the format decision is made on the ROUNDED value).
+  **Third occurrence of the threshold rule** (fmtStopPct v260, fmtDistKm v261e) — and the
+  file already carried correctly in exactly ONE place, fmtPaceMinKm's
+  `if(sec===60){m++;sec=0;}`. The helpers are now the authority; don't hand-roll
+  floor/round pairs again.
+- The d/h/m cascade (route summary "≈ Xd Yh Zm total") splits rounded total minutes
+  top-down, so 47.9958h reads "2d 0h" — the carry propagates through the DAY, which a
+  minutes-only patch would have missed.
+- fmtDurPill untouched (floors both halves — can't emit 60); the 90-minute-gated
+  "min ago" formatter untouched (its 60–89 min range is deliberate, not a missed carry).
+- **Verified: whole-file parse + 26/26 truth-table on the REAL extracted helpers** — the
+  old code reproduced emitting "2h 60m" first (the standing rule), Peter's exact leg,
+  both threshold boundaries (59.49/59.5 min), the day cascade, the padStart leg-row
+  shape, "60m ago", and the OH clock. **NOT phone-tested.**
+
+### v336 (30 July) — turn box: "tap to dismiss" hint.
 
 - v326 made the turn box tappable (tap = dismiss this turn's box, data cells come back), but
   nothing on screen said so — Peter: "without the hint, most won't know about it". A small
