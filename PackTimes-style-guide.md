@@ -116,6 +116,17 @@ over content whose colour we don't control is an invisible label, not a subtle o
 
 ---
 
+## Dark fills on Paper — the chroma rule (Peter, 1 Aug 2026)
+
+At panel-dark lightness levels, keep chroma **at or below ~0.006 in oklch**. Higher chroma
+at a warm hue reads BROWN once it fills a large area — this is why the first warm ink
+(#2f2b25) failed and was replaced by the near-neutral **#383631** (v342). Small chips can
+carry more chroma than full panels; test any new dark fill AT SIZE before shipping.
+The ink family lives in the `--panel-*` tokens in `[data-theme="paper"]` — change it there,
+nowhere else.
+
+---
+
 ## Components (consolidate toward these)
 
 - **Buttons:** one base `.btn` (17px, 8px radius). Variants `.btn-p` (primary/green),

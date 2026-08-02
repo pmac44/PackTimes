@@ -16,9 +16,220 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
   Before v335 offline NEVER worked — see the v335 changelog entry. `sw.js` must stay a real file.
 - Optional Dropbox sync of plans across devices.
 
+### v345 (2 Aug) — the QUIET headers + the MINT active tab (Peter's first look at v344).
+
+**⚠ NEXT CODE CHANGE IS v346.** On disk, NOT pushed. Peter, running v344 on the desktop,
+circled "MISSION — 7 STOPS" and the active tab: *"on the older scheme the text circled was
+like a dark colour. It did not have much contrast but seemed to work… like the font next to
+the gold star."* Ground truth from the April snapshot confirmed him on both:
+- **`.ctitle` was `var(--text3)`** (the darkest muted step — #6a8a6a on the restored dark),
+  not text2. Base rule reverted; the Mission header's inline `--mi-title` now also points at
+  text3. Low contrast ON PURPOSE — the card titles are furniture, not content.
+- **`.tab.active` was `var(--accent)`** — mint, not white. Graphite's `--tab-active` →
+  var(--accent). ⚠ This reverses the v312-324 "active tab is a neutral" call for GRAPHITE
+  ONLY (Paper keeps its neutral ink); one token to flip back if it misreads on the phone.
+- Verified: parse clean + headless Mission capture matches the March screenshot's hierarchy
+  (quiet header, loud mint data, mint tab). NOT phone-tested.
+
+### v344 (2 Aug) — THE OLD DARK RESTORED. Paper is PARKED. DM fonts return (again).
+
+On disk, NOT pushed. On disk, NOT pushed. This is the pivot of the whole colour
+saga: after the v343 palettes read "basically identical" to Peter, the diagnosis landed that
+the problem was STRUCTURAL, not hue — and after competitor analysis (his Strava/RWGPS/komoot/
+Organic Maps screenshots) + mocks, **Peter chose: park Paper, restore the old dark as the
+app's primary identity** (his friend independently preferred dark too). Key physics point he
+accepted: the "pop" he loves is EMISSION — mint-on-black glows; dark-on-light can only ever
+be crisp. A light theme can never be Graphite's equal on pop, which is why Paper kept
+disappointing. The Strava dark email he sent (black + one saturated orange) is the same
+grammar: dark ground + ONE saturated brand colour. Mint is our orange.
+
+- **GRAPHITE = THE ORIGINAL APRIL PALETTE, verbatim** (git c4ecfb7, 27 Apr — the look he
+  lived with through May–June; there are NO commits 27 Apr → 15 Jun, so "a few months ago"
+  IS that build): ground #0a0f0a / raised #141d14 / sunken #111811, borders #2a3d2a/#3a523a
+  (GREEN — they were always in the CSS; the neutral-graphite values made them invisible,
+  which is why settings read as slabs; restoring the values restores the bordered-card look
+  with ZERO structural CSS), text ramp #e8f5e8/#9db89d/#6a8a6a, accent #4ade80 (+#22c55e/
+  #16a34a as the original accent2/3), amber #fbbf24, blue #60a5fa, purple #c084fc.
+- **THE POP RESTORED: the whole leg block wears ONE bright mint.** --mi-km/--mi-sub/--mi-total
+  all → var(--accent) (was #8bc34a + creamy rgba(236,238,241,…) — Peter: "duller green and a
+  light but creamy secondary… deader"). Labels stay muted (--text3). Summary bivi literals
+  (tRoutes + tPlan ×2 + mission summary) #b39ddb → #c084fc to match --mi-bivi.
+  ⚠ **#b39ddb still lives at ~16 sites as the sleep MARK colour (map dots, badges, filters)
+  — deliberately NOT swept:** the canvas dot palette uses #c084fc for shop/accom, so making
+  sleep dots #c084fc would collide two categories on the map. Two close purples coexist
+  (text #c084fc, marks #b39ddb); flag if it reads wrong on the phone.
+- **FONTS: DM Sans + DM Mono, third and final time** (--sans/--font/--font-slow; Archivo/
+  IBM Plex Mono/Space Grotesk retired — Peter rejected Plex figures in v244 AND again now;
+  same preference twice, not a flip-flop). ⚠ **~190 sites ask the mono font for weight
+  600/700** (written in the Plex era; DM Mono ships 400/500 only). Handled with ONE line:
+  `font-synthesis:none` on html,body — the browser renders true 500 instead of fake-bolding
+  (the v244/v265 smear), with no per-site sweep. No italics exist anywhere, so nothing else
+  changes. The retired @font-face lines + woff2 files stay harmlessly; strip in a cleanup.
+- **New token --wordmark** (paper: var(--stop-card-bg) ink; graphite: var(--accent) mint) —
+  the PackTimes wordmark was color:var(--stop-card-bg) everywhere, a Paper-ink rule that
+  rendered the logo near-invisible dark-on-dark in Graphite (visible in Peter's own
+  screenshots). Old scheme's mint wordmark is back. 5 sites (htitle CSS + desktop header +
+  3 tab templates) now read the token.
+- Canvas fallbacks updated to match (_THEME_STATUS graphite #0a0f0a, _neutralGrey #141d14,
+  _mapCanvasBg #111811 — fallbacks only; applyTheme resolves live values).
+- **UNCHANGED on purpose:** zones (Material palette, own decision), --chev-off + --mspeed-bg
+  (OLED-tuned in v261/v272), --tab-active (v312-324 decision), wx tokens (v334 measured),
+  grip alphas, cat-* colours, Ride-tab cells' B&W bottom half. Paper theme untouched apart
+  from fonts + the wordmark token (both intended); the v343 palette trial still works.
+- **PAPER'S STATUS: PARKED.** Peter: the Ride tab on Paper is fine ("the cyan and slate grey
+  work with each other" — because the MAP is the ground there); it's dark slabs on the sandy
+  page (Stops/Route/Supplies/Settings) that fail. Decision deferred until the restored dark
+  is real and ridden: then either Paper dies, or it's rebuilt ONCE as the crisp light twin
+  per the structural mocks (`_planning/paper-structural-mock.html` + `-v2.html`, which also
+  carry the agreed grammar: one ground, bordered rounded sections, colour=data with one
+  uniform green, one saturated action per screen, labels-tiny/figures-big).
+- **Verified:** whole-file (3 script blocks node --check clean, ends `</html>`, CSS 290/290
+  + 8/8 braces, comments paired) + headless boot: Mission/Route/Settings screenshots match
+  the old March look (uniform mint leg blocks, bordered settings cards, mint wordmark,
+  purple bivi); Paper boot sanity-checked. **NOT phone-tested.** Judge the restored values
+  on the OLED — the greens especially (v260's dirty-green lesson).
+
+### v343 (2 Aug) — PALETTE TRIAL: three candidate Paper palettes, switchable IN THE APP.
+
+**⚠ NEXT CODE CHANGE IS v344. THIS IS A TEMPORARY EVALUATION BUILD — the trial machinery
+gets DELETED once Peter picks a winner and its values are folded into the real Paper block.**
+On disk, NOT pushed at time of writing.
+
+- Peter, on v342's Paper: *"these colours just aren't working. They look like what a 1970s
+  brown website would look like… I want a clear improvement."* Diagnosis (he agreed): no one
+  bad colour — EVERY family shares the same warm undertone (warm page, tan hairlines, brown
+  greys, warm ink, olive accent, brown --warm), so the whole page averages to sepia. Three
+  whole-palette directions were mocked (`_planning/paper-palette-directions.html`, plus a
+  full token swatch sheet `_planning/paper-theme-colour-reference.html`) and he asked to
+  judge all three live on the phone.
+- **WHY NOT A THIRD THEME: ~30 structural rules are keyed to `[data-theme="paper"]`**
+  (the v340 settings-panel split, the v342 mission-list paper treatment). A new theme name
+  would silently miss all of them. So the trial rides on a SECOND attribute:
+  `<html data-theme="paper" data-palette="a|b|c">` — every paper structural rule still
+  applies, and three `[data-theme="paper"][data-palette=…]` blocks (directly after the
+  paper block) override TOKEN VALUES only. Graphite can never carry `data-palette`
+  (applyTheme clears it on any non-paper resolve).
+- **The three candidates:** A "OSM native" (page KEEPS the OSM land colour, the map's
+  woodland green becomes the working accent — saturated #3f8a37, not olive — and every
+  neutral cools; the recommended start), B "Crisp gallery" (cool near-white page #f5f5f2,
+  graphite ink — the one that abandons the map-blend, deliberately, as the control), C
+  "Topo field" (keeps the sand, deep forest-green ink #263329). Each overrides ~40 tokens:
+  page/text ramp/ink family/panel paper/seg chips/accent-mid/warm/route/sleep-food-water
+  tints/chev/mspeed/grip/mi-rails. **Chips, categories, zones and start/finish tints keep
+  current Paper values — they get their own tuning pass AFTER a direction wins.**
+- **UI: Settings → Appearance grows a "Palette trial" row (Current / A·OSM / B·Crisp /
+  C·Topo), only while Paper is showing.** `setPaperPalette()` beside `setTheme()`;
+  `UI.paperPalette` persisted in uiPrefs; mirrored to localStorage `pt_palette` so the
+  pre-paint script in `<head>` paints the trial palette with no flash.
+- **applyTheme is the one place the attribute is written** — set BEFORE the `cssVar()`
+  reads so the canvas caches (`_neutralGrey`, `_mapCanvasBg`) resolve trial values, and
+  the repaint check widened to `prev!==t||prevPal!==pal` so a palette flip within Paper
+  repaints the canvases exactly like a theme flip.
+- **Verified:** whole-file parse (3 script blocks node --check clean, ends `</html>`), CSS
+  290/290 + 8/8 braces, comment pairs balanced — AND a real headless-Chromium boot test:
+  flipped through all four states in the running app; data-palette/localStorage/​
+  `_neutralGrey` all track (`#383631 → #2c322e → #282c30 → #263329`); graphite clears the
+  attribute; the pick survives a paper→graphite→paper round trip. Screenshots confirmed
+  the Appearance row renders and the whole settings screen repaints per palette.
+  **NOT phone-tested.**
+- **REMOVAL LIST when the trial ends** (fold winner's values into the real paper block,
+  then delete): the three `[data-palette]` CSS blocks + banner comment, `setPaperPalette`,
+  the `_palOpt`/`palRow` bits in the Appearance body, `UI.paperPalette` (STATE + uiPrefs
+  save/load), and the `pt_palette` lines in applyTheme + the head boot script.
+
+### v342 (1 Aug) — the ink DESATURATES (#383631), and the Mission list gets the header-bar split.
+
+On disk, NOT pushed. Graphite proven untouched twice this
+version (settings AND a synthetic-route Mission render: 0 pixels differ in both).
+
+- Peter: #2f2b25 "reads brown rather than neutral" at large fills. **New palette rule,
+  recorded in PackTimes-style-guide.md: at these darkness levels keep chroma ≤ ~0.006
+  oklch** — higher chroma at a warm hue turns brown over a large area. The whole
+  --panel-* family shifted: bg #383631, fg #f2f0ea, body #cdc9c0, muted #a09a8e,
+  borders/chips #4a4841 (inset #2b2a26, card2 #4a4841, border2 #57544c). One edit, since
+  v341 pointed --stop-card-bg and the --slate-* family at these tokens — everything
+  followed.
+- **Mission list = paper panel with ink header**, same structure as the open settings
+  panels (.mission-card/.mission-hdr/.mission-body carry the old inline values; Paper
+  restyles them, Graphite provably identical). The coloured stop cards (mcard fills,
+  town ink, bivi purple) stay dark and become the panel's dark elements. Between cards:
+  day/leg labels + sub-stats → --mi-lbl/--mi-sub (paper: #8a8478), leg km → --mi-km
+  (paper: the dark green #3f6a3a — #8bc34a can't read on paper), bivi lines → --sleep-deep,
+  rails and the timeline dots' spines → --mi-rail* (paper: rgba(56,54,49,.28); graphite
+  keeps its three DIFFERENT rail values verbatim — white-alpha, hairline, border2).
+- ⚠ The tPlan summary and the tRoutes summary are near-duplicate template blocks
+  (`accent`/`lbl`/bivi spans). The bivi/total literals exist in BOTH; only the MISSION
+  copy was tokenised (the routes copy still sits on a dark card, where the light literals
+  are correct). Disambiguated by trailing context — a bare search-replace on those spans
+  would have silently recoloured the Routes tab.
+- Found and fixed ANOTHER v337 escapee: `Math.floor(adjDur||0)` + round pair (×2, tRoutes
+  + tPlan summaries) — the `(adjDur||0)` dodged the original grep. Now hmParts.
+- ⚠ Remaining hard-coded light-on-dark text in the LIGHT theme now on paper (reported,
+  not silently changed): the v340 settings list (zone tables #FDD835 1.3:1 etc., Strava
+  #f97316, PackRide #60a5fa, Geoapify #c084fc) — plus two new mission-tab finds: the
+  "Food plan" shortcut card's #fbbf24 title on the cream card (~1.7:1), and the
+  hike-a-bike mission node's #fdba74 name on its pale orange tint (~1.9:1).
+
+### v341 (1 Aug) — the warm ink goes APP-WIDE on Paper. One knob, as designed.
+
+**(v342, same day, desaturated this ink — #2f2b25 read brown at size. The one-knob claim held.)** On disk, NOT pushed. Graphite again proven untouched by
+screenshot pixel-diff (Route tab: 0 of 378,000 pixels differ).
+
+- Peter, after v340: "the slate grey appears to be on every page still except for the
+  settings page. I thought that just updating the style sheet would replace the slate grey
+  in every location?" — v340 was scoped to settings because his spec said settings; this
+  finishes the job. The undertone clash was the same everywhere.
+- **The one-knob design did its work**: --stop-card-bg now points at var(--panel-bg), and
+  the --slate-* family re-tuned to warm equivalents (--slate-card2 #3f3a31, border2
+  #6b6450, text ramp → the --panel-fg family). That single re-point carried the stop
+  cards, Route/Supplies cards, data cells (--cell-top), active tab, elevation bar, grade
+  overlay and canvas fills (applyTheme resolves --stop-card-bg at runtime; the two JS
+  fallback hexes updated to match). --chev-off and the --grip-* alphas were the only
+  rgba() slate literals — now rgba(47,43,37,…).
+- The .si (stop card) Paper rebind had its own cool-slate text/border hexes — now the warm
+  ramp (--panel-fg / -fg-body / -fg-muted, text-soft #bfb8a9, borders #55503f/#6b6450).
+  Its saturated-green accents kept (v-earlier: olive read "dead" on the dark card).
+- The --slate-* NAMES stay although the values are ink — ~40 call sites read them; a
+  rename sweep is churn with no behaviour change. The comment at the definition says so.
+- NOT visually verified: the Ride tab's data cells (needs a route loaded; it's the same
+  --cell-top token re-point). Phone test will show it.
+
+### v340 (1 Aug) — Paper settings panels: WARM INK, and open panels split into header + paper body.
+
+**(v341, same day, took the ink app-wide — the settings-only scope was v340's spec, not the end state.)** On disk, NOT pushed. Verified by REAL screenshots (Playwright
+against the served file), including a Graphite before/after pixel-diff: **0 of 378,000 pixels
+differ** — Graphite is provably untouched.
+
+- Peter's spec: on Paper, the settings panels' cool slate (--stop-card-bg #3d4551) clashes
+  with the warm paper page. SETTINGS ONLY — Route/Supplies keep the slate on both themes,
+  and the shared `.content.tab-* .card` rebinding rule is unchanged; the Paper settings
+  rules sit beside it and win on specificity, NOT via overrides appended at the bottom.
+- **Tokens, not hexes**: a --panel-* family in the [data-theme="paper"] block (ink
+  #2f2b25 / fg #f4f1e8 / body #cfc8ba / muted #a39b8c / border #55503f; paper surface
+  #fbf9f2 / border #dcd5c3 / body #5d574c / muted #8a8478 / strong #2f2b25; seg chips
+  #f4f1e8/#d3cbb7 unselected, #eef3e6/#6f9e69/#3f6a3a selected). Graphite defines no
+  --panel-* and consumes none.
+- **Open panels are no longer dark slabs**: `.set-panel.is-open` (state class written by
+  the existing section() re-render) turns the container paper with an ink HEADER BAR flush
+  to the top; the body sits in a padded `.set-panel-body` whose token rebind flips every
+  inner control to the light palette automatically. Collapsed panels: solid ink, same
+  geometry as before.
+- **Markup**: section()'s inline padding/margins moved into `.set-panel`/`.set-panel-hdr`
+  CSS with IDENTICAL values (that's what the pixel-diff proves); body got a wrapper div.
+  _themeOpt's inline selected-styling became `.seg-opt`/`.seg-on` classes (same values on
+  Graphite) so Paper could give the selected chip its soft-green fill.
+- **Green stays a signal**: ink/paper chrome is green-free; Save now (.btn-p → --accent3),
+  the selected theme chip, and zone/map colours keep it.
+- ⚠ Hard-coded light-on-dark TEXT colours now sitting on the paper body (reported to
+  Peter, deliberately not silently changed): the Sensors & Zones power/HR zone-range
+  colours (#FDD835 1.3:1, #BDBDBD 1.8:1, #66BB6A 2.2:1, #42A5F5 2.5:1, #FF7043 2.6:1 on
+  #fbf9f2), Strava's queued-upload orange #f97316 (2.7:1), PackRide's event-code blue
+  #60a5fa (2.4:1), and Accommodation Search's "Book" purple #c084fc (2.5:1 — inline
+  style, so the panel `strong` recolour can't reach it). All fine on Graphite.
+
 ### v339 (1 Aug) — the planning buttons are SQUARE. GRADE → GRAD made it possible.
 
-**⚠ NEXT CODE CHANGE IS v340.** v337 + v338 + v339 are on disk together, NOT pushed, NOT
+**(Shipped in the same 1 Aug push as v337/v338.)** v337 + v338 + v339 are on disk together, NOT pushed, NOT
 phone-tested. APP_VERSION reads v339; one push ships all three.
 
 - Peter, on seeing v338's uniform-52 column: *"I wish the buttons were square. If GRADE is

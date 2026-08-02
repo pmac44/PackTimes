@@ -78,6 +78,10 @@
   var t=localStorage.getItem('pt_theme_resolved');
   if(t!=='paper'&&t!=='graphite'){var h=new Date().getHours();t=(h>=7&&h<18)?'paper':'graphite';}
   document.documentElement.setAttribute('data-theme',t);
+  /* v343 TRIAL — mirror of the Paper palette pick, so a trial palette paints before
+     first render too (applyTheme keeps this in sync; empty string = current Paper). */
+  var p=localStorage.getItem('pt_palette');
+  if(t==='paper'&&p)document.documentElement.setAttribute('data-palette',p);
 }catch(e){document.documentElement.setAttribute('data-theme','graphite');}
 })();
 </script>
@@ -102,9 +106,15 @@
 :root{
   /* fonts — Archivo (UI) · IBM Plex Mono (fast digits) · Space Grotesk (slow digits).
      DM Sans/Mono kept as fallbacks in the stacks (still @font-face'd above). */
-  --sans:'Archivo','DM Sans',system-ui,sans-serif;         /* UI / prose */
-  --font:'IBM Plex Mono','DM Mono','Courier New',monospace;/* fast numbers: speed/power/cadence/HR */
-  --font-slow:'Space Grotesk','DM Sans',system-ui,sans-serif;/* slow numbers: distance/time/stoppage/ETA */
+  /* v344 — DM RESTORED (the old scheme's fonts; Archivo/Plex Mono/Space Grotesk retired —
+     Peter rejected the Plex figures TWICE, v244 and again v344; that's a decision, not a
+     flip-flop). ⚠ DM Mono ships 400/500 ONLY: font-synthesis is disabled on html,body, so
+     the ~190 weight-600/700 mono sites written in the Plex era render at TRUE 500 instead
+     of browser fake-bold (the v244/v265 smear). The retired @font-face files + woff2s stay
+     harmlessly on disk; strip them in a cleanup version. */
+  --sans:'DM Sans',system-ui,sans-serif;         /* UI / prose */
+  --font:'DM Mono','Courier New',monospace;      /* fast numbers: speed/power/cadence/HR */
+  --font-slow:'DM Mono','Courier New',monospace; /* slow numbers: distance/time/stoppage/ETA */
   --sab:env(safe-area-inset-bottom,0px);
   /* theme-invariant colours */
   --turn:#f2740c;   /* on-map turn-cue highlight (orange) — same on both themes; the map (OSM) is identical */
@@ -144,9 +154,9 @@
   --accent:#46505e;--accent-mid:#6d8446;--accent-on:#ffffff;
   --warm:#a8622d;--warm-deep:#7c4e16;
   --route:#2f5f9e;
-  --cell-top:#3d4551;--cell-top-text:#f2f4f7;--cell-top-muted:#aab2bd;   /* slate — same neutral as the stop cards (palette reinforcement, Peter) */
+  --cell-top:var(--panel-bg);--cell-top-text:var(--panel-fg);--cell-top-muted:var(--panel-fg-muted);   /* v341 — same neutral as the stop cards (palette reinforcement, Peter); the neutral is now the warm INK */
   --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;--mspeed-bg:#e4dfcb; /* moving-avg pill: stepped-down warm light */
-  --chev-off:rgba(61,69,81,0.3); /* unlit progress chevron — faint neutral slate (matches the ridden slate) */
+  --chev-off:rgba(56,54,49,0.3); /* unlit progress chevron — faint neutral ink (matches the ridden ink) */
   --elev-bg:var(--stop-card-bg); /* v304 — locked to the one neutral slate (Peter: "those greys are different, is there an alpha channel?" — yes, this used to be rgba(45,51,60,0.96)). Opaque now, matches the descent fill. Text rebinds light in .live-elev-bar */
   /* Planning tabs (20b spec): stop cards are TINTS with --text body copy; semantic colour lives
      only in the border/dot/tag. -deep tokens are the ONLY legal coloured text on Paper tints (>=4.5:1). */
@@ -162,12 +172,16 @@
      weak, and text handling was inconsistent between themes). Medium-dark so white text sits on
      them cleanly, same look in both themes. Sky (day/night) cards use dayNightBg. */
   --mcard-start:#4d7a52;--mcard-sleep:#6a5a9c;--mcard-finish:#9a4636;
-  /* THE single "contrast card" colour for light (Paper) mode: a mid-dark COOL SLATE. It's the
-     complement of the warm OSM-tan page (so it lifts), but low-saturation so it reads as a
-     neutral, not a new colour. Mid-dark (not near-black) so it's lighter/less heavy AND so the
-     near-black icon buttons sit a touch darker on it and blend — only starred/mooned pop.
-     ONE knob: tune lighter/darker or warmer/cooler here and every stop card follows. */
-  --stop-card-bg:#3d4551;--stop-card-br:#545e6b;
+  /* THE single "contrast card" colour for light (Paper) mode — v341: WARM INK, no longer the
+     cool slate (#3d4551). Peter, after v340 warmed the settings panels: the slate's cool
+     undertone clashed with the warm paper page EVERYWHERE, not just in settings. The ink is
+     the same --panel-bg the settings panels use, so the whole app shares one dark neutral
+     with one undertone. Still mid-dark and low-saturation for the same reasons as before
+     (lifts off the tan page, reads as a neutral, near-black icon buttons blend on it).
+     ONE knob: this token feeds the stop cards, Route/Supplies cards, data cells, active tab,
+     elevation bar, grade overlay and the canvas fallbacks (applyTheme resolves it at
+     runtime) — tune --panel-bg and every one of them follows. */
+  --stop-card-bg:var(--panel-bg);--stop-card-br:var(--panel-border);
   --sleep:#6f5f96;--food:#a8622d;--water:#46688f;--finish:#a04a38;
   --shadow-float:0 3px 10px rgba(90,80,50,.18);
   --z1:#8a8271;--z2:#46688f;--z3:#5d7a3a;--z4:#c98a2e;--z5:#b5501f;--z6:#a8382c;--z7:#6f5f96;
@@ -187,6 +201,7 @@
   /* Active tab indicator (icon + label + underline) — the neutral slate, NOT the olive accent
      (Peter): green is accent-only, the active tab is a neutral. */
   --tab-active:var(--stop-card-bg);
+  --wordmark:var(--stop-card-bg);   /* v344 — PackTimes wordmark: ink on Paper */
   /* CHIP fills — vibrant, mid-saturation category colours for the SOLID tag chips (Paper). ONE
      consistent colour per category, used the same on the light strip AND the dark stop cards, so
      they no longer read olive/pastel. White text stays legible on all of them. --cat-* stays the
@@ -196,16 +211,34 @@
   --chip-camp:#3f8452;--chip-caravan:#6b9330;--chip-peak:#5f6b7a;--chip-crossing:#3f8a9c;
   --chip-wc:#5f6b78;--chip-stop:#867653;--chip-church:#9560ac;--chip-school:#3f66a5;
   --chip-hall:#a07440;--chip-fire:#cc3a2b;--chip-police:#2f5f9e;
-  /* Slate-card palette — Route/Supplies/Settings cards use the ONE contrast slate
-     (--stop-card-bg). These lift the text/insets light so copy stays readable on it.
-     One knob per aspect; tune here and every card on those tabs follows. (Peter, Jul 2026) */
-  --slate-card2:#4c5561;--slate-inset:#2f353f;
-  --slate-text:#eceef1;--slate-text2:#c3c9d1;--slate-text3:#99a1ac;
-  --slate-border2:#5f6a78;--slate-accent:#8fbf6a;
+  /* Slate-card palette — Route/Supplies cards use the ONE contrast colour (--stop-card-bg,
+     now the warm ink — v341: the cool greys here are warm equivalents so the undertone
+     matches; the names keep "slate" because ~40 call sites read them). Text lifts light so
+     copy stays readable. One knob per aspect; tune here and every card follows. */
+  --slate-card2:#4a4841;--slate-inset:var(--panel-ink-inset);   /* v342 — #4a4841 = the borders/icon-chips value */
+  --slate-text:var(--panel-fg);--slate-text2:var(--panel-fg-body);--slate-text3:var(--panel-fg-muted);
+  --slate-border2:#57544c;--slate-accent:#8fbf6a;
+  /* v340 — SETTINGS panels: WARM INK, not the cool slate (Peter: the slate's cool
+     undertone clashes with the warm paper page). Settings-only — Route/Supplies keep the
+     slate above. Ink family (collapsed panel + the header bar of an open panel): */
+  /* v342 — DESATURATED. The first ink (#2f2b25) read BROWN at large fill sizes (Peter).
+     PALETTE RULE (Peter, 1 Aug): at these darkness levels keep chroma AT OR BELOW ~0.006
+     in oklch — higher chroma at a warm hue turns brown when it fills a large area. #383631
+     is ~half the chroma and a step lighter: neutral like the old slate, but with no blue.
+     Check any future dark fill against this rule BEFORE shipping it. */
+  --panel-bg:#383631;--panel-fg:#f2f0ea;--panel-fg-body:#cdc9c0;--panel-fg-muted:#a09a8e;
+  --panel-fg-strong:#f2f0ea;--panel-border:#4a4841;--panel-ink2:var(--slate-card2);--panel-ink-inset:#2b2a26;
+  /* Paper family (the body of an OPEN panel — open panels are paper with an ink header,
+     not full dark slabs): */
+  --panel-surface:#fbf9f2;--panel-surface-border:#dcd5c3;
+  --panel-body-fg:#5d574c;--panel-body-muted:#8a8478;--panel-body-strong:#383631;
+  /* Segmented options (theme chips etc.) on the paper body: */
+  --panel-seg-bg:#f4f1e8;--panel-seg-br:#d3cbb7;
+  --panel-seg-sel-bg:#eef3e6;--panel-seg-sel-br:#6f9e69;--panel-seg-sel-fg:#3f6a3a;
   /* Stops drag-grip — theme-aware so it has contrast on the light page (was white-alpha,
      invisible on Paper). */
-  --grip-bg:rgba(61,69,81,0.16);--grip-bg-active:rgba(61,69,81,0.32);
-  --grip-stroke:rgba(61,69,81,0.85);--grip-stroke-active:var(--stop-card-bg);
+  --grip-bg:rgba(56,54,49,0.16);--grip-bg-active:rgba(56,54,49,0.32);
+  --grip-stroke:rgba(56,54,49,0.85);--grip-stroke-active:var(--stop-card-bg);
   /* Weather bar text (v334) — the expanded bar sits on --bg2 (sunken tan #dcd5c0), and the
      old shared colours were dark-theme values: text3 measured 1.9:1 there and the pastel
      blue/red (#93c5fd/#fca5a5) 1.2:1 — invisible, per Peter's 23 Jul ride screenshot.
@@ -214,41 +247,127 @@
      treatments are per-theme, so weatherBarHTML now reads ONLY these tokens, no hex. */
   --wx-text:var(--text);--wx-hint:var(--text-soft);
   --wx-colder:#35516f;--wx-colder-mild:#46688f;--wx-warmer:#b23b2e;--wx-warn:var(--warm-deep);
+  /* v342 — mission-list colours on the PAPER body (the list sits on paper now; the coloured
+     stop cards are the dark elements). Bright-on-dark literals → dark-on-paper equivalents. */
+  --mi-title:var(--panel-fg);--mi-lbl:var(--panel-body-muted);--mi-lbl-sum:var(--panel-body-muted);
+  --mi-km:var(--panel-seg-sel-fg);--mi-sub:var(--panel-body-muted);--mi-total:var(--panel-body-fg);
+  --mi-rail:rgba(56,54,49,0.28);--mi-rail-node:rgba(56,54,49,0.28);--mi-rail-hike:rgba(56,54,49,0.28);
+  --mi-food:var(--food);--mi-ico-dim:var(--panel-body-muted);--mi-bivi:var(--sleep-deep);--mi-bivi-dim:rgba(85,71,124,0.8);
+}
+
+/* ═══ v343 PALETTE TRIAL — three candidate Paper palettes, switched from Settings →
+   Appearance (Palette row, shown while Paper is on). data-palette rides ALONGSIDE
+   data-theme="paper", so every [data-theme="paper"] structural rule (settings panels,
+   mission list) still applies — these blocks override TOKEN VALUES only. Graphite never
+   carries data-palette. Scope: the core families the direction mockups tuned (page, text
+   ramp, ink, panel paper, seg chips, accent green, warm, route, sleep/food/water tints,
+   chev/mspeed/grip/rails). Chips, categories, zones and the start/finish tints keep
+   current Paper values — they get their own pass once a direction wins. DELETE this whole
+   section (plus setPaperPalette, the Appearance Palette row, UI.paperPalette and the
+   pt_palette localStorage mirror) when the winner is folded into the real Paper block. */
+[data-theme="paper"][data-palette="a"]{
+  /* A — OSM NATIVE: the page keeps the OSM land colour; the map's woodland green becomes
+     the working accent; every neutral cools (the sepia was the shared warm undertone). */
+  --surface-raised:#fcfbf5;--surface-sunken:#e7e3d6;--hairline:#d3cfc0;
+  --text:#24262a;--text-soft:#585c60;--text-muted:#8a8e91;--text3:#9ba0a2;
+  --card2:#f5f3ea;--border2:#c2beae;
+  --panel-bg:#2c322e;--panel-fg:#f0f3ee;--panel-fg-body:#c6ccc4;--panel-fg-muted:#99a099;
+  --panel-fg-strong:#f0f3ee;--panel-border:#3e4540;--panel-ink-inset:#232823;
+  --panel-surface:#fbfaf4;--panel-surface-border:#ddd9ca;
+  --panel-body-fg:#565a55;--panel-body-muted:#8b8f88;--panel-body-strong:#2c322e;
+  --panel-seg-bg:#f5f3ea;--panel-seg-br:#d6d2c2;
+  --panel-seg-sel-bg:#e8f2e2;--panel-seg-sel-br:#57a04b;--panel-seg-sel-fg:#2f6d2a;
+  --slate-card2:#3e4540;--slate-border2:#4d554f;--slate-accent:#67b345;
+  --accent-mid:#3f8a37;--warm:#d9820e;--warm-deep:#8a570e;--route:#2f6cb3;
+  --card-sleep-bg:#e7e2f4;--card-sleep-br:#7566ab66;--sleep-deep:#5b4b93;
+  --card-food-bg:#f7e6cd;--card-food-br:#c07b2366;--food-deep:#8a570e;
+  --card-water-bg:#dce9f5;--card-water-br:#3f77b066;--water-deep:#2d5680;
+  --chev-off:rgba(44,50,46,0.3);--mspeed-bg:#e8e4d6;
+  --grip-bg:rgba(44,50,46,0.16);--grip-bg-active:rgba(44,50,46,0.32);--grip-stroke:rgba(44,50,46,0.85);
+  --mi-rail:rgba(44,50,46,0.28);--mi-rail-node:rgba(44,50,46,0.28);--mi-rail-hike:rgba(44,50,46,0.28);
+}
+[data-theme="paper"][data-palette="b"]{
+  /* B — CRISP GALLERY: cool near-white page, true greys, graphite ink, colour rationed.
+     The one direction that abandons the OSM land colour — the map reads warmer than the
+     chrome, which is exactly the trade being tested. */
+  --surface:#f5f5f2;--surface-raised:#ffffff;--surface-sunken:#e6e7e2;--hairline:#d7d8d1;
+  --text:#1f2226;--text-soft:#54585c;--text-muted:#888c90;--text3:#9a9ea2;
+  --card2:#f2f2ee;--border2:#c6c7bf;
+  --panel-bg:#282c30;--panel-fg:#f2f4f5;--panel-fg-body:#c8cdd1;--panel-fg-muted:#9aa0a5;
+  --panel-fg-strong:#f2f4f5;--panel-border:#3a4046;--panel-ink-inset:#1f2327;
+  --panel-surface:#fcfcfa;--panel-surface-border:#e0e1da;
+  --panel-body-fg:#55595c;--panel-body-muted:#8b8f92;--panel-body-strong:#282c30;
+  --panel-seg-bg:#f2f2ee;--panel-seg-br:#d8d9d1;
+  --panel-seg-sel-bg:#e6f4e8;--panel-seg-sel-br:#4aab5c;--panel-seg-sel-fg:#237a34;
+  --slate-card2:#3a4046;--slate-border2:#485055;--slate-accent:#5cc06e;
+  --accent-mid:#2e9e44;--warm:#e08a12;--warm-deep:#8d5c08;--route:#2e6fc2;
+  --card-sleep-bg:#e9e4f6;--card-sleep-br:#7b6bb566;--sleep-deep:#5b4b9e;
+  --card-food-bg:#faeacf;--card-food-br:#d08a1e66;--food-deep:#8d5c08;
+  --card-water-bg:#ddebf8;--card-water-br:#3f7cc066;--water-deep:#2b5c8f;
+  --chev-off:rgba(40,44,48,0.28);--mspeed-bg:#eaebe5;
+  --grip-bg:rgba(40,44,48,0.16);--grip-bg-active:rgba(40,44,48,0.32);--grip-stroke:rgba(40,44,48,0.85);
+  --mi-rail:rgba(40,44,48,0.28);--mi-rail-node:rgba(40,44,48,0.28);--mi-rail-hike:rgba(40,44,48,0.28);
+}
+[data-theme="paper"][data-palette="c"]{
+  /* C — TOPO FIELD: keeps the sand, swaps the grey-brown ink for a deep forest green —
+     the darkest colour on a topo map. Most character; the green cast is the statement. */
+  --surface-raised:#fcfaf3;--surface-sunken:#e6e1d0;--hairline:#d2cdba;
+  --text:#262a26;--text-soft:#5a5f58;--text-muted:#8a8e85;--text3:#9aa08f;
+  --card2:#f3f1e6;--border2:#c1bca6;
+  --panel-bg:#263329;--panel-fg:#edf3ec;--panel-fg-body:#c2cec2;--panel-fg-muted:#93a294;
+  --panel-fg-strong:#edf3ec;--panel-border:#37473b;--panel-ink-inset:#1d2820;
+  --panel-surface:#faf9f1;--panel-surface-border:#dcd7c4;
+  --panel-body-fg:#545a52;--panel-body-muted:#899084;--panel-body-strong:#263329;
+  --panel-seg-bg:#f3f1e6;--panel-seg-br:#d5d0bc;
+  --panel-seg-sel-bg:#e7f0dc;--panel-seg-sel-br:#6a9c46;--panel-seg-sel-fg:#3d6b24;
+  --slate-card2:#37473b;--slate-border2:#455649;--slate-accent:#7cb84f;
+  --accent-mid:#55953c;--warm:#cf6a1f;--warm-deep:#7f5410;--route:#2b6cb8;
+  --card-sleep-bg:#e6e1f2;--card-sleep-br:#6f5f9666;--sleep-deep:#544688;
+  --card-food-bg:#f6e3c8;--card-food-br:#b5741f66;--food-deep:#7f5410;
+  --card-water-bg:#d9e7f2;--card-water-br:#38709f66;--water-deep:#2b567c;
+  --chev-off:rgba(38,51,41,0.3);--mspeed-bg:#e8e3d2;
+  --grip-bg:rgba(38,51,41,0.16);--grip-bg-active:rgba(38,51,41,0.32);--grip-stroke:rgba(38,51,41,0.85);
+  --mi-rail:rgba(38,51,41,0.28);--mi-rail-node:rgba(38,51,41,0.28);--mi-rail-hike:rgba(38,51,41,0.28);
 }
 
 [data-theme="graphite"]{
   /* canonical */
-  --surface:#16181d;--surface-raised:#22252b;--surface-sunken:#101216;
-  --hairline:#262a31;--border-strong:#3a3f47;
-  --text:#eef1f4;--text-muted:#8b939e;
-  --accent:#4cd97b;--accent-mid:#2c8a4f;--accent-on:#101216;
-  --warm:#ffd166;--warm-deep:#ffd166;
-  --route:#5b9bd5;
-  --cell-top:#22252b;--cell-top-text:#eef1f4;--cell-top-muted:#8b939e;   /* slate — same neutral as the stop cards */
+  /* v344 — THE OLD DARK RESTORED. Values are the ORIGINAL pre-restyle palette (git
+     c4ecfb7, 27 Apr 2026 — the look Peter lived with through May–June and asked back):
+     green-black ground, green-tinted cards with VISIBLE green borders (the borders were
+     always in the CSS; the neutral-graphite values made them near-invisible, which is
+     why sections read as slabs), mint #4ade80 accent, vivid amber/blue/purple. */
+  --surface:#0a0f0a;--surface-raised:#141d14;--surface-sunken:#111811;
+  --hairline:#2a3d2a;--border-strong:#3a523a;
+  --text:#e8f5e8;--text-muted:#9db89d;
+  --accent:#4ade80;--accent-mid:#16a34a;--accent-on:#0a0f0a;
+  --warm:#fbbf24;--warm-deep:#fbbf24;
+  --route:#60a5fa;
+  --cell-top:#141d14;--cell-top-text:#e8f5e8;--cell-top-muted:#9db89d;   /* v344 — restored green-dark, same neutral as the stop cards */
   --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;   /* stays light in BOTH themes — the B&W pairing is the legibility feature */
   --mspeed-bg:#ccd6cf; /* moving-avg pill's stepped tone — the value v272 tuned on the OLED */
   --chev-off:rgba(255,255,255,0.24); /* unlit progress chevron — the value v261 tuned on the OLED */
   --elev-bg:var(--stop-card-bg); /* v304 — locked to the one neutral slate (was rgba(34,37,43,0.94)) */
   /* Planning tabs (20b spec) — dark tints; on Graphite the semantic colours themselves pass 4.5:1 */
-  --text-soft:#b9c0c9;
-  --card-start-bg:#1c2f22;--card-start-br:#4cd97b66;
-  --card-sleep-bg:#251f33;--card-sleep-br:#a08fe066;
-  --card-food-bg:#2a2417;--card-food-br:#ffd16655;
-  --card-water-bg:#1c2734;--card-water-br:#5b9bd566;
-  --card-town-bg:#22252b;--card-town-br:#3a3f47;
+  --text-soft:#b8ccb8;
+  --card-start-bg:#1c2f22;--card-start-br:#4ade8066;
+  --card-sleep-bg:#251f33;--card-sleep-br:#c084fc66;
+  --card-food-bg:#2a2417;--card-food-br:#fbbf2455;
+  --card-water-bg:#1c2734;--card-water-br:#60a5fa66;
+  --card-town-bg:#141d14;--card-town-br:#2a3d2a;
   --card-finish-bg:#2f1d1c;--card-finish-br:#e06a5a66;
-  --sleep-deep:#a08fe0;--food-deep:#ffd166;--water-deep:#5b9bd5;--finish-deep:#e06a5a;
-  --stop-card-bg:#22252b;--stop-card-br:#3a3f47;   /* stop cards: raised over the dark page (already dark + light text) */
+  --sleep-deep:#c084fc;--food-deep:#fbbf24;--water-deep:#60a5fa;--finish-deep:#e06a5a;
+  --stop-card-bg:#141d14;--stop-card-br:#2a3d2a;   /* stop cards: the old green-tinted card + a border you can actually see */
   --mcard-start:#357a48;--mcard-sleep:#5f4f92;--mcard-finish:#8a3a30;   /* mission cards: saturated + light text */
-  --sleep:#a08fe0;--food:#ffd166;--water:#5b9bd5;--finish:#e06a5a;
+  --sleep:#c084fc;--food:#fbbf24;--water:#60a5fa;--finish:#e06a5a;   /* v344 — the original vivid purple/amber/blue */
   --shadow-float:0 3px 10px rgba(0,0,0,.35);
   --z1:#8b939e;--z2:#4a7ab5;--z3:#6a9955;--z4:#d9a03c;--z5:#d96c2e;--z6:#cf4b3d;--z7:#8f7fd0;
   /* aliases: old names → canonical */
   --bg:var(--surface);--bg2:var(--surface-sunken);--bg3:var(--surface-raised);
-  --card:var(--surface-raised);--card2:#2a2e35;
+  --card:var(--surface-raised);--card2:#1e2a1e;
   --border:var(--hairline);--border2:var(--border-strong);
-  --accent2:var(--accent-mid);--accent3:var(--accent-mid);
-  --text2:var(--text-muted);--text3:#6b727c;
+  --accent2:#22c55e;--accent3:#16a34a;   /* v344 — the original two greens, verbatim */
+  --text2:var(--text-muted);--text3:#6a8a6a;
   --amber:var(--warm);--red:#f87171;--blue:var(--route);--purple:var(--sleep);
   /* stop-category hues (lifted for dark) */
   --cat-town:var(--accent);--cat-food:var(--food);--cat-water:var(--water);--cat-shop:#c8a6f0;
@@ -256,14 +375,27 @@
   --cat-camp:#6a9955;--cat-caravan:#9ccc4a;--cat-peak:#94a3b8;--cat-crossing:#6b9eb0;
   --cat-wc:#8b98a5;--cat-stop:#a89a80;--cat-church:#d9b8e8;--cat-school:#93c5fd;
   --cat-hall:#d4a373;--cat-fire:#ef4444;--cat-police:#5b8ce0;
-  /* Active tab indicator — a LIGHT neutral slate (the dark-mode tab bar needs a light mark; the
-     Paper slate would vanish on it). Neutral, not green. */
-  --tab-active:#c3c9d1;
+  /* Active tab indicator — v345: back to the old scheme's MINT (`.tab.active{color:var(--accent)}`
+     in the April build; Peter circled the white tab as part of the restore). This reverses the
+     v312-324 "neutral, not green" call for GRAPHITE only — Paper keeps its neutral. One token
+     to flip back if it reads wrong on the phone. */
+  --tab-active:var(--accent);
+  --wordmark:var(--accent);   /* v344 — mint wordmark on dark, as the old scheme had (it was
+     var(--stop-card-bg) = near-invisible dark-on-dark here, a Paper-ink rule leaking over) */
+  /* v342 — mission-list colour tokens. These are the EXACT literals tPlan used to inline,
+     moved here so Paper can restyle the list body without forking the template. */
+  /* v344 — THE POP RESTORED: the whole leg block wears ONE bright mint (Peter: the old
+     uniform green read better than km-green over creamy secondaries — "deader"). Labels
+     stay muted; bivi keeps purple, now the original #c084fc. */
+  --mi-title:var(--text3);--mi-lbl:var(--text3);--mi-lbl-sum:var(--text3);   /* v345 — the quiet dark-green header, as the old scheme (Peter: low contrast but it worked) */
+  --mi-km:var(--accent);--mi-sub:var(--accent);--mi-total:var(--accent);
+  --mi-rail:rgba(255,255,255,0.18);--mi-rail-node:var(--hairline);--mi-rail-hike:var(--border2);
+  --mi-food:#fbbf24;--mi-ico-dim:#e8f5e8;--mi-bivi:#c084fc;--mi-bivi-dim:rgba(192,132,252,0.7);
   /* Slate-card palette — on Graphite the cards are already dark, so these mirror the
      existing card look (near-no-op); kept as tokens so both themes share one rule. */
-  --slate-card2:#2f343c;--slate-inset:#1a1d22;
-  --slate-text:#eef1f4;--slate-text2:#b9c0c9;--slate-text3:#8b939e;
-  --slate-border2:#3a3f47;--slate-accent:#4cd97b;
+  --slate-card2:#1e2a1e;--slate-inset:#0a0f0a;
+  --slate-text:#e8f5e8;--slate-text2:#b8ccb8;--slate-text3:#9db89d;
+  --slate-border2:#3a523a;--slate-accent:#4ade80;
   /* Stops drag-grip — keep the dark-mode white-alpha look */
   --grip-bg:rgba(255,255,255,0.10);--grip-bg-active:rgba(255,255,255,0.22);
   --grip-stroke:rgba(255,255,255,0.55);--grip-stroke-active:rgba(255,255,255,0.85);
@@ -275,7 +407,7 @@
   --wx-colder:#93c5fd;--wx-colder-mild:#bfdbfe;--wx-warmer:#fca5a5;--wx-warn:#f97316;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--fs-base);overscroll-behavior-y:contain;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--fs-base);overscroll-behavior-y:contain;font-synthesis:none;/* v344 — DM Mono has no 600/700; render true 500, never fake bold */}
 .app{display:flex;flex-direction:column;height:100vh;max-width:500px;margin:0 auto;}
 /* Long pop-ups (How PackTimes Works, Speed Estimation, Advanced Estimation) go edge-to-edge
    full-screen on phones — see PackTimes-style-guide.md "Modals" note. Reverts to a normal
@@ -294,7 +426,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   .modal-sheet-full{height:auto;max-height:90vh;border-radius:14px 14px 0 0;}
 }
 .header{display:none;}
-.hlogo{font-size:20px;}.htitle{font-size:20px;font-weight:600;color:var(--stop-card-bg);letter-spacing:-.5px;}
+.hlogo{font-size:20px;}.htitle{font-size:20px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;}
 .hroute{font-size:18px;color:var(--text3);font-family:var(--font);margin-left:4px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .gpspill{display:flex;align-items:center;gap:4px;font-size:18px;font-family:var(--font);padding:3px 7px;border-radius:20px;border:1px solid;margin-left:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .gpson{color:var(--red);border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);}
@@ -717,7 +849,58 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   background:var(--card);
   border-color:var(--border);
 }
-.ctitle{font-size:var(--fs-base);font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);margin-bottom:var(--sp-3);}
+/* v340 — settings panel structure. These classes carry what used to be INLINE styles in
+   tSettings' section() helper (same values, so Graphite is pixel-identical); they exist so
+   the Paper theme below can restyle by state. .is-open is toggled by the existing
+   expand/collapse re-render (section() writes it from UI.settingsExp). */
+.set-panel{padding:10px 12px;}
+.set-panel.is-open{padding:14px 12px;}
+.set-panel-hdr{display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
+.set-panel.is-open .set-panel-hdr{margin-bottom:10px;}
+/* v340 — Paper ONLY: settings panels re-tint from cool slate to WARM INK (the slate's cool
+   undertone clashed with the warm paper page — Peter), and an OPEN panel splits into an ink
+   HEADER BAR over a PAPER body, so expanded sections stop being large dark slabs while the
+   header bars keep the sidebar scannable. All values are --panel-* tokens in the
+   [data-theme="paper"] block — tune there, not here. Graphite takes none of this (these
+   rules are theme-scoped; the shared slate rule above still feeds it), and Route/Supplies
+   keep the slate on both themes. Green stays a SIGNAL (Save now, selected chip, zone/map
+   colours) — the ink and paper here are deliberately green-free chrome. */
+[data-theme="paper"] .content.tab-settings .card.set-panel{
+  --card:var(--panel-bg);--card2:var(--panel-ink2);--bg3:var(--panel-ink-inset);
+  --border:var(--panel-border);--border2:var(--panel-border);
+  --text:var(--panel-fg-body);--text2:var(--panel-fg-body);--text3:var(--panel-fg-muted);
+  background:var(--card);border-color:var(--border);
+}
+[data-theme="paper"] .content.tab-settings .card.set-panel .ctitle{color:var(--panel-fg);}
+[data-theme="paper"] .content.tab-settings .card.set-panel strong{color:var(--panel-fg-strong);}
+[data-theme="paper"] .content.tab-settings .card.set-panel.is-open{
+  background:var(--panel-surface);border:1px solid var(--panel-surface-border);
+  border-radius:var(--r-card);overflow:hidden;padding:0;
+}
+[data-theme="paper"] .content.tab-settings .card.set-panel.is-open .set-panel-hdr{
+  background:var(--panel-bg);padding:10px 12px;margin-bottom:0;
+}
+[data-theme="paper"] .content.tab-settings .card.set-panel.is-open .set-panel-body{
+  padding:14px 12px;
+  --text:var(--panel-body-fg);--text2:var(--panel-body-fg);--text3:var(--panel-body-muted);
+  --card2:var(--panel-seg-bg);--bg3:var(--panel-seg-bg);
+  --border:var(--panel-seg-br);--border2:var(--panel-seg-br);
+  --accent:var(--panel-seg-sel-fg); /* green-as-signal on paper: dark enough to read as text */
+}
+[data-theme="paper"] .content.tab-settings .card.set-panel.is-open .set-panel-body strong{color:var(--panel-body-strong);}
+/* v342 — the MISSION panel takes the same header-bar treatment. The list is always "open",
+   so no state class: on Paper the container is paper with the ink header flush to the top,
+   and the stop list sits on the paper body (the coloured stop cards become the dark
+   elements). The .mission-* classes carry what tPlan used to inline — same values, so
+   Graphite is pixel-identical. */
+.mission-card{padding:14px 12px;background:var(--stop-card-bg);border-color:var(--stop-card-br);}
+.mission-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+[data-theme="paper"] .content.tab-plan .card.mission-card{background:var(--panel-surface);border:1px solid var(--panel-surface-border);border-radius:var(--r-card);overflow:hidden;padding:0;}
+[data-theme="paper"] .content.tab-plan .card.mission-card .mission-hdr{background:var(--panel-bg);padding:10px 12px;margin-bottom:0;}
+[data-theme="paper"] .content.tab-plan .card.mission-card .mission-body{padding:14px 12px;}
+[data-theme="paper"] .content.tab-settings .card.set-panel.is-open .set-panel-body .seg-opt{color:var(--panel-body-strong);}
+[data-theme="paper"] .content.tab-settings .card.set-panel.is-open .set-panel-body .seg-on{background:var(--panel-seg-sel-bg);border-color:var(--panel-seg-sel-br);color:var(--panel-seg-sel-fg);}
+.ctitle{font-size:var(--fs-base);font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-family:var(--font);margin-bottom:var(--sp-3);}/* v345 — text3, the old scheme's quiet card title (was text2) */
 .upload-zone{border:2px dashed var(--border2);border-radius:var(--r-card);padding:24px 14px;text-align:center;cursor:pointer;transition:all .2s;display:block;}
 .upload-zone:hover{border-color:var(--accent);background:rgba(74,222,128,.05);}
 .upload-zone input{display:none;}
@@ -760,15 +943,20 @@ select option{background:var(--bg3);}
 .btn-d{background:var(--red2)!important;border-color:var(--red2)!important;color:#fff!important;font-weight:600;}
 .btn-d:hover,.btn-d:active{background:var(--red3)!important;border-color:var(--red3)!important;color:#fff!important;}
 .btn-sm{padding:6px 12px;font-size:var(--fs-sm);}
+/* v340 — segmented option buttons (theme chips). Exactly the styles _themeOpt used to
+   inline (values unchanged → Graphite identical); classed so Paper's open-panel scope
+   above can restyle selected/unselected without touching markup. */
+.seg-opt{flex:1;flex-direction:column;gap:2px;justify-content:center;padding:9px 4px;}
+.seg-on{border-color:var(--accent);color:var(--accent);}
 .btn-full{width:100%;justify-content:center;}
 .si{background:var(--stop-card-bg);border:1px solid var(--stop-card-br);border-radius:8px;padding:9px 11px;margin-bottom:6px;display:flex;align-items:flex-start;gap:9px;cursor:pointer;transition:border-color .15s;box-shadow:var(--shadow-float);}
 /* Paper: the stop card is DARK, so rebind the row's tokens to light/lifted values ONCE — every
    child (name=--text, meta=--text3, ETA=--accent, tags=--cat-*) adapts, no per-element edits.
    Graphite rows are already a raised dark card with light text, so no rebind needed there. */
 [data-theme="paper"] .si{
-  --text:#eceef1;--text2:#ccd2da;--text3:#a6aeba;--text-soft:#bcc3cd;
-  --accent:#a6e05f;--accent2:#a6e05f;--accent3:#96d34f;   /* saturated green — lifts off the slate (olive read "dead") */
-  --border:#545e6b;--border2:#66717f;
+  --text:var(--panel-fg);--text2:var(--panel-fg-body);--text3:var(--panel-fg-muted);--text-soft:#b3afa6;   /* v341/v342 — neutral ramp on the ink */
+  --accent:#a6e05f;--accent2:#a6e05f;--accent3:#96d34f;   /* saturated green — lifts off the dark card (olive read "dead") */
+  --border:var(--panel-border);--border2:#57544c;
   --amber:#ffd166;--red:#f2a08f;--blue:#8fbfe8;--purple:#c3b2ec;
   --cat-town:#8fd3a4;--cat-food:#ffd166;--cat-water:#8fbfe8;--cat-sleep:#c3b2ec;
   --cat-accom:#c3b2ec;--cat-fuel:#f0a86a;--cat-hut:#d8be8e;--cat-camp:#9fc98a;
@@ -1430,7 +1618,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v339';
+window.APP_VERSION='v345';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1445,6 +1633,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   estModeAdv:false, // Basic vs Advanced estimation — global (rider property, not route); syncs via plan.json
   fatigueMode:'off', // Optional fatigue model: off|mild|moderate|strong — global rider setting
   themeMode:'auto', // Colour theme: auto (paper by day / graphite after sunset) | paper | graphite
+  paperPalette:'', // v343 TRIAL — Paper palette override: '' current | 'a' OSM native | 'b' crisp | 'c' topo. Delete with the trial.
   ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
@@ -1572,7 +1761,7 @@ async function saveAll(){
   await DB.setKV('dbxExpiresAt',UI.dbxExpiresAt||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -1648,6 +1837,7 @@ async function loadAll(){
       if(prefs.estModeAdv!==undefined)UI.estModeAdv=prefs.estModeAdv;
       if(prefs.fatigueMode)UI.fatigueMode=prefs.fatigueMode;
       if(prefs.themeMode)UI.themeMode=prefs.themeMode;
+      if(prefs.paperPalette!==undefined)UI.paperPalette=prefs.paperPalette;
     }
     // Estimation mode is global (v166). Older versions stored it per-route as
     // riderPreset='custom' — if the pref was never saved, infer it from the routes
@@ -12693,6 +12883,14 @@ function setTheme(mode){
   applyTheme();      // resolves + repaints (canvases too)
   if(UI.tab==='settings')render();  // refresh the Appearance buttons + "now showing" line
 }
+// v343 TRIAL — Paper palette picker (Settings → Appearance, Paper only). ''|a|b|c.
+// Delete with the trial (see the [data-palette] CSS blocks for the full removal list).
+function setPaperPalette(v){
+  UI.paperPalette=v||'';
+  saveAll();
+  applyTheme();      // sets/clears data-palette + repaints via the prevPal check
+  if(UI.tab==='settings')render();
+}
 // Fatigue "?" help sheet — mirrors showSurfHelp so it reads as the same control.
 // Keeps the Speed modal panel uncluttered; the detail lives here for whoever digs in.
 function showFatigueHelp(){
@@ -15006,7 +15204,7 @@ function _render(){
   initDesktop(); // ensure content-wrap is in the right container
   // Tabs
   document.getElementById('tabs').innerHTML=
-    (IS_DESKTOP()?'<div style="width:400px;min-width:400px;display:flex;align-items:center;gap:5px;padding:0 16px;border-right:1px solid var(--border);box-sizing:border-box;"><span style="color:var(--stop-card-bg);display:inline-flex;align-items:center;line-height:1;"><svg width="24" height="24" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--stop-card-bg);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
+    (IS_DESKTOP()?'<div style="width:400px;min-width:400px;display:flex;align-items:center;gap:5px;padding:0 16px;border-right:1px solid var(--border);box-sizing:border-box;"><span style="color:var(--wordmark);display:inline-flex;align-items:center;line-height:1;"><svg width="24" height="24" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;font-family:var(--sans);white-space:nowrap;">PackTimes</span></div>':'')
     +TABS.map(t=>
     `<button class="tab ${UI.tab===t.id?'active':''}" data-tab="${t.id}">
       <span class="tab-icon">${t.icon}</span>${t.label}</button>`).join('');
@@ -16762,7 +16960,7 @@ function tRoutes(r){
   </div>`;
   const headerBits=`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
-    <span style="color:var(--stop-card-bg);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--stop-card-bg);letter-spacing:-.5px;">PackTimes</span>
+    <span style="color:var(--wordmark);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;">PackTimes</span>
     <span style="flex:1;"></span>
     <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
   </div>
@@ -16886,7 +17084,7 @@ function tRoutes(r){
       const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
       const totalGain=elevGain(r.points);
       const avgGainPerKm=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
-      const totRideH=Math.floor(adjDur||0),totRideM=Math.round(((adjDur||0)-totRideH)*60);
+      const[totRideH,totRideM]=hmParts(adjDur||0); // v342 — a floor/round pair v337's sweep missed ((adjDur||0) dodged the grep)
       const totRideHM=adjDur?totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':''):'—';
       const totSpd=(adjDur&&adjDur>0.1)?(r.totalDist/adjDur).toFixed(1):null;
       const totalH=(adjDur||0)+totalSleepH+totalMealH;
@@ -16913,9 +17111,9 @@ function tRoutes(r){
           +'<span style="'+accent+'">'+r.totalDist.toFixed(1)+' km</span>'
           +(adjDur?'<br><span style="'+accent+'">'+totRideHM+(totSpd?' · '+totSpd+' km/h':'')+'</span>':'')
           +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
-          +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+totalSleepH.toFixed(1)+'h bivi</span>':'')
-          +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
-          +(nights>0?'<span style="font-size:14px;color:rgba(179,157,219,0.7);display:block;margin-top:4px;">'+sleepStops+' of '+nights+' nights sleep planned'+(sleepStops<nights?' — '+(nights-sleepStops)+' unplanned':'')+'</span>':'')
+          +(totalSleepH?'<br><span style="'+accent+'color:#c084fc;display:block;">'+totalSleepH.toFixed(1)+'h bivi</span>':'')
+          +(avgSleepPerNight?'<span style="'+accent+'color:#c084fc;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
+          +(nights>0?'<span style="font-size:14px;color:rgba(192,132,252,0.7);display:block;margin-top:4px;">'+sleepStops+' of '+nights+' nights sleep planned'+(sleepStops<nights?' — '+(nights-sleepStops)+' unplanned':'')+'</span>':'')
           +(adjDur?(()=>{
             const totMin=Math.round(totalH*60),td=Math.floor(totMin/1440),th2=Math.floor((totMin%1440)/60),tm2=totMin%60; // v337 carry, cascades d←h←m
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
@@ -17007,14 +17205,17 @@ function tSettings(r){
   const section=(key,title,bodyHtml,alwaysShow=true)=>{
     if(!alwaysShow)return'';
     const open=se[key];
-    return`<div class="card" style="padding:${open?'14px 12px':'10px 12px'};">
-      <div id="settings-hdr-${key}" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${open?'margin-bottom:10px;':''}">
+    // v340 — padding/margins moved from inline styles into .set-panel/.set-panel-hdr CSS
+    // (same values) so the Paper theme can restyle open panels; body wrapped so Paper can
+    // give it its own surface. .is-open is the state class Paper keys off.
+    return`<div class="card set-panel${open?' is-open':''}">
+      <div id="settings-hdr-${key}" class="set-panel-hdr">
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="font-size:16px;color:var(--text3);">${open?'▼':'▶'}</span>
           <span class="ctitle" style="margin-bottom:0;">${title}</span>
         </div>
       </div>
-      ${open?bodyHtml:''}
+      ${open?`<div class="set-panel-body">${bodyHtml}</div>`:''}
     </div>`;
   };
 
@@ -17391,9 +17592,23 @@ function tSettings(r){
   // ── Appearance (theme) ──
   const _themeOpt=(val,label,sub)=>{
     const on=(UI.themeMode||'auto')===val;
-    return`<button class="btn btn-sm" onclick="setTheme('${val}')" style="flex:1;flex-direction:column;gap:2px;justify-content:center;padding:9px 4px;${on?'border-color:var(--accent);color:var(--accent);':''}">
+    return`<button class="btn btn-sm seg-opt${on?' seg-on':''}" onclick="setTheme('${val}')">
       <span style="font-weight:600;">${label}</span><span style="font-size:11px;color:var(--text3);">${sub}</span></button>`;
   };
+  // v343 TRIAL — Paper palette row, shown only while Paper is on screen. Delete with the trial.
+  const _palOpt=(val,label)=>{
+    const on=(UI.paperPalette||'')===val;
+    return`<button class="btn btn-sm seg-opt${on?' seg-on':''}" onclick="setPaperPalette('${val}')">
+      <span style="font-weight:600;">${label}</span></button>`;
+  };
+  const palRow=(UI._theme==='paper')?`
+    <p style="font-size:13px;color:var(--text2);line-height:1.5;margin:14px 0 6px;"><strong>Palette trial</strong> — candidate colour schemes for Paper. Flips the whole app live; your pick sticks until changed.</p>
+    <div style="display:flex;gap:8px;">
+      ${_palOpt('','Current')}
+      ${_palOpt('a','A · OSM')}
+      ${_palOpt('b','B · Crisp')}
+      ${_palOpt('c','C · Topo')}
+    </div>`:'';
   const appearanceBody=`
     <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Choose the colour theme. <strong>Auto</strong> uses a warm light look by day and a dark look after sunset.</p>
     <div style="display:flex;gap:8px;">
@@ -17401,11 +17616,12 @@ function tSettings(r){
       ${_themeOpt('paper','Paper','Light — day')}
       ${_themeOpt('graphite','Graphite','Dark — night')}
     </div>
+    ${palRow}
     <p style="font-size:13px;color:var(--text3);margin-top:10px;line-height:1.5;">Now showing: <strong>${(UI._theme||'graphite')==='paper'?'Paper (light)':'Graphite (dark)'}</strong>.</p>`;
 
   return`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
-    <span style="color:var(--stop-card-bg);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--stop-card-bg);letter-spacing:-.5px;">PackTimes</span>
+    <span style="color:var(--wordmark);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;">PackTimes</span>
     <span style="flex:1;"></span>
     <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
   </div>
@@ -18170,7 +18386,7 @@ function _sunApprox(lat,dateStr){
 //  flash next launch, updates the status-bar colour, and repaints the canvases
 //  (map/elevation) that bake their colours in JS. THEME_PAL is read by the draw
 //  code (see the canvas palette section).
-const _THEME_STATUS={paper:'#f2efe9',graphite:'#16181d'};
+const _THEME_STATUS={paper:'#f2efe9',graphite:'#0a0f0a'};   // v344 — restored green-black
 // Read a CSS custom property's live value — lets canvas code (which can't use var())
 // pick up theme colours. Cheap values are cached on the elements below via applyTheme.
 function cssVar(name,fallback){
@@ -18185,7 +18401,7 @@ let _mapCanvasBg='#0d1a0d';
 // markers are drawn in tight per-point loops, so a getComputedStyle per call is out). Used for
 // the elevation-profile descent fill, the map grade overlay, the grade data-cell and the
 // dark-background km markers, so every "neutral grey" in the app is literally the same colour.
-let _neutralGrey='#3d4551';
+let _neutralGrey='#383631'; // v342 — neutral ink (fallback only; applyTheme resolves the live value from --stop-card-bg)
 function _resolveTheme(){
   const m=(UI&&UI.themeMode)||'auto';
   if(m==='paper'||m==='graphite')return m;
@@ -18204,14 +18420,24 @@ function _resolveTheme(){
 function applyTheme(repaint){
   const t=_resolveTheme();
   const prev=document.documentElement.getAttribute('data-theme');
+  const prevPal=document.documentElement.getAttribute('data-palette')||'';
   document.documentElement.setAttribute('data-theme',t);
+  // v343 TRIAL — the Paper palette override rides on data-palette; only ever set while
+  // Paper is showing, and mirrored to localStorage for the pre-paint script in <head>.
+  // Set BEFORE the cssVar() reads below so the canvas caches resolve the trial values.
+  const pal=(t==='paper'&&UI.paperPalette)?UI.paperPalette:'';
+  if(pal)document.documentElement.setAttribute('data-palette',pal);
+  else document.documentElement.removeAttribute('data-palette');
+  try{localStorage.setItem('pt_palette',pal);}catch(e){}
   UI._theme=t;
-  _mapCanvasBg=cssVar('--surface-sunken',t==='paper'?'#dcd5c0':'#0d1a0d');
-  _neutralGrey=cssVar('--stop-card-bg',t==='paper'?'#3d4551':'#22252b');
+  _mapCanvasBg=cssVar('--surface-sunken',t==='paper'?'#dcd5c0':'#111811');
+  _neutralGrey=cssVar('--stop-card-bg',t==='paper'?'#383631':'#141d14');   // v344 fallbacks match the restored tokens
   try{localStorage.setItem('pt_theme_resolved',t);}catch(e){}
   try{const mc=document.querySelector('meta[name="theme-color"]'); if(mc)mc.setAttribute('content',_THEME_STATUS[t]||'#0d1a0d');}catch(e){}
   // Repaint canvas-drawn chrome (CSS updates on its own; canvas does not).
-  if(repaint!==false&&prev!==t)_themeRepaint();
+  // v343 TRIAL — a palette flip within Paper changes the canvas colours too, so it
+  // repaints on the same rule as a theme flip.
+  if(repaint!==false&&(prev!==t||prevPal!==pal))_themeRepaint();
 }
 function _themeRepaint(){
   ['live-map','stops-map','desktop-map','rec-detail-map','view-map'].forEach(id=>{
@@ -18314,7 +18540,7 @@ function dayNightLabel(dt,sun){
 function tPlan(r){
   const sdt=startDT(r);
   const header=`<div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
-    <span style="color:var(--stop-card-bg);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--stop-card-bg);letter-spacing:-.5px;">PackTimes</span>
+    <span style="color:var(--wordmark);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;">PackTimes</span>
     <span style="flex:1;"></span>
     <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
   </div>`;
@@ -18412,7 +18638,7 @@ function tPlan(r){
       const durH=durMs?durMs/3600000:null;
       const durStr=durH!==null?fmtDurHM(durH):''; // v337 carry
       const isLast=i===nodes.length-1;
-      const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--border2);margin-top:2px;"></div>';
+      const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--mi-rail-hike);margin-top:2px;"></div>';
       rows+='<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:2px;">'
         +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;padding-top:2px;">'
           +'<div style="width:12px;height:12px;border-radius:2px;background:#f97316;flex-shrink:0;"></div>'
@@ -18454,7 +18680,7 @@ function tPlan(r){
     const bgCol=node.isStart?'var(--mcard-start)':node.isFinish?'var(--mcard-finish)':isSleep?'var(--mcard-sleep)':(sky||'var(--stop-card-bg)');
     const borderCol='rgba(255,255,255,0.18)';   // subtle light edge on the saturated cards
     const dotCol=node.isStart?'var(--mcard-start)':node.isFinish?'var(--mcard-finish)':isSleep?'var(--mcard-sleep)':'var(--text-muted)';
-    const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--hairline);margin-top:2px;"></div>';
+    const spine=isLast?'':'<div style="width:2px;flex:1;min-height:32px;background:var(--mi-rail-node);margin-top:2px;"></div>';
     const isLightBg=false;
     const textCol='#f6f4ef';
     const text3Col='rgba(246,244,239,0.78)';
@@ -18649,15 +18875,15 @@ function tPlan(r){
       const[rh,rm]=hmParts(segRideH); // v337 carry — this line was the '2h 60m' in Peter's screenshot
       const rideHM=segRideH>0.05?(rh>0?(rh+'h'+(rm>0?' '+String(rm).padStart(2,'0')+'m':'')):(rm+'m')):'';
       const rideStr=rideHM+(r.cumRiding&&segAvgSpd&&rideHM?' · '+segAvgSpd+' km/h':'');
-      const foodIcon='<span style="display:inline-flex;align-items:center;'+(hasFood?'color:#fbbf24;':'opacity:.3;color:#eceef1;')+'">'+ICON_FOOD+'</span>';
+      const foodIcon='<span style="display:inline-flex;align-items:center;'+(hasFood?'color:var(--mi-food);':'opacity:.3;color:var(--mi-ico-dim);')+'">'+ICON_FOOD+'</span>';
       const waterIcon='<span style="font-size:18px;'+(hasWater?'':'opacity:.22;')+'">💧</span>';
       // Day/leg label using simple counters
       const curDay=_planDay,curLeg=_planLeg;
       _planLeg++;
       const dayLabel=!node.isFinish?(
         UI.planSleepOnly?
-          '<div style="font-size:12px;font-weight:600;color:rgba(236,238,241,0.65);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' ride</div>':
-          '<div style="font-size:12px;font-weight:600;color:rgba(236,238,241,0.65);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' · Leg '+curLeg+'</div>'
+          '<div style="font-size:12px;font-weight:600;color:var(--mi-lbl);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' ride</div>':
+          '<div style="font-size:12px;font-weight:600;color:var(--mi-lbl);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Day '+curDay+' · Leg '+curLeg+'</div>'
       ):'';
 
       const segPts=r.points.filter(p=>p.dist>=node.dist&&p.dist<=next.dist);
@@ -18667,14 +18893,14 @@ function tPlan(r){
 
       rows+='<div style="display:flex;align-items:stretch;gap:10px;">'
         +'<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;">'
-          +'<div style="width:2px;flex:1;min-height:40px;background:rgba(255,255,255,0.18);"></div>'
+          +'<div style="width:2px;flex:1;min-height:40px;background:var(--mi-rail);"></div>'
         +'</div>'
         +'<div style="flex:1;padding:4px 0 4px 2px;display:flex;align-items:center;justify-content:space-between;">'
           +'<div>'
             +dayLabel
-            +'<span style="font-size:19px;font-weight:600;color:#8bc34a;font-family:var(--font);">'+segDist.toFixed(1)+' km</span>'
-            +(rideStr?'<br><span style="font-size:15px;font-weight:500;color:rgba(236,238,241,0.72);font-family:var(--font);">'+rideStr+'</span>':'')
-            +(elevStr?'<br><span style="font-size:15px;font-weight:500;color:rgba(236,238,241,0.72);font-family:var(--font);">'+elevStr+'</span>':'')
+            +'<span style="font-size:19px;font-weight:600;color:var(--mi-km);font-family:var(--font);">'+segDist.toFixed(1)+' km</span>'
+            +(rideStr?'<br><span style="font-size:15px;font-weight:500;color:var(--mi-sub);font-family:var(--font);">'+rideStr+'</span>':'')
+            +(elevStr?'<br><span style="font-size:15px;font-weight:500;color:var(--mi-sub);font-family:var(--font);">'+elevStr+'</span>':'')
           +'</div>'
           +'<div style="display:flex;gap:4px;">'+foodIcon+waterIcon+'</div>'
         +'</div>'
@@ -18684,7 +18910,7 @@ function tPlan(r){
 
   const summaryParts=[];
   if(adjDur)summaryParts.push('<span>🚴 '+fmtHM(adjDur)+' riding</span>');
-  if(totalSleepH)summaryParts.push('<span style="color:#b39ddb;">😴 '+totalSleepH.toFixed(1)+'h bivi</span>');
+  if(totalSleepH)summaryParts.push('<span style="color:#c084fc;">😴 '+totalSleepH.toFixed(1)+'h bivi</span>');
   // Total time
   if(adjDur&&totalSleepH){
     const totalH=adjDur+totalSleepH+totalMealHours(r||cur());
@@ -18697,19 +18923,19 @@ function tPlan(r){
   let sleepExtra='';
   if(nights>0&&totalSleepH){
     const avgSleep=(totalSleepH/sleepStops).toFixed(1);
-    sleepExtra+='<div style="font-size:15px;color:#b39ddb;margin-top:6px;">avg '+avgSleep+'h per bivi · '+nights+' night'+(nights!==1?'s':'')+'</div>';
+    sleepExtra+='<div style="font-size:15px;color:#c084fc;margin-top:6px;">avg '+avgSleep+'h per bivi · '+nights+' night'+(nights!==1?'s':'')+'</div>';
     if(sleepStops<nights){
       const missing=nights-sleepStops;
-      sleepExtra+='<div style="font-size:14px;color:rgba(179,157,219,0.7);margin-top:3px;">😴 '+sleepStops+' of '+nights+' nights have a bivi — '+missing+' unplanned</div>';
+      sleepExtra+='<div style="font-size:14px;color:rgba(192,132,252,0.7);margin-top:3px;">😴 '+sleepStops+' of '+nights+' nights have a bivi — '+missing+' unplanned</div>';
     }
   }
 
   const printBtn='<button class="btn btn-sm" id="btn-print-mission" style="font-size:12px;padding:3px 8px;font-family:var(--font);letter-spacing:.3px;">Print</button>';
   return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;"><div style="display:flex;align-items:center;gap:6px;"><span style="background:var(--stop-card-bg);border:1px solid rgba(251,191,36,0.7);border-radius:6px;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span>Starred stops appear here</span></div>${printBtn}</div>`:`<div style="padding:2px 4px 8px;display:flex;justify-content:flex-end;">${printBtn}</div>`)
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
-    +'<div class="card" style="padding:14px 12px;background:var(--stop-card-bg);border-color:var(--stop-card-br);">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
-        +'<div class="ctitle" style="margin-bottom:0;color:#eceef1;">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
+    +'<div class="card mission-card">'
+      +'<div class="mission-hdr">'
+        +'<div class="ctitle" style="margin-bottom:0;color:var(--mi-title);">Mission — '+clusters.length+' stop'+(clusters.length!==1?'s':'')+'</div>'
         +'<div style="display:flex;align-items:center;gap:6px;">'
         +'<button class="btn btn-sm" id="btn-plan-sleep-filter" style="background:var(--overlay-bg);border:1px solid var(--hair-light);padding:4px 7px;display:inline-flex;align-items:center;justify-content:center;'+(UI.planSleepOnly?'border-color:rgba(251,191,36,0.7);':'')+'" title="Show bivi stops only">'
         +(UI.planSleepOnly
@@ -18728,13 +18954,14 @@ function tPlan(r){
         +'</button>'
       +'</div>'
       +'</div>'
+      +'<div class="mission-body">'
       +rows
     +((adjDur||summaryParts.length)?(()=>{
-      const accent='font-size:18px;font-weight:600;color:#8bc34a;font-family:var(--font);';   // v304 — light green on the dark mission card
-      const lbl='font-size:12px;font-weight:600;color:rgba(236,238,241,0.6);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
+      const accent='font-size:18px;font-weight:600;color:var(--mi-km);font-family:var(--font);';   // v304 light green on the dark card; v342 token — dark green on the Paper body
+      const lbl='font-size:12px;font-weight:600;color:var(--mi-lbl-sum);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
       const totalGain=elevGain(r.points);
       const avgGainPerKm=r.totalDist>0?(totalGain/r.totalDist/10).toFixed(1):null;
-      const totRideH=Math.floor(adjDur||0),totRideM=Math.round(((adjDur||0)-totRideH)*60);
+      const[totRideH,totRideM]=hmParts(adjDur||0); // v342 — a floor/round pair v337's sweep missed ((adjDur||0) dodged the grep)
       const totRideHM=(adjDur)?totRideH+'h'+(totRideM>0?' '+String(totRideM).padStart(2,'0')+'m':''):'—';
       const totSpd=(adjDur&&adjDur>0.1)?(r.totalDist/adjDur).toFixed(1):null;
       const totalH=(adjDur||0)+(totalSleepH||0)+totalMealHours(r);
@@ -18748,7 +18975,7 @@ function tPlan(r){
       const avgRideHM=arh>0?(arh+'h'+(arm>0?' '+String(arm).padStart(2,'0')+'m':'')):(arm+'m');
       const avgSpd=avgRideH>0.1?(r.totalDist/dayCount/avgRideH).toFixed(1):null;
       const avgGain=Math.round(totalGain/dayCount);
-      const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:rgba(255,255,255,0.18);"></div></div>';
+      const spine='<div style="display:flex;flex-direction:column;align-items:center;width:18px;flex-shrink:0;"><div style="width:2px;flex:1;min-height:20px;background:var(--mi-rail);"></div></div>';
       return'<div style="display:flex;align-items:stretch;gap:10px;margin-top:4px;">'
         +spine
         +'<div style="flex:1;padding:4px 0 4px 2px;">'
@@ -18760,17 +18987,18 @@ function tPlan(r){
           +'<span style="'+accent+'">'+r.totalDist.toFixed(1)+' km</span>'
           +(adjDur?'<br><span style="'+accent+'">'+totRideHM+(totSpd?' · '+totSpd+' km/h':'')+'</span>':'')
           +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
-          +(totalSleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+totalSleepH.toFixed(1)+'h bivi</span>':'')
-          +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
+          +(totalSleepH?'<br><span style="'+accent+'color:var(--mi-bivi);display:block;">'+totalSleepH.toFixed(1)+'h bivi</span>':'')
+          +(avgSleepPerNight?'<span style="'+accent+'color:var(--mi-bivi);display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
           +(adjDur?(()=>{
             const totMin=Math.round(totalH*60),td=Math.floor(totMin/1440),th2=Math.floor((totMin%1440)/60),tm2=totMin%60; // v337 carry, cascades d←h←m
             const daysHM=(td>0?td+'d ':'')+th2+'h'+(tm2>0?' '+String(tm2).padStart(2,'0')+'m':'');
-            return'<br><span style="'+accent+'color:rgba(236,238,241,0.7);">≈ '+totalHM+' · '+daysHM+' total</span>';
+            return'<br><span style="'+accent+'color:var(--mi-total);">≈ '+totalHM+' · '+daysHM+' total</span>';
           })():'')
-          +(sleepStops<nights&&nights>0?'<br><span style="font-size:14px;color:rgba(179,157,219,0.7);">😴 '+sleepStops+' of '+nights+' nights planned — '+(nights-sleepStops)+' unplanned</span>':'')
+          +(sleepStops<nights&&nights>0?'<br><span style="font-size:14px;color:var(--mi-bivi-dim);">😴 '+sleepStops+' of '+nights+' nights planned — '+(nights-sleepStops)+' unplanned</span>':'')
         +'</div>'
       +'</div>';
     })():'')
+    +'</div>'
     +'</div>'
     +(r.stops.some(s=>s.meals&&s.meals.length)?'<div class="card" style="cursor:pointer;border-color:rgba(251,191,36,0.4);" id="btn-go-food"><div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-flex;align-items:center;color:#fbbf24;font-size:20px;">'+ICON_FOOD+'</span><div><div style="font-size:15px;font-weight:600;color:#fbbf24;">Food plan</div><div style="font-size:13px;color:var(--text3);">'+r.stops.filter(s=>s.meals&&s.meals.length).length+' stops with food assigned — tap to view</div></div></div></div>':'');
 }
@@ -19166,9 +19394,9 @@ function patchSpeedFactor(r){
     +'<span style="'+accent+'">'+r.totalDist.toFixed(1)+' km</span>'
     +'<br><span style="'+accent+'">'+totRideHM+(totSpd?' · '+totSpd+' km/h':'')+'</span>'
     +(totalGain?'<br><span style="'+accent+'">'+totalGain.toLocaleString()+' vm'+(avgGainPerKm?' · '+avgGainPerKm+'%':'')+'</span>':'')
-    +(sleepH?'<br><span style="'+accent+'color:#b39ddb;display:block;">'+sleepH.toFixed(1)+'h bivi</span>':'')
-    +(avgSleepPerNight?'<span style="'+accent+'color:#b39ddb;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
-    +(nights>0?'<span style="font-size:14px;color:rgba(179,157,219,0.7);display:block;margin-top:4px;">'+sleepStops+' of '+nights+' nights sleep planned'+(sleepStops<nights?' — '+(nights-sleepStops)+' unplanned':'')+'</span>':'')
+    +(sleepH?'<br><span style="'+accent+'color:#c084fc;display:block;">'+sleepH.toFixed(1)+'h bivi</span>':'')
+    +(avgSleepPerNight?'<span style="'+accent+'color:#c084fc;display:block;">'+avgSleepPerNight+'h/night avg</span>':'')
+    +(nights>0?'<span style="font-size:14px;color:rgba(192,132,252,0.7);display:block;margin-top:4px;">'+sleepStops+' of '+nights+' nights sleep planned'+(sleepStops<nights?' — '+(nights-sleepStops)+' unplanned':'')+'</span>':'')
     +'<span style="'+accent+'color:var(--text2);display:block;margin-top:10px;" id="rt-total">≈ '+totalHM+' · '+daysHM+' total</span>'
     +(adj?(()=>{
       const dsc=r.daySplitCount||0;
