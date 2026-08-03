@@ -1143,6 +1143,20 @@ select option{background:var(--bg3);}
           <button id="btn-sim-stop" class="zbtn" style="width:58px;padding:0 4px;font-size:13px;background:var(--stop-card-bg);color:var(--on-dark);border-color:var(--hair-light);"><svg width="11" height="11" viewBox="0 0 12 12" fill="#f2a08f" style="vertical-align:-1px;margin-right:3px;"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>Stop</button>
       </div>
       <div class="map-ctrl" id="desktop-map-ctrl" style="left:auto;right:8px;">
+        <!-- v352 — ZOOM BUTTONS. A user's trackpad couldn't hold a steady wheel-zoom on the big
+             map, so it needed discrete steps. This cost two buttons, not a feature: the
+             [data-zoom-in]/[data-zoom-out] delegator and the .zoom-btns class were ALREADY in
+             the file — only the markup that would reach them was missing. (Same shape as v272's
+             stops-strip tap: when a feature looks expensive, check whether the hard half is
+             already built.) Drawn as a .zbtn-group merged pill — the ride map's fit+tile pair
+             uses the same one — and separated from ⛶ by the column's own 6px gap ON PURPOSE:
+             zoom gets pressed repeatedly, and a stray hit on fit-route would throw away the
+             zoom you just set. Centre-anchored, because zoomMap only shifts cx/cy when it's
+             given mouse coordinates; a button press keeps whatever you're looking at. -->
+        <div class="zbtn-group">
+          <button class="zbtn" data-zoom-in="desktop-map" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="11" x2="19" y2="27" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="11" y1="19" x2="27" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+          <button class="zbtn" data-zoom-out="desktop-map" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="11" y1="19" x2="27" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+        </div>
         <button class="zbtn zbtn-w" data-fitroute="desktop-map" style="font-size:20px;font-family:var(--font);">⛶</button>
         <button class="zbtn tile-tog zbtn-w" data-tilemap="desktop-map" id="desktop-tile-btn" style="font-size:13px;font-family:var(--font);font-weight:500;">OSM</button>
         <!-- Crosshair — centre the map on your GPS position. This map's controls are hand-written
@@ -1690,7 +1704,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v351';
+window.APP_VERSION='v353';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -11552,6 +11566,18 @@ function drawMap(cvs,r,opts){
   }
 }
 
+// ── ONE ZOOM STEP, stated once (v353) ───────────────────────────────────────────────────────
+// The wheel and the +/- buttons had their own copies of "how much is one step", which is this
+// file's oldest drift trap. ZOOM_STEP is now the authority for both: one wheel notch and one
+// button press are the SAME move, so the two controls can never disagree and a press is
+// predictable if you already know the wheel.
+// WHEEL_NOTCH_PX is what a physical mouse wheel sends per detent (Chrome/Edge/Firefox all
+// report ~100 px in deltaMode 0). It is the DIVISOR that turns a raw delta into a fraction of
+// a step — see the wheel handler for why that matters more than the number itself.
+const ZOOM_STEP=1.25;             // in
+const ZOOM_STEP_OUT=1/ZOOM_STEP;  // out — EXACTLY the reciprocal, so in-then-out returns you to
+                                  // the zoom you started on instead of drifting a little each time
+const WHEEL_NOTCH_PX=100;
 // Zoom helper
 function zoomMap(id,factor,mouseX,mouseY){
   const state=ms(id);
@@ -11795,7 +11821,25 @@ function attachMap(cvs,tapCb){
   // Mouse wheel zoom
   cvs.addEventListener('wheel',e=>{
     e.preventDefault();
-    const factor=e.deltaY<0?1.25:0.8;
+    // v353 — THE TRACKPAD SENSITIVITY BUG. This read only the SIGN of deltaY and applied a whole
+    // step per EVENT. A mouse wheel sends one event per detent, so it felt right and nobody
+    // noticed for months. A trackpad does not: a pinch or two-finger scroll fires a stream of
+    // small-delta events — often 20+ in one short gesture — and each one was multiplying the zoom
+    // by a full 1.25. Twenty events is 1.25^20 ≈ 87×. That is the whole of "it's quite sensitive
+    // when using the mousepad to pinch zoom": the map wasn't reading the gesture, it was counting
+    // the events.
+    // THE FIX IS TO READ THE MAGNITUDE, not just the sign. The factor is now a fraction of a step
+    // proportional to how far the fingers actually moved.
+    // ⚠ A PHYSICAL MOUSE WHEEL IS BYTE-IDENTICAL TO BEFORE, by construction: a detent is
+    // WHEEL_NOTCH_PX, so the exponent is exactly ±1 and the factor is exactly 1.25 / 0.8. This
+    // fixes the trackpad WITHOUT retuning the mouse, which is why it needs no taste call.
+    // deltaMode 1 = lines and 2 = pages (Firefox and some drivers) — converted, or their deltaY
+    // of ~3 would read as 3 px and the wheel would do almost nothing there.
+    const dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?WHEEL_NOTCH_PX:1);
+    // Clamp to two notches per event so one freak delta (some drivers emit a huge first event
+    // at the start of a gesture) can't lurch the map — the rest of the gesture still arrives.
+    const notches=Math.max(-2,Math.min(2,dy/WHEEL_NOTCH_PX));
+    const factor=Math.pow(ZOOM_STEP,-notches);
     const rect=cvs.getBoundingClientRect();
     // CSS pixel coords — the map projection (_px/_py/_W/_H) works in CSS pixels,
     // so no dpr conversion here or the zoom anchor drifts on scaled displays
@@ -12245,10 +12289,15 @@ document.addEventListener('click',e=>{
     const r=cur(); if(r&&r.totalDist)_rideModeShow(r,0);   // 0 = they asked; it waits
     return;
   }
+  // v353 — ONE PRESS = ONE WHEEL NOTCH (ZOOM_STEP, 1.25). v352 shipped these at 2× on my
+  // reasoning that fewer presses to cross the range was the win. That was the wrong problem:
+  // the user's complaint is that zooming moves TOO FAR per gesture, so a button that jumps a
+  // whole map level is the same fault in a different control. A step is a NUDGE — the thing you
+  // reach for after the pinch has overshot. Traversing the whole range is what the wheel is for.
   const zi=e.target.closest('[data-zoom-in]');
-  if(zi){zoomMap(zi.dataset.zoomIn,1.6);return;}
+  if(zi){zoomMap(zi.dataset.zoomIn,ZOOM_STEP);return;}
   const zo=e.target.closest('[data-zoom-out]');
-  if(zo){zoomMap(zo.dataset.zoomOut,0.625);return;}
+  if(zo){zoomMap(zo.dataset.zoomOut,ZOOM_STEP_OUT);return;}
   const rc=e.target.closest('[data-recenter]');
   if(rc){
     const id=rc.dataset.recenter;
