@@ -603,51 +603,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    background-COLOR, never the `background` shorthand — the shorthand would wipe the
    chequer's background-image on the last chevron below. */
 .live-dist-chev{position:absolute;top:0;height:20px;background-color:var(--chev-off);}
-/* ── v349 — THE BAR IS TWO CHANNELS NOW, NOT ONE ────────────────────────────────────────
-   Peter, on a July mockup he preferred: "the current one only has one mode for indicating
-   distance, but the mockup has two — the objects on top change colour but the underlay
-   changes too. That addresses one thing about the chevrons I don't like: they are visually
-   heavy with only a small gap. That small gap is so we get enough steps or resolution."
-   That is the whole diagnosis, and it is right. v261–v348's chevrons carried TWO jobs at
-   once — they were the texture AND the unit of measure. Because a whole chevron had to
-   light to mean anything, the count had to be high (24), so the gap had to be small, so the
-   ridden half became a solid slab. You could not lighten them without losing resolution.
-   A dead end, not a tuning problem.
-   SPLITTING THE JOBS FIXES BOTH ENDS AT ONCE:
-     · THE UNDERLAY MEASURES. A continuous fill with a pointed leading edge, so the bar moves
-       every second instead of every 1/24th of a leg (~7 km, ~20 min, on a 166 km stage).
-     · THE MARKS ARE TEXTURE. They no longer have to be countable, so the gap is free — it
-       went 0.25 → 0.8 of the mark's own width, which is the "visually heavy" complaint,
-       answered directly. They still POINT, which is why they stayed chevrons rather than
-       becoming the mockup's diagonal stripes: a diagonal leans, a chevron says which way.
-   FOUR LAYERS, painted in this order (see _distBarSync for the geometry):
-     .ld-bed    faint band under the whole marks region — gives the bar a body
-     .ld-marks  the chevron texture, ghost colour, whole region
-     .ld-fill   the progress underlay, --chev-on, clipped to a point at its leading edge
-     .ld-lit    the same chevron texture in --chev-on, clipped to the same point
-   .ld-lit sits ON .ld-marks and is masked identically, both anchored at left:0, so the two
-   textures are in phase at every width and a mark caught by the edge is simply half-lit.
-   THAT IS THE RULE v261 GAVE UP ("no partial fill — a whole chevron turns green or it
-   doesn't"), and it gave it up for a reason: that rule existed because the chevron WAS the
-   unit. Once the underlay measures, a mark caught mid-edge is just the edge passing through
-   — exactly as the mockup cuts a stripe mid-stripe. The precise truth is still the numbers
-   below; the bar is still the gauge.
-   PER TICK THIS IS TWO WIDTH WRITES, not 24 class toggles. Cheaper and much less code. */
-.ld-bed,.ld-marks,.ld-fill,.ld-lit{position:absolute;top:0;left:0;height:20px;}
-/* THE AHEAD PAIR IS DELIBERATELY QUIET, and this is the "visually heavy" complaint being
-   answered rather than dodged. Ahead of you is the EMPTY part — it needs to be present, not
-   read. Measured against the mockup, whose ahead stripe sits only ~14 levels above its own
-   bed: at full --chev-off (0.24 white) the marks and the bed blur into one light slab at
-   true size, which is heavier than the old bar was. .55 of it lands where the mockup does.
-   ⚠ Do NOT push --chev-off itself down to get this — Peter tuned that value on the OLED in
-   v261 and .fin borrows it for the unlit chequer. Dim it HERE, where it is only texture. */
-.ld-bed{background-color:var(--chev-off);opacity:.22;}
-.ld-marks{background-color:var(--chev-off);opacity:.55;}
-/* The fill is the SAME colour as the lit marks at reduced opacity, deliberately: one token
-   drives both channels, so it themes itself and there is no second green to keep in step.
-   (The mockup's two greens measure ~0.62 of each other; .45 over the bed lands there.) */
-.ld-fill{background-color:var(--chev-on,var(--stop-card-bg));opacity:.45;}
-.ld-lit{background-color:var(--chev-on,var(--stop-card-bg));}
+/* v347 — one token for "ridden", themed. Paper keeps the neutral ink (Peter's v261 call:
+   "ridden chevrons are the neutral slate, not olive"); Graphite binds it to the mint,
+   because there the slate was invisible against the bar. See --chev-on in both themes. */
+.live-dist-chev.done{background-color:var(--chev-on,var(--stop-card-bg));}
 /* THE LAST CHEVRON IS CHEQUERED — the finish (Peter's idea, and I was wrong about it: I
    judged it at 3× zoom and called it damage. Nobody rides at 3×. At TRUE SIZE it reads as
    a small chequered flag, which is the whole point — "subtle but a nice little touch".
@@ -705,23 +664,35 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .live-dist-chev.fin.moon{
   background-color:var(--chev-off);
   background-image:none;
-  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23000'/></svg>") center/86% 86% no-repeat;
-  mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23000'/></svg>") center/86% 86% no-repeat;}
+  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23000'/></svg>") center/80% 80% no-repeat;
+  mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23000'/></svg>") center/80% 80% no-repeat;}
 /* ridden: accent, like everything behind you. Arriving at the bed lights the moon. */
 .live-dist-chev.fin.moon.done{background-color:var(--chev-on,var(--stop-card-bg));}
-/* ── v349 — THE CAP. The flag and the moon used to BE the 24th chevron, so they lit at
-   23/24 with the ruler. There is no 24th chevron any more, so the mark became a fixed cell
-   at the right end — which is what it always was in meaning: not a tick, a DESTINATION.
-   It therefore lights on ARRIVAL (pct >= 1), not a whisker before, and that is more honest
-   than the old behaviour was. Everything else about it is untouched — same .fin chequer,
-   same .fin.moon crescent, same "chequered flag = finish, crescent moon = tonight's bed"
-   rule from v257, and it still needs no label because legEnd decides which one shows. */
-.ld-cap{clip-path:none;}
-/* v349 — the v348 crescent cutter is GONE with the thing it existed for. It punched a
-   moon-shaped hole out of the last chevron's point, because the cells overlapped and that
-   point ran into the crescent. The cap now sits in clear air past the end of the marks
-   region (DIST_CAP_GAP), so there is nothing to cut. If the cap ever moves back inside the
-   texture, the cutter is in git at v348 — do not re-derive it. */
+/* ── v348 — THE MOON CUTS THE CHEVRON BEHIND IT, BY ITS OWN SHAPE AND NOTHING ELSE ──────
+   v347 solved the clipped crescent by amputating the previous chevron's point (a blunt
+   stub). Peter, seeing it: "that last clipped chevron looks bad… we need the moon to clip
+   that last chevron, but only by the moon shape." He's right — the stub was a straight cut
+   across a shape that had done nothing wrong, and it read as damage rather than as design.
+   THE CUTTER is one extra element, the same box as the moon cell, painted in the BAR'S OWN
+   BACKGROUND and masked by the SAME crescent one size up. It sits above the chevron and
+   below the moon, so it erases exactly the crescent's silhouette out of whatever runs under
+   it and nothing else. The chevron keeps its point; the moon keeps its arc; the gap between
+   them is a crescent-shaped hairline instead of a butcher's cut.
+     · SIZES ARE THE GAP. Cutter 100%, moon 80% — both of the 20px row height, so the halo
+       is a constant 2px at every bar width (the row height binds, not the cell width). That
+       is the row's own perpendicular gap (~2.5px), so the moon sits in the chevrons' rhythm
+       rather than beside it. Change these two numbers together or the gap goes with them.
+     · --surface, not a literal: the cutter must be whatever .live-dist-bar is painted, in
+       BOTH themes. If the bar ever gains a gradient or transparency this stops working and
+       becomes a mask-composite job instead — flagged here so it isn't a mystery later.
+     · It renders ONLY on a moon leg (.moon-leg on the row). The chequered flag is a
+       rectangle full of texture; a point running into it is no problem at all, and Peter
+       said so — "the chequer works". Do not generalise this to the flag. */
+.live-dist-moon-cut{position:absolute;top:0;height:20px;display:none;
+  background-color:var(--surface);
+  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23000'/></svg>") center/100% 100% no-repeat;
+  mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='3.04 3 17.96 17.96'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='%23000'/></svg>") center/100% 100% no-repeat;}
+.live-dist-chevs.moon-leg .live-dist-moon-cut{display:block;}
 /* The numbers are a plain flex row — no absolute positioning, because nothing about
    where they sit depends on the fill any more. That is the whole point of v261. */
 .live-dist-nums{position:absolute;left:0;right:0;top:20px;height:38px;display:flex;
@@ -1687,7 +1658,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v349';
+window.APP_VERSION='v348';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3323,17 +3294,10 @@ function fmtDurPill(ms){
 // _shareBtnSync. The template renders the bar EMPTY on purpose: the chevron geometry
 // depends on the bar's measured width, which a template string cannot know (v257's lesson,
 // now four occurrences).
-// v349 — DIST_CHEV_N IS GONE. The count used to be load-bearing (it was the resolution of
-// the gauge, and the long note above is the argument that settled it at 24). The underlay
-// measures now, so the marks are chosen for LOOK: a target pitch, and however many fit.
-const DIST_MARK_PITCH=20;    // target tip-to-tip in CSS px; the real pitch divides evenly
-const DIST_CHEV_GAP=0.8;     // gap as a fraction of the mark's OWN width — was 0.25, and
-                             // that smallness was the "visually heavy" complaint. It cost
-                             // resolution before; it costs nothing now.
+const DIST_CHEV_N=24;        // chevrons across the whole route (see the maths above)
+const DIST_CHEV_GAP=0.25;    // gap as a fraction of the chevron's OWN width
 const DIST_CHEV_DEPTH=0.42;  // the V's reach, as a fraction of the graphic's height
 const DIST_BAR_H=20;         // the graphic's height — MUST match .live-dist-chevs in CSS
-const DIST_CAP_W=22;         // the destination cell (flag / moon) at the right end
-const DIST_CAP_GAP=5;        // clear air between the marks and the cap
 // THE CHEVRONS ONLY MEAN ANYTHING WHILE YOU'RE FOLLOWING A ROUTE (Peter, v261d): "these
 // chevrons are only relevant when you're following a route. Otherwise they need to be
 // hidden." Sharper than it sounds — on his 16 July ride a route WAS loaded and he was
@@ -3482,62 +3446,107 @@ function _distBarSync(){
     // tick moves none of them. So the per-tick cost below is one class toggle, no layout.
     if(wrap._chevW!==barW){
       wrap._chevW=barW;
-      // ── v349 — GEOMETRY. Four layers, one repeating mask, one moving clip. ───────────
-      // v261c's "solve the pitch so both ends come out whole" maths is GONE with the thing
-      // it served: it existed because 24 discrete cells had to span the bar exactly, first
-      // tail flush at x=0 and last tip flush at the right edge. A repeating texture has no
-      // such obligation — it tiles, and a mark cut by the left edge is what a texture does
-      // (the mockup's stripes are cut there too). What replaces it is simpler and reads the
-      // same way: pick a target pitch, fit a whole number of them into the marks region.
-      const H=DIST_BAR_H;
-      const depth=H*DIST_CHEV_DEPTH;                  // how far the V reaches forward
-      const marksW=Math.max(40,barW-DIST_CAP_W-DIST_CAP_GAP);
-      const N=Math.max(6,Math.round(marksW/DIST_MARK_PITCH));
-      const pitch=marksW/N;                           // tip to tip — divides marksW exactly
-      const th=pitch/(1+DIST_CHEV_GAP);               // the mark's own width
-      const B=depth+th;                               // the mark's full box, tail to tip
-      // ONE TILE, ONE PERIOD. The mark is WIDER than the pitch (B > pitch), so each one
-      // overlaps its neighbour's tile — which is exactly why the pattern has gaps at all:
-      // the notch in a mark's back is the room the mark behind it needs. So the tile draws
-      // the same polygon three times, at −pitch, 0 and +pitch, and lets the viewBox clip.
-      // Draw it once and the wrap-around ink goes missing at every tile seam.
-      const poly=(x)=>[[x,0],[x+depth,H/2],[x,H],[x+th,H],[x+B,H/2],[x+th,0]]
-        .map(q=>q[0].toFixed(2)+','+q[1].toFixed(2)).join(' ');
-      const x0=pitch-B;      // phase: tips land on multiples of pitch, so the last is flush
-      let polys='';
-      for(let k=-1;k<=1;k++)polys+="<polygon points='"+poly(x0+k*pitch)+"' fill='%23000'/>";
-      const W=pitch.toFixed(2);
-      const tile="url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='"+W+"' height='"+H+"' viewBox='0 0 "+W+" "+H+"'>"+polys+"</svg>\") 0 0/"+W+"px "+H+"px repeat-x";
-      // THE LEADING EDGE IS A POINT, and it is in PX, not %. A percentage polygon would be
-      // relative to the element's own box — which changes width every tick — so the arrow
-      // head would stretch and flatten as you rode. calc() pins it to a constant depth.
-      const pt='polygon(0 0,calc(100% - '+depth.toFixed(2)+'px) 0,100% 50%,calc(100% - '+depth.toFixed(2)+'px) 100%,0 100%)';
-      // v261f's rule, unchanged: the chequer's cell scales with the mark, never a constant,
-      // or the flag is a different grain on a phone and on a desktop. Four cells across.
-      const chq=Math.max(5,th/2);
-      wrap.innerHTML=
-        '<i class="ld-bed" style="width:'+marksW.toFixed(2)+'px"></i>'+
-        '<i class="ld-marks" style="width:'+marksW.toFixed(2)+'px"></i>'+
-        '<i class="ld-fill" style="clip-path:'+pt+'"></i>'+
-        '<i class="ld-lit" style="clip-path:'+pt+'"></i>'+
-        '<i class="live-dist-chev fin ld-cap" style="left:'+(barW-DIST_CAP_W).toFixed(2)+'px;width:'+DIST_CAP_W+'px;--chq:'+chq.toFixed(2)+'px"></i>';
-      wrap._fill=wrap.querySelector('.ld-fill');
-      wrap._lit=wrap.querySelector('.ld-lit');
-      wrap._cap=wrap.querySelector('.ld-cap');
-      // ⚠ THE MASK IS SET ON THE ELEMENT, NEVER IN A style="" STRING. The data URL contains
-      // double quotes, so putting it in the attribute above terminates the attribute early
-      // and silently mangles the tag — the marks vanish and the bar renders as a plain slab.
-      // Cost me a render to find. Same family of trap as v270e: don't put a value somewhere
-      // the syntax can't hold it.
-      [wrap._marks=wrap.querySelector('.ld-marks'),wrap._lit].forEach(el=>{
-        el.style.webkitMask=tile; el.style.mask=tile;
-      });
-      wrap._marksW=marksW;
-      // EVERY cached field resets with the markup. v347 learned this the hard way with
-      // _isFin, which survived a rebuild and left the moon showing a chequered flag after a
-      // resize. If you add a cache field, add it here in the same edit.
-      wrap._w=-1; wrap._isFin=null; wrap._arr=null;
+      // v261c — BOTH ENDS GET THE SAME TREATMENT, AND EVERY CHEVRON IS THE SAME SIZE.
+      // Peter, on v261b: "the first chevron has its tail FILLED (as I requested) but the
+      // last chevron has its point CROPPED. I think both need to be treated the same."
+      // He's right and there was no principle in it — one end got completed, the other
+      // truncated. Of his two coherent options (fill both / crop both) this is FILL BOTH:
+      // the first chevron's tail is filled to x=0, and the last chevron's POINT lands
+      // exactly on the right edge, whole. Nothing is cropped at either end.
+      //
+      // The trick is that the pitch is SOLVED for that, not assumed. Let the 24 tips be
+      // evenly spaced by p, with the first tip at B (so chevron 0 fits between x=0 and its
+      // own point) and the last tip exactly at barW:
+      //     B + (N−1)·p = barW,  where B = depth + th  and  p = (1+GAP)·th
+      //  ⇒  th·(1 + (N−1)(1+GAP)) = barW − depth
+      // Every chevron is then B wide — including the flat-backed first, which is why they
+      // finally match. (v261b's `(i+1)·pitch − th` assumed pitch = barW/N and had to pay
+      // for it at the ends; this drops that assumption and the ends come out free.)
+      // Cost: the gap moves 3.28 → 3.23 CSS px (perpendicular 2.51 → 2.48). Immaterial,
+      // and both sit on the same estimated floor — see the ⚠ note above.
+      const depth=DIST_BAR_H*DIST_CHEV_DEPTH;  // how far the V reaches forward
+      const th=(barW-depth)/(1+(DIST_CHEV_N-1)*(1+DIST_CHEV_GAP));   // the mark itself
+      const pitch=(1+DIST_CHEV_GAP)*th;        // tip-to-tip
+      const B=depth+th;                        // every chevron's box, first one included
+      const D=(depth/B*100).toFixed(2), T=(th/B*100).toFixed(2);
+      const clip='polygon(0 0,'+D+'% 50%,0 100%,'+T+'% 100%,100% 50%,'+T+'% 0)';
+      // The first chevron differs by ONE vertex: the rear notch (D% 50%) is dropped, so the
+      // back runs straight down and the tail is solid. Same width, same tip, same front
+      // face, so the gap to chevron 1 is identical to every other gap.
+      const clip0='polygon(0 0,0 100%,'+T+'% 100%,100% 50%,'+T+'% 0)';
+      // v261g — THE LAST ONE IS THE EXACT MIRROR: rear notch kept, front SQUARED against the
+      // right edge. Peter: "the end chequer needs a square end. It needs to butt up fully on
+      // the right side. It doesn't have to fit into a chevron shape… that gives us more
+      // chequer." He's right and my v261c objection ("blunting kills the point at the finish,
+      // the one moment the arrow should land hardest") was wrong: **the finish is a
+      // DESTINATION, not a "keep going" signal.** The arrow points AT it; the flag doesn't
+      // need to point. And it was the point that broke the chequer — a chequered flag is a
+      // rectangle, so a point and a chequer were never going to share 13px.
+      // Also the symmetry he asked for two rounds ago, properly: first fills back to the left
+      // edge, last fills forward to the right. Same box (B) for both, so all 24 are still the
+      // same size, and the +32% area is what makes the chequer legible.
+      const clipN='polygon(0 0,'+D+'% 50%,0 100%,100% 100%,100% 0)';
+      // ── v347 — WHEN THE LAST CELL IS THE MOON, IT LOSES THE NOTCH AND ITS NEIGHBOUR
+      //    LOSES ITS POINT. Peter: "the moon is clipped by the last chevron. The moon is
+      //    more important, so can we clip the last chevron instead."
+      //    The notch was never for the moon's benefit — the cells OVERLAP (box = B = 21.3px
+      //    on a phone, pitch = 16.2px), so every cell carves a V out of its own back to make
+      //    room for the point in front of it. The chequer survives that because it is a
+      //    texture and loses nothing when a corner goes; a crescent is a SHAPE and the notch
+      //    ate a third of it — 6.3px of its 17.2px, all of it the recognisable left arc.
+      //    So in the moon state the last cell is a plain rectangle and the crescent is whole.
+      //    v348: the chevron in front of it keeps its POINT — the crescent-shaped gap between
+      //    them is punched by .live-dist-moon-cut instead. (v347 amputated that point to a
+      //    blunt stub; Peter called it, correctly, damage. See the CSS note.)
+      //    The FLAG keeps its notch. Only the moon needs any of this.
+      const clipMoon='polygon(0 0,100% 0,100% 100%,0 100%)';
+      wrap._clipFin=clipN;wrap._clipMoon=clipMoon;
+      let h='';
+      for(let i=0;i<DIST_CHEV_N;i++){
+        const left=i*pitch;                    // tip_i = B + i·pitch, box = tip − B
+        // v261d: the LAST chevron is chequered — the finish. It is the only chevron with a
+        // meaning of its own, and it earns it: nothing else on the ride screen says "this
+        // is the end". Styling only (see .live-dist-chev.fin) — same shape, same size, same
+        // clip-path, same tick rule, so it ghosts and lights exactly like its neighbours.
+        if(i===DIST_CHEV_N-1){
+          // v261f — THE TILE SCALES WITH THE CHEVRON, and that's why it isn't a CSS constant.
+          // Peter, on the first build: "the finish chequer needs another square or two filled
+          // in." A chequer is always 50% ink, so this was never about coverage — it was GRAIN.
+          // At a fixed 5px cell one square is ~40% of the mark's 12.93px body, so a single
+          // transparent cell ate the POINT and the chevron read broken. Cell must be small
+          // relative to the feature it textures.
+          // And the bar is WIDER on desktop, so pitch (= barW/24) makes the chevron ~26px
+          // there against ~13px on a phone — a fixed cell would be a different mark on each
+          // screen. Tie it to the mark instead: tile = th/2 gives FOUR cells across the body
+          // at every width. Floor of 5px (2.5px cells) so a freakishly narrow bar can't
+          // dither it to mush (v258's lesson).
+          // ⚠ v270e — THE TILE IS A CSS VAR, NOT AN INLINE background-size. This is why the
+          // moon was tiny for four rounds and nothing I changed in the CSS helped: an
+          // INLINE background-size beats every class rule, so `.fin.moon`'s size was being
+          // thrown away and the moon rendered at the CHEQUER's ~6.5px tile. Peter kept
+          // saying "still too small" and he was right every time — I was editing a
+          // declaration the browser never used.
+          // As a var, `.fin` and `.fin.moon` compete on specificity like they should, and
+          // the moon's 100% wins. **Never set a property inline that a state class needs to
+          // override.**
+          const tile=Math.max(5,th/2);
+          // v348 — the cutter, in DOM order between the pointed chevrons and the moon so it
+          // paints OVER the last point and UNDER the crescent. It carries no .live-dist-chev
+          // class, so wrap._chevs is still exactly the 24 cells, still in order.
+          h+='<i class="live-dist-moon-cut" style="left:'+left.toFixed(2)+'px;width:'+B.toFixed(2)+'px;"></i>';
+          h+='<i class="live-dist-chev fin" style="left:'+left.toFixed(2)+'px;width:'+B.toFixed(2)+'px;clip-path:'+clipN+';--chq:'+tile.toFixed(2)+'px;"></i>';
+          continue;
+        }
+        h+='<i class="live-dist-chev" style="left:'+left.toFixed(2)+'px;width:'+B.toFixed(2)+'px;clip-path:'+(i?clip:clip0)+';"></i>';
+      }
+      // _isFin RESET with the rest of the cache — v347. It was the one piece of state that
+      // survived a rebuild, so after a resize the toggle below saw "no change" and never
+      // re-applied .moon to the fresh markup: the moon silently became a chequered flag until
+      // the leg changed. Latent since v270; the clip-path swap above would have made it
+      // visible (a notched cell wearing a crescent), so it is fixed here rather than left.
+      wrap.innerHTML=h; wrap._chevs=null; wrap._nDone=-1; wrap._isFin=null;
     }
+    if(!wrap._chevs)wrap._chevs=wrap.querySelectorAll('.live-dist-chev');
     // ── v270: THE BAR MEASURES TODAY'S LEG, NOT THE WHOLE ROUTE ────────────────────────
     // Peter's Tour Divide argument is decisive and needs no opinion: "you will be out there
     // for 2-4 weeks and it will hardly move each day." Measured — 4500 km over 24 chevrons
@@ -3559,28 +3568,28 @@ function _distBarSync(){
     const ls=legStartKmOf(r,liveDist);
     const total=Math.max(0.1,le.dist-ls);
     const pct=Math.max(0,Math.min(1,(liveDist-ls)/total));
-    // ONE WIDTH, TWO ELEMENTS. The fill and the lit marks are separate layers only because
-    // the fill needs its own opacity; they are always the same width and the same clip.
-    const w=pct*wrap._marksW;
-    if(wrap._w!==w){
-      wrap._w=w;
-      const px=w.toFixed(2)+'px';
-      wrap._fill.style.width=px; wrap._lit.style.width=px;
-    }
-    // THE CAP SAYS WHAT YOU'RE RIDING TO — Peter's v257 rule, intact through three rebuilds:
-    // "Chequered flag = finish, crescent moon = tonight's bed. Two destinations must never
-    // wear one icon." It is why the leg-scoped bar needs no label and no setting: on the
-    // last day legEnd returns the finish and the moon becomes the flag by itself.
-    if(wrap._isFin!==le.isFinish){
+    // THE LAST CHEVRON SAYS WHAT YOU'RE RIDING TO — Peter's v257 rule, which survived his
+    // own deletion of the SVGs that served it: "Chequered flag = finish, crescent moon =
+    // tonight's bed. Two destinations must never wear one icon."
+    // This is why no label and no setting are needed: the bar states its own scope. On the
+    // last day the moon becomes the flag by itself, because legEnd says so.
+    const fin=wrap._chevs[DIST_CHEV_N-1];
+    if(fin&&wrap._isFin!==le.isFinish){
       wrap._isFin=le.isFinish;
-      wrap._cap.classList.toggle('moon',!le.isFinish);
+      fin.classList.toggle('moon',!le.isFinish);
+      // v347 — the geometry swaps with the mark (see the note at clipMoon). Inline, because
+      // the clip-path is inline: a class rule could never win against it, which is the same
+      // trap v270e fell into with background-size.
+      fin.style.clipPath=le.isFinish?wrap._clipFin:wrap._clipMoon;
+      wrap.classList.toggle('moon-leg',!le.isFinish);   // v348 — shows the crescent cutter
     }
-    // Lit on ARRIVAL, not a whisker before. The old 24th chevron lit at 23/24 because it was
-    // a tick as well as a mark; this is only a mark, so the honest trigger is getting there.
-    const arrived=pct>=1;
-    if(wrap._arr!==arrived){
-      wrap._arr=arrived;
-      wrap._cap.classList.toggle('done',arrived);
+    // FLOOR, not round: a chevron lights once its slice has actually been RIDDEN. Rounding
+    // would light the last one before the finish — the one moment the bar must not lie.
+    // It also means the bar is all-grey for the first 1/24th, which is honest.
+    const nDone=Math.floor(pct*DIST_CHEV_N);
+    if(wrap._nDone!==nDone){
+      wrap._nDone=nDone;
+      wrap._chevs.forEach((el,i)=>el.classList.toggle('done',i<nDone));
     }
   }
   // No geometry left to compute: the numbers are a plain flex row, pinned to the ends.
