@@ -1687,7 +1687,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v350';
+window.APP_VERSION='v349';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1770,23 +1770,7 @@ function todayStr(){return new Date().toISOString().slice(0,10);}
 // ═══════════════════════════════════════════
 //  PERSIST
 // ═══════════════════════════════════════════
-// ── v350 — DERIVED-DATA CACHES ARE TRANSIENT. THEY ARE NEVER SAVED, AND ARE ALWAYS
-//    CLEARED WHEN r.points CHANGES. ──────────────────────────────────────────────────
-// Peter, 3 Aug 2026, from a screenshot of the grade overlay: "the grade colours aren't
-// angled up the most, they almost seem flat." Measured off that image, the colours
-// correlated 0.04 with the drawn profile in place and 0.79 once slid ~1 km along the
-// route — a clean constant offset, not noise.
-// The cause: getGradeSegs / _smEleArr / getClimbs each memoise onto the route object
-// (_gradeSegs / _smEle / _climbs) and NOTHING ever cleared them. Re-import a GPX over an
-// existing route ("update route geometry", or a same-sourceId reload) and r.points is
-// replaced while the grade data stays behind, so every segment's from/to now names a
-// different piece of road than the grade it carries.
-// And it did not heal on reload, because packRoute spread the whole route object — so the
-// stale caches were written into the saved plan and handed straight back by unpackRoute.
-// Two rules from here on, both cheap: they never get saved, and any code that assigns
-// r.points calls clearRouteCaches(). Rebuilding them is O(n) and happens on next read.
-function clearRouteCaches(r){ if(!r)return r; delete r._gradeSegs; delete r._smEle; delete r._climbs; return r; }
-function packRoute(r){const{_moffM,_moffDiag,_gradeSegs,_smEle,_climbs,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session; _gradeSegs/_smEle/_climbs are derived from points and MUST NOT be persisted (v350)
+function packRoute(r){const{_moffM,_moffDiag,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session
   points:r.points.map(p=>[
     Math.round(p.lat*1e5)/1e5,Math.round(p.lon*1e5)/1e5,
     Math.round(p.ele),Math.round(p.dist*10)/10,p.time?p.time.getTime():0]),
@@ -1796,7 +1780,6 @@ function makeStopId(){return Date.now().toString(36)+Math.random().toString(36).
 function unpackRoute(r){
   const out={...r,points:(r.points||[]).map(a=>
     Array.isArray(a)?{lat:a[0],lon:a[1],ele:a[2],dist:a[3],time:a[4]?new Date(a[4]):null}:a)};
-  clearRouteCaches(out);   // v350 — plans saved before v350 carry stale _gradeSegs/_smEle/_climbs; bin them on load so the offset self-heals
   // Rebuild cumRiding if missing (old saved routes)
   if(!out.paceSegs)out.paceSegs=[];
   if(!out.riderPreset)out.riderPreset='regular';
@@ -14296,7 +14279,7 @@ function importRideFile(obj){
   r.turns=obj.turns||[];
   r.nearMissTurns=obj.nearMissTurns||[];
   r.stops=obj.stops||[];
-  r.points=obj.points;clearRouteCaches(r);  // still array-compressed; v350 — never inherit derived caches from an imported plan
+  r.points=obj.points;  // still array-compressed
   // unpackRoute expands the compressed points, restores ohRules Sets, re-IDs any
   // clashing stop IDs, and rebuilds cumRiding + estDuration from scratch.
   const built=unpackRoute(r);
@@ -21831,7 +21814,6 @@ function reloadRouteFile(f,routeIdx){
     // Apply new route geometry
     const sourceId=result.sourceId||null;
     rt.points=newPts;rt.hasTS=result.hasTS;rt.totalDist=newTotalDist;
-    clearRouteCaches(rt);   // v350 — new geometry, so the grade/climb caches no longer describe this road
     rt.sourceId=sourceId;
     rt.adaptiveSpeed=true;
     rt.cumRiding=buildCumRiding(newPts,rt.paceSegs||[],rt);
@@ -21981,7 +21963,6 @@ function _applyGPXRoute(result,name,sourceId,existingIdx,stops){
     ROUTES.push(r);CUR=ROUTES.length-1;
   }
   r.points=result.pts;r.hasTS=result.hasTS;r.totalDist=result.pts[result.pts.length-1].dist;
-  clearRouteCaches(r);   // v350 — same-sourceId reload reuses the route object, so its caches must go
   r.adaptiveSpeed=true; // reset to default on new file load
   // Always use naismith for duration — imported timestamps from planned route files
   // (RWGPS, Komoot, Strava etc.) encode fabricated speeds that are unreliable and often
