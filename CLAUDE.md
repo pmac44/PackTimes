@@ -16,6 +16,50 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
   Before v335 offline NEVER worked — see the v335 changelog entry. `sw.js` must stay a real file.
 - Optional Dropbox sync of plans across devices.
 
+### v354 (4 Aug) — THE LIGHT-HALF LABELS HAD NO MUTED COLOUR OF THEIR OWN. 2.1:1.
+
+**⚠ NOTE: this changelog SKIPS v346–v353** — those were built in sessions that didn't write
+entries here (disk read v353 when v354 was made). Grep the code's own comments for that
+history; the v345 entry's "NEXT CODE CHANGE IS v346" is stale, not a claim about v353.
+
+Peter, from a real ride screenshot: *"the description text for stoppage, avg. incl. stops,
+avg grade, and left/right % are in a strange colour."* Right, and the four he named are
+EXACTLY the four visible labels that had the bug — no more, no less, which is what confirmed
+the diagnosis before a line was changed.
+
+- **ROOT CAUSE: there was a `--cell-top-muted` token and NO `--cell-bottom-muted`.** The data
+  cells are two halves — near-black top, near-white bottom (`--cell-bottom:#fffef8`, light in
+  BOTH themes; the B&W pairing is the legibility feature). The top-half labels correctly wear
+  `--cell-top-muted`. The bottom-half labels had nothing to wear, so they fell through to the
+  app's general `--text-muted` — which in Graphite is **#9db89d, a muted GREEN tuned to sit on
+  a near-black ground.** Measured: **8.04:1 on the top half, 2.13:1 on the bottom.** Same hex,
+  same intent, one of them invisible.
+- **Why the other pills escaped, and it's the precedent that named the fix:** power and HR
+  paint their bottom LABEL with the same colour as their bottom FIGURE (`npCol`/`aCol`, which
+  falls back to `--cell-bottom-text`), so "W weighted" and "bpm avg" were always full contrast.
+  The pace pill hard-codes its own teal (#0d9488). Only the five tokenless labels were broken.
+- **THE FIX: `--cell-bottom-muted:#4f4f54`, defined in BOTH theme `:root`s** (style-guide rule:
+  colour treatments are per-theme, never shared — same value here because the bottom half is
+  the same off-white in both, but the token must exist in both or one theme silently inherits).
+  **#4f4f54 is a MEASUREMENT, not a taste call: 8.06:1 on #fffef8, i.e. the top half's 8.04
+  reproduced on the light side.** Peter chose "match the top half" over full contrast with the
+  numbers in front of him, so the two halves now read as one design inverted.
+- **EIGHT sites, not the four he could see** — the same token now serves every light-half label:
+  speed "avg. incl. stops", mspeed "moving avg.", grade "avg grade"/"to top", stoppage,
+  Left / Right %, and the three "hold to pair" empty states. The mspeed pill was the worst of
+  the lot and invisible in his screenshot: its half is a STEPPED tone (`--mspeed-bg`), so the
+  old value measured **1.44:1** on Graphite's #ccd6cf. New value clears 5.46:1 on that tone and
+  6.1–6.8:1 on the four Paper-family tones.
+- ⚠ **The "+" chip's `--text-muted` at ~16334 is CORRECT and deliberately untouched** — it sits
+  on `--surface-raised`, a dark surface. Don't sweep it with the others.
+- **No live patch can undo this.** Checked every site that touches these label elements at
+  runtime: `updateLive` writes only `textContent` on `live-grade-botlbl`, and the power/HR
+  label colour writes are the zone-colour paths, which were never the bug.
+- Verified: whole-file (ends `</html>` asserted FIRST per the standing rule, 22,592 lines,
+  3 script blocks `node --check` clean, CSS 300/300 braces, 149/149 comment pairs), token
+  defined 2× / used 8×, and zero light-half labels left on `--text-muted`.
+  **NOT phone-tested — judge it on the OLED** (v260's dirty-green lesson).
+
 ### v345 (2 Aug) — the QUIET headers + the MINT active tab (Peter's first look at v344).
 
 **⚠ NEXT CODE CHANGE IS v346.** On disk, NOT pushed. Peter, running v344 on the desktop,

@@ -155,7 +155,7 @@
   --warm:#a8622d;--warm-deep:#7c4e16;
   --route:#2f5f9e;
   --cell-top:var(--panel-bg);--cell-top-text:var(--panel-fg);--cell-top-muted:var(--panel-fg-muted);   /* v341 — same neutral as the stop cards (palette reinforcement, Peter); the neutral is now the warm INK */
-  --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;--mspeed-bg:#e4dfcb; /* moving-avg pill: stepped-down warm light */
+  --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;--cell-bottom-muted:#4f4f54;--mspeed-bg:#e4dfcb; /* moving-avg pill: stepped-down warm light */
   --chev-off:rgba(56,54,49,0.3); /* unlit progress chevron — faint neutral ink (matches the ridden ink) */
   /* v347 — RIDDEN chevron. On Paper this stays the neutral ink Peter asked for in v261
      ("ridden chevrons are the neutral slate, not olive") — it is dark on a light bar, so it
@@ -350,7 +350,7 @@
   --warm:#fbbf24;--warm-deep:#fbbf24;
   --route:#60a5fa;
   --cell-top:#141d14;--cell-top-text:#e8f5e8;--cell-top-muted:#9db89d;   /* v344 — restored green-dark, same neutral as the stop cards */
-  --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;   /* stays light in BOTH themes — the B&W pairing is the legibility feature */
+  --cell-bottom:#fffef8;--cell-bottom-text:#1d1d1f;--cell-bottom-muted:#4f4f54;   /* stays light in BOTH themes — the B&W pairing is the legibility feature */
   --mspeed-bg:#ccd6cf; /* moving-avg pill's stepped tone — the value v272 tuned on the OLED */
   --chev-off:rgba(255,255,255,0.24); /* unlit progress chevron — the value v261 tuned on the OLED */
   /* v347 — RIDDEN chevron is the MINT, and this is a bug fix, not a restyle. The shared rule
@@ -1704,7 +1704,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v353';
+window.APP_VERSION='v354';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -16418,7 +16418,7 @@ function tLiveShell(r){
                "incl. stops" also needs no domain knowledge, which is the point: the rider who
                reaches for a moving average BECAUSE it flatters is exactly the one who won't
                decode jargon. -->
-          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">avg. incl. stops</div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;">avg. incl. stops</div>
         </div>
       </div>`;
     }
@@ -16505,7 +16505,7 @@ function tLiveShell(r){
                ⚠ "avg." IS LOAD-BEARING, not decoration — see the note in the speed pill.
                Without it this read "km/h moving", which parses as your moving SPEED, and the
                figure right above it is the actual current speed. -->
-          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">moving avg.</div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;">moving avg.</div>
         </div>
       </div>`;
     }
@@ -16550,7 +16550,7 @@ function tLiveShell(r){
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="${Fb}color:var(--cell-bottom-text);" id="live-grade-totop">${gb.num}</span><span style="${U}color:var(--cell-bottom-text);" id="live-grade-tounit">${gb.unit}</span></div>
-          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;" id="live-grade-botlbl">${gb.label}</div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-grade-botlbl">${gb.label}</div>
         </div>
       </div>`;
     }
@@ -16619,7 +16619,7 @@ function tLiveShell(r){
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:right;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-stop-pct">${pv}</span></div>
           <!-- v260e: the label no longer changes. It said "record to measure" when idle;
                now the figures are honest zeros, so the label just names them, always. -->
-          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">stoppage</div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;" id="live-stop-lbl">stoppage</div>
         </div>
       </div>`;
     }
@@ -16679,7 +16679,7 @@ function tLiveShell(r){
             <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">W &middot; 3 sec</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
@@ -16776,7 +16776,7 @@ function tLiveShell(r){
             <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">rpm</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
@@ -16813,7 +16813,7 @@ function tLiveShell(r){
                58px in an 84px slot, and the 49/51 figure above is 84px, so the label was never
                what governed this pill's width — no cost. "L/R" is bike-computer shorthand that
                assumes you already know; the words don't. -->
-          <div style="font-size:10px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;">Left / Right %</div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;">Left / Right %</div>
         </div>
       </div>`;
     }
@@ -16827,7 +16827,7 @@ function tLiveShell(r){
             <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">bpm</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--text-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
           </div>
         </div>`;
       }
