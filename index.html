@@ -1704,7 +1704,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v357';
+window.APP_VERSION='v358';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -8797,14 +8797,25 @@ function _packFullShow(focusRid){
   // touch-action:none or the browser scrolls/zooms the PAGE instead of the map
   full.style.cssText = 'position:fixed;z-index:9998;cursor:grab;touch-action:none;'
     + `left:${reg.left}px;top:${reg.top}px;width:${reg.width}px;height:${reg.height}px;`;
-  full.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(36,48,36,.8);"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;"></div></div>'
+  // v358 — anchor the ✕ to the MAP, not the overlay. The overlay spans the whole
+  // viewport, so v357's top:14px parked the ✕ over the ride TABS (Peter's
+  // screenshot: it sat on "Settings"). The canvas rect says where the map really
+  // starts; the ✕ goes just inside its top-right corner.
+  const mc = document.getElementById('live-map');
+  const mr = mc ? mc.getBoundingClientRect() : null;
+  // The countdown bar sits ON the map's top edge (Peter, same breath as the ✕
+  // move: "the countdown slider should be at the top of the map too"), the ✕
+  // 8px below it. Screen-top belongs to the tabs, and the tabs stay visible.
+  const barTop = mr ? Math.max(0, mr.top - reg.top) : 0;
+  const xTop = mr ? Math.max(14, mr.top - reg.top + 12) : 14;
+  full.innerHTML = '<div style="position:absolute;top:' + barTop + 'px;left:0;right:0;height:4px;background:rgba(36,48,36,.8);"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;"></div></div>'
     // v357 — the ✕. Peter reversed his own no-✕ call after riding the pannable map:
     // "Waiting for the countdown is a little annoying." Tap-anywhere-close still
     // works, but a gloved tap that wobbles >4px reads as a micro-drag and is
     // (correctly) not a tap — so the guaranteed exit needs to be a TARGET, not a
     // gesture. 52px = the app's phone button size. FULL MAP ONLY — the list view
     // keeps its tap-anywhere + countdown, which he's happy with.
-    + '<div id="pack-full-x" style="position:absolute;top:14px;right:12px;width:52px;height:52px;'
+    + '<div id="pack-full-x" style="position:absolute;top:' + xTop + 'px;right:12px;width:52px;height:52px;'
     + 'display:flex;align-items:center;justify-content:center;cursor:pointer;'
     + 'background:var(--overlay-bg);border:2px solid rgba(253,224,71,.55);border-radius:var(--r-ctrl);color:#fde047;">'
     + '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'

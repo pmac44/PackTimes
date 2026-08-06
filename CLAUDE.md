@@ -50,9 +50,34 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v358 (6 Aug) — THE ✕ AND THE COUNTDOWN BAR ANCHOR TO THE MAP, NOT THE SCREEN.
+
+**⚠ NEXT CODE CHANGE IS v359.** On disk, NOT pushed, NOT phone-tested. Peter's screenshot:
+v357's ✕ sat ON TOP OF THE RIDE TABS, covering "Settings". Root cause: `pack-full-ov` spans
+the whole viewport, and `top:14px` measured from the OVERLAY — but the map doesn't start at
+the overlay's top; the tab bar does. Same breath, same fix for the countdown bar: *"I wonder
+if the countdown slider should be at the top of the map too, not at the top of the screen?"*
+
+- `_packFullShow` now measures the live-map canvas rect at open: the 4px countdown bar sits
+  exactly ON the map's top edge (`mr.top - reg.top`), the ✕ 12px inside the map's top-right
+  (8px under the bar). Screen-top belongs to the tabs, and the tabs stay visible and tappable-
+  looking — nothing of the overlay covers chrome any more.
+- Fallbacks (`Math.max(0,…)` / `Math.max(14,…)` and rect-missing guards) keep sane positions
+  if the canvas isn't laid out yet. The LIST view's countdown bar is in-flow inside
+  `#pack-list` and was never wrong — untouched.
+- **THE LESSON (repeat offender):** a full-viewport overlay's coordinates are NOT the ride
+  screen's coordinates. Same family as `_packOvRegion`'s desktop case (v257: full-screen
+  covered the planning map too). Anything positioned inside `pack-full-ov` must anchor to a
+  MEASURED rect, not to the overlay's own top.
+- Verified: whole-file (ends `</html>`, 3 blocks parse, CSS balanced) + anchoring asserts
+  (bar at map top, ✕ 12px in, fallbacks present, list-view bar untouched). **NOT
+  phone-tested** — needs: ✕ clear of the tabs on the phone, bar on the map edge, both
+  overlays' countdowns still behaving.
+
 ### v357 (6 Aug) — THE FULL PACK MAP GETS AN ✕. Peter reversed his own no-✕ call, rightly.
 
-**⚠ NEXT CODE CHANGE IS v358.** On disk, NOT pushed, NOT phone-tested. Peter, after using the
+**PUSHED; phone-tested — WORKS, but v357's screen-anchored position put the ✕ over the ride
+tabs → moved in v358.** Originally: on disk, NOT pushed, NOT phone-tested. Peter, after using the
 pannable map on the phone: *"I think it does need an X button when the map opens up. Waiting
 for the countdown is a little annoying."* v355 shipped without one on his explicit call ("the
 countdown IS the exit") — and using it changed his mind. Keep both facts: designs earn their
