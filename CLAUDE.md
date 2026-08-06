@@ -50,9 +50,34 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v357 (6 Aug) — THE FULL PACK MAP GETS AN ✕. Peter reversed his own no-✕ call, rightly.
+
+**⚠ NEXT CODE CHANGE IS v358.** On disk, NOT pushed, NOT phone-tested. Peter, after using the
+pannable map on the phone: *"I think it does need an X button when the map opens up. Waiting
+for the countdown is a little annoying."* v355 shipped without one on his explicit call ("the
+countdown IS the exit") — and using it changed his mind. Keep both facts: designs earn their
+shape on the device, and this file records the reversal so nobody "restores" the no-✕ purity.
+
+- **WHY THE COUNTDOWN-ONLY EXIT ANNOYED, probably:** tap-anywhere-close DOES exist on this
+  map — but a gloved tap that wobbles >4px reads as a micro-drag and is (correctly) not a
+  tap, so the guaranteed exit degraded to "wait ~8 s". **The fix is a TARGET, not a gesture:**
+  the ✕ closes on finger-LIFT via its own touchend, wobble or not, and stopPropagation keeps
+  the overlay's pan machinery from hearing it as a drag. (touchstart preventDefault+stopProp —
+  the v272 synthetic-mouse rule, again.)
+- 52px (the phone button constant), top-right under the countdown bar, overlay-bg + PackRide
+  yellow border, SVG line-icon ✕ (style guide: no emoji in chrome; stroke currentColor).
+- **FULL MAP ONLY** — the list view keeps tap-anywhere + countdown, which he's happy with.
+  Tap-anywhere-close on the map itself also stays; the ✕ is additive.
+- **Lever if taps still feel dead in gloves:** the overlay's 4px tap/drag threshold
+  (`Math.hypot(dx,dy)>4` in `_packFullGestures`) could go to ~10px. Not changed blind.
+- Verified: whole-file (ends `</html>`, 3 blocks `node --check` clean, CSS 300/300, comments
+  paired) + wiring asserts (✕ closes + stops propagation, list view has no ✕, v355/v356
+  machinery untouched). **NOT phone-tested.**
+
 ### v356 (6 Aug) — THE RIDER ROWS ARE DOORWAYS. The edge chips are gone.
 
-**⚠ NEXT CODE CHANGE IS v357.** On disk, NOT pushed, NOT phone-tested. Peter, straight after
+**PUSHED; Peter's phone test CONFIRMS row-tap → rider zoom** (*"ok that's working"*).
+Originally: on disk, NOT pushed, NOT phone-tested. Peter, straight after
 confirming v355 on the phone: *"if you click one of those [list rows], that's the way you want
 to zoom to that rider, but it just dismisses the map… you don't want to see all those rider
 pills up above that. It's sort of duplicating and it's confusing."*

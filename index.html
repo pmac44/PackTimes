@@ -1704,7 +1704,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v356';
+window.APP_VERSION='v357';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -8797,7 +8797,26 @@ function _packFullShow(focusRid){
   // touch-action:none or the browser scrolls/zooms the PAGE instead of the map
   full.style.cssText = 'position:fixed;z-index:9998;cursor:grab;touch-action:none;'
     + `left:${reg.left}px;top:${reg.top}px;width:${reg.width}px;height:${reg.height}px;`;
-  full.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(36,48,36,.8);"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;"></div></div>';
+  full.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(36,48,36,.8);"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;"></div></div>'
+    // v357 — the ✕. Peter reversed his own no-✕ call after riding the pannable map:
+    // "Waiting for the countdown is a little annoying." Tap-anywhere-close still
+    // works, but a gloved tap that wobbles >4px reads as a micro-drag and is
+    // (correctly) not a tap — so the guaranteed exit needs to be a TARGET, not a
+    // gesture. 52px = the app's phone button size. FULL MAP ONLY — the list view
+    // keeps its tap-anywhere + countdown, which he's happy with.
+    + '<div id="pack-full-x" style="position:absolute;top:14px;right:12px;width:52px;height:52px;'
+    + 'display:flex;align-items:center;justify-content:center;cursor:pointer;'
+    + 'background:var(--overlay-bg);border:2px solid rgba(253,224,71,.55);border-radius:var(--r-ctrl);color:#fde047;">'
+    + '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+    + '</div>';
+  // The ✕ closes on finger-LIFT regardless of wobble — the exact failure the
+  // gesture tap has in gloves — and stops propagation so the overlay's pan
+  // machinery never hears it as a drag.
+  const fx = full.querySelector('#pack-full-x');
+  fx.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); }, {passive: false});
+  fx.addEventListener('touchend',  e => { e.stopPropagation(); _packOvClose(); }, {passive: true});
+  fx.addEventListener('mousedown', e => e.stopPropagation());
+  fx.addEventListener('click',     e => { e.stopPropagation(); _packOvClose(); });
   _packFullGestures(full);
   document.body.appendChild(full);
   _packCdReset();
