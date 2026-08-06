@@ -1704,7 +1704,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v355';
+window.APP_VERSION='v356';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -8726,20 +8726,17 @@ function _packListRender(){
   const myDist = me ? me.dist : UI.gpsDistKm;
   const meIdx = rows.indexOf(me);
   const ord = n => n + (['th','st','nd','rd'][((n % 100) > 10 && (n % 100) < 14) ? 0 : Math.min(n % 10, 4) % 4] || 'th');
-  const focus = _packFocus().focusIds;
-  const chips = {ahead: [], behind: []};
-  for(const x of rows){
-    if(x.isYou || x.r.lat == null || focus.has(x.r.id || x.r.name)) continue;
-    if(x.dist != null && myDist != null)
-      (x.dist >= myDist ? chips.ahead : chips.behind).push(
-        `<div style="background:var(--overlay-bg);border:2px solid ${x.col};color:${x.col};border-radius:14px;padding:3px 10px;font-family:var(--sans);font-size:12px;font-weight:600;white-space:nowrap;">${(x.r.name||'Rider')} ${_packGapTxt(x.dist-myDist).replace('+','').replace('−','')} ${x.dist>=myDist?'›':'‹'}</div>`);
-  }
+  // v356 — the edge chips are GONE (Peter: "it's sort of duplicating and it's
+  // confusing"). They named off-frame riders on the strip, but the list six px
+  // below already names every rider with gap and colour — the list IS the legend
+  // (v257's own rule). Their replacement is better than they were: each LIST ROW
+  // is now a doorway — tap a rider, get the full map centred on them (below).
   const row = x => {
     const gap = (x.dist != null && myDist != null && !x.isYou) ? _packGapTxt(x.dist - myDist) : (x.isYou ? '' : '—');
     const sub = x.isYou
       ? (UI.gpsDistKm != null ? UI.gpsDistKm.toFixed(1) + ' km ridden' : '')
       : (x.stale ? 'last seen ' + _viewAgo(new Date(x.r.lastSeen).getTime()) : '');
-    return `<div style="display:flex;align-items:center;gap:12px;padding:13px 12px;border-radius:var(--r-ctrl);margin-bottom:7px;${x.isYou?'background:rgba(74,222,128,.13);border:1px solid rgba(74,222,128,.5);':'background:var(--card2);border:1px solid var(--border);'}${x.stale?'opacity:.55;':''}">
+    return `<div data-rid="${encodeURIComponent(x.isYou?'__you':(x.r.id||x.r.name||''))}" style="display:flex;align-items:center;gap:12px;padding:13px 12px;border-radius:var(--r-ctrl);margin-bottom:7px;cursor:pointer;${x.isYou?'background:rgba(74,222,128,.13);border:1px solid rgba(74,222,128,.5);':'background:var(--card2);border:1px solid var(--border);'}${x.stale?'opacity:.55;':''}">
       <span style="width:13px;height:13px;border-radius:50%;background:${x.col};flex-shrink:0;${x.isYou?'outline:2px solid #fff;outline-offset:1px;':''}"></span>
       <span style="flex:1;min-width:0;font-family:var(--sans);font-size:17px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${x.isYou?'You':(x.r.name||'Rider')}${sub?`<span style="display:block;font-size:12px;font-weight:400;color:var(--text3);">${sub}</span>`:''}</span>
       <span style="font-family:var(--font);font-size:19px;font-weight:500;color:${x.isYou?'#4ade80':'var(--text)'};white-space:nowrap;">${x.isYou?(meIdx>=0?ord(meIdx+1)+' of '+rows.length:''):gap}</span>
@@ -8747,8 +8744,6 @@ function _packListRender(){
   };
   ov.innerHTML = `
     <div id="pack-strip" style="height:25%;flex-shrink:0;position:relative;cursor:pointer;border-bottom:3px solid #fde047;">
-      <div style="position:absolute;left:8px;top:8px;display:flex;flex-direction:column;gap:5px;align-items:flex-start;">${chips.behind.join('')}</div>
-      <div style="position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:5px;align-items:flex-end;">${chips.ahead.join('')}</div>
       <div style="position:absolute;right:10px;bottom:8px;background:var(--overlay-bg);border:1px solid rgba(253,224,71,.5);border-radius:var(--r-ctrl);padding:5px 11px;font-family:var(--sans);font-size:13px;font-weight:600;color:#fde047;">Tap for map</div>
     </div>
     <div id="pack-list" style="flex:1;min-height:0;background:rgba(8,12,8,.97);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;overflow:hidden;">
@@ -8761,13 +8756,41 @@ function _packListRender(){
     </div>`;
 }
 
-function _packFullShow(){
+// v356 — how wide the window is when a LIST ROW jumps you to one rider. Wide
+// enough to read which road they're on and which way the route runs; close
+// enough that one dot is unmistakably the subject. Pan/zoom (v355) from there.
+const PACK_RIDER_ZOOM_KM = 2.5;
+
+function _packFullShow(focusRid){
   _packListOpen = false;
   _packFullOpen = true;
   const ov = document.getElementById('pack-ov');
   if(ov) ov.remove();
   // whole pack, whole canvas — the v253 fit, minus far-away outliers (v355)
   _packFit(_packFitPts().pts, 0.5);
+  // v356 — a rider row is a doorway: centre the full map on THAT rider. The
+  // whole-pack fit above still ran, so if the rider has no position (never
+  // transmitted) the map falls back to the pack rather than nowhere. '__you'
+  // is the rider's own row. A STALE rider centres on their last known fix —
+  // that is not a bug, it's the point: "maybe they have gone off course and
+  // need help" (Peter), and last-seen is where you'd start looking.
+  if(focusRid){
+    let p = null;
+    if(focusRid === '__you'){ if(UI.gpsPos) p = {lat: UI.gpsPos.lat, lon: UI.gpsPos.lon}; }
+    else {
+      const x = _packRows().find(y => (y.r.id || y.r.name) === focusRid && y.r.lat != null);
+      if(x) p = {lat: x.r.lat, lon: x.r.lon};
+    }
+    if(p){
+      const st = ms('live-map');
+      const cvs = document.getElementById('live-map');
+      const mapH = cvs ? (cvs._forcedH || cvs.offsetHeight || 300) : 300;
+      st.cx = p.lon; st.cy = p.lat;
+      st.zoom = zoomForKmWidth('live-map', PACK_RIDER_ZOOM_KM, mapH);
+      st._fitted = false;
+      redrawMap('live-map');
+    }
+  }
   const reg = _packOvRegion();
   const full = document.createElement('div');
   full.id = 'pack-full-ov';
@@ -8880,6 +8903,12 @@ function _packOvClose(keepPeek){
 
 function _packOvOnClick(e){
   if(e.target.closest('#pack-strip')){ _packFullShow(); return; }
+  // v356 — tap a rider row → full map centred on that rider. Peter's finger
+  // found this before the feature existed: he tapped a row expecting to zoom
+  // and the catch-all below read it as "dismiss". Must be checked BEFORE the
+  // catch-all close or the rows stay dead.
+  const rr = e.target.closest('[data-rid]');
+  if(rr){ _packFullShow(decodeURIComponent(rr.getAttribute('data-rid'))); return; }
   if(e.target.closest('#pack-ov-share')){ _packOvClose(); _shareSheetShow(); return; }
   if(e.target.closest('#pack-ov-leave')){
     if(!confirm('Leave this group ride?\n\nYou\'ll stop seeing the pack and they\'ll stop seeing you. Your recording is not affected.')) return;

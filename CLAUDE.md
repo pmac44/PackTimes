@@ -50,9 +50,43 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v356 (6 Aug) — THE RIDER ROWS ARE DOORWAYS. The edge chips are gone.
+
+**⚠ NEXT CODE CHANGE IS v357.** On disk, NOT pushed, NOT phone-tested. Peter, straight after
+confirming v355 on the phone: *"if you click one of those [list rows], that's the way you want
+to zoom to that rider, but it just dismisses the map… you don't want to see all those rider
+pills up above that. It's sort of duplicating and it's confusing."*
+
+- **HIS FINGER FOUND THE FEATURE BEFORE IT EXISTED.** He tapped a rider row EXPECTING to zoom
+  to them; the v318 catch-all ("a tap anywhere else closes straight away") read it as dismiss.
+  When the finger already knows what a control should do, the finger is right. Rows now carry
+  `data-rid` and the handler runs **BEFORE the catch-all close** (order asserted by the
+  verifier — after it, the rows would stay dead and nothing would look wrong).
+- **Tap a rider row → `_packFullShow(rid)` → full map CENTRED ON THAT RIDER** at
+  `PACK_RIDER_ZOOM_KM` (2.5 km window via the existing `zoomForKmWidth`), with v355's
+  pan/pinch live from there. The whole-pack fit still runs first, so a rider with no position
+  yet falls back to the pack, never to nowhere. **A STALE rider centres on their last-known
+  fix on purpose** — "maybe they have gone off course and need help" (Peter, v355) — last
+  seen is where you'd start looking. Your own row ('__you') centres on you. rid is
+  encodeURIComponent'd into the attribute and decoded on read (names can carry quotes).
+- **THE EDGE CHIPS ARE DELETED** (the strip's "Dave 4.2 km ›" pills). They named off-frame
+  riders — but the list six px below already names every rider with gap and colour, and the
+  list IS the legend (v257's own rule). Worse, tapping a chip fell through to the STRIP
+  handler and opened the whole-pack map — an unrelated action on a thing that looks tappable
+  for a different reason. The rows do the chips' job properly now. `_packFocus` still returns
+  `focusIds` with no consumer left — harmless, trim in a cleanup.
+- The strip keeps its "Tap for map" → whole-pack view; the catch-all close still covers the
+  countdown bar, padding and dead space, and the ~8 s auto-close is untouched.
+- Verified: whole-file (ends `</html>` asserted FIRST, 22,753 lines, 3 script blocks
+  `node --check` clean, CSS 300/300, comments 149/149) + 19 source asserts incl. handler
+  ORDER (strip → rows → buttons → catch-all), no null centre from a positionless rider, and
+  v355's machinery untouched. **NOT phone-tested** — needs: tap each row incl. You and a
+  stale rider, strip → whole pack, tap-close and countdown from the focused view.
+
 ### v355 (6 Aug) — THE PACK VIEWS ASSUMED YOU'RE WITH THE PACK. Found by the rider simulator.
 
-**⚠ NEXT CODE CHANGE IS v356.** On disk, NOT pushed, NOT phone-tested. Found with the new
+**PUSHED, and Peter's home re-test CONFIRMS the far-away fit + pan on the phone** (*"That
+worked"*). Originally: on disk, NOT pushed, NOT phone-tested. Found with the new
 rider simulator (`_planning/rider-sim/rider-sim.html` — fakes N messy riders against the real
 Supabase backend; README alongside): Peter ran sim riders on a route while sitting at home
 ~30 km away. *"I can't pan the map to see the other riders… It doesn't pan to the pack, only
