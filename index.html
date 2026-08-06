@@ -1704,7 +1704,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v354';
+window.APP_VERSION='v355';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -8615,6 +8615,47 @@ function _packFit(pts, bandFrac, centre){
   redrawMap('live-map');
 }
 
+// v355 — WHICH POSITIONS SHOULD THE PACK AUTO-FIT FRAME? Everyone near the ride.
+// Peter's home test (sim riders on route, him ~30 km away at his house): the fit
+// framed "me + pack", centred on the empty midpoint between them, and the zoom
+// floor (max(1,…) below) couldn't reach wide enough — NOBODY was in frame. His
+// diagnosis was exactly right: "choosing the mid point of me and the sim riders,
+// but can't show any of us." And it isn't only a test artefact — checking on the
+// bunch from home before setting out, or after pulling the pin, hits the same.
+// THE RULE: a position far off the route stops steering the camera. The dot is
+// still drawn, the peek's edge chips still name them, and (v355) the full map
+// pans — the outlier is reachable, just not in charge of the framing.
+const PACK_FIT_OFFROUTE_KM = 3;
+function _packFitPts(){
+  const pts = _packRows().filter(x => !x.isYou && x.r.lat != null)
+                         .map(x => ({lat: x.r.lat, lon: x.r.lon}));
+  const me = UI.gpsPos ? {lat: UI.gpsPos.lat, lon: UI.gpsPos.lon} : null;
+  const all = me ? pts.concat([me]) : pts.slice();
+  const r = cur();
+  let keep = all, meFar = false;
+  if(r && r.points && r.points.length > 1){
+    // Off-route test against the event's own route — sampled at ~1500 points
+    // (≈200 m apart on a 300 km route), plenty for a 3 km threshold.
+    const step = Math.max(1, Math.floor(r.points.length / 1500));
+    const offKm = p => { let m = Infinity;
+      for(let i = 0; i < r.points.length; i += step){ const d = hav(p, r.points[i]); if(d < m) m = d; }
+      return m; };
+    keep = all.filter(p => offKm(p) <= PACK_FIT_OFFROUTE_KM);
+    meFar = !!me && offKm(me) > PACK_FIT_OFFROUTE_KM;
+  } else if(all.length >= 3){
+    // No route to test against (shouldn't happen in an event) — median rule:
+    // keep points within max(5 km, 3× the median spread) of the median centre.
+    const med = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+    const c = {lat: med(all.map(p => p.lat)), lon: med(all.map(p => p.lon))};
+    const ds = all.map(p => hav(p, c));
+    const lim = Math.max(5, 3 * med(ds));
+    keep = all.filter((p, i) => ds[i] <= lim);
+    meFar = !!me && hav(me, c) > lim;
+  }
+  if(!keep.length) keep = all;   // never fit nothing
+  return {pts: keep, meFar};
+}
+
 // You + nearest ahead + nearest behind — the only zoom behaviour until it annoys
 // someone (deliberately NO setting yet). Everyone else becomes an edge chip.
 function _packFocus(){
@@ -8666,7 +8707,13 @@ function _packListShow(){
   const stripBottom = reg.top + reg.height * 0.25;
   let band = 0.15;
   if(rect && rect.height > 0) band = Math.max(0.08, Math.min(0.5, ((stripBottom - rect.top) / 2) / rect.height));
-  _packFit(_packFocus().pts, band, UI.gpsPos ? {lat: UI.gpsPos.lat, lon: UI.gpsPos.lon} : null);
+  // v355 — you-at-the-centre only works when you're WITH the pack (Peter's own
+  // strip-view rule: the frame says "ahead is up there, behind is down there",
+  // which needs you in it). Far from the pack, centring on you framed hundreds
+  // of km of nothing — so the strip frames the pack instead.
+  const fp = _packFitPts();
+  if(fp.meFar || !UI.gpsPos) _packFit(fp.pts, band);
+  else _packFit(_packFocus().pts, band, {lat: UI.gpsPos.lat, lon: UI.gpsPos.lon});
   _packCdReset();
   if(!_packCdTimer) _packCdTimer = setInterval(_packCdTick, 150);
 }
@@ -8719,20 +8766,105 @@ function _packFullShow(){
   _packFullOpen = true;
   const ov = document.getElementById('pack-ov');
   if(ov) ov.remove();
-  // whole pack, whole canvas — the v253 fit
-  const rows = _packRows().filter(x => x.r.lat != null);
-  const pts = rows.map(x => ({lat: x.r.lat, lon: x.r.lon}));
-  if(UI.gpsPos) pts.push({lat: UI.gpsPos.lat, lon: UI.gpsPos.lon});
-  _packFit(pts, 0.5);
+  // whole pack, whole canvas — the v253 fit, minus far-away outliers (v355)
+  _packFit(_packFitPts().pts, 0.5);
   const reg = _packOvRegion();
   const full = document.createElement('div');
   full.id = 'pack-full-ov';
-  full.style.cssText = 'position:fixed;z-index:9998;cursor:pointer;'
+  // touch-action:none or the browser scrolls/zooms the PAGE instead of the map
+  full.style.cssText = 'position:fixed;z-index:9998;cursor:grab;touch-action:none;'
     + `left:${reg.left}px;top:${reg.top}px;width:${reg.width}px;height:${reg.height}px;`;
   full.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(36,48,36,.8);"><div id="pack-cd-bar" style="height:100%;width:100%;background:#fde047;"></div></div>';
-  full.addEventListener('click', () => _packOvClose());
+  _packFullGestures(full);
   document.body.appendChild(full);
   _packCdReset();
+}
+
+// v355 — THE FULL PACK MAP PANS AND ZOOMS (Peter: "you should be able to zoom in
+// on a particular rider. Maybe they have gone off course and need help").
+// The gestures live on the OVERLAY — the canvas underneath never hears them —
+// writing the same ms('live-map') state, with the SAME px→degrees maths, as the
+// canvas's own attachMap pan (cvs._kx/_ky/_scale/_cLon/_cLat are set by drawMap).
+// While the peek is on, redrawMap's _packPeekOn() gate already keeps follow-GPS
+// off, so a pan sticks instead of being yanked back on the next fix — no new
+// follow logic needed.
+// THE GLOVE RULE SURVIVES: a clean tap (no movement) still closes, exactly as
+// before. A drag/pinch/wheel is not a tap: it resets the ~8 s countdown instead,
+// so the map stays up while you're actually looking around it, and snaps back to
+// your ride the moment you stop. No ✕ button — Peter's call, the countdown IS
+// the exit.
+// ⚠ preventDefault on touchstart is LOAD-BEARING (the v272 lesson): without it
+// the tap is replayed as synthetic mouse events after the overlay is gone and
+// lands on the canvas underneath.
+function _packFullGestures(full){
+  const st = ms('live-map');
+  const cvs = () => document.getElementById('live-map');
+  let drag = null, pinch = null, didDrag = false;
+  const start = (x, y) => { const c = cvs(); if(!c) return;
+    _mapDragging = true;   // tile loads mustn't redraw mid-gesture (same as attachMap)
+    drag = {x, y, cx: (c._cLon !== undefined ? c._cLon : st.cx),
+                  cy: (c._cLat !== undefined ? c._cLat : st.cy), moved: false}; };
+  const move = (x, y) => { const c = cvs(); if(!drag || !c || !c._kx) return;
+    const dx = x - drag.x, dy = y - drag.y;
+    if(Math.hypot(dx, dy) > 4) drag.moved = true;
+    if(!drag.moved) return;
+    st.cx = drag.cx - dx / (c._kx * c._scale);
+    st.cy = drag.cy + dy / (c._ky * c._scale);
+    st._fitted = false;
+    _packCdReset();
+    redrawMap('live-map'); };
+  const end = () => { _mapDragging = false;
+    const wasTap = drag && !drag.moved && !pinch;
+    if(drag && drag.moved) didDrag = true;
+    drag = null; return wasTap; };
+  full.addEventListener('touchstart', e => {
+    _packCdReset();
+    if(e.touches.length === 2){
+      drag = null;
+      const dx = e.touches[0].clientX - e.touches[1].clientX,
+            dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinch = {d0: Math.hypot(dx, dy) || 1, z0: st.zoom};
+    } else if(e.touches.length === 1){
+      start(e.touches[0].clientX, e.touches[0].clientY);
+    }
+    e.preventDefault();
+  }, {passive: false});
+  full.addEventListener('touchmove', e => {
+    if(e.touches.length === 2 && pinch){
+      const dx = e.touches[0].clientX - e.touches[1].clientX,
+            dy = e.touches[0].clientY - e.touches[1].clientY;
+      st.zoom = Math.max(0.1, Math.min(800, pinch.z0 * Math.hypot(dx, dy) / pinch.d0));
+      st._fitted = false; _packCdReset(); redrawMap('live-map');
+    } else if(e.touches.length === 1 && drag){
+      move(e.touches[0].clientX, e.touches[0].clientY);
+    }
+    e.preventDefault();
+  }, {passive: false});
+  full.addEventListener('touchend', e => {
+    if(e.touches.length < 2) pinch = null;
+    if(e.touches.length === 0 && end()) _packOvClose();
+  }, {passive: true});
+  full.addEventListener('mousedown', e => {
+    e.preventDefault(); _packCdReset(); start(e.clientX, e.clientY);
+    const mm = ev => move(ev.clientX, ev.clientY);
+    const mu = () => { end();
+      document.removeEventListener('mousemove', mm);
+      document.removeEventListener('mouseup', mu); };
+    document.addEventListener('mousemove', mm);
+    document.addEventListener('mouseup', mu);
+  });
+  full.addEventListener('click', () => {
+    if(didDrag){ didDrag = false; return; }   // a drag's trailing click isn't a tap
+    _packOvClose();
+  });
+  full.addEventListener('wheel', e => {
+    e.preventDefault(); _packCdReset();
+    // magnitude-aware, per the v353 trackpad rule — don't count events, read them
+    const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? WHEEL_NOTCH_PX : 1);
+    const notches = Math.max(-2, Math.min(2, dy / WHEEL_NOTCH_PX));
+    st.zoom = Math.max(0.1, Math.min(800, st.zoom * Math.pow(ZOOM_STEP, -notches)));
+    st._fitted = false; redrawMap('live-map');
+  }, {passive: false});
 }
 
 function _packOvClose(keepPeek){

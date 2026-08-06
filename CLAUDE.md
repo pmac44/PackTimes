@@ -16,6 +16,91 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
   Before v335 offline NEVER worked — see the v335 changelog entry. `sw.js` must stay a real file.
 - Optional Dropbox sync of plans across devices.
 
+### DEAD END (4 Aug 2026) — "PackTimes" CANNOT be made to appear as the device on Strava. Don't re-research this.
+
+Peter, with a Wahoo activity page in front of him: *"When you upload a ride to Strava, it will
+say where the data comes from... Can we say pack times?"* Answer: no, and the investigation is
+recorded here so nobody spends another hour on it.
+
+- **That line is NUMBERS, not text.** A FIT file has no "Wahoo ELEMNT BOLT" string in it. It has
+  `file_id.manufacturer` and `file_id.product`, both integers, and Strava owns a private lookup
+  table turning pairs into names. Strava's upload docs confirm the only file_id fields it reads
+  are manufacturer, product and time_created — **`product_name` and the whole `device_info`
+  message are NOT read**, so there is no free-text hook anywhere in the file.
+- **We write manufacturer 255 / product 1** (`MANUFACTURER_DEVELOPMENT`, ~line 6305). 255 is the
+  FIT spec's shared "development" ID that every hobby encoder uses, so it is not unmapped by
+  oversight — it is not *ours*, and mapping it would collide with everyone else's home-built file.
+- **The "falls back to the upload source" behaviour does NOT apply to us.** That fallback (Strava
+  showing e.g. "Samsung Health") is for Strava's official partner integrations. Confirmed against
+  a real PackTimes upload — the ride "Hommus", 4 Aug 2026, shows **nothing at all** in that slot,
+  only "Bike: Toughroad GX".
+- **THE ROUTE IN IS CLOSED, and this is the part worth remembering.** WorkOutDoors — an
+  established Apple Watch app with a real user base — has been trying for YEARS. The developer:
+  tried every device-name combination he could think of, contacted Strava and got only automated
+  replies, searched their developer forums and found the same question unanswered from others,
+  and "eventually gave up again," retrying annually. Strava's device list is manually approved
+  and there is no self-serve path. A one-person app is not getting added. Do not write to Strava
+  about it; do not apply to Garmin for a manufacturer ID on this basis.
+- ⚠ **NEVER borrow another manufacturer's ID to force a name.** Misattribution, and Strava has
+  been tightening exactly this since the Oct 2025 attribution rollout. It risks the API key.
+- **REJECTED SUBSTITUTE, and it was Peter's call:** Strava's `POST /uploads` accepts a
+  `description` field which we do not currently send (`stravaUpload` sends only `data_type`,
+  `name`, `external_id`, ~line 6910). A line like "Recorded with PackTimes" would render directly
+  under the ride title — better placed than the device line. Offered as always-on, as a Settings
+  toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
+  the attribution to him. The field stays free for his own notes. Don't add it back unasked.
+
+### v355 (6 Aug) — THE PACK VIEWS ASSUMED YOU'RE WITH THE PACK. Found by the rider simulator.
+
+**⚠ NEXT CODE CHANGE IS v356.** On disk, NOT pushed, NOT phone-tested. Found with the new
+rider simulator (`_planning/rider-sim/rider-sim.html` — fakes N messy riders against the real
+Supabase backend; README alongside): Peter ran sim riders on a route while sitting at home
+~30 km away. *"I can't pan the map to see the other riders… It doesn't pan to the pack, only
+to a place sort of halfway between my house and the ride start."* Then his own diagnosis,
+which was exactly right: *"it is choosing the mid point of me and the sim riders, but can't
+show any of us."*
+
+- **ROOT CAUSE 1 — the fits always included YOU.** The full pack map fitted the bbox of every
+  rider + you (`_packFullShow`), so its centre was literally the midpoint between his house
+  and the pack — not a stored default, just bbox arithmetic. And `_packFit`'s zoom floor
+  (`Math.max(1,…)`) can't zoom out past ~route scale, so at that centre NEITHER party was in
+  the window. Truth-tabled: span 1.2× route bbox → zoom clamps to 1 → half-window 12.5 km with
+  home 20 km and pack 18 km off-centre. Nobody visible, exactly as reported. The peek strip
+  was worse still: it CENTRES on you by design (the "ahead is up there" frame), so from home
+  it framed hundreds of km of nothing.
+- **Not only a test artefact:** checking on the bunch from home before setting out, or after
+  pulling the pin, is the same geometry.
+- **THE FIX — `_packFitPts()`: a position far off the route stops STEERING the camera.**
+  Off-route test against the event's own route (`PACK_FIT_OFFROUTE_KM = 3`, sampled ~200 m);
+  no route → median-centre fallback (keep within max(5 km, 3× median spread)); filtering can
+  never produce an empty fit. The dot is still drawn and the peek's edge chips still name the
+  outlier — they just don't drag the frame. Symmetric: a far-away OTHER rider (parked at their
+  home) is dropped the same way, an off-course rider 1.5 km off route is kept — **that's who
+  you pan to help.** Peek: `meFar` → frame the pack instead of you; with the pack, behaviour
+  byte-identical (truth-tabled).
+- **ROOT CAUSE 2 — the full pack map had NO gestures at all.** Pan exists on every canvas
+  (attachMap), but the `pack-full-ov` overlay sat on top eating everything, and any tap closed
+  it. **`_packFullGestures`: pan/pinch/wheel now live on the OVERLAY**, writing the same
+  `ms('live-map')` state with the IDENTICAL px→degrees expression as attachMap's pan (asserted
+  by the truth-table against the real source). `redrawMap`'s existing `_packPeekOn()` gate
+  already keeps follow-GPS off during the peek, so pans stick with zero new follow logic.
+- **The glove rule survives, Peter's call: NO ✕ button.** A clean tap (no movement) closes
+  exactly as before; drag/pinch/wheel resets the ~8 s countdown (5 reset sites), so the map
+  stays up while you're using it and snaps back to your ride when you stop. A drag's trailing
+  click is suppressed (`didDrag`). ⚠ `preventDefault` on touchstart is LOAD-BEARING — the v272
+  synthetic-mouse trap: without it a tap replays as mouse events onto the canvas underneath.
+  `_mapDragging` bracketed so tile loads don't redraw mid-gesture. `touch-action:none` on the
+  overlay or the browser pans the PAGE. Wheel uses the v353 magnitude rule (read the delta,
+  don't count events). Pinch clamp 0.1–800, same as attachMap.
+- **The RIDE map itself stays zoom-only** — v245's decision, untouched. Only the full-screen
+  pack overlay pans.
+- Verified: whole-file (ends `</html>` asserted FIRST, 22,724 lines, 3 script blocks
+  `node --check` clean, CSS 300/300 braces, 149/149 comment pairs) + **20/20 truth-table on
+  the REAL extracted `_packFitPts`/`_packFit`** — the midpoint-and-floor bug reproduced on old
+  behaviour first, per the standing rule. **NOT phone-tested** — needs: home test again (peek
+  + full map should frame the sim pack), pan/pinch/tap-close on the phone, and a with-the-pack
+  ride to confirm nothing moved.
+
 ### v354 (4 Aug) — THE LIGHT-HALF LABELS HAD NO MUTED COLOUR OF THEIR OWN. 2.1:1.
 
 **⚠ NOTE: this changelog SKIPS v346–v353** — those were built in sessions that didn't write
