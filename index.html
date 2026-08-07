@@ -1740,7 +1740,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v359';
+window.APP_VERSION='v360';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1769,6 +1769,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   settingsExp:{appearance:true,sharing:false,packride:false,strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,
+  powerMaxForceN:null,powerMinForceN:null,powerMaxTorqueNm:null,powerHasPeak:false,powerCpsFlags:0,   // v360 — pedal force pill
   // v274 — crank length. ⚠ DELIBERATELY NOT IN uiPrefs: the PEDAL stores this, not us. A
   // persisted copy could say 172.5 while the pedal ran on 175, and a setting that doesn't
   // reach the hardware is a lie that silently scales every watt. Read from the pedal on
@@ -10101,7 +10102,7 @@ function _simSensorsSet(on){
   if(_simSensorTimer){clearInterval(_simSensorTimer);_simSensorTimer=null;}
   if(!on){
     // Only let go of what we faked. A real meter connected in the meantime owns these.
-    if(!_powerChar){UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;}
+    if(!_powerChar){UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerMaxForceN=null;UI.powerHasPeak=false;}
     if(!_hrChar){UI.hrConnected=false;UI.hrBpm=null;}
     renderKeepScroll();
     return;
@@ -15585,7 +15586,38 @@ function sortedLayers(r){
 // average, and a cycle should put like next to like.
 // v276 — 'grade' sits with the other no-hardware metrics (speed/mspeed/stop), before the
 // paired sensors, because it's the road rider's metric and needs nothing plugged in.
-const PILL_CYCLE=['speed','pace','mspeed','stop','grade','power','cad','hr','off'];
+const PILL_CYCLE=['speed','pace','mspeed','stop','grade','power','cad','force','hr','off'];
+// ── PEDAL FORCE (v360) ───────────────────────────────────────────────────────
+// Peter's use for it: "grinding too big a gear or busting your knees, and as a trigger to
+// increase cadence if you want more power."
+//
+//   F = P / (ω · r)      ω = rpm · 2π/60 rad/s,  r = crank length in metres
+//
+// 200 W at 85 rpm on 172.5 mm cranks ≈ 130 N. Crank length is not a setting — the app already
+// reads it off the pedals (UI.crankLengthMm), with the last reading kept as a fallback.
+//
+// ⚠ WHAT THIS NUMBER IS, AND WHY IT IS NOT DOUBLED.
+// It is the AVERAGE tangential force over a whole revolution, BOTH legs, including the dead
+// spots top and bottom where you make almost nothing. Real peak on the downstroke is roughly
+// 2–2.5× it. Peter asked whether we should just double it and label it clearly. Two reasons
+// not to, and he supplied the first one himself:
+//   1. The ratio isn't constant — it RISES at low cadence when you're grinding, which is
+//      precisely the case the pill exists to warn about. A flat 2× would understate the
+//      danger case. (Same logic as taking 15% rather than 10% on the faff uplift: err in the
+//      direction that's safe to be wrong in.)
+//   2. He said the value is in the COMPARISON. Multiplying by a constant changes no
+//      comparison — same ranking, same "higher than usual, shift down" moment. Doubling adds
+//      only a false air of measurement.
+// If the pedals broadcast a real peak (CPS flag bit 6) the pill shows THAT instead. See
+// _parsePowerMeasurement.
+//
+// Uses UI.powerWatts, which is already the 3-second smoothed figure — an instantaneous force
+// number would be unreadable at a glance.
+function pedalForceN(){
+  const w=UI.powerWatts, rpm=UI.powerCadence, mm=UI.crankLengthMm||UI.crankLastMm;
+  if(w==null||!(w>0)||rpm==null||!(rpm>0)||!mm)return null;   // coasting or crank unknown
+  return w/((rpm*2*Math.PI/60)*(mm/1000));
+}
 // PACE (min/km) from speed (km/h) as MM:SS. '—' below 1 km/h (a crawl — pace is meaningless
 // there, and it keeps the value inside the pill's 5-char box). SS always 2 digits so the colon
 // holds its column when right-justified, same trick the speed pill uses for its decimal point.
@@ -17047,6 +17079,41 @@ function tLiveShell(r){
         <div id="live-power-bot" style="background:${npBg};border-top:1px solid rgba(10,15,10,0.85);padding:2px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:30px;font-weight:600;color:${npCol};font-family:var(--font);" id="live-power-np">${np}</span></div>
           <div style="font-size:10px;font-weight:500;color:${npCol};font-family:var(--sans);line-height:1.1;" id="live-power-nplbl">W weighted</div>
+        </div>
+      </div>`;
+    }
+    if(type==='force'){
+      // Same two-half shape as the rest of the family. Both figures come off the power meter,
+      // so the unpaired state is the power meter's (see the cad pill).
+      // TOP    = average tangential force over the stroke, both legs (see pedalForceN).
+      // BOTTOM = the MEASURED peak if these pedals broadcast it, otherwise an honest dash.
+      //          Not a doubled average — see the long note at pedalForceN for why.
+      if(!UI.powerConnected){
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};text-align:center;" id="live-fpill-force">
+          <div style="padding:5px 8px 3px;">
+            <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:15px;font-weight:600;color:var(--text);font-family:var(--sans);line-height:1.1;white-space:nowrap;">Force</span></div>
+            <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">N</div>
+          </div>
+          <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+          </div>
+        </div>`;
+      }
+      const f=pedalForceN();
+      const fTxt=f!==null?String(Math.round(f)):'—';
+      const pk=UI.powerMaxForceN;
+      const pkTxt=(UI.powerHasPeak&&pk!=null)?String(Math.round(pk)):'—';
+      // The label doubles as the diagnostic: pair the pedals, glance once, and you know
+      // whether they send a real peak or not. Cheaper than a settings screen for it.
+      const pkLbl=UI.powerHasPeak?'N peak':'N peak — not sent';
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-force">
+        <div style="padding:5px 8px 3px;">
+          <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-force-cur">${fTxt}</span></div>
+          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">N avg stroke</div>
+        </div>
+        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+          <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:28px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-force-pk">${pkTxt}</span></div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-force-pklbl">${pkLbl}</div>
         </div>
       </div>`;
     }
@@ -20383,6 +20450,22 @@ function updateLive(){
   }
   // v260: cadence + balance moved to their own pill (ids changed from live-power-* to
   // live-cad-*). The power pill no longer carries them.
+  const forceEl=document.getElementById('live-force-cur');
+  if(forceEl&&UI.powerConnected){
+    const f=pedalForceN();
+    const v=f!==null?String(Math.round(f)):'—';
+    if(forceEl.textContent!==v)forceEl.textContent=v;
+    const pkEl=document.getElementById('live-force-pk');
+    if(pkEl){
+      const pv=(UI.powerHasPeak&&UI.powerMaxForceN!=null)?String(Math.round(UI.powerMaxForceN)):'—';
+      if(pkEl.textContent!==pv)pkEl.textContent=pv;
+    }
+    const pkLblEl=document.getElementById('live-force-pklbl');
+    if(pkLblEl){
+      const lv=UI.powerHasPeak?'N peak':'N peak — not sent';
+      if(pkLblEl.textContent!==lv)pkLblEl.textContent=lv;
+    }
+  }
   const cadEl=document.getElementById('live-cad-cur');
   if(cadEl&&UI.powerConnected){
     const v=UI.powerCadence!==null?String(UI.powerCadence):'—';
@@ -22587,8 +22670,32 @@ function _parsePowerMeasurement(buf){
       }
       _powerChar._lastCrankRevs=crankRevs;_powerChar._lastCrankTime=crankTime;
     }
+    offset+=4;   // consume the field whether or not it parsed — everything after it shifts
   }
-  return{watts,cadence,balance};
+  // ── OPTIONAL: the REAL peak, straight off the pedals ────────────────────────────────
+  // Peter asked whether we could just double the average to get a peak. We shouldn't (the
+  // peak:average ratio isn't constant — it climbs exactly when you're grinding, which is the
+  // case you'd want warned about). But we may not have to guess at all: the Bluetooth Cycling
+  // Power spec carries max/min force in NEWTONS (flag bit 6) and max/min torque in Nm at 1/32
+  // resolution (bit 7) as optional fields. Plenty of power meters never send them. Reading the
+  // flags costs nothing and tells us which camp these pedals are in — and if they do send it,
+  // that's a measured peak rather than any multiplier we'd invent.
+  // MIN force is worth as much as max here: it is the force at the weakest point of the
+  // stroke, so max-vs-min says whether you push in bursts, pull through, or hold it steady —
+  // Peter's own question about pedalling style, measured instead of guessed.
+  let maxForceN=null,minForceN=null,maxTorqueNm=null;
+  if(flags&(1<<6)){
+    if(offset+3<view.byteLength){
+      maxForceN=view.getInt16(offset,true);        // newtons
+      minForceN=view.getInt16(offset+2,true);      // newtons (can be negative — pulling up)
+    }
+    offset+=4;
+  }
+  if(flags&(1<<7)){
+    if(offset+3<view.byteLength)maxTorqueNm=view.getInt16(offset,true)/32; // 1/32 Nm
+    offset+=4;
+  }
+  return{watts,cadence,balance,maxForceN,minForceN,maxTorqueNm,flags};
 }
 
 // ─── Bluetooth sensors: why this browser can't pair ───────────────────────────
@@ -22630,7 +22737,7 @@ async function connectPowerMeter(){
       optionalServices:[CYCLING_POWER_SERVICE]
     });
     _powerDevice.addEventListener('gattserverdisconnected',()=>{
-      UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;
+      UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
       _powerChar=null;_powerWindow.length=0;
       _npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;
       // v274 — the crank length belongs to the PEDAL, so it goes when the pedal goes. Showing
@@ -22665,7 +22772,7 @@ async function connectPowerMeter(){
     _powerChar._lastCrankRevs=undefined;_powerChar._lastCrankTime=undefined;
     await _powerChar.startNotifications();
     _powerChar.addEventListener('characteristicvaluechanged',e=>{
-      const{watts,cadence,balance}=_parsePowerMeasurement(e.target.value.buffer);
+      const{watts,cadence,balance,maxForceN,minForceN,maxTorqueNm,flags}=_parsePowerMeasurement(e.target.value.buffer);
       const now=Date.now();
       _powerWindow.push({watts,ts:now});
       // Trim to smoothing window
@@ -22674,6 +22781,13 @@ async function connectPowerMeter(){
       UI.powerWatts=avg;
       if(balance!==null&&balance>=0&&balance<=100)UI.powerBalance=balance;
       if(cadence!==null&&cadence>=0&&cadence<250)UI.powerCadence=cadence;
+      // Peak force: only some pedals send it. `powerHasPeak` is what the force pill uses to
+      // decide between showing a measured peak and admitting it hasn't got one.
+      UI.powerCpsFlags=flags;
+      UI.powerHasPeak=!!(flags&(1<<6));
+      if(maxForceN!==null&&maxForceN>=0&&maxForceN<3000)UI.powerMaxForceN=maxForceN;
+      if(minForceN!==null&&minForceN>-1000&&minForceN<3000)UI.powerMinForceN=minForceN;
+      if(maxTorqueNm!==null&&maxTorqueNm>=0&&maxTorqueNm<500)UI.powerMaxTorqueNm=maxTorqueNm;
       // NP: sample instantaneous watts every ~1s into 30s rolling buffer
       if(now-_npLastSampleTs>=950){
         _npLastSampleTs=now;
@@ -22748,7 +22862,7 @@ async function connectPowerMeter(){
 
 function disconnectPowerMeter(){
   if(_powerDevice&&_powerDevice.gatt.connected)_powerDevice.gatt.disconnect();
-  UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;
+  UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
   _powerChar=null;_powerWindow.length=0;
   // Reset NP accumulators
   _npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;
