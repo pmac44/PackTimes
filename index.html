@@ -1487,9 +1487,21 @@ select option{background:var(--bg3);}
           <span>Use this ride as a speed sample</span>
         </label>
         <p style="font-size:13px;color:var(--text3);line-height:1.5;margin:6px 0 0 26px;">Real rides teach PackTimes how fast you actually ride, so its time estimates get better. Samples stay visible under Sample Rides — you can remove any of them later.</p>
+        <!-- ── WHAT WE'RE ABOUT TO RECORD — ALWAYS VISIBLE, ALWAYS EDITABLE ──
+             This block used to HIDE itself whenever the ride matched a route, showing one grey
+             uneditable line instead. That was the bug behind "it's recording it as too fast"
+             (Peter, 7 Aug 2026): a sealed training ride on a route whose untagged roads were
+             inferred as dirt got filed as gravel, with no way to correct it. The model has
+             sealed road at 17.0 km/h flat and gravel at 11.0 — so it predicted a far slower
+             ride than he did, concluded he was much faster than baseline, and made every plan
+             optimistic. Load was wrong too: it copied the ROUTE'S load preset rather than what
+             he actually carried that day.
+             The rule now: the route can PRE-FILL these, and says so, but it never decides them
+             and never hides them. A sample ride scales every plan you make — you get to see
+             exactly what's going into it before it does. -->
         <div id="rsm-calib-body" style="margin-top:10px;">
-          <div id="rsm-auto" style="display:none;font-size:14px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:8px 10px;margin-bottom:10px;line-height:1.5;"></div>
-          <div class="field" id="rsm-surface-field" style="display:none;">
+          <p style="font-size:12px;color:var(--text3);line-height:1.5;margin:0 0 9px;">Check these before saving — they're what your time gets compared against.</p>
+          <div class="field" id="rsm-surface-field">
             <label class="lbl">Surface (mostly)</label>
             <select id="rsm-surface" style="font-family:var(--sans);">
               <option value="road">Sealed road</option>
@@ -1497,8 +1509,17 @@ select option{background:var(--bg3);}
               <option value="single">Singletrack</option>
               <option value="grade4">Rough track / hike-a-bike</option>
             </select>
+            <div id="rsm-surface-note" class="rsm-note" style="display:none;"></div>
           </div>
-          <div class="field" id="rsm-hill-field" style="display:none;">
+          <!-- Climb: when the ride matched a route we have the REAL figure, so we show it
+               rather than asking you to pick a terrain bucket that would only estimate it.
+               No match = no figure, and the Terrain dropdown below does the estimating. -->
+          <div class="field" id="rsm-climb-field" style="display:none;">
+            <label class="lbl">Climb</label>
+            <div id="rsm-climb" style="font-family:var(--font);font-size:15px;font-weight:600;color:var(--text);padding:2px 0;"></div>
+            <div class="rsm-note">From your route</div>
+          </div>
+          <div class="field" id="rsm-hill-field">
             <label class="lbl">Terrain</label>
             <select id="rsm-hill" style="font-family:var(--sans);">
               <option value="3">Flat</option>
@@ -1507,14 +1528,28 @@ select option{background:var(--bg3);}
               <option value="25">Mountainous</option>
             </select>
           </div>
-          <div class="field" id="rsm-load-field" style="display:none;">
+          <div class="field" id="rsm-load-field">
             <label class="lbl">Load carried</label>
             <select id="rsm-load" style="font-family:var(--sans);">
+              <option value="unloaded">Unloaded — bare bike, no luggage</option>
               <option value="light">Light — minimal kit / day ride</option>
               <option value="moderate" selected>Moderate — typical bikepacking setup</option>
               <option value="heavy">Heavy — full expedition or touring load</option>
             </select>
+            <div id="rsm-load-note" class="rsm-note" style="display:none;"></div>
           </div>
+          <!-- The faff tick, which recorded rides never used to offer. The reasoning was that a
+               recording already CONTAINS its faff, because stops under 15 minutes count as ride
+               time. True of a bikepacking day; false of a training ride ridden straight through,
+               which is exactly the ride most likely to be offered as a sample. Off by default —
+               it only applies when you say it does. -->
+          <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin:2px 0 0;">
+            <input type="checkbox" id="rsm-nonstop" style="width:16px;height:16px;flex-shrink:0;margin-top:2px;accent-color:var(--accent);cursor:pointer;">
+            <span style="font-size:13px;color:var(--text2);line-height:1.45;">
+              Add 15% faff — I rode this straight through
+              <span style="display:block;color:var(--text3);font-size:12px;margin-top:2px;">Tick this for a training ride or effort with no real stops in it. Without it a hard non-stop ride makes you look faster than you are on a long day, and every plan comes out optimistic.</span>
+            </span>
+          </label>
         </div>
       </div>
 
@@ -1574,6 +1609,7 @@ select option{background:var(--bg3);}
   </div>
 </div>
 
+<style>.rsm-note{font-size:11.5px;color:var(--text3);line-height:1.4;margin-top:4px;}</style>
 <!-- Advanced Calibration modal (sample rides) -->
 <div id="calib-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:999;align-items:flex-end;justify-content:center;">
   <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
@@ -1704,7 +1740,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v358';
+window.APP_VERSION='v359';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2435,7 +2471,18 @@ const RIDER_MULT={
   regular:{vam:1.00,spd:1.00},
   strong: {vam:1.20,spd:1.15}
 };
+// WHY "unloaded" EXISTS AS A SEPARATE TIER (Peter, 7 Aug 2026).
+// "Light" already meant "minimal kit / day ride" — a saddlebag, tools, two bottles. A bare
+// training bike is genuinely quicker than that, and the difference matters more than it looks:
+// every sample ride is DIVIDED BY its load correction to get a pure rider factor, so filing an
+// unloaded training ride as "light" credits it with a handicap it never carried. The factor
+// comes out too fast, and every loaded plan you build on it comes out optimistic.
+// The step is ~6% on VAM and ~4% on flat speed — weight punishes climbing far more than it
+// punishes rolling along, which is the same ratio the light/moderate/heavy rows already use.
+// Like every other number in this table it's a considered guess, not a measurement. Retune it
+// once there are real unloaded AND loaded samples from the same rider to compare.
 const LOAD_MULT={
+  unloaded:{vam:1.22,spd:1.15},
   light:   {vam:1.15,spd:1.10},
   moderate:{vam:1.00,spd:1.00},
   heavy:   {vam:0.85,spd:0.92}
@@ -5991,10 +6038,23 @@ async function _recDetailDelete(){
 // two quick questions. Dismiss = keep the default date name, add nothing —
 // nothing enters the speed model without a deliberate Save.
 
-// Default name: "Ride 8 Jul 2026", with " (2)", " (3)"… when that name is taken.
+// Default ride name.
+//
+// It used to be "Ride 8 Jul 2026" — a date and nothing else. Peter: "the naming is an option
+// but always seems empty… it would be helpful to know where those rides occurred." He's right:
+// a sample ride scales every plan you make, so six months later you need to recognise it, and
+// a date doesn't tell you whether that 1.12 factor came from a gravel epic or a flat commute.
+//
+// So: name it after the route it followed ("Braidwood loop, 8 Jul 2026"). That's free — the
+// route is already linked — and it's the label Peter actually thinks in. No network, no
+// reverse-geocoding, nothing to fail out of reception. Rides with no linked route keep the
+// old date-only name; the map button in the Sample Rides list answers "where" for those.
 function _recDefaultName(rec){
-  const base = 'Ride ' + new Date(rec.startTS).toLocaleDateString('en-GB',
+  const when = new Date(rec.startTS).toLocaleDateString('en-GB',
     {day: 'numeric', month: 'short', year: 'numeric'});
+  const rt = _recRouteFor(rec);
+  const place = rt ? (rt.label || rt.name || '').trim() : '';
+  const base = place ? place + ', ' + when : 'Ride ' + when;
   const taken = n => RECS.some(x => x.id !== rec.id && (x.name || '') === n);
   if(!taken(base)) return base;
   for(let i = 2; i < 100; i++) if(!taken(base + ' (' + i + ')')) return base + ' (' + i + ')';
@@ -6084,19 +6144,34 @@ function _recSaveShow(rec){
     + '<br><span style="font-size:12px;color:var(--text3);">Breaks over 15 min excluded</span>';
   document.getElementById('rsm-name').value = rec.name || _recDefaultName(rec);
   document.getElementById('rsm-calib').checked = true;
-  const surfLabels = {road: 'sealed road', grade2: 'gravel / dirt', single: 'singletrack', grade4: 'rough track'};
-  const autoEl = document.getElementById('rsm-auto');
-  if(auto){
-    autoEl.style.display = 'block';
-    autoEl.innerHTML = 'From your route: ' + Math.round(auto.elevM) + ' m climb'
-      + (auto.surface ? ' · mostly ' + surfLabels[auto.surface] : '')
-      + ' · ' + (auto.load || 'moderate') + ' load';
-  } else {
-    autoEl.style.display = 'none';
-  }
-  document.getElementById('rsm-surface-field').style.display = (auto && auto.surface) ? 'none' : 'block';
-  document.getElementById('rsm-hill-field').style.display = auto ? 'none' : 'block';
-  document.getElementById('rsm-load-field').style.display = auto ? 'none' : 'block';
+  // Pre-fill from the route where we can, SAY SO, and leave every control editable.
+  // (See the modal markup for why hiding these was wrong.)
+  const note = (id, text) => {
+    const el = document.getElementById(id);
+    el.textContent = text || '';
+    el.style.display = text ? 'block' : 'none';
+  };
+  document.getElementById('rsm-surface').value = (auto && auto.surface) ? auto.surface : 'road';
+  note('rsm-surface-note', auto
+    ? (auto.surface
+        ? 'From your route — change it if that\'s wrong.'
+        : 'Your route has no surface data here, so this is a guess. Please check it.')
+    : null);
+
+  // Real climb off the route beats a terrain bucket; only one of the two is ever shown.
+  document.getElementById('rsm-climb-field').style.display = auto ? 'block' : 'none';
+  document.getElementById('rsm-hill-field').style.display  = auto ? 'none'  : 'block';
+  if(auto) document.getElementById('rsm-climb').textContent = Math.round(auto.elevM) + ' m';
+
+  // The route's Load preset is what you PLANNED to carry on that route, which is not
+  // necessarily what was on the bike today — a training spin on a bikepacking route is the
+  // obvious case. Pre-fill it, flag where it came from, let it be changed.
+  document.getElementById('rsm-load').value = (auto && auto.load) ? auto.load : 'moderate';
+  note('rsm-load-note', auto
+    ? 'From this route\'s Load setting — change it if you carried something different today.'
+    : null);
+
+  document.getElementById('rsm-nonstop').checked = false;
   _recSaveCalibToggle();
   modal.style.display = 'flex';
 }
@@ -6122,13 +6197,16 @@ async function _recSaveConfirm(){
   if(document.getElementById('rsm-calib').checked){
     const distKm = +(rec.totalDist || 0).toFixed(1);
     const hours = _recMovingH(rec);
-    const surface = (auto && auto.surface) ? auto.surface : document.getElementById('rsm-surface').value;
+    // Read the controls, not the route. Whatever is on screen is what gets recorded — if the
+    // rider corrected the surface or the load, that correction is the whole point.
+    const surface = document.getElementById('rsm-surface').value;
     const elevM = auto ? Math.round(auto.elevM)
                        : Math.round(distKm * (+document.getElementById('rsm-hill').value));
-    const load = auto ? (auto.load || 'moderate') : document.getElementById('rsm-load').value;
+    const load = document.getElementById('rsm-load').value;
+    const nonstop = document.getElementById('rsm-nonstop').checked;
     // ts = when the ride happened. The factor maths ignores it; it's there so the sample list
     // can show an age and you can spot evidence that's gone stale (fitness drifts).
-    _recCalibAdd({surface, distKm, hours: +hours.toFixed(2), elevM, load,
+    _recCalibAdd({surface, distKm, hours: +hours.toFixed(2), elevM, load, nonstop,
                   profile: 'rolling', src: 'rec', recId: rec.id, name: rec.name,
                   ts: rec.startTS || Date.now()});
   }
@@ -12933,6 +13011,27 @@ function _calibRemove(i){
   if(_calibOpenIdx>=_calibDraft.length)_calibOpenIdx=_calibDraft.length-1;
   _calibRenderModal();
 }
+// ── "Where was this ride?" ───────────────────────────────────────────────────
+// A sample ride scales every plan you make, so you have to be able to audit it — and the
+// honest answer to "where was that one?" is a map, not a name. Samples that came from a
+// recording already HAVE a track, and v168 already built a detail view that draws it. So
+// this is just a link to that, not a second map.
+function _calibHasTrack(i){
+  const d=_calibDraft[i];
+  const id=d&&d._x&&d._x.recId;
+  return !!id && (typeof RECS!=='undefined') && RECS.some(r=>r.id===id);
+}
+function _calibShowMap(i){
+  const d=_calibDraft[i];
+  const id=d&&d._x&&d._x.recId;
+  if(!_calibHasTrack(i)){_recToast('That ride is no longer saved on this phone');return;}
+  // Commit before swapping so nothing being edited is lost — same commit the Save buttons
+  // use, so it can't half-save. Then CLOSE this window rather than stacking: the ride detail
+  // view sits below it (z-index 998 vs 999) and would otherwise open invisibly behind.
+  _calibCommit();
+  closeCalibModal();
+  _recDetailOpen(id);
+}
 function _calibField(i,field,value){
   if(!_calibDraft[i])return;
   _calibDraft[i][field]=value;
@@ -12974,7 +13073,7 @@ function _calibUpdateFactors(){
 function _calibRenderModal(){
   const wrap=document.getElementById('calib-rides-wrap');
   const surfShort={road:'Sealed',grade2:'Gravel',single:'Singletrack',grade4:'Rough'};
-  const loadShort={light:'Light',moderate:'Moderate',heavy:'Heavy'};
+  const loadShort={unloaded:'Unloaded',light:'Light',moderate:'Moderate',heavy:'Heavy'};
   wrap.innerHTML=_calibDraft.map((d,i)=>{
     if(i!==_calibOpenIdx){
       // Collapsed one-line summary — tap to expand
@@ -12993,6 +13092,7 @@ function _calibRenderModal(){
         <span style="font-size:13px;color:${complete?'var(--text2)':'var(--text3)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${bits}</span>
         <span style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
           <span id="calib-rf-${i}" style="font-size:13px;color:var(--accent);font-family:var(--font);"></span>
+          ${_calibHasTrack(i)?`<button class="btn btn-sm" title="See where this ride was" onclick="event.stopPropagation();_calibShowMap(${i})" style="padding:2px 8px;">Map</button>`:''}
           <button class="btn btn-sm" onclick="event.stopPropagation();_calibOpen(${i})" style="padding:2px 8px;">Edit</button>
           ${_calibDraft.length>1?`<button class="btn btn-sm btn-r" onclick="event.stopPropagation();_calibRemove(${i})" style="padding:2px 8px;">✕</button>`:''}
         </span>
@@ -13061,6 +13161,7 @@ function _calibRenderModal(){
       <div class="field">
         <label class="lbl">Load that day</label>
         <select onchange="_calibField(${i},'load',this.value)">
+          <option value="unloaded" ${d.load==='unloaded'?'selected':''}>Unloaded — bare bike, no luggage</option>
           <option value="light" ${d.load==='light'?'selected':''}>Light — minimal kit / day ride</option>
           <option value="moderate" ${d.load==='moderate'?'selected':''}>Moderate — typical bikepacking setup</option>
           <option value="heavy" ${d.load==='heavy'?'selected':''}>Heavy — full expedition or touring load</option>
@@ -13121,7 +13222,7 @@ function _speedSummaryHTML(r){
   const adv=UI.estModeAdv;
   const riderLbl=adv?(f!==null?`Calibrated ${f.toFixed(2)} ×`:'Calibrated — no samples yet')
     :(({social:'Social',regular:'Regular',strong:'Strong'})[riderSimplePreset(r)]||'Regular')+' rider';
-  const loadLbl=({heavy:'Heavy',moderate:'Moderate',light:'Light'})[r.loadPreset]||'Moderate';
+  const loadLbl=({heavy:'Heavy',moderate:'Moderate',light:'Light',unloaded:'Unloaded'})[r.loadPreset]||'Moderate';
   const avg=(r.estDuration&&r.totalDist)?(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1):null;
   return `${avg?`<div style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);margin-bottom:10px;">${avg} km/h avg</div>`:''}
     <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:14px;color:var(--text2);">
@@ -13186,9 +13287,11 @@ function _speedControlsHTML(r){
     </div>
     <div style="margin-bottom:12px;">
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Load</div>
-      <div style="display:flex;gap:6px;">
-        ${[['heavy','Heavy','Full expedition or touring load'],['moderate','Moderate','Typical bikepacking setup'],['light','Light','Minimal kit, fast and lean']].map(([val,label,sub])=>`
-          <button class="btn btn-sm" onclick="speedSetLoad('${val}')" style="flex:1;flex-direction:column;gap:2px;padding:6px 4px;text-align:center;align-items:center;min-height:52px;${r.loadPreset===val?'border-color:var(--accent);color:var(--accent);':''}">
+      <!-- Four tiers no longer fit across a phone, so they wrap 2x2 (flex-wrap + calc basis)
+           instead of squeezing to unreadable. Order stays heaviest → lightest. -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${[['heavy','Heavy','Full expedition or touring load'],['moderate','Moderate','Typical bikepacking setup'],['light','Light','Minimal kit, fast and lean'],['unloaded','Unloaded','Bare bike, no luggage']].map(([val,label,sub])=>`
+          <button class="btn btn-sm" onclick="speedSetLoad('${val}')" style="flex:1 1 calc(50% - 3px);flex-direction:column;gap:2px;padding:6px 4px;text-align:center;align-items:center;min-height:52px;${r.loadPreset===val?'border-color:var(--accent);color:var(--accent);':''}">
             <span style="font-size:14px;font-weight:600;font-family:var(--font);">${label}</span>
             <span style="font-size:10px;color:var(--text3);white-space:normal;line-height:1.3;">${sub}</span>
           </button>`).join('')}
@@ -22488,9 +22591,37 @@ function _parsePowerMeasurement(buf){
   return{watts,cadence,balance};
 }
 
+// ─── Bluetooth sensors: why this browser can't pair ───────────────────────────
+// Two different failures, and telling them apart matters. On Android/desktop the rider
+// picked a browser without Web Bluetooth and switching browser fixes it. On an iPhone or
+// iPad NOTHING fixes it: Apple has never shipped Web Bluetooth, and every iOS browser —
+// Chrome, Firefox, Edge included — is required to run Apple's engine underneath, so they
+// all inherit the gap. The old message said "use Chrome", which on an iPhone sends the
+// rider off to install Chrome and hit exactly the same wall. Don't do that to them.
+// (It was also half wrong on Android: Samsung Internet has supported Web Bluetooth since
+// v6.2. The honest list is Chrome, Edge, Opera and Samsung Internet.)
+function _isIOS(){
+  const ua=navigator.userAgent||'';
+  // iPadOS 13+ reports a desktop Mac UA — the touch-point count is what gives it away.
+  return /iPad|iPhone|iPod/.test(ua) ||
+         (/Macintosh/.test(ua) && (navigator.maxTouchPoints||0) > 1);
+}
+function bleUnsupportedMsg(what){
+  return _isIOS()
+    ? what+' pairing isn\'t possible on an iPhone or iPad.\n\n'
+      + 'Apple doesn\'t let any browser reach Bluetooth sensors — and that includes Chrome '
+      + 'and Firefox for iOS, which run Apple\'s browser engine underneath. Installing a '
+      + 'different browser won\'t help.\n\n'
+      + 'Everything else works normally: recording, routes, times, maps and offline. Only '
+      + 'the power and heart rate pills need a phone that can pair.'
+    : 'This browser can\'t reach Bluetooth sensors.\n\n'
+      + 'On Android, use Chrome, Edge, Opera or Samsung Internet. On a computer, use Chrome '
+      + 'or Edge. Firefox and Safari don\'t support sensor pairing on any device.';
+}
+
 async function connectPowerMeter(){
   if(!navigator.bluetooth){
-    alert('Web Bluetooth is not supported in this browser. Use Chrome on Android or desktop.');
+    alert(bleUnsupportedMsg('Power meter'));
     return;
   }
   try{
@@ -22630,7 +22761,7 @@ const HR_MEASUREMENT= 0x2A37;
 let _hrDevice=null,_hrChar=null;
 
 async function connectHRMonitor(){
-  if(!navigator.bluetooth){alert('Web Bluetooth not supported. Use Chrome on Android or desktop.');return;}
+  if(!navigator.bluetooth){alert(bleUnsupportedMsg('Heart rate strap'));return;}
   try{
     _hrDevice=await navigator.bluetooth.requestDevice({
       filters:[{services:[HR_SERVICE]}],
