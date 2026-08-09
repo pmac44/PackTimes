@@ -1740,7 +1740,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v360';
+window.APP_VERSION='v361';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2935,7 +2935,11 @@ function clearRouteActuals(r){
   if(!r)return false;
   let changed=!!r.actualStartTime;
   r.actualStartTime=null;
-  (r.stops||[]).forEach(s=>{if(s.actualArrival){delete s.actualArrival;changed=true;}});
+  // v361 — sleptAt is an actual too: a fresh start date means a fresh run, and last
+  // trip's nights must not silently vanish from the new plan's finish time.
+  (r.stops||[]).forEach(s=>{if(s.actualArrival){delete s.actualArrival;changed=true;}
+    if(s.sleptAt){delete s.sleptAt;changed=true;}
+    if(s.sleptNot){delete s.sleptNot;changed=true;}});
   return changed;
 }
 // Get effective sleep hours for a stop — handles fixed departure time
@@ -2957,6 +2961,121 @@ function sleepHoursFor(s,arrivalEta){
   // so instead cap at the sleepH fallback or 10h
   if(hrs>23)return s.sleepH||10;
   return Math.max(1,hrs);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v361 — IS THIS SLEEP STILL AHEAD OF YOU?  ONE authority, four call sites.
+//
+// Peter's 9 Aug group ride, morning of day 2, sitting in the motel room: every
+// ETA for the day read ~10 h late. He fixed it on the road by DELETING the sleep.
+// Reproduced in the harness before a line was changed — 22 of 96 plausible states
+// got it wrong, headline case Sun 20:10 where the plan says Sun 09:40 — and EVERY
+// wrong state had one thing in common: **no `actualArrival` stamp on the sleep
+// stop.** That stamp only lands when a LIVE GPS fix falls within alertKm (500 m)
+// of the stop, so a rider who arrives with the phone asleep in a rain cover never
+// gets one, and the app has no idea the night ever happened.
+//
+// ⚠ AND THE FALLBACK COULD BARELY EVER FIRE. Both dwell tests measured
+// `Date.now() − UI._lastGpsState.arrivedAt` — and arrivedAt is RESET to now every
+// time you move 2 km (~4894, `movedFar`). The very fix that carries you away from
+// the bed wipes the evidence you were ever in it. A dwell timer that resets on
+// movement cannot measure a night you have just ridden away from.
+//
+// THE REFRAME, and it is Peter's: the question an ETA needs answered is NOT "did
+// you sleep?" — that needs evidence a pocketed phone can't produce — but "is this
+// sleep still AHEAD of me?". That is mostly GEOMETRY, and where it isn't, the
+// recording and the clock settle it. His words: standing at the stop it could see
+// the time, the place and the plan, and "I had slept" is overwhelmingly more
+// likely than "I rode through the night at walking pace and still owe ten hours".
+//
+// ⚠ NOTE RULE 2: a sleep BEHIND you is done even if you never slept there. That
+// is not a fudge — for an ETA the only thing that matters is whether those hours
+// are still to be spent, and you cannot spend a night at a bed you rode past.
+//
+// ⚠ THE CLOCK RULE (5) MUST NEVER RUN WITHOUT A POSITION. Branches 2 and 4 pass
+// atDist null and iterate over stops that include TOMORROW night's sleep — a
+// bare "is it past 07:00?" test would mark every future night as already slept.
+// It only fires when we can see we are standing at that particular bed.
+const SLEEP_NEAR_KM = 2;     // "you are at this stop"
+const SLEEP_PAST_KM = 0.3;   // "you are clearly beyond it"
+const SLEEP_MIN_H   = 3;     // a parked-up spell this long at a bed IS the night
+const SLEEP_SCAN_PTS= 800;   // bounded tail scan of the live recording
+const SLEEP_WAKE_WINDOW_H=6; // still at the bed this soon after the wake time = you woke
+let _sleepDwellCache={key:'',map:{}};
+let _sleepSaveT=null;
+
+// The longest quiet spell the live recording shows AT this stop, in hours.
+// ⚠ It measures GAPS BETWEEN FIXES, not runs of stationary ones — a phone
+// suspended in a rain cover records nothing at all overnight, so the night's
+// signature is one 13-hour hole between two points, not a row of stop markers.
+// The open gap between the last fix and now counts too (that is the rider sitting
+// in the room with the app freshly opened, which is exactly Peter's case).
+// Bounded tail scan + memo on the point count, so this is free on the GPS path.
+function _sleepDwellH(s){
+  if(typeof _rec==='undefined'||!_rec||!_rec.points||!_rec.points.length)return 0;
+  if(s.lat==null||s.lon==null)return 0;
+  const key=(_rec.id||'')+':'+_rec.points.length;
+  if(_sleepDwellCache.key!==key)_sleepDwellCache={key:key,map:{}};
+  const sid=String(s.id);
+  if(_sleepDwellCache.map[sid]!==undefined)return _sleepDwellCache.map[sid];
+  const pts=_rec.points,from=Math.max(0,pts.length-SLEEP_SCAN_PTS);
+  let best=0;
+  for(let i=from;i<pts.length;i++){
+    const p=pts[i];
+    if(p.lat==null||hav(p,s)>SLEEP_NEAR_KM)continue;
+    const nextT=(i+1<pts.length)?pts[i+1].t:Date.now();
+    const h=(nextT-p.t)/3600000;
+    if(h>best)best=h;
+  }
+  _sleepDwellCache.map[sid]=best;
+  return best;
+}
+
+// Stamp the answer so it STICKS. Without this the morning's first GPS fix would
+// close the gap _sleepDwellH is reading and the night would un-happen — the same
+// class of mistake as the arrivedAt reset. A fact, written once, saved debounced.
+function _sleepStamp(s,t){
+  if(!s)return false;
+  if(!s.sleptAt){
+    s.sleptAt=t||Date.now();
+    if(_sleepSaveT)clearTimeout(_sleepSaveT);
+    _sleepSaveT=setTimeout(function(){_sleepSaveT=null;try{saveAll();}catch(e){}},3000);
+  }
+  return true;
+}
+
+// The one authority. atDist = where the rider is along the route, or null if the
+// caller genuinely doesn't know (branches 2 and 4).
+function _sleepDone(s,r,atDist){
+  if(!s||!isSleepStop(s))return false;
+  if(r&&planShowsPlanned(r))return false;                       // 0. a future plan is a plan
+  if(atDist!=null&&atDist>s.dist+SLEEP_PAST_KM)return true;     // 1. it is behind you
+  if(s.sleptNot)return false;                                   // 2. rider said "not yet"
+  if(s.sleptAt)return true;                                     // 3. a recorded FACT
+  const now=Date.now();
+  const nearHere=atDist!=null&&Math.abs(atDist-s.dist)<=SLEEP_NEAR_KM;
+  if(s.actualArrival){                                          // 4. arrival + its own night
+    const planH=sleepHoursFor(s,new Date(s.actualArrival));
+    if(now-s.actualArrival>=planH*3600000)return _sleepStamp(s,s.actualArrival+planH*3600000);
+    return false;                                               //    arrived, still in it
+  }
+  if(_sleepDwellH(s)>=SLEEP_MIN_H)return _sleepStamp(s,now);    // 5. the recording saw the night
+  if(nearHere&&s.departTime){                                   // 6. the clock, fixed wake only
+    // ⚠ A wake time is a TIME OF DAY, so "it is past 07:00" is true from 07:01 until
+    // midnight — the first cut of this rule marked the night done for a rider who had
+    // just checked in at 18:00. It is only evidence of waking for as long as waking
+    // plausibly explains still being at the bed; after that we don't claim to know.
+    const dp=s.departTime.split(':').map(Number);
+    const wake=new Date(now);wake.setHours(dp[0],dp[1]||0,0,0);
+    const sinceWakeH=(now-wake.getTime())/3600000;
+    if(sinceWakeH>=0&&sinceWakeH<=SLEEP_WAKE_WINDOW_H)return _sleepStamp(s,wake.getTime());
+  }
+  const _arr=UI._lastGpsState&&UI._lastGpsState.arrivedAt?UI._lastGpsState.arrivedAt:null;
+  if(nearHere&&_arr){                                           // 7. the old dwell rule, kept
+    const planH=sleepHoursFor(s,new Date(_arr));
+    if((now-_arr)/3600000>=planH)return _sleepStamp(s,now);
+  }
+  return false;                                                 // genuinely unknown — ask (chip)
 }
 
 // Get total sleep hours accounting for fixed departure times
@@ -3031,25 +3150,34 @@ function etaAt(distKm,r){
     }
     // Add stop durations for stops strictly between current position and destination
     let stopOffset=0;
-    // Use arrivedAt (time first reached this area) not current GPS fix time
-    const _arrivedAt=UI._lastGpsState&&UI._lastGpsState.arrivedAt?UI._lastGpsState.arrivedAt:null;
-    const gpsSaveAgeH=_arrivedAt?(Date.now()-_arrivedAt)/3600000:null;
-    const aheadStops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length))&&s.dist>nowDist&&s.dist<distKm)
-      .sort((a,b)=>a.dist-b.dist);
+    // ⚠ v361 — SLEEP STOPS ARE ADMITTED FROM JUST BEHIND THE RIDER. The old filter
+    // was a strict `s.dist>nowDist`, so the moment you rolled onto the motel's own
+    // pin the night silently stopped counting and tomorrow's ETAs jumped ~10 h
+    // early — the same bug as Peter's, with the sign flipped. A bed you are STANDING
+    // AT is still ahead of you until you have actually had it, so it stays in the
+    // list and _sleepDone makes the call. Non-sleep stops keep the strict test.
+    const aheadStops=r.stops.filter(s=>{
+      const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+      if(!hasSleep&&!(s.meals&&s.meals.length))return false;
+      if(s.dist>=distKm)return false;
+      return hasSleep?(s.dist>nowDist-SLEEP_NEAR_KM):(s.dist>nowDist);
+    }).sort((a,b)=>a.dist-b.dist);
     aheadStops.forEach(s=>{
       const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
+      // A night already had took its before-meals (last night's dinner) with it.
+      if(hasSleep&&_sleepDone(s,r,nowDist)){
+        stopOffset+=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
+        return;
+      }
       const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
       stopOffset+=beforeMealH;
       if(hasSleep){
-        // If this sleep stop has a recorded actual arrival, or is within 2km and
-        // arrivedAt shows we've been here longer than sleep duration — already done
-        const nearbyAhead=s.dist-nowDist<=2;
-        const alreadySlept=s.actualArrival||(nearbyAhead&&gpsSaveAgeH!==null&&gpsSaveAgeH>(s.sleepH||10));
-        if(alreadySlept){
-          const afterMealH2=(s.meals||[]).filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
-          stopOffset+=afterMealH2;
-          return;
-        }
+        // v361 — the "already slept?" call is made ONCE, at the top of this loop
+        // (see _sleepDone). It used to live here as `s.actualArrival || (within 2 km
+        // && arrivedAt older than the sleep)`, which was wrong at BOTH ends: a bare
+        // arrival stamp dropped the whole night the moment you rolled into the motel
+        // car park, and the dwell half could never fire because arrivedAt resets on
+        // movement.
         if(s.departTime){
           // Estimate arrival at this stop from now
           let remToStop;
@@ -3134,6 +3262,10 @@ function etaAt(distKm,r){
             const hs2=sleepHoursFor(s,new Date(s.actualArrival));
             anchorTime=s.actualArrival+hs2*3600000;
             remRidingHrs=0;fwdOffset=0;
+          } else if(_sleepDone(s,r,null)){
+            // v361 — already had (a manual "Slept" mark, or the recording saw the
+            // night). Costs no hours. atDist is null here, so _sleepDone's
+            // position-dependent rules stay out of it and can't touch a future night.
           } else if(s.departTime){
             const arrEta=new Date(anchorTime+remRidingHrs*3600000+fwdOffset*3600000);
             fwdOffset+=sleepHoursFor(s,arrEta);
@@ -3163,9 +3295,13 @@ function etaAt(distKm,r){
       return hasSleep&&s.dist<=savedDist+2&&s.dist>=savedDist-2;
     }).sort((a,b)=>b.dist-a.dist)[0]||null;
     if(nearSleep){
-      const sleepH=nearSleep.sleepH||10;
-      const gpsSaveAgeH=_arr?(now-_arr)/3600000:null;
-      const sleepDone=gpsSaveAgeH!==null&&gpsSaveAgeH>sleepH;
+      // v361 — one authority. THIS is the branch Peter hit: the app had just been
+      // opened in the motel room, so GPS wasn't live yet and the last known position
+      // was still the bed. Old rule said "not slept" and anchored every ETA for the
+      // day at now + 10 h. With a fixed wake time it was worse still — it read the
+      // NEXT 07:00, i.e. tomorrow, and put the day 24 h out.
+      const sleepH=sleepHoursFor(nearSleep,_arr?new Date(_arr):new Date(now));
+      const sleepDone=_sleepDone(nearSleep,r,savedDist);
       if(!sleepDone){
         // Still in sleep window — calculate departure as anchor
         if(nearSleep.departTime){
@@ -3195,7 +3331,7 @@ function etaAt(distKm,r){
         const hs=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
         const bm=(s.meals||[]).filter(m=>!hs||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
         fwdOffset+=bm;
-        if(hs){
+        if(hs&&!_sleepDone(s,r,null)){   // v361 — a marked/known-done night costs no hours
           if(s.departTime){
             const arrEta=new Date(anchorTime+remRidingHrs*3600000+fwdOffset*3600000);
             fwdOffset+=sleepHoursFor(s,arrEta);
@@ -3227,7 +3363,11 @@ function etaAt(distKm,r){
     const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
     const _ms=_mealSplit(s,hasSleep,_cmi);
     sleepOffset+=_ms.before;
-    if(hasSleep){
+    // v361 — pure planning still counts every sleep (a plan is a plan), EXCEPT one
+    // already behind the rider. Same authority as the other three branches, so a
+    // future-dated plan is handled inside it (rule 0) rather than by a second guard
+    // here that could drift away from it.
+    if(hasSleep&&!_sleepDone(s,r,null)){
       if(s.departTime){
         let rideHrsToStop;
         const crStop=cumRidingAt(s.dist,r);
@@ -19303,6 +19443,14 @@ function tPlan(r){
         +`<div style="display:flex;gap:6px;margin-bottom:3px;"><span style="${_slbl}">${s.departTime?'Wake':'Sleep'}</span><span style="${_sval}">${s.departTime?(wakeDay?wakeDay.trim()+' ':'')+fmtT(wake)+' ('+hrs.toFixed(1)+'h) '+icon:hrs.toFixed(1)+'h '+icon}</span></div>`
         +(afterMeals.length?'<div style="margin:4px 0;">'+afterMeals.map(fmtChip).join('')+'</div>':'')
         +(depart?`<div style="display:flex;gap:6px;"><span style="${_slbl}">Depart</span><span style="${_sval}">${(departDay?departDay.trim()+' ':'')+fmtT(depart)}</span></div>`:'')
+        // v361 — the "Slept" mark. Two jobs, and the second is the important one:
+        // it lets the rider settle the case no sensor can (phone in a rain cover all
+        // night, so nothing recorded the night at all), AND it SHOWS what the app has
+        // decided, so an auto-detection that got it wrong is one tap from being undone
+        // rather than a mystery ten hours buried in every ETA on the screen.
+        // Hidden while the start date is still in the future — a plan hasn't been slept.
+        +(planShowsPlanned(r)?'':(()=>{const _sdone=_sleepDone(s,r,UI.gpsDistKm);
+          return `<button class="sleep-done-toggle" data-sid="${s.id}" title="${_sdone?'This night is counted as already behind you':'Tell PackTimes this night is behind you'}" style="margin-top:7px;font-family:var(--sans);font-size:12px;line-height:1;padding:5px 10px;border-radius:10px;cursor:pointer;background:${_sdone?'rgba(74,222,128,0.18)':'var(--overlay-bg)'};border:1px solid ${_sdone?'rgba(74,222,128,0.7)':'rgba(246,244,239,0.35)'};color:${_sdone?'#4ade80':'rgba(246,244,239,0.85)'};">${_sdone?'✓ Slept · tap to undo':'Mark as slept'}</button>`;})())
         +'</div>';
     }
     // Cluster sleep departure
@@ -21042,6 +21190,20 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     renderKeepScroll();redrawMap('stops-map');
     return;
   }
+  // v361 — "Slept" mark on a sleep tile. The rider settling the one question no
+  // sensor can answer on a ride done with the phone in a pocket. `sleptNot` is a
+  // real state, not the absence of `sleptAt`: without it an auto-rule that already
+  // fired would just re-stamp the night and the undo would do nothing visible.
+  const sdt=e.target.closest('.sleep-done-toggle');
+  if(sdt&&r){
+    const s=r.stops.find(x=>String(x.id)===String(sdt.dataset.sid));
+    if(s){
+      if(_sleepDone(s,r,UI.gpsDistKm)){delete s.sleptAt;s.sleptNot=Date.now();}
+      else{s.sleptAt=Date.now();delete s.sleptNot;}
+      saveAll();renderKeepScroll();
+    }
+    return;
+  }
   // Direct unsleep from mission tile — now handled via sleep picker
   // Sleep-at toggle
   const sa=e.target.closest('.sleep-at-stop');
@@ -21842,7 +22004,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
 
   // Mission tile click — highlight stop on desktop map
   const mn=e.target.closest('.mission-node');
-  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.cluster-edit-btn')&&!e.target.closest('.cluster-unstar-stop')&&!e.target.closest('.cluster-edit-stop')&&!e.target.closest('.no-cluster-stop')){
+  if(mn&&IS_DESKTOP()&&!e.target.closest('.sleep-at-stop')&&!e.target.closest('.sleep-done-toggle')&&!e.target.closest('.sleep-dur-picker')&&!e.target.closest('.food-at-stop')&&!e.target.closest('.food-picker')&&!e.target.closest('.cluster-edit-btn')&&!e.target.closest('.cluster-unstar-stop')&&!e.target.closest('.cluster-edit-stop')&&!e.target.closest('.no-cluster-stop')){
     const sid=mn.dataset.sid;
     if(sid){
       _highlightStopId=sid;

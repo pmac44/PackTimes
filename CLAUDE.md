@@ -50,6 +50,104 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v361 (9 Aug) — A NIGHT ALREADY SLEPT KEPT BEING ADDED TO EVERY ETA. Peter's group ride.
+
+**⚠ NEXT CODE CHANGE IS v362.** On disk, NOT pushed, NOT ride-tested. (This changelog SKIPS
+v359–v360 — built in sessions that didn't write entries here; disk read v360 when v361 was made.)
+
+Peter's 2-day group ride, morning of day 2, **sitting in the motel room** checking the day's
+ETAs: everything read about **12 hours late** — a stop he'd reach at 10–11 am showed ~10 pm.
+He fixed it on the road the only way the app allowed: he **deleted the sleep** from the stop,
+and every time immediately came right ("you're halfway along, and from here this is how long
+you'll take" — which was correct).
+
+- **REPRODUCED BEFORE A LINE WAS CHANGED** (the standing rule), by sweeping the 96 plausible
+  states the app could have been holding that morning against the REAL extracted `etaAt`:
+  **22 of 96 were wrong, headline case Sun 20:10 where the plan says Sun 09:40.** And every
+  single wrong state shared one thing — **no `actualArrival` stamp on the sleep stop.**
+- **ROOT CAUSE 1 — the stamp needs a live GPS fix within 500 m of the bed.** `actualArrival` is
+  only written by the GPS callback (~4850) when a fix lands inside `alertKm`. Ride into the
+  overnight town with the phone asleep in a rain cover and no fix ever lands there, so the app
+  has no idea the night happened. Peter's ride exactly — he barely used the app in the rain.
+- **ROOT CAUSE 2 — the fallback could barely ever fire.** Both dwell tests measured
+  `Date.now() − UI._lastGpsState.arrivedAt`, and **`arrivedAt` is RESET to now every time you
+  move 2 km** (~4894, `movedFar`). The very fix that carries you away from the bed wipes the
+  evidence you were ever in it. A dwell timer that resets on movement cannot measure a night.
+- **ROOT CAUSE 3 — three different answers to one question.** `etaAt`'s four branches each had
+  their own copy: branch 1 `s.actualArrival || (within 2 km && arrivedAt older than the sleep)`,
+  branch 2 `s.actualArrival` alone, branch 3 `arrivedAt` age vs a raw `sleepH||10`, branch 4
+  nothing. The file's favourite shape, and it had drifted in every direction at once.
+- **THE REFRAME THAT MAKES IT TRACTABLE IS PETER'S:** *"it could see the time, the location, and
+  it would have been more in line with the ride plan that I had slept, not that I had ridden
+  slowly through the night and still needed sleep."* So the question an ETA needs answered is
+  **not "did you sleep?"** — that needs evidence a pocketed phone can't produce — **but "is this
+  sleep still AHEAD of me?"**, which is mostly geometry, with the recording and the clock
+  settling the rest.
+- **THE FIX: `_sleepDone(s, r, atDist)` — ONE authority, all four branches**, in rule order:
+  0 a future-dated plan is a plan (nothing slept) · 1 **it is behind you** · 2 the rider said
+  "not yet" (`sleptNot`) · 3 a recorded fact (`sleptAt`) · 4 arrival stamp + that stop's own
+  night elapsed · 5 the live recording shows a long spell at the bed · 6 the clock, for a fixed
+  wake time · 7 the old `arrivedAt` dwell rule, kept as a last resort.
+  · **RULE 1 IS NOT A FUDGE:** a sleep behind you is done *even if you never slept there* —
+    for an ETA the only thing that matters is whether those hours are still to be spent, and
+    you cannot spend a night at a bed you rode past.
+  · **RULE 5 MEASURES GAPS BETWEEN FIXES, NOT STATIONARY RUNS** (`_sleepDwellH`). A suspended
+    phone records nothing overnight, so the night's signature is ONE 13-hour hole between two
+    points, not a row of stop markers. The open gap between the last fix and now counts too —
+    that IS Peter in the room with the app freshly opened. Bounded tail scan + memo on the
+    point count, so it is free on the GPS path.
+  · **THE ANSWER IS STAMPED (`_sleepStamp` → `s.sleptAt`, debounced save).** Without it the
+    morning's first GPS fix closes the gap rule 5 is reading and the night un-happens — the
+    same class of mistake as the `arrivedAt` reset.
+  · ⚠ **RULE 6 MUST NEVER RUN WITHOUT A POSITION.** Branches 2 and 4 pass `atDist` null and
+    iterate over stops that include TOMORROW night's sleep; a bare "is it past 07:00?" would
+    mark every future night as slept. Gated on `nearHere`, and truth-tabled for it.
+  · ⚠ **AND A WAKE TIME IS A TIME OF DAY.** The first cut of rule 6 marked the night done for a
+    rider who had just checked in at 18:00, because "past 07:00" is true from 07:01 to midnight.
+    Now bounded by `SLEEP_WAKE_WINDOW_H` (6 h) — still at the bed that soon after the wake time
+    means you woke; beyond that we don't claim to know.
+- **⚠ SLEEP STOPS ARE NOW ADMITTED FROM JUST BEHIND THE RIDER** in branch 1. The old filter was
+  a strict `s.dist > nowDist`, so **the moment you rolled onto the motel's own pin the night
+  silently stopped counting and tomorrow's ETAs jumped ~10 h EARLY** — Peter's bug with the sign
+  flipped, and it was in there the whole time. A bed you are standing at is still ahead of you
+  until you've had it; `_sleepDone` makes the call. Non-sleep stops keep the strict test, and a
+  night scored done no longer drags last night's dinner into today's offsets.
+- **BEHAVIOUR CHANGE, deliberate: an arrival stamp alone no longer means "slept".** Branch 1
+  used to drop the whole night the instant you reached the motel car park, so the finish ETA
+  jumped 10 h earlier and stayed wrong all evening. Rule 4 now waits for that stop's own sleep
+  hours to actually elapse.
+- **THE ESCAPE HATCH: a "Mark as slept" chip on the sleep tile** (`.sleep-done-toggle`, in
+  `sleepDiv`; hidden while the start date is in the future). Two jobs, and the second matters
+  more: it settles the case no sensor can, AND it **shows what the app has decided**, so a wrong
+  auto-detection is one tap from undone rather than ten mystery hours buried in every ETA.
+  ⚠ `sleptNot` is a REAL state, not the absence of `sleptAt` — without it an auto-rule that has
+  already fired just re-stamps the night and the undo does nothing visible.
+- `clearRouteActuals` clears `sleptAt`/`sleptNot` too: **a sleptAt is an actual**, and a fresh
+  start date must not silently drop last trip's nights out of the new plan's finish time.
+- **⚠ OBSERVED, NOT FIXED (flagging, not chasing) — three of them:**
+  1. **The remaining 14 of 96 states are all the same one case:** a **duration-only** sleep
+     (no wake time) with **no arrival stamp AND no recording running**. There the app has
+     literally zero evidence a night occurred; the chip is one tap. Don't invent a
+     time-of-day heuristic for it — that is the guess this whole entry exists to remove.
+  2. **The mission tile's `departEta` still adds the full planned sleep** even for a night
+     scored done (~19309/19431 `clusterSleepH`, and the sleep-tile display), so a slept night
+     can show a 0-minute leg to the next stop. **Pre-existing** — it does the same today
+     whenever `actualArrival` is set — so it is not a v361 regression. Fix it with the same
+     one-authority move if it ever shows.
+  3. **The four branches disagree with `sleepHoursFor` on a bare manual pin.** They add
+     `s.sleepH || (s.type==='stop' ? 0.25 : 10)` while `sleepHoursFor` returns 10 for the same
+     stop (`sleepAt` true, no `sleepH`). Deliberately NOT swept — it would move ETAs on every
+     existing plan that has such a pin, which is exactly the silent regression Peter hates.
+- **Verified: whole-file (`</html>` asserted FIRST, 23,190 lines, 3 script blocks `node --check`
+  clean, CSS 300/300 braces, 149/149 comment pairs) + 11 wiring asserts (one definition, eight
+  call sites, both old rules provably gone, the clock rule gated) + 12/12 truth-table against
+  the REAL extracted `etaAt`** — his exact morning in all five shapes it could take, the
+  boundary at the pin, both "the night is still ahead" regressions, the tomorrow-night case,
+  and a future-dated plan — **plus a headless Chromium boot** (no page errors, the chip parses
+  to one button and hides on a future plan). Sweep: **22 of 96 bad → 14, all of them the one
+  documented unknowable.** **NOT ride-tested** — needs: a two-day plan, and the morning check
+  from the bed.
+
 ### v358 (6 Aug) — THE ✕ AND THE COUNTDOWN BAR ANCHOR TO THE MAP, NOT THE SCREEN.
 
 **⚠ NEXT CODE CHANGE IS v359.** On disk, NOT pushed, NOT phone-tested. Peter's screenshot:
