@@ -50,6 +50,52 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v362 (13 Aug) — THE PLACE SEARCH THOUGHT CREEKS WERE SHOPS. Peter's screenshot.
+
+**⚠ NEXT CODE CHANGE IS v363.** On disk, committed locally, NOT pushed until Peter runs
+push.bat, NOT phone-tested.
+
+Peter searched a place (not the route corridor) and got Gooley Creek, Dearlove Creek, Goulburn
+River, Horseshoe Gully and Perkins Creek back as **SHOP** — purple dots, purple badges, a whole
+map full of them. He spotted it and said so: "the search function seems to be thinking creeks
+are shops. That search was a place search, not the normal route search."
+
+- **REPRODUCED BEFORE A LINE WAS CHANGED** (the standing rule) by extracting BOTH search bodies
+  verbatim from index.html and running the same five creeks through each. Place search: 5 ×
+  `shop`. Corridor search: 5 × `crossing`. Same creeks, same app, two different answers.
+- **ROOT CAUSE — `fetchTownSearch` has no waterway branch.** It ASKS Overpass for
+  `way["waterway"~"^(river|stream|creek)$"]` whenever the waterways toggle is on (~line 4465),
+  but its classification chain opens with `let type='shop';` as the fallback and never tests
+  `tags.waterway`. Everything unmatched lands on the default. `fetchOSM` has had the branch
+  since forever (~line 4344) — which is why this only ever showed up on a place search.
+- **SECOND BUG, same spot, quieter:** that chain closes with `if(!name&&type!=='peak')return;`
+  so an UNNAMED creek was **silently binned**, not just mislabelled. This is the EXACT trap the
+  v351 bike-stand comment warns about, twenty lines further up the same function. Waterways were
+  the next thing through the same door. When adding any new Overpass query to either search,
+  check it against BOTH the type chain and that closing name gate.
+- **THIRD:** no 500 m bucketing here. OSM splits one river into many ways, and `fetchOSM` keeps
+  only the closest per 500 m — this search kept every one. A good part of the purple mass.
+- **THE FIX** mirrors `fetchOSM`'s branch into `fetchTownSearch`: catch `tags.waterway` before
+  the type chain, bucket it, flush as `type:'crossing'` with `crossing:true`. On a ROUTE plan it
+  buckets by route km exactly like the corridor search. On a BLANK plan it keys by name instead —
+  my first cut bucketed by km there too, and since blank-plan `dist` is a synthetic
+  `r.stops.length*0.01` micro-increment, every creek collapsed into a single stop. The
+  truth-table caught it; it is fixed. Don't "simplify" the two branches back into one.
+- **VERIFIED:** 19/19 truth-table run against the REAL patched file (not a simulation) — bug
+  reproduced on the old code first, unnamed creeks now kept and named "Creek"/"Stream", output
+  proven byte-identical to the corridor search, a genuine `shop=hardware` still reading `shop`,
+  every non-waterway result byte-identical to before, and an existing corridor crossing not
+  re-added. All three inline script blocks pass `node --check`.
+- **STILL OPEN — the stops already saved in Peter's plan are still typed `shop`.** This fix stops
+  NEW ones being wrong; it does not repair old ones. Re-running the search won't correct them.
+  Offered him a one-time repair pass (flip auto-added stops with creek/river names back to
+  `crossing`); he hasn't answered yet. Ask before assuming it's wanted.
+- **THE REAL LESSON:** two functions independently deciding the same thing. `fetchOSM` and
+  `fetchTownSearch` carry near-identical ~25-line type chains, and this is at least the second
+  time they've drifted (v351 fixed bike shops in both by hand). The proper fix is ONE shared
+  classifier both call. Offered as Option B; Peter took Option A (the local fix) for now. It is
+  still worth doing, as its own change, on a quiet day — not bundled with a bug fix.
+
 ### v361 (9 Aug) — A NIGHT ALREADY SLEPT KEPT BEING ADDED TO EVERY ETA. Peter's group ride.
 
 **⚠ NEXT CODE CHANGE IS v362.** On disk, NOT pushed, NOT ride-tested. (This changelog SKIPS

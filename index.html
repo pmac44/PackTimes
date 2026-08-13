@@ -1740,7 +1740,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v361';
+window.APP_VERSION='v362';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4480,6 +4480,7 @@ async function fetchTownSearch(query){
       const json=await res.json();
       const existing=r.stops.filter(s=>s.auto);
       let added=0;
+      const waterwayBuckets={}; // v362 — see the waterway branch below
       json.elements.forEach(el=>{
         const lat=el.lat!==undefined?el.lat:el.center?.lat;
         const lon=el.lon!==undefined?el.lon:el.center?.lon;
@@ -4487,16 +4488,38 @@ async function fetchTownSearch(query){
         if(!lat||!lon)return;
         const name=(tags.name||tags['name:en']||'').trim();
         const ohRaw=tags.opening_hours||null,ohRules=ohRaw?parseOH(ohRaw):null;
-        let dist=0,offM=0,offOpts;
+        let dist=0,offM=0,offOpts,snapOff=0;
         if(r.points.length){
           // Route exists — snap to route
           const snap=snapTo(r,lat,lon);if(!snap||snap.off>5.0)return;
-          dist=snap.dist;offM=Math.round(snap.off*1000);
+          dist=snap.dist;offM=Math.round(snap.off*1000);snapOff=snap.off;
           offOpts={lat,lon,offRouteM:Math.max(offM,1),snapIdx:snap.idx};
         } else {
           // Blank plan — no route to snap to, just store coords
           dist=r.stops.length*0.01; // micro-increment for ordering
           offOpts={lat,lon,offRouteM:0};
+        }
+        // v362 — WATERWAYS. A creek is a CROSSING, not a shop. Without this branch a
+        // waterway falls through the type chain below to its `let type='shop'` default
+        // (purple dot, SHOP badge), and an UNNAMED one is silently binned by that chain's
+        // closing `if(!name&&type!=='peak')return;` — the exact trap the v351 bike-stand
+        // note describes. fetchOSM has had this branch all along; this search never did,
+        // so the same creek read 'crossing' from a route search and 'shop' from here.
+        if(tags.waterway){
+          const stopName=name||(tags.waterway[0].toUpperCase()+tags.waterway.slice(1));
+          if(r.points.length){
+            // With a route: keep the closest waterway per 500 m of route, like fetchOSM.
+            // OSM splits one river into many ways; without this you get a stop for each.
+            const bucket=Math.floor(dist/0.5);
+            if(!waterwayBuckets[bucket]||snapOff<waterwayBuckets[bucket].off)
+              waterwayBuckets[bucket]={dist,off:snapOff,name:stopName,offOpts};
+          } else {
+            // Blank plan: dist is a synthetic micro-increment, so km-bucketing would
+            // collapse every creek into one. Key by name instead.
+            const key='n:'+stopName.toLowerCase();
+            if(!waterwayBuckets[key])waterwayBuckets[key]={dist:null,off:0,name:stopName,offOpts};
+          }
+          return;
         }
         // Dedup by name+coords for blank plans, or by name+dist for route plans
         const pop=tags.population?parseInt(tags.population,10)||null:null;
@@ -4536,6 +4559,16 @@ async function fetchTownSearch(query){
             addStop(r,dist,'water',name||('Water tap'),{auto:true,...offOpts});return;}
           if(!name&&type!=='peak')return;
           addStop(r,dist,type,name||(tags.natural==='saddle'?'Saddle':'Peak'),{auto:true,ohRaw,ohRules,...offOpts});added++;
+        }
+      });
+      // v362 — add the best waterway per 500 m bucket (route plans) or per name (blank plans)
+      Object.values(waterwayBuckets).forEach(w=>{
+        const isDupe=w.dist===null
+          ? r.stops.some(s=>s.auto&&s.crossing&&s.name.trim().toLowerCase()===w.name.toLowerCase())
+          : r.stops.some(s=>s.auto&&s.crossing&&Math.abs(s.dist-w.dist)<0.5);
+        if(!isDupe){
+          addStop(r,w.dist===null?r.stops.length*0.01:w.dist,'crossing',w.name,{auto:true,...w.offOpts,crossing:true});
+          added++;
         }
       });
       const townName=place.display_name.split(',')[0];
