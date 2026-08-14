@@ -1740,7 +1740,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v362';
+window.APP_VERSION='v363';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3730,6 +3730,30 @@ function _distBarSync(){
       for(let k=-1;k<=1;k++)polys+="<polygon points='"+poly(x0+k*pitch)+"' fill='%23000'/>";
       const W=pitch.toFixed(2);
       const tile="url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='"+W+"' height='"+H+"' viewBox='0 0 "+W+" "+H+"'>"+polys+"</svg>\") 0 0/"+W+"px "+H+"px repeat-x";
+      // ── v363 — THE FIRST MARK GETS A FLAT BACK. ─────────────────────────────────────
+      // Peter, on the lit bar: "the edge of the first chevron should be the same colour as
+      // the green chevron, not the greeny gray of the other parts. That will make that first
+      // chevron bigger, but that will be ok as it is the start, and is significant."
+      // NOT A BUG — the texture's own geometry. Every mark has a NOTCH cut into its back, and
+      // that notch is the room the mark BEHIND it needs (see the tile note above). Every mark
+      // in the row has its notch filled by its neighbour's tip — except the FIRST, which has
+      // no neighbour, so its notch stays open and shows the underlay through it. A wedge of
+      // "ahead" colour at the one end of the bar that means you have started.
+      // A SECOND MASK LAYER fills it, rather than a special-cased first cell: mask layers ADD,
+      // so the repeating tile is untouched and so is the phase of every other mark. Both
+      // .ld-marks and .ld-lit get the same pair, so the two textures stay in phase and the
+      // first mark is simply a bigger arrow head in whichever colour it has earned — ghost
+      // before you set off, accent once the fill passes it.
+      // ⚠ OV IS AN OVERLAP, NOT A FUDGE. Mask layers composite source-over, so two antialiased
+      // edges meeting on the SAME line sum to ~0.75 alpha and draw a faint hairline V exactly
+      // where the notch used to be. Sliding the head's edge 1.5px INTO solid ink removes it.
+      // 0.4px was not enough at any device pixel ratio tested (1, 2, 3); 1.5 is clean at all
+      // three. It only moves where the two layers meet, deep inside the ink — the mark's own
+      // outline is still the tile's.
+      const OV=1.5;
+      const hx=x0+OV, hd=x0+depth+OV, hW=Math.max(1,hd).toFixed(2);
+      const head="url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='"+hW+"' height='"+H+"' viewBox='0 0 "+hW+" "+H+"'><polygon points='-1,0 "+hx.toFixed(2)+",0 "+hd.toFixed(2)+","+(H/2)+" "+hx.toFixed(2)+","+H+" -1,"+H+"' fill='%23000'/></svg>\") 0 0/"+hW+"px "+H+"px no-repeat";
+      const maskCss=head+','+tile;
       // THE LEADING EDGE IS A POINT, and it is in PX, not %. A percentage polygon would be
       // relative to the element's own box — which changes width every tick — so the arrow
       // head would stretch and flatten as you rode. calc() pins it to a constant depth.
@@ -3752,7 +3776,7 @@ function _distBarSync(){
       // Cost me a render to find. Same family of trap as v270e: don't put a value somewhere
       // the syntax can't hold it.
       [wrap._marks=wrap.querySelector('.ld-marks'),wrap._lit].forEach(el=>{
-        el.style.webkitMask=tile; el.style.mask=tile;
+        el.style.webkitMask=maskCss; el.style.mask=maskCss;
       });
       wrap._marksW=marksW;
       // EVERY cached field resets with the markup. v347 learned this the hard way with
