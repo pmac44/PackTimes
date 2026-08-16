@@ -1740,7 +1740,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v364';
+window.APP_VERSION='v365';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3036,6 +3036,11 @@ function _sleepDwellH(s){
 // class of mistake as the arrivedAt reset. A fact, written once, saved debounced.
 function _sleepStamp(s,t){
   if(!s)return false;
+  // v365 — the last plan write a free ride could still make. Same rule as actualArrival: the
+  // rider said they are not riding this route, so today writes nothing onto it. Guarded HERE
+  // and not in _sleepDone because _sleepDone's ANSWER is still wanted for display — it is only
+  // the persistence that must not happen, so this returns the same true it always did.
+  if(_freeRiding())return true;
   if(!s.sleptAt){
     s.sleptAt=t||Date.now();
     if(_sleepSaveT)clearTimeout(_sleepSaveT);
@@ -3568,8 +3573,26 @@ const DIST_CAP_GAP=5;        // clear air between the marks and the cap
 // lands, and this file's standing rule is "do NOT build a second prompt". Deliberately NOT
 // gated on _snapOffKm: that's live, so it would flicker on a detour where you ARE still
 // following the route.
+// ── v365 — ONE ANSWER TO "AM I IGNORING THE ACTIVE ROUTE?" ───────────────────────
+// Peter, 16 Aug 2026: "when you choose to just ride and not follow the route, all GPS route
+// stuff should turn off. It should not refer to the active route... it is almost like you
+// first go to the route tab dropdown and select no route." Prompted by a lap of his suburb
+// that PackTimes uploaded to Strava as "Hunt 1000" — v364 fixed the NAME; this is the rest.
+//
+// So it is a MODE, not a list of tweaks, and it gets ONE authority that every gate reads.
+// Two sources on purpose:
+//   · _offRouteMode==='abandoned' — the live global, set by the ride-mode sheet or by the
+//     off-route alert's "Stop following this route". Wiped at stopGPS.
+//   · _rec.freeRide — the same answer written onto the RECORDING (v364), which outlives the
+//     GPS session. Without it a ride that resumes after a suspend would quietly go back to
+//     following the route halfway through.
+// Either one says free → free. Nothing here reads geometry: v364's ruling stands — the signal
+// is the rider's own answer, never a proximity test that can mis-fire on a detour.
+function _freeRiding(){
+  return _offRouteMode==='abandoned' || !!(_rec && _rec.freeRide);
+}
 function _distFollowing(r){
-  return !!(r && r.totalDist>0 && _offRouteMode!=='abandoned');
+  return !!(r && r.totalDist>0 && !_freeRiding());
 }
 
 // ── v272 — "JUST RIDE" TAKES THE ROUTE FURNITURE WITH IT ────────────────────────────────
@@ -5039,7 +5062,11 @@ function _doStartGPS(){
     // Only capture "actual" times when we're actually riding this plan — i.e. its
     // start date is today or past. A future-dated plan means we're testing/planning
     // near the route, so a stray GPS fix must not stamp (and permanently anchor) it.
-    if(r&&UI.gpsDistKm!==null&&!planStartInFuture(r)){
+    // v365 — AND NOT WHILE JUST RIDING. This is the "Hunt 1000" bug's nastier sibling: a lap
+    // of the suburb stamps actualArrival on any plan stop it passes within alertKm, and those
+    // stamps anchor every future ETA permanently. The rider has said they are not riding this
+    // route, so nothing they do today may be written onto it.
+    if(r&&UI.gpsDistKm!==null&&!planStartInFuture(r)&&!_freeRiding()){
       const alertKm=UI.alertKm||0.5;
       const nowTs=Date.now();
       let needsSave=false;
@@ -5089,6 +5116,15 @@ function _doStartGPS(){
       const prevState=UI._lastGpsState||{};
       const movedFar=Math.abs((prevState.dist||0)-UI.gpsDistKm)>2;
       const arrivedAt=movedFar?Date.now():(prevState.arrivedAt||Date.now());
+      // v365 — DELIBERATELY LEFT ALONE, and it took a verify pass to see why. The first cut
+      // nulled `dist` here on a free ride, on the tidy-sounding principle that a free ride
+      // should log no route position. But the boot-time restore is gated on exactly that field
+      // (`if(lastGps&&lastGps.dist!=null)`), so a null threw the whole block away with it: the
+      // cumulative gpsTravelledKm, the ride-average accumulators and the NP buffer. legStartKm
+      // is restored separately from uiPrefs, so a mid-ride reload 45 km into a free ride would
+      // have left the leg reading 0 km for the rest of the day.
+      // This field is PLUMBING, not display. The plan writes it used to feed are gated at their
+      // own sites (actualArrival above, _sleepStamp) — which is where they belonged anyway.
       UI._lastGpsState={dist:UI.gpsDistKm,pos:UI.gpsPos,routeId:r?r.id:null,arrivedAt,ts:Date.now(),
         rideAvgKm:UI._rideAvgKmAccum||0,rideAvgMs:UI._rideAvgMsAccum||0,
         sessKm:UI._rideAvgSessionKm,sessTs:UI._rideAvgSessionTs,stoppedTs:UI._rideAvgStoppedTs,
@@ -5183,7 +5219,10 @@ function adaptiveTimings(r){
 
 function runAdaptiveCalibration(){
   const r=cur();
-  if(!r||!r.adaptiveSpeed||!UI.gpsActive||UI.gpsDistKm===null||!UI.gpsPos)return;
+  // v365 — never calibrate a plan from a ride that isn't on it. This rewrites r.timeFactor and
+  // pops a "speed adjusted N% slower" banner; fed by a suburb loop it would silently re-time a
+  // whole tour from data that has nothing to do with it.
+  if(!r||!r.adaptiveSpeed||!UI.gpsActive||UI.gpsDistKm===null||!UI.gpsPos||_freeRiding())return;
   if(!UI._adaptiveWindow)UI._adaptiveWindow=[];
 
   const{windowMs:ADAPTIVE_WINDOW_MIN_MS,cooldownMs:ADAPTIVE_COOLDOWN_MS}=adaptiveTimings(r);
@@ -7377,8 +7416,9 @@ function _rideModeShow(r,autoMs){
   ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(5,8,5,.6);'
     +'display:flex;align-items:center;justify-content:center;padding:var(--sp-4);';
   ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);max-width:340px;width:100%;">
-    <div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-2);">Following ${(r.label||r.name||'this route').replace(/</g,'&lt;')}?</div>
+    <div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-2);">Follow active route?</div>
     <div style="font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-4);">
+      ${(r.label||r.name||'The loaded route').replace(/</g,'&lt;')}<br>
       Your ride is recording either way.
     </div>
     <button class="btn ${free?'':'btn-p'}" id="ridemode-follow" style="width:100%;height:52px;margin-bottom:var(--sp-2);">Follow the route</button>
@@ -7404,6 +7444,55 @@ function _rideModeOnClick(e){
   // stopGPS, but the ride outlives the GPS session and gets NAMED after it (and uploaded
   // to Strava under that name), so the answer has to travel with the recording.
   if(_rec){_rec.freeRide=free?true:false;DB.putRecording(_rec).catch(()=>{});}
+  // v365 — CHANGING YOUR MIND MID-RIDE HAS TO CLEAN UP AFTER THE OLD ANSWER. Every v365 gate
+  // is read live, so the numbers and the map correct themselves on the next tick — but four
+  // things are STATE that was already set and would otherwise sit there for the rest of the ride:
+  if(free){
+    // 1. The plan's clock. _rideNowAuto arms it at record start, which is BEFORE this sheet can
+    //    be answered (v264's law: pressing record never waits on a question). If the answer
+    //    turns out to be "just ride", take it back.
+    const r0=cur();
+    if(r0&&UI.rideNowId===r0.id){UI.rideNowId=null;UI.rideNowTs=null;saveAll().catch(()=>{});}
+    // 2. A stop alert or highlight already showing. checkAlerts returns early from here on, so
+    //    nothing downstream would ever clear them.
+    _highlightStopId=null;
+    if(typeof clearStopAlert==='function')clearStopAlert();
+    // 3. A stop PEEK in flight. clearStopAlert doesn't touch it (it only owns the chime and the
+    //    strip pulse), and redrawMap's peek branch runs before the normal live branch and returns
+    //    — so a peek started seconds ago would keep re-framing the map on a stop that is no
+    //    longer drawn, for the rest of its 5 s. peekReturn is a closure inside peekLiveStop and
+    //    can't be called from here, so this unwinds the same state by hand.
+    if(_livePeekTimer){clearTimeout(_livePeekTimer);_livePeekTimer=null;}
+    _peekResetFn=null;_peekStopId=null;
+    // 4. A "fit whole route" framing (and the peek's zoom, above). The route stops being drawn on
+    //    the next redraw; leaving the map fitted to it would frame an empty rectangle. Drop back
+    //    to following the rider at riding zoom.
+    // ⚠ cx/cy=null and the riding zoom must NEVER be set together. A null centre makes drawMap
+    // fall back to the ROUTE's bounding-box midpoint, and at ~150 m across that is a patch of
+    // paddock nowhere near the line — with the route no longer drawn, just grey tiles (v275's
+    // symptom). Worse, the no-fix redraw that follows re-arms state._fitted, and neither
+    // redrawMap nor updateLive re-centres once that is set, so it sticks for the whole ride.
+    // The rider tapping "Just ride" the instant the sheet appears — before the first fix — is
+    // the NORMAL case, not an exotic one, so: point the riding zoom at a real position or don't
+    // use it at all.
+    const st=ms('live-map');
+    if(st){st._fitted=false;st._peekAnchor=null;
+      if(UI.gpsPos&&UI.gpsPos.lat!=null){
+        st.cx=UI.gpsPos.lon;st.cy=UI.gpsPos.lat;
+        st.zoom=zoomForKmWidth('live-map',UI.gpsZoom||0.15);
+      } else {
+        st.cx=null;st.cy=null;st.zoom=1;   // no fix yet — leave the route fit; the first fix takes over
+      }}
+    // 5. PackView's picture of this ride, which still says "following that route".
+    //    ⚠ shareRideSent alone is NOT enough. _shareQueueRide builds its payload ONCE, and
+    //    startRecording calls it before this sheet can be answered — so a ride that started out
+    //    of signal has the full polyline, stops and pace plan sitting in sharePendingRide,
+    //    waiting to publish the moment the bars come back. Drop the queued job as well, then
+    //    re-register this ride as what it actually is: a ride following nothing.
+    UI.shareRideSent=null;
+    UI.sharePendingRide=null;
+    if(_rec&&typeof shareIsOn==='function'&&shareIsOn())_shareQueueRide(_rec,null);
+  }
   _rideModeClose();
   render();
   _recToast(free?'Just riding — route hidden':'Following the route');
@@ -7426,7 +7515,10 @@ async function _recControlTap(){
     if(!UI.gpsActive) startGPS();
     const r = cur();
     await startRecording(r ? r.id : null);
-    _rideNowAuto(r);        // v264 — the clock is decided, not asked (v260's ruling)
+    // v365 — but not for a free ride. Arming the plan's clock IS referring to the active
+    // route, and it is the one plan write that happens before the sheet can be answered
+    // (_rideModeOnClick takes it back if the answer arrives late).
+    if(!_freeRiding())_rideNowAuto(r);   // v264 — the clock is decided, not asked (v260's ruling)
     render();
     // v264 — after the ride is safely started, never before (v257's law: pressing record
     // must never wait on a question). 8 s is a glance, not a decision point — the bar is
@@ -7865,7 +7957,9 @@ function _shareQueueRide(rec, r){
   if(!shareIsOn()) return;
   // eventCode is what puts this ride's dots into the pack rather than out on its own.
   const job = {ride: rec.id, routeKey: null, payload: null, eventCode: UI.eventCode || null};
-  if(r && r.points && r.points.length){
+  // v365 — a free ride does not publish the route it happens to have loaded. PackView was being
+  // handed the whole polyline, stops and pace plan as "the route this ride is following".
+  if(r && r.points && r.points.length && !_freeRiding()){
     job.routeKey = r.id;
     job.payload = {
       p_write_token: UI.shareToken,
@@ -7923,7 +8017,9 @@ function _shareMaybePush(lat, lon, ele, t){
     rideId: _rec.id, lat, lon,
     ele   : ele == null ? null : Math.round(ele),
     speed : speed == null ? null : Math.round(speed * 10) / 10,
-    distKm: UI.gpsDistKm == null ? null : Math.round(UI.gpsDistKm * 100) / 100,
+    // v365 — no route position for a ride that isn't on the route. Watchers were being told
+    // "47.2 km along the route" while he rode a loop of the block.
+    distKm: (_freeRiding() || UI.gpsDistKm == null) ? null : Math.round(UI.gpsDistKm * 100) / 100,
     t     : new Date(t).toISOString(),
   });
   if(UI.shareQueue.length > SHARE_QUEUE_MAX)
@@ -10793,6 +10889,12 @@ let _stopAlertChimeTimer=null; // timer for repeat chimes
 let _stopAlertChimeCount=0;    // how many chimes have played for this stop
 
 function checkAlerts(){
+  // v365 — ONE RETURN TAKES OUT EVERY ROUTE ALARM: the stop chime and its repeats, the map's
+  // auto-peek that yanks itself away to frame a plan stop, the stop highlight, the turn beeps,
+  // and the off-route alarm. Every one of them answers "what's coming up on the route", which
+  // is the question the rider has just declined to ask. (The off-route branch was already
+  // silent on 'abandoned'; this makes the rest of the function agree with it.)
+  if(_freeRiding())return;
   const r=cur();if(!r||UI.gpsDistKm===null||!UI.gpsPos)return;
   // Auto-dismiss stop alert chime/pulse when reaching the stop — stop stays visible on map via _highlightStopId
   if(_stopAlertId!==null){
@@ -11443,6 +11545,19 @@ function drawMap(cvs,r,opts){
   if(!r)return;
   const hasRoute=r.points&&r.points.length>0;
   const hasStops=r.stops&&r.stops.some(s=>s.lat&&s.lon);
+  // ── v365 — "ALMOST LIKE YOU SELECT NO ROUTE" (Peter). On the RIDE map only, a free ride hides
+  // every piece of route furniture: the line, the stop dots, the turn ticks, the km marks, the
+  // S/F flags, the day-split diamonds and the orange turn highlight.
+  // ⚠ Deliberately NOT done by faking hasRoute=false. hasRoute also drives the bounds maths, the
+  // projection and the GPS arrow's fallback position — forcing it off would blank the map on a
+  // plan with no stops and, worse, hide the rider's own arrow. The geometry stays known; only the
+  // DRAWING is gated.
+  // desktop-map is included while the Ride tab is showing. It is NOT "the ride map on desktop"
+  // (live-map exists there too) — it is the big planning pane beside the ride column, and on the
+  // Ride tab it would otherwise be a full-size drawing of the route the rider just declined,
+  // sitting next to a live map that has correctly stopped showing it. Gated only while that tab
+  // is up, so the same pane keeps its route on every planning tab.
+  const _hideRoute=(cvs.id==='live-map'||(cvs.id==='desktop-map'&&UI.tab==='live'))&&_freeRiding();
   if(!hasRoute&&!hasStops&&!r.center)return;
   const dpr=devicePixelRatio||1,W=cvs.offsetWidth,H=cvs._forcedH||cvs.offsetHeight||220;
   cvs.width=W*dpr;cvs.height=H*dpr;
@@ -11532,8 +11647,8 @@ function drawMap(cvs,r,opts){
     ctx.fillStyle=_mapCanvasBg;ctx.fillRect(0,0,W,H);
   }
 
-  // ── Route line + overlays (only when route geometry exists) ──
-  if(hasRoute){
+  // ── Route line + overlays (route geometry exists, and this isn't a free ride) ──
+  if(hasRoute&&!_hideRoute){
   // ── THE RIDE MAP'S LINE IS A FIXED HIGH-CONTRAST CYAN. NO TOGGLE. (v273d) ─────────────
   // Peter's argument, and it's the one that decides it: "The benefit of the route sky colour
   // on the ride tab is reduced because your own eyes know what time it is or how bright it
@@ -11741,7 +11856,7 @@ function drawMap(cvs,r,opts){
 
   // Stop dots (with off-route connectors for auto-stops with real coords)
   const dc={food:'#fbbf24',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',stop:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#78909c',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',bike:'#f472b6',bikestand:'#f9a8d4'};
-  r.stops.forEach(s=>{
+  (_hideRoute?[]:r.stops).forEach(s=>{   // v365 — no plan stops on a free ride
     const isSleepRelated=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
     const isOnMap=cvs.id==='desktop-map'||cvs.id==='stops-map';
     const isFoodRelated=!!(s.meals&&s.meals.length);
@@ -11819,7 +11934,7 @@ function drawMap(cvs,r,opts){
   });
 
   // Turn markers (route-only)
-  if(hasRoute&&r.turns&&r.turns.length&&!(UI.hiddenMapTypes.has('turns')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))){
+  if(hasRoute&&!_hideRoute&&r.turns&&r.turns.length&&!(UI.hiddenMapTypes.has('turns')&&(cvs.id==='desktop-map'||cvs.id==='stops-map'))){
     const liveDist=UI.gpsDistKm||0;
     const isReview=cvs.id==='turn-review-map';
     const size=isReview?16:6;
@@ -11850,7 +11965,7 @@ function drawMap(cvs,r,opts){
   }
 
   // Weather dots — only on stops-map and desktop-map when weather layer is visible (route-only)
-  if(hasRoute&&(cvs.id==='stops-map'||cvs.id==='desktop-map')&&!UI.hiddenMapTypes.has('weather')){
+  if(hasRoute&&!_hideRoute&&(cvs.id==='stops-map'||cvs.id==='desktop-map')&&!UI.hiddenMapTypes.has('weather')){
     const sdt=startDT(r);
     const spacingKm=UI.weatherSpacingKm||25;
     const isDesktop=cvs.id==='desktop-map';
@@ -11870,7 +11985,7 @@ function drawMap(cvs,r,opts){
     }
   }
 
-  if(hasRoute){
+  if(hasRoute&&!_hideRoute){
   const flag=(i,col,lbl)=>{const p=pts[i];
     ctx.beginPath();ctx.arc(px(p.lon),py(p.lat),7,0,Math.PI*2);
     ctx.fillStyle=col;ctx.fill();ctx.fillStyle='#fff';
@@ -11977,7 +12092,7 @@ function drawMap(cvs,r,opts){
   //    already-rotated map frame, using the SAME px/py as the route line, so it rides the route
   //    exactly (the map's own rotation carries it — no separate rotation maths). Sits under the
   //    rider arrow (drawn next) so the "you" dot stays visible. ──
-  if(id==='live-map'&&UI.gpsActive&&r&&r.turns&&r.turns.length){
+  if(id==='live-map'&&!_hideRoute&&UI.gpsActive&&r&&r.turns&&r.turns.length){
     const at=_activeTurn(r,UI.gpsDistKm!=null?UI.gpsDistKm:0);
     if(at&&at.showOrange){
       // v260 — SYMMETRIC: approach = the alert distance (where it appears), exit = the same
@@ -12005,11 +12120,17 @@ function drawMap(cvs,r,opts){
   // Inside drawMap, in the already-rotated frame: the standing rule.
   if(id==='live-map'&&_packData)drawPack(cvs);
 
-  // GPS arrow (route-only)
-  if(hasRoute&&opts.showGPS&&UI.gpsDistKm!==null){
-    // Use actual GPS coordinates if available, not snapped route point
-    const gpsLon=UI.gpsPos&&UI.gpsPos.lon?UI.gpsPos.lon:pts[cidx(r,UI.gpsDistKm)].lon;
-    const gpsLat=UI.gpsPos&&UI.gpsPos.lat?UI.gpsPos.lat:pts[cidx(r,UI.gpsDistKm)].lat;
+  // GPS arrow. v365 — WAS route-only (hasRoute && gpsDistKm!==null), which is exactly backwards
+  // for a free ride: the moment the route stops being drawn, the rider's own arrow is the only
+  // thing on the map that matters, and it was the one thing that vanished. Drawing it needs
+  // nothing but a real fix; the snapped-route point stays as the fallback it always was.
+  if(opts.showGPS&&((UI.gpsPos&&UI.gpsPos.lat!=null)||(hasRoute&&UI.gpsDistKm!==null))){
+    // Use actual GPS coordinates if available, not snapped route point.
+    // !=null, not truthiness: lon 0 is the Greenwich meridian, not "no fix". And the route
+    // fallback is only reachable when there is a route to fall back to.
+    const _gfb=(hasRoute&&UI.gpsDistKm!==null)?pts[cidx(r,UI.gpsDistKm)]:null;
+    const gpsLon=(UI.gpsPos&&UI.gpsPos.lon!=null)?UI.gpsPos.lon:(_gfb?_gfb.lon:0);
+    const gpsLat=(UI.gpsPos&&UI.gpsPos.lat!=null)?UI.gpsPos.lat:(_gfb?_gfb.lat:0);
     const gx=px(gpsLon),gy=py(gpsLat);
     // Accuracy circle if known
     if(UI.gpsPos&&UI.gpsPos.acc&&UI.gpsPos.acc<500){
@@ -12872,6 +12993,20 @@ document.addEventListener('click',e=>{
   if(fr){
     const id=fr.dataset.fitroute;
     const state=ms(id);
+    // v365 — "fit whole route" on a free ride would zoom out to frame a route that is no longer
+    // drawn: an empty rectangle with the rider lost somewhere inside it. Same argument as v260e's
+    // crosshair — a control that only makes sense when you're on the route is the wrong shape for
+    // "I'm just going for a ride" — so here it re-centres on you at riding zoom instead.
+    if(id==='live-map'&&_freeRiding()){
+      // Same pairing rule as the ride-mode cleanup: riding zoom only when there's a fix to aim
+      // it at, otherwise a null centre lands on the route's bbox midpoint at 150 m across.
+      state._fitted=false;
+      if(UI.gpsPos&&UI.gpsPos.lat!=null){
+        state.cx=UI.gpsPos.lon;state.cy=UI.gpsPos.lat;
+        state.zoom=zoomForKmWidth('live-map',UI.gpsZoom||0.15);
+      } else {state.cx=null;state.cy=null;state.zoom=1;}
+      redrawMap(id);return;
+    }
     state.cx=null;state.cy=null;state.zoom=1; // reset → drawMap will fit bounds
     state._fitted=true;
     // sizeLiveMap sets cvs._forcedH so drawMap uses correct height immediately
@@ -20502,7 +20637,9 @@ function renderTurnCue(r,liveDist){
   let cue=document.getElementById('turn-cue');
   const stopBlink=()=>{if(UI._tcBlinkTimer){clearInterval(UI._tcBlinkTimer);UI._tcBlinkTimer=null;}};
   const kill=()=>{if(cue)cue.remove();stopBlink();UI._tcOrangeOn=false;if(sec)sec.classList.remove('turn-active');UI._tcDismissedKey=null;};   // v326 — no active turn resets the dismissal
-  if(!sec||!UI.gpsActive||!r.turns||!r.turns.length){kill();return;}
+  // v365 — free ride joins the list. Routed through the existing kill() on purpose: it removes
+  // the box, stops the blink timer AND drops .turn-active, which is what un-hides the data cells.
+  if(!sec||!UI.gpsActive||_freeRiding()||!r.turns||!r.turns.length){kill();return;}
   const at=_activeTurn(r,liveDist);
   if(!at){const had=UI._tcOrangeOn;kill();if(had&&document.getElementById('live-map'))redrawMap('live-map');return;}
   const {nt,mode,remM,showOrange,blink,confirmed,cornerDist}=at;
@@ -20660,7 +20797,11 @@ function updateLive(){
   // Same-fn note as the strip: the colour under the profile dot IS this number by construction.
   const gCurEl=document.getElementById('live-grade-cur');
   if(gCurEl){
-    const gLive=(r.points&&r.points.length>1&&UI.gpsDistKm!=null);
+    // v365 — the grade pill reads the ROUTE's profile at your snapped position, so on a free
+    // ride it is exactly the "faithfully reported fiction" v272 named: a real-looking %, a zone
+    // colour and a "to top" distance, all describing a hill you are not on. Falls back to the
+    // same neutral dash the pill already wears before the first fix.
+    const gLive=(!_freeRiding()&&r.points&&r.points.length>1&&UI.gpsDistKm!=null);
     const g=gLive?gradeAt(r,UI.gpsDistKm):0;
     const gBg=gLive?gradeCol(g):_neutralGrey;   // v304 — same neutral slate as everywhere else
     const gDark=(gBg==='#4ade80'||gBg==='#fbbf24');
@@ -21062,7 +21203,7 @@ function patchGPSInfo(){
   el.innerHTML='<div class="banner ok" style="margin-top:8px;"><span>📍</span><span>'
     +UI.gpsPos.lat.toFixed(5)+', '+UI.gpsPos.lon.toFixed(5)
     +' · ±'+Math.round(UI.gpsPos.acc)+'m'
-    +(UI.gpsDistKm!==null?' · '+UI.gpsDistKm.toFixed(1)+'km along route':'')
+    +((UI.gpsDistKm!==null&&!_freeRiding())?' · '+UI.gpsDistKm.toFixed(1)+'km along route':'')   // v365
     +'</span></div>';
 }
 
