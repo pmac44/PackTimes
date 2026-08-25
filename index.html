@@ -1070,6 +1070,12 @@ select option{background:var(--bg3);}
 .spin{width:13px;height:13px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0;}
 @keyframes spin{to{transform:rotate(360deg);}}
 @keyframes warnPulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+/* v366 — the adaptive-speed banner's countdown bar. Same idea as the PackRide peek
+   bar, but driven by CSS instead of a JS tick: the banner is re-rendered by
+   renderKeepScroll whenever the live tab repaints, and a JS-width tick would restart
+   from full every time. A negative animation-delay (= the banner's age) makes every
+   repaint pick the bar up exactly where it should already be. */
+@keyframes adaptCd{from{transform:scaleX(1);}to{transform:scaleX(0);}}
 .secrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .secrow .ctitle{margin-bottom:0;line-height:1;}
 .startbar{background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px;margin-top:9px;}
@@ -1740,7 +1746,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v365';
+window.APP_VERSION='v366';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5204,6 +5210,7 @@ const ADAPTIVE_MAX_GRADE_PCT=8;           // exclude steep climb/descent segment
 const ADAPTIVE_BLEND=0.4;                 // weight of new signal vs existing factor
 const ADAPTIVE_MAX_DRIFT=0.30;            // hard cap: ±30% from baseTimeFactor
 const ADAPTIVE_WARN_DRIFT=0.25;           // warn if drift exceeds ±25%
+const ADAPTIVE_MSG_MS=30*1000;            // v366 — how long the adaptive banner stays up; the countdown bar animates over exactly this
 
 function adaptiveTimings(r){
   // Scale window and cooldown to estimated ride duration so short rides get
@@ -5302,11 +5309,19 @@ function runAdaptiveCalibration(){
   const drift=Math.abs(rounded-base)/base;
   const pct=Math.round((rounded-oldFactor)/oldFactor*100);
   const dir=rounded>oldFactor?'slower':'faster';
-  const msg=drift>=ADAPTIVE_WARN_DRIFT
-    ?`⚠️ Speed adjusted ${Math.abs(pct)}% ${dir} — significant drift from your baseline. Check conditions.`
-    :`Speed estimate updated — ${Math.abs(pct)}% ${dir}, based on your recent pace.`;
+  // v366 — the banner is a STRUCTURED payload now, not a sentence. Peter, riding:
+  // "the text is hard to read … the number should be much bigger". A big % can't be
+  // pulled back out of a formatted sentence, so the parts are stored separately and
+  // the banner composes them (big figure + direction + small note).
+  const isWarn=drift>=ADAPTIVE_WARN_DRIFT;
+  const note=isWarn
+    ?'Big drift from your baseline — check conditions.'
+    :'Based on your recent pace.';
+  // A 0% banner is noise, and at 56px it's ABSURD noise. The factor still changed
+  // (the ETAs have already moved); there's just nothing worth shouting at the rider.
+  if(Math.abs(pct)===0)return;
   // Surface as a non-blocking banner on the live tab
-  UI._adaptiveMsg={msg,ts:now};
+  UI._adaptiveMsg={pct:Math.abs(pct),dir,isWarn,note,ts:now};
   if(UI.tab==='live')renderKeepScroll();
   // Auto-dismiss after 30s even if no re-render happens
   if(UI._adaptiveDismissTimer)clearTimeout(UI._adaptiveDismissTimer);
@@ -5314,7 +5329,7 @@ function runAdaptiveCalibration(){
     UI._adaptiveMsg=null;
     const wrap=document.getElementById('adaptive-msg-bar-wrap');
     if(wrap)wrap.innerHTML='';
-  },30000);
+  },ADAPTIVE_MSG_MS);
 }
 function updateGPSPill(){
   const el=document.getElementById('gpspill');if(!el)return;
@@ -17732,13 +17747,34 @@ function tLiveShell(r){
              ADD NEW OVERLAYS TO THIS LIST. A number that "looks free" is how this broke. -->
         <div id="adaptive-msg-bar-wrap" style="position:absolute;top:140px;left:8px;right:8px;z-index:40;">
         ${(()=>{
+          // v366 — READABLE AT ARM'S LENGTH ON A BAR. Peter: "the text is hard to read.
+          // The number should be much bigger, and there should be a countdown window
+          // like the PackRide map popup." So: 56px mono % as the hero, the direction
+          // word beside it, the reason demoted to small print, and a countdown bar on
+          // the top edge (the PackRide peek pattern) so the 30 s dismiss is VISIBLE
+          // instead of a surprise. Blocking the screen is fine — Peter said so — as
+          // long as one glance is enough.
           if(!UI._adaptiveMsg)return'';
-          const age=Date.now()-UI._adaptiveMsg.ts;
-          if(age>30000){UI._adaptiveMsg=null;return'';} // auto-dismiss after 30s
-          const isWarn=UI._adaptiveMsg.msg.startsWith('⚠️');
-          return`<div id="adaptive-msg-dismiss" style="padding:12px 14px;font-size:16px;font-weight:500;font-family:var(--font);line-height:1.45;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;background:${isWarn?'rgba(30,22,8,0.96)':'rgba(24,29,38,0.96)'};border:1px solid ${isWarn?'rgba(251,191,36,0.75)':'rgba(120,178,255,0.65)'};border-radius:10px;color:${isWarn?'#ffe09a':'#d6e6fb'};box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-            <span>${UI._adaptiveMsg.msg}</span>
-            <span style="flex-shrink:0;font-size:12px;opacity:0.65;white-space:nowrap;">tap to dismiss ✕</span>
+          const m=UI._adaptiveMsg;
+          const age=Date.now()-m.ts;
+          if(age>ADAPTIVE_MSG_MS){UI._adaptiveMsg=null;return'';} // auto-dismiss
+          const warn=!!m.isWarn;
+          const hue=warn?'#fbbf24':'#78b2ff';
+          return`<div id="adaptive-msg-dismiss" style="cursor:pointer;overflow:hidden;background:${warn?'rgba(30,22,8,0.97)':'rgba(24,29,38,0.97)'};border:1px solid ${warn?'rgba(251,191,36,0.75)':'rgba(120,178,255,0.65)'};border-radius:var(--r-card);color:${warn?'#ffe09a':'#d6e6fb'};box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+            <div style="height:4px;background:rgba(255,255,255,0.13);">
+              <div style="height:100%;background:${hue};transform-origin:left center;animation:adaptCd ${ADAPTIVE_MSG_MS}ms linear forwards;animation-delay:-${age}ms;"></div>
+            </div>
+            <div style="padding:var(--sp-4);">
+              <div style="font-size:var(--fs-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75;">${warn?'⚠️ ':''}Speed estimate updated</div>
+              <div style="display:flex;align-items:baseline;gap:12px;margin:var(--sp-2) 0 var(--sp-1);">
+                <span style="font-family:var(--font);font-weight:500;font-size:56px;line-height:1;letter-spacing:-2px;color:${hue};">${m.pct}%</span>
+                <span style="font-size:24px;font-weight:600;">${m.dir}</span>
+              </div>
+              <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:var(--sp-3);">
+                <span style="font-size:var(--fs-sm);line-height:1.35;opacity:.8;">${m.note}</span>
+                <span style="flex-shrink:0;font-size:var(--fs-xs);opacity:.6;white-space:nowrap;">tap to dismiss ✕</span>
+              </div>
+            </div>
           </div>`;
         })()}
         </div>
