@@ -1746,7 +1746,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v366';
+window.APP_VERSION='v367';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -15718,17 +15718,34 @@ function drawElevProfile(r,liveDist){
   const gpsFrac=0.15;
   // Default zoom: ~20% of route or 30km, whichever is smaller
   if(!UI.elevZoomKm||UI.elevZoomKm<=0)UI.elevZoomKm=Math.min(r.totalDist*0.2,30);
-  const visSpan=Math.min(UI.elevZoomKm,r.totalDist);
+  // ── v367 — ONE CLAMPED WINDOW, NOT TWO BRANCHED ONES. Peter: "it flips at a point … there
+  // is a snap." There were two different windows here with a hard `if` between them: a
+  // rider-anchored one (GPS pinned at 15% from the left, free to run off BOTH ends of the
+  // route) and, the moment visSpan crossed 0.95*totalDist, a whole-route one anchored at km 0.
+  // At that crossing the GPS dot teleported from x=15% to x≈liveDist/totalDist — a jump of
+  // (liveDist/totalDist − 0.15) of the canvas width. That is ~0 only if the rider happens to be
+  // 15% along; at halfway it is 35% of the width, and it grows from there. Hence "halfway".
+  // Now the window is CLAMPED, not branched: compute the rider-anchored range, then slide it
+  // back inside the padded route bounds when it would overrun them — the same clamped pan every
+  // map does. The dot drifts off the 15% mark smoothly as an end of the route comes into view
+  // instead of jumping, and at max zoom the clamp lands EXACTLY on the old full-route framing,
+  // so that view is unchanged. ⚠ The dot does sit close to the left edge at km 0 when zoomed
+  // right out — that is NOT a regression, the old full-route branch put it at 1.9% too; the
+  // difference is that it now arrives there continuously. Bonus: no more half-empty canvas
+  // past the finish line when you zoom out near the end of a ride.
+  const edgePad=r.totalDist*0.02;
+  const loB=-edgePad,hiB=r.totalDist+edgePad;
+  const fullSpan=hiB-loB;
+  const visSpan=Math.min(UI.elevZoomKm,fullSpan);
   let distMin,distMax;
-  if(visSpan>=r.totalDist*0.95){
-    // Full route view — add small padding so edges aren't flush
-    const pad=r.totalDist*0.02;
-    distMin=-pad;distMax=r.totalDist+pad;
+  if(visSpan>=fullSpan){
+    distMin=loB;distMax=hiB;
   } else {
-    // Allow distMin to go negative and distMax past totalDist so GPS dot
-    // always has padding from edges and the fill reaches canvas borders
     distMin=liveDist-gpsFrac*visSpan;
     distMax=distMin+visSpan;
+    // Right edge first, then left, so the left bound wins if both would bind.
+    if(distMax>hiB){distMax=hiB;distMin=distMax-visSpan;}
+    if(distMin<loB){distMin=loB;distMax=distMin+visSpan;}
   }
   if(distMax-distMin<0.1){distMin=-0.5;distMax=r.totalDist+0.5;}
 
@@ -15863,7 +15880,7 @@ function drawElevProfile(r,liveDist){
   ctx.fillText(Math.round(eleMax)+'m',3,2);
   // Zoom distance label (top right)
   ctx.textAlign='right';
-  const zoomLabel=visSpan>=r.totalDist*0.95?'Full route':visSpan>=1?Math.round(visSpan)+'km':(visSpan*1000).toFixed(0)+'m';
+  const zoomLabel=visSpan>=fullSpan*0.999?'Full route':visSpan>=1?Math.round(visSpan)+'km':(visSpan*1000).toFixed(0)+'m';
   ctx.fillText(zoomLabel,W-3,2);
 
   // Attach swipe-to-zoom handlers (once per canvas instance)
@@ -15884,7 +15901,7 @@ function drawElevProfile(r,liveDist){
       const W=cvs.getBoundingClientRect().width||300;
       const factor=Math.pow(2,-dx/W*2);
       const r2=cur();
-      const maxZoom=r2?r2.totalDist:500;
+      const maxZoom=r2?r2.totalDist*1.04:500; // === fullSpan in drawElevProfile — must reach it or 'Full route' is unreachable
       UI.elevZoomKm=Math.max(2,Math.min(maxZoom,startZoom*factor));
       if(r2)drawElevProfile(r2,UI.gpsDistKm||0);
       e.preventDefault();

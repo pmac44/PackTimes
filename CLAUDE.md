@@ -50,6 +50,49 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v367 (27 Aug) — THE ELEVATION ZOOM SNAPPED HALFWAY. Two windows, one hard `if`.
+
+Peter: *"It flips at a point, which seems like when you are halfway along a route. There is a
+snap."* He was reading the symptom exactly right, and the cause was one branch in
+`drawElevProfile` (~line 15721) that had been there since the swipe-zoom went in.
+
+**There were two different windows, and a threshold between them.**
+- Below `visSpan >= totalDist*0.95`: rider-anchored. `distMin = liveDist - 0.15*visSpan`, GPS
+  dot pinned at 15% from the left, window free to run off BOTH ends of the route.
+- At or above it: whole-route. `distMin = -0.02*totalDist`, `distMax = totalDist + 0.02`.
+
+Cross that line and the GPS dot **teleports** from x=15% to x≈`liveDist/totalDist`. The jump is
+`(liveDist/totalDist − 0.15)` of the canvas width — zero only if the rider happens to be 15%
+along, **35% of the width at halfway**, and larger past that. That is the snap, and "halfway"
+is where it first gets big enough to be obviously wrong rather than just a lurch.
+
+**The fix: clamp the window, don't branch it.** One rider-anchored range, then slid back inside
+the padded route bounds `[-0.02·T, 1.02·T]` when it would overrun — the same clamped pan every
+map does. Right edge clamps first, then left, so a window wider than the route pins to `loB`
+rather than oscillating. `visSpan` now caps at `fullSpan = 1.04·T` (was `T`), so at maximum
+zoom the clamp lands **exactly** on the old full-route framing — that view is byte-identical,
+it is just now arrived at continuously instead of jumped to.
+
+Two dependents moved with it:
+- `maxZoom` in the swipe handler: `totalDist` → `totalDist*1.04`. **Without this the full-route
+  view becomes unreachable** — the gesture could no longer produce a `visSpan` equal to
+  `fullSpan`. If you ever change `fullSpan`, change this in the same edit.
+- The `'Full route'` label: `>= totalDist*0.95` → `>= fullSpan*0.999`, so it now means what it
+  says instead of "near enough".
+
+**Side effect worth knowing about, deliberately accepted:** at km 0 zoomed right out, the dot
+sits close to the left edge instead of at 15%. That is not a regression — the old full-route
+branch put it at 1.9% too. The difference is it now *arrives* there smoothly. The old comment
+warning "allow distMin to go negative so the GPS dot always has padding from edges" was only
+ever true on the rider-anchored side of the threshold, which is precisely why the two sides
+disagreed. Free bonus: zoomed out near the end of a ride you no longer get most of a canvas of
+empty space past the finish line — the window slides back onto the route instead.
+
+**NOT verified by `node --check`** — the standing rule could not be run: this machine has no
+node and no python on PATH (`python3` resolves to the Windows Store stub). The change is 27
+lines in one function, three edits total, no new bracket nesting beyond the `if/else` it
+replaced. **Syntax-check and phone-test before pushing.** Untested on a real ride.
+
 ### v362 (13 Aug) — THE PLACE SEARCH THOUGHT CREEKS WERE SHOPS. Peter's screenshot.
 
 **⚠ NEXT CODE CHANGE IS v363.** On disk, committed locally, NOT pushed until Peter runs
