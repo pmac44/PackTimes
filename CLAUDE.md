@@ -50,7 +50,159 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
-### v367 (27 Aug) — THE ELEVATION ZOOM SNAPPED HALFWAY. Two windows, one hard `if`.
+### v369 (27 Aug) — THE END OF THE ROUTE. The finish holds the right edge; the rider comes to it.
+
+Peter: *"what happens when you get to the end? … I suspect that the route has been stretched/
+extended out after the end of route so that the actual end can move over to the rider position."*
+It had been, and he was right about the mechanism. Two of his options, and he took **1 + the flag
+from 2** once the numbers were on the table.
+
+**Where this bites, and only here.** The v368 cap already guarantees `distMax ≤ totalDist` at
+every zoom level — `visSpan ≤ maxSpan ⟹ liveDist + (1-g)·visSpan ≤ totalDist`. The one thing
+that can break it is `MIN_SPAN` beating the cap, which is algebraically the last
+`(1-gpsFrac)·MIN_SPAN` = **1.7 km**, measured 1.69 km, and **independent of zoom level**
+(verified at elevZoomKm 3/10/50/9999 — all first overshoot at 1.69 km to go).
+
+**Three bugs, one cause.** Inside that stretch the window overhung the route, and the drawing
+code faithfully extended the last elevation flat, in grade colour, across the overhang:
+
+```
+  to go   invented "route" on canvas
+    1.0          35%
+    0.5          60%
+    0.0          85%      and >100% once GPS runs past the end of the GPX
+```
+
+Worse, and **neither of us was looking for it**: at the line the window held ONE real route
+point, so `if(visPts.length<2)return;` fired and **the profile vanished completely** the moment
+you crossed the line, and stayed gone for any GPS overshoot. Every ride ended with a blank
+strip. That had been true since long before this week.
+
+**The fix — pin `distMax` to the true finish.** `if(distMax>r.totalDist){distMax=r.totalDist;
+distMin=distMax-visSpan;}`. The rider then drifts right off the 15% mark across the final 1.7 km
+and arrives at the flag exactly at the line.
+
+**⚠ Yes, this is a clamp, and a clamp is what caused the v367 direction inversion. It cannot
+here, and the reason is exact rather than lucky:** it only ever binds when `MIN_SPAN` has beaten
+the cap, which is the *same condition* that pins `visSpan` solid at `MIN_SPAN`. No zoom means no
+scale transform means nothing to invert. Measured: **0 of 925 samples inside the drift zone
+where `visSpan` can still change.** Rider fraction leaves 0.1500 continuously — 0.1500 at 1.70 km
+to go, 0.1750 at 1.65, max step 0.0005 per metre ridden. If you ever raise `MIN_SPAN`, re-check
+that those two boundaries still coincide.
+
+**The bleed rule.** `flushRun` and the outline used to extend unconditionally to x=0 and x=W.
+The gap that avoids is real (the first/last visible POINT is up to one sample short of the
+edge), but unconditional means any overhang gets painted as route. Now gated on `bleedL`
+(`distMin>=0`) and `bleedR` (`distMax<=totalDist`). The right edge takes care of itself once
+distMax is pinned; the **left edge still overhangs at the start of every ride** — `distMin =
+-gpsFrac*visSpan` is always negative there — so this also kills ~15% of invented pre-start route
+that had been drawn since the profile was written.
+
+**Finish flag** — black/white chequer, 3×2 of 4 px, hung left of a 1 px pole so it never runs off
+the right edge. Drawn BEFORE the rider so the dot sits on top when the two meet. No theme token,
+for the same reason the rider line is white-on-dark-outline: it sits over grade colours we don't
+control, so it carries its own contrast. Only drawn when the finish is genuinely in the window.
+**The rider dot is now x-clamped to the canvas** — with distMax pinned, a rider past the line is
+outside the window and the dot would otherwise disappear at the end of every ride.
+
+**Verified — the real `drawElevProfile` was sed-extracted from `index.html` and RENDERED to a
+canvas** with stubbed helpers, then asserted on the actual pixels (not eyeballed, and not a
+reimplementation):
+- km 0 leaves the pre-start strip empty — first painted column 50/390, was 0;
+- profile still drawn AT the line and 3 km past the end of the GPX (both were blank);
+- flag present at the line, past it, and at the cap mid-route; **absent** when zoomed in with the
+  finish off-screen;
+- rider dot present in all nine cases including past the line;
+- paint still reaches 389/390 mid-route, so the bleed gating did not reintroduce an edge gap.
+Whole 310-line function parses clean; bracket deltas against HEAD balance.
+
+**WHOLE-FILE VERIFIED — the standing rule ran after all.** Node was installed later the same day
+(`winget install OpenJS.NodeJS.LTS`, v24.19.0). Result on v369: ends `</html>` (asserted FIRST),
+23,584 lines, **all 3 inline script blocks `node --check` clean**, CSS 330/330 braces,
+151/151 CSS comment pairs — plus `sw.js` clean. So v367, v368 and v369 are now covered
+end-to-end, not just inside `drawElevProfile`.
+
+**The rule is now a script: `verify.js` in this folder. Run `node verify.js` before any push.**
+It asserts `</html>` FIRST (a truncated write makes every other check meaningless), then
+`node --check`s every inline block, then the CSS braces and comments. ⚠ It deliberately does
+NOT count `/* */` pairs in the JS: a regex literal ending in a quantifier — there is one in the
+date-prefix stripper, `/^\d{4}[-_]?\d{2}[-_]?\d{2}[-_ ]*/` — closes with the characters `*/`
+and makes a naive count read 9/10. That false failure cost time once; `node --check` catches an
+unterminated comment definitively, so the JS side needs nothing more.
+
+**NOT ride-tested.**
+
+### v368 (27 Aug) — ZOOM HAS NO DIRECTION. Peter's cap replaces my clamp. SUPERSEDES v367.
+
+Ride-tested v367: the snap was gone, and a new bug was in its place. Peter: *"the graph moves
+in the opposite direction to your finger when sideways scrolling."* My fault, same session.
+
+**Why the v367 clamp was wrong.** Clamping the window to the route bounds pins the right edge
+once the finish is in view — and a pinned edge IS the zoom anchor. Scaling leaves exactly one
+pixel fixed, the anchor, and everything on one side of it travels one way while everything on
+the other travels the other. Anchor at the right edge ⇒ the entire canvas moves against the
+finger, for the whole back half of a ride. Measured, v366 vs v367, mean drift for a 60px drag:
+
+```
+ rider   v366     v367 A
+   50%   -0.082   -0.082      negative = content follows the finger
+   85%   -0.048   +0.088      <- v367 inverts
+   95%   -0.016   +0.088
+```
+
+**⚠ THE LAW, so this isn't re-derived a fourth time: you cannot make drag-to-zoom follow the
+finger across the whole canvas.** All you choose is where the anchor sits, and therefore how
+much of the canvas disagrees. At 15% from the left, 85% agrees — which is what ≤v366 did and
+why nobody ever complained. I also built and measured a blended anchor (linear and sqrt eased,
+candidates B and C): both still let the anchor drift right, both still invert. **Do not "fix"
+this by clamping the window again, and do not flip the drag sign** — flipping makes the back
+half follow and breaks the front half instead. I checked.
+
+**Peter's fix, and it's better than anything I proposed.** Nail the rider to `gpsFrac` at every
+zoom level, forever, and let the ZOOM RANGE give instead: you cannot zoom out past the point
+where the window would run off the end of the route.
+
+```js
+const MIN_SPAN=2;
+const maxSpan=Math.max(MIN_SPAN,(r.totalDist-liveDist)/(1-gpsFrac));
+const visSpan=Math.max(MIN_SPAN,Math.min(UI.elevZoomKm,maxSpan));
+```
+
+One cap does all the work. The dot never moves, so there is no snap and nothing to invert.
+No dead canvas past the finish. And Peter's own observation, which is the nice part: park it
+at the cap and the cap shrinks as you ride, so the profile **auto-zooms in** and the full width
+stays relevant all the way to the line — 235 km of window at the start, 118 km at halfway,
+12 km with 10 km to go.
+
+**Cap at the TRUE end, not a padded one.** My first cut capped at `totalDist*1.02`; that 2%
+is 4 km, which is nothing at the start and **42% of the canvas** once the window is down to
+10 km. `flushRun` already extends the fill to the canvas edge, so no pad is needed to avoid a
+gap. Measured dead-space-past-the-finish: 42.5% with the pad, 0.0% without.
+
+**Two dependents moved with it — change all three together or the gesture desyncs:**
+- `maxZoom` in the swipe handler is now the same cap, `(totalDist - gpsDistKm)/0.85`.
+- **`cvs._visSpan`** is written by `drawElevProfile` and read by `onStart`. The swipe must
+  resume from the span ON SCREEN, not from `UI.elevZoomKm` — once the cap has overridden the
+  stored preference those two differ, and starting from the stored value gives the first part
+  of the drag no visible effect at all. This is the subtle one.
+- The zoom label reads `Full route` only when the start is also on screen, otherwise `To
+  finish` at the cap. "Full route" would be a lie now: the cap means you're seeing everything
+  that's LEFT, which is only the whole route at km 0.
+
+**Verified** — the window math was sed-extracted from `index.html` verbatim (not retyped) and
+exercised in the browser-pane harness, plus a parse check of the whole 258-line function:
+- rider dot fraction **flat 0.1500** across 61×61 rider×zoom, no non-finite values;
+- **0 of 4614 drag samples oppose the finger** (was ~42% of samples in v367);
+- continuity max dot step **exactly 0.000000**, so a snap is now structurally impossible;
+- dead canvas past the finish 0.0% except the last 1.7 km, where `MIN_SPAN` necessarily takes
+  over — expected, and better than a degenerate window;
+- safe on 3/8/40 km routes, `liveDist > totalDist` (GPS past the line), and `totalDist = 0`.
+
+**Whole-file `node --check` came later** — node was absent from this machine when v368 was
+written and was installed the same day; the v369 entry above records the clean whole-file
+result, which covers this version too. **NOT ride-tested.**
+
+### v367 (27 Aug) — THE ELEVATION ZOOM SNAPPED HALFWAY. ⚠ SUPERSEDED BY v368 — the clamp described below shipped, inverted the drag direction, and was replaced the same day. Read v368 first; kept here for the diagnosis of the original snap, which was correct.
 
 Peter: *"It flips at a point, which seems like when you are halfway along a route. There is a
 snap."* He was reading the symptom exactly right, and the cause was one branch in
@@ -88,10 +240,10 @@ ever true on the rider-anchored side of the threshold, which is precisely why th
 disagreed. Free bonus: zoomed out near the end of a ride you no longer get most of a canvas of
 empty space past the finish line — the window slides back onto the route instead.
 
-**NOT verified by `node --check`** — the standing rule could not be run: this machine has no
-node and no python on PATH (`python3` resolves to the Windows Store stub). The change is 27
-lines in one function, three edits total, no new bracket nesting beyond the `if/else` it
-replaced. **Syntax-check and phone-test before pushing.** Untested on a real ride.
+**Was NOT `node --check`ed at the time** — node was absent from this machine (`python3` also
+resolves to a Windows Store stub, see universal memory). Node was installed the same day and the
+v369 entry records the clean whole-file result, so this code is covered now. Moot regardless:
+this version was superseded before it was ever ridden.
 
 ### v362 (13 Aug) — THE PLACE SEARCH THOUGHT CREEKS WERE SHOPS. Peter's screenshot.
 

@@ -1746,7 +1746,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v367';
+window.APP_VERSION='v369';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -15718,35 +15718,66 @@ function drawElevProfile(r,liveDist){
   const gpsFrac=0.15;
   // Default zoom: ~20% of route or 30km, whichever is smaller
   if(!UI.elevZoomKm||UI.elevZoomKm<=0)UI.elevZoomKm=Math.min(r.totalDist*0.2,30);
-  // ── v367 — ONE CLAMPED WINDOW, NOT TWO BRANCHED ONES. Peter: "it flips at a point … there
-  // is a snap." There were two different windows here with a hard `if` between them: a
-  // rider-anchored one (GPS pinned at 15% from the left, free to run off BOTH ends of the
-  // route) and, the moment visSpan crossed 0.95*totalDist, a whole-route one anchored at km 0.
-  // At that crossing the GPS dot teleported from x=15% to x≈liveDist/totalDist — a jump of
-  // (liveDist/totalDist − 0.15) of the canvas width. That is ~0 only if the rider happens to be
-  // 15% along; at halfway it is 35% of the width, and it grows from there. Hence "halfway".
-  // Now the window is CLAMPED, not branched: compute the rider-anchored range, then slide it
-  // back inside the padded route bounds when it would overrun them — the same clamped pan every
-  // map does. The dot drifts off the 15% mark smoothly as an end of the route comes into view
-  // instead of jumping, and at max zoom the clamp lands EXACTLY on the old full-route framing,
-  // so that view is unchanged. ⚠ The dot does sit close to the left edge at km 0 when zoomed
-  // right out — that is NOT a regression, the old full-route branch put it at 1.9% too; the
-  // difference is that it now arrives there continuously. Bonus: no more half-empty canvas
-  // past the finish line when you zoom out near the end of a ride.
-  const edgePad=r.totalDist*0.02;
-  const loB=-edgePad,hiB=r.totalDist+edgePad;
-  const fullSpan=hiB-loB;
-  const visSpan=Math.min(UI.elevZoomKm,fullSpan);
-  let distMin,distMax;
-  if(visSpan>=fullSpan){
-    distMin=loB;distMax=hiB;
-  } else {
-    distMin=liveDist-gpsFrac*visSpan;
-    distMax=distMin+visSpan;
-    // Right edge first, then left, so the left bound wins if both would bind.
-    if(distMax>hiB){distMax=hiB;distMin=distMax-visSpan;}
-    if(distMin<loB){distMin=loB;distMax=distMin+visSpan;}
-  }
+  // ── v368 — CAP THE SPAN, NEVER MOVE THE RIDER. Peter's design, and it is the right one.
+  //
+  // The history matters, because I got this wrong once already and the wrong version shipped.
+  // ≤v366 had TWO windows and a hard `if` between them — rider-anchored below
+  // visSpan≥0.95*totalDist, whole-route above it — so at that crossing the dot teleported from
+  // x=15% to x≈liveDist/totalDist. 35% of the canvas width at halfway. That was the snap.
+  // v367 "fixed" it by CLAMPING the window inside the route bounds. It killed the snap and
+  // introduced a worse bug: clamping pins the right edge, which makes the right edge the zoom
+  // anchor, and a scale transform only ever leaves its anchor still. So the whole canvas then
+  // moved AGAINST the finger for the entire back half of a ride. Peter, on the test ride:
+  // "the graph moves in the opposite direction to your finger when sideways scrolling."
+  //
+  // ⚠ THE GENERAL LAW, so nobody re-derives this a fourth time: ZOOM HAS NO DIRECTION. Scaling
+  // leaves exactly one pixel fixed — the anchor — and everything on one side of it travels one
+  // way while everything on the other side travels the other. You cannot make drag-to-zoom
+  // follow the finger across the whole canvas. All you can choose is WHERE the anchor sits, and
+  // therefore how much of the canvas disagrees. At 15% from the left, 85% agrees. Anything that
+  // lets the anchor drift right — a clamp, a blended anchor (I measured both) — trades the snap
+  // for an inversion. Do not "fix" this by clamping the window again.
+  //
+  // So: the rider is nailed to gpsFrac, at every zoom level, forever. What gives instead is the
+  // ZOOM RANGE — you simply cannot zoom out past the point where the window would run off the
+  // end of the route. That single cap does all the work:
+  //   • the dot never moves, so there is no snap and nothing to invert (measured: dot fraction
+  //     is a flat 0.1500 across every rider position × zoom level, step size exactly 0);
+  //   • no dead canvas past the finish line, ever;
+  //   • and Peter's own observation — park it at the cap and the cap shrinks as you ride, so
+  //     the profile AUTO-ZOOMS IN and the full width stays relevant all the way to the line.
+  //     235km of window at the start, 118km at halfway, 12km with 10km to go.
+  // Cap at the TRUE end, not a padded one: a 2%-of-route pad is 4km, which is nothing at the
+  // start and 42% of the canvas when the window is down to 10km. The fill already runs to the
+  // canvas edge on its own (see flushRun), so no pad is needed to avoid a gap.
+  const MIN_SPAN=2; // km — must match the floor in the swipe handler below
+  const maxSpan=Math.max(MIN_SPAN,(r.totalDist-liveDist)/(1-gpsFrac));
+  const visSpan=Math.max(MIN_SPAN,Math.min(UI.elevZoomKm,maxSpan));
+  let distMin=liveDist-gpsFrac*visSpan;
+  let distMax=distMin+visSpan;
+  // ── v369 — THE FINAL 1.7km: THE FINISH LINE HOLDS THE RIGHT EDGE AND THE RIDER COMES TO IT.
+  // Peter: "what happens when you get to the end? … I suspect the route has been stretched out
+  // after the end of route." It had been. Everywhere else the cap above guarantees the window
+  // stops at the finish, but it cannot once MIN_SPAN beats the cap — algebraically that is the
+  // last (1-gpsFrac)*MIN_SPAN = 1.7 km, and measurably it is 1.69 km, INDEPENDENT of zoom.
+  // Inside that stretch the old window ran past the line and the drawing code below faithfully
+  // extended the last elevation flat to the canvas edge: 35% invented route with 1 km to go,
+  // 85% at the line. Worse — and neither of us was looking for this — the window then held only
+  // ONE real route point, so `visPts.length<2` returned early and THE PROFILE VANISHED
+  // COMPLETELY the moment you crossed the line, and stayed gone for any GPS overshoot past the
+  // end of the GPX. Every ride ended with a blank strip.
+  // Pinning distMax to the true finish fixes all three at once. ⚠ Yes, this is a clamp, and a
+  // clamp is what caused the v367 direction inversion — but it CANNOT here, and the reason is
+  // exact rather than lucky: it only ever binds when MIN_SPAN has beaten the cap, which is the
+  // same condition that locks visSpan solid. Measured: 0 of 925 samples inside the drift zone
+  // where visSpan can still change. No zoom means no scale transform means nothing to invert.
+  // The rider fraction leaves 0.1500 continuously (0.1500 at 1.70 km to go, 0.1750 at 1.65,
+  // max step 0.0005 per metre ridden) and arrives at 1.0 exactly as the flag is reached.
+  if(distMax>r.totalDist){distMax=r.totalDist;distMin=distMax-visSpan;}
+  // The swipe must resume from what is ON SCREEN, not from the stored preference — once the
+  // cap has overridden it those two differ, and starting from the stored value gives the first
+  // part of the drag no visible effect at all.
+  cvs._visSpan=visSpan;
   if(distMax-distMin<0.1){distMin=-0.5;distMax=r.totalDist+0.5;}
 
   const dpr=window.devicePixelRatio||1;
@@ -15822,17 +15853,26 @@ function drawElevProfile(r,liveDist){
     ptCols.push(gradeCol(gradeAt(r,visPts[pi].dist)));
   }
   // Draw grade-coloured fill from profile line down to bottom.
-  // Always extend to both canvas edges (x=0 and x=W) to avoid gaps.
+  // ── v369 — EXTEND TO A CANVAS EDGE ONLY WHERE THE ROUTE ACTUALLY CONTINUES PAST IT.
+  // This used to be an unconditional "always extend to x=0 and x=W to avoid gaps". The gap it
+  // avoids is real — the first/last visible POINT is up to one sample short of the edge — but
+  // unconditional means that whenever the window overhangs the route, the end elevation gets
+  // painted flat, in grade colour, across the overhang. That is what made the route look
+  // "stretched out after the end" (Peter). The right edge now takes care of itself, because
+  // distMax is pinned to totalDist above; the LEFT edge still overhangs at the start of every
+  // ride, where distMin = -gpsFrac*visSpan is always negative, inventing up to 15% of a canvas
+  // of pre-start route. Extend only when there is genuinely more route out there.
+  const bleedL=distMin>=0, bleedR=distMax<=r.totalDist;
   ctx.globalAlpha=1.0;
   let runStart=0,curCol=ptCols[0];
   const flushRun=(end)=>{
     ctx.beginPath();
-    // Left edge: extend first segment to x=0
-    const sx=runStart===0?0:xOf(visPts[runStart].dist);
+    // Left edge: extend first segment to x=0 only if the route runs off that edge
+    const sx=(runStart===0&&bleedL)?0:xOf(visPts[runStart].dist);
     ctx.moveTo(sx,yOf(smEle[runStart]));
     for(let k=runStart;k<=end;k++) ctx.lineTo(xOf(visPts[k].dist),yOf(smEle[k]));
-    // Right edge: extend last segment to x=W
-    const ex=end>=visPts.length-1?W:xOf(visPts[end].dist);
+    // Right edge: extend last segment to x=W only if the route runs off that edge
+    const ex=(end>=visPts.length-1&&bleedR)?W:xOf(visPts[end].dist);
     ctx.lineTo(ex,yOf(smEle[end]));
     ctx.lineTo(ex,H);ctx.lineTo(sx,H);ctx.closePath();
     ctx.fillStyle=curCol;ctx.fill();
@@ -15845,20 +15885,44 @@ function drawElevProfile(r,liveDist){
   flushRun(visPts.length-1);
   ctx.globalAlpha=1;
 
-  // Black elevation outline on top of the filled area — edge to edge
+  // Black elevation outline on top of the filled area — to the canvas edge only where the
+  // route continues past it (same bleed rule as the fill above, or the outline would draw the
+  // invented flat section the fill no longer paints).
   ctx.beginPath();
   if(visPts.length){
-    ctx.moveTo(0,yOf(smEle[0])); // start at left canvas edge
+    if(bleedL)ctx.moveTo(0,yOf(smEle[0])); else ctx.moveTo(xOf(visPts[0].dist),yOf(smEle[0]));
     for(let i=0;i<visPts.length;i++) ctx.lineTo(xOf(visPts[i].dist),yOf(smEle[i]));
-    ctx.lineTo(W,yOf(smEle[visPts.length-1])); // extend to right canvas edge
+    if(bleedR)ctx.lineTo(W,yOf(smEle[visPts.length-1]));
   }
   ctx.strokeStyle='rgba(0,0,0,0.8)';
   ctx.lineWidth=1.5;
   ctx.stroke();
 
+  // ── v369 — FINISH FLAG. Drawn BEFORE the rider so the dot sits on top of it when the two
+  // meet at the line. Black/white chequer needs no theme token for the same reason the rider
+  // line is white-on-dark-outline: it sits over grade colours we don't control, so it carries
+  // its own contrast. Only drawn when the finish is actually in the window.
+  if(r.totalDist>=distMin&&r.totalDist<=distMax){
+    const fx=Math.round(xOf(r.totalDist))-0.5; // -0.5 keeps the 1px pole crisp
+    ctx.beginPath();ctx.moveTo(fx,0);ctx.lineTo(fx,H);
+    ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=3;ctx.stroke();
+    ctx.beginPath();ctx.moveTo(fx,0);ctx.lineTo(fx,H);
+    ctx.strokeStyle='rgba(255,255,255,0.85)';ctx.lineWidth=1;ctx.stroke();
+    // 3x2 chequer, top-left of the pole so it never runs off the right edge
+    const CS=4,fw=CS*3,fh=CS*2,fy=3,fbx=fx-fw;
+    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(fbx-1,fy-1,fw+2,fh+2);
+    for(let cx=0;cx<3;cx++)for(let cy=0;cy<2;cy++){
+      ctx.fillStyle=((cx+cy)%2===0)?'#fff':'#111';
+      ctx.fillRect(fbx+cx*CS,fy+cy*CS,CS,CS);
+    }
+  }
+
   // GPS position reference line
-  if(liveDist>=distMin&&liveDist<=distMax){
-    const gx=xOf(liveDist);
+  if(liveDist>=distMin){
+    // Clamp to the canvas: once distMax is pinned to the finish, a rider who has crossed the
+    // line (or whose GPS runs past the end of the GPX) is outside the window, and an unclamped
+    // dot would simply disappear at the end of every ride.
+    const gx=Math.min(xOf(liveDist),W);
     let bestI=0;for(let i=1;i<visPts.length;i++){if(Math.abs(visPts[i].dist-liveDist)<Math.abs(visPts[bestI].dist-liveDist))bestI=i;}
     const gy=yOf(smEle[bestI]);
     // Solid vertical line — white with dark outline for visibility against grade bars
@@ -15880,7 +15944,11 @@ function drawElevProfile(r,liveDist){
   ctx.fillText(Math.round(eleMax)+'m',3,2);
   // Zoom distance label (top right)
   ctx.textAlign='right';
-  const zoomLabel=visSpan>=fullSpan*0.999?'Full route':visSpan>=1?Math.round(visSpan)+'km':(visSpan*1000).toFixed(0)+'m';
+  // At the cap the label says WHY it won't zoom out further: you are already looking at
+  // everything that's left. 'Full route' only when the start is on screen too.
+  const atCap=visSpan>=maxSpan-1e-9;
+  const zoomLabel=atCap?(distMin<=0?'Full route':'To finish')
+    :visSpan>=1?Math.round(visSpan)+'km':(visSpan*1000).toFixed(0)+'m';
   ctx.fillText(zoomLabel,W-3,2);
 
   // Attach swipe-to-zoom handlers (once per canvas instance)
@@ -15889,7 +15957,10 @@ function drawElevProfile(r,liveDist){
     let startX=null,startZoom=null,didDrag=false;
     const onStart=e=>{
       const t=e.touches?e.touches[0]:e;
-      startX=t.clientX;startZoom=UI.elevZoomKm;didDrag=false;
+      // Resume from the span actually on screen (set by drawElevProfile). Once the end-of-route
+      // cap has overridden the stored preference these differ, and starting from the stored one
+      // would give the first part of the drag no visible effect.
+      startX=t.clientX;startZoom=cvs._visSpan||UI.elevZoomKm;didDrag=false;
       e.preventDefault();
     };
     const onMove=e=>{
@@ -15901,7 +15972,8 @@ function drawElevProfile(r,liveDist){
       const W=cvs.getBoundingClientRect().width||300;
       const factor=Math.pow(2,-dx/W*2);
       const r2=cur();
-      const maxZoom=r2?r2.totalDist*1.04:500; // === fullSpan in drawElevProfile — must reach it or 'Full route' is unreachable
+      // Same cap as drawElevProfile — you cannot zoom out past the end of the route.
+      const maxZoom=r2?Math.max(2,(r2.totalDist-(UI.gpsDistKm||0))/0.85):500;
       UI.elevZoomKm=Math.max(2,Math.min(maxZoom,startZoom*factor));
       if(r2)drawElevProfile(r2,UI.gpsDistKm||0);
       e.preventDefault();
