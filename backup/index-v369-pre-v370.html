@@ -1746,7 +1746,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v371';
+window.APP_VERSION='v369';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2017,8 +2017,13 @@ async function loadAll(){
         if(Array.isArray(lastGps.npBuffer))_npRawBuffer.push(...lastGps.npBuffer);
       }
     }
-    // v371 — no sun cache to restore. Sun times are computed locally from a
-    // position and an instant (see sunAt), so there is nothing to store or rehydrate.
+    // Restore sun cache
+    const sc=await DB.getKV('sunCache').catch(()=>null);
+    if(sc){
+      Object.entries(sc).forEach(([k,v])=>{
+        try{_sunCache[k]={sunrise:new Date(v.sunrise),sunset:new Date(v.sunset),dawn:new Date(v.dawn),dusk:new Date(v.dusk)};}catch(e){}
+      });
+    }
     // Restore weather cache
     const wc=await DB.getKV('weatherCache').catch(()=>null);
     if(wc){Object.assign(_weatherCache,wc);}
@@ -4146,128 +4151,12 @@ function toggleRouteOverlay(){
   renderDesktopMap();
   saveAll();
 }
-// ─── v370 — RESUMABLE SURFACE FETCH ──────────────────────────────────────────
-// The Tour Divide (4,300 km) broke the old fetch, and it broke it in the worst
-// possible way: ~90 chunks ran in sequence, one of them eventually failed on
-// every mirror, and the function returned having thrown away every chunk that
-// HAD succeeded. Peter, 28 Aug: "when one of the sections is fetched, can it be
-// stored, so following fetches can skip it?" Yes — and it needed two fixes, not one:
-//
-//   1. A failed chunk no longer aborts the run. It is recorded as a gap and the
-//      loop moves on, so one bad stretch of dense track network costs that
-//      stretch, not the whole route. This alone is most of the win.
-//   2. Coverage is PERSISTED. r.surfDone holds merged [fromKm,toKm] ranges that
-//      have actually been queried, and a checkpoint writes it (plus the segments
-//      so far) to IndexedDB every 10 chunks — so a crash, a phone sleeping or a
-//      closed tab keeps everything up to that point. Refresh then re-chunks only
-//      the uncovered stretches. A route too big to finish in one pass finishes
-//      in two or three presses.
-//
-// ⚠ surfDone is NOT derivable from surfaceSegs, and that is the whole point. A
-// stretch missing from segs is either "queried, OSM has no usable tag" (genuinely
-// Unknown — re-querying will never help) or "never queried" (a gap — DO re-query).
-// Only surfDone tells them apart, which is why it is a separate field and why the
-// Settings card now reports the two separately instead of lumping both under
-// "Unknown — try Refresh".
-//
-// ⚠ r.surfGuess holds the PRE-inference "untagged minor road" ranges. Persisting
-// the post-inference answer instead would bake in a call made with less evidence:
-// a guessed stretch whose informative neighbour only arrives on the second pass
-// would never be revisited. Restoring guesses AS guesses lets the neighbour pass
-// re-run from scratch every time, against everything known so far.
-// Coverage ranges are derived from the `done` bitmap, NOT accumulated per chunk.
-// ⚠ The first cut of v370 did push a [first,last] range per chunk and merged them
-// with a fixed epsilon, and it was WRONG in a way that only showed up at length:
-// consecutive chunks meet at a sample boundary, so every join left a phantom hole
-// one sample-spacing wide. On the simulated Tour Divide that was 0.3 km × 10 joins
-// = 3 km of "gap" that no Refresh could ever close, because every sample inside it
-// had already been queried — the run would report work outstanding and then make
-// zero requests. Walking the bitmap makes adjacent chunks one contiguous run by
-// construction, so a hole in surfDone always means a genuinely unqueried stretch.
-// No epsilon, and none needed: sample spacing follows the GPX and is not a constant.
-function surfRangesFromDone(samples,done,totalDist){
-  const out=[];let i=0;
-  while(i<samples.length){
-    if(!done[i]){i++;continue;}
-    let e=i;while(e<samples.length&&done[e])e++;
-    // Snap to the route ends. Sampling starts at 0 and stops up to one sample
-    // short of the finish; neither stub is an unfetched stretch, and left
-    // unsnapped the tail one reads as a permanent sub-km gap.
-    out.push([i===0?0:samples[i].dist,
-              (e>=samples.length&&totalDist>=samples[e-1].dist)?totalDist:samples[e-1].dist]);
-    i=e;
-  }
-  return out;
-}
-function surfRangesCover(rs,d){
-  if(!rs||!rs.length)return false;
-  for(const g of rs)if(d>=g[0]-1e-6&&d<=g[1]+1e-6)return true;
-  return false;
-}
-function surfFetchedKm(r){return((r&&r.surfDone)?r.surfDone:[]).reduce((a,g)=>a+(g[1]-g[0]),0);}
-function surfGapKm(r){
-  if(!r||!r.totalDist)return 0;
-  // Plans saved before v370 have no surfDone. Their data is whatever the old
-  // all-or-nothing fetch managed, so treat it as complete rather than nagging
-  // for a re-fetch of a route that already looks finished.
-  if(!r.surfDone||!r.surfDone.length)return(r.surfaceSegs&&r.surfaceSegs.length)?0:r.totalDist;
-  return Math.max(0,r.totalDist-surfFetchedKm(r));
-}
-// Neighbour inference for untagged minor roads: if the nearest confidently-known
-// surface on either side of an untagged stretch is dirt, assume the stretch is
-// dirt too (roads rarely change surface exactly where an OSM way happens to end).
-// Explicitly tagged surfaces are never overridden. If both sides are dirt, take
-// the rougher — conservative for pacing.
-// v370 — lifted out of fetchSurfaceData so a mid-fetch checkpoint can run it on a
-// COPY, and given `done` so the neighbour search STOPS at an unqueried sample.
-// Without that guard a part-fetched route would happily infer a stretch's surface
-// from a sample hundreds of km away on the far side of a gap.
-function surfInferNeighbours(arr,done){
-  const ROUGHNESS=['road','road_minor','grade1','grade2','grade3','grade4','grade5','path'];
-  const isDirtCat=c=>ROUGHNESS.indexOf(c)>=3; // grade2 and rougher
-  let gi=0;
-  while(gi<arr.length){
-    if(arr[gi]&&arr[gi].guess){
-      let ge=gi;while(ge<arr.length&&arr[ge]&&arr[ge].guess)ge++;
-      let L=gi-1;while(L>=0&&done[L]&&(!arr[L]||arr[L].guess))L--;
-      let R=ge;while(R<arr.length&&done[R]&&(!arr[R]||arr[R].guess))R++;
-      const lc=(L>=0&&done[L]&&arr[L])?arr[L].cat:null;
-      const rc=(R<arr.length&&done[R]&&arr[R])?arr[R].cat:null;
-      const dirt=[lc,rc].filter(c=>c&&isDirtCat(c));
-      if(dirt.length){
-        const cat=dirt.sort((a,b)=>ROUGHNESS.indexOf(b)-ROUGHNESS.indexOf(a))[0];
-        for(let k=gi;k<ge;k++)if(arr[k])arr[k]={cat,guess:false};
-      }
-      gi=ge;
-    } else gi++;
-  }
-}
-// Run-length the per-sample categories into segments. An unqueried sample is null
-// and so ENDS a run without starting one — a gap never gets bridged by a segment
-// claiming a surface for ground we never asked about.
-function surfBuildSegs(samples,arr){
-  const segs=[];
-  if(!samples.length)return segs;
-  const cats=arr.map(v=>v?v.cat:null);
-  let runCat=cats[0],runFrom=samples[0].dist;
-  for(let i=1;i<samples.length;i++){
-    if(cats[i]!==runCat){
-      if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[i-1].dist,cat:runCat});
-      runCat=cats[i];runFrom=samples[i].dist;
-    }
-  }
-  if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[samples.length-1].dist,cat:runCat});
-  return segs;
-}
 async function fetchSurfaceData(force){
   const r=cur();
   if(!r||r.points.length<2)return;
-  // v370 — Refresh on a part-fetched route RESUMES instead of starting over. A
-  // full wipe only happens when coverage is already complete, i.e. the user is
-  // deliberately re-querying OSM for a route whose data is all there.
-  const resuming=!!(force&&r.surfDone&&r.surfDone.length&&surfGapKm(r)>0.5);
-  if(force&&!resuming){r.surfaceSegs=null;r.surfDone=null;r.surfGuess=null;}
-  if(!resuming&&r.surfaceSegs&&r.surfaceSegs.length){
+  // force=true (Settings Refresh button) discards cached data and re-fetches from OSM
+  if(force)r.surfaceSegs=null;
+  if(r.surfaceSegs&&r.surfaceSegs.length){
     // Cycle: off → surf → grade → off
     const cycle={off:'surf',surf:'grade',grade:'off'};
     UI.routeOverlay=cycle[UI.routeOverlay]||'surf';
@@ -4280,104 +4169,39 @@ async function fetchSurfaceData(force){
     saveAll();
     return;
   }
-  UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data…';renderKeepScroll();
+  UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data\u2026';renderKeepScroll();
   const SAMPLE_M=200;
   const samples=[];
   let lastDist=-999;
   for(const p of r.points){
     if(p.dist-lastDist>=SAMPLE_M/1000){samples.push({lat:p.lat,lon:p.lon,dist:p.dist});lastDist=p.dist;}
   }
-  const sampleIdxMap=new Map(samples.map((s,i)=>[s,i]));
-  const MAX_OFF_M=30;
-  const result=new Array(samples.length).fill(null);
-  // done[i]=1 means sample i has actually been QUERIED. A null result under
-  // done=1 is "OSM has nothing here"; a null result under done=0 is "not asked
-  // yet". Every skip/resume decision below turns on that distinction.
-  const done=new Uint8Array(samples.length);
-  if(resuming){
-    // Rehydrate what earlier passes established, straight off the saved segments.
-    const sorted=[...(r.surfaceSegs||[])].sort((a,b)=>a.fromDist-b.fromDist);
-    let si=0;
-    for(let i=0;i<samples.length;i++){
-      const d=samples[i].dist;
-      if(!surfRangesCover(r.surfDone,d))continue;
-      done[i]=1;
-      while(si<sorted.length&&sorted[si].toDist<d)si++;
-      const sg=sorted[si];
-      if(sg&&d>=sg.fromDist&&d<=sg.toDist)result[i]={cat:sg.cat,guess:false};
-      if(result[i]&&surfRangesCover(r.surfGuess,d))result[i]={cat:'road_minor',guess:true};
-    }
-  }
-  // v370 — chunk only the stretches that have NOT been queried. On a fresh route
-  // that is the whole thing and this behaves exactly as v369 did; on a resume it
-  // goes straight to the gaps and skips everything already stored.
   const CHUNK_KM=50,OVERLAP_KM=1;
   const chunks=[];
-  let i0=0;
-  while(i0<samples.length){
-    if(done[i0]){i0++;continue;}
-    let runEnd=i0;while(runEnd<samples.length&&!done[runEnd])runEnd++;
-    let cs=i0;
-    while(cs<runEnd){
-      const startDist=samples[cs].dist;
-      let end=cs;
-      while(end<runEnd&&samples[end].dist-startDist<CHUNK_KM)end++;
-      let extEnd=end;
-      while(extEnd<runEnd&&samples[extEnd].dist-samples[end>cs?end-1:cs].dist<OVERLAP_KM)extEnd++;
-      chunks.push(samples.slice(cs,Math.min(Math.max(extEnd,end+1),runEnd)));
-      cs=end>cs?end:cs+1;
-    }
-    i0=runEnd;
+  let chunkStart=0;
+  while(chunkStart<samples.length){
+    const startDist=samples[chunkStart].dist;
+    let end=chunkStart;
+    while(end<samples.length&&samples[end].dist-startDist<CHUNK_KM)end++;
+    let extEnd=end;
+    while(extEnd<samples.length&&samples[extEnd].dist-samples[end>0?end-1:0].dist<OVERLAP_KM)extEnd++;
+    chunks.push(samples.slice(chunkStart,extEnd||end+1));
+    chunkStart=end>chunkStart?end:chunkStart+1;
   }
+  const MAX_OFF_M=30;
+  const result=new Array(samples.length).fill(null);
+  const sampleIdxMap=new Map(samples.map((s,i)=>[s,i]));
   let lastErr='';
   // kumi first — empirically fast from Australia (Jul 2026); overpass-api.de often queues.
   const SURF_MIRRORS=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   let goodMirror=null; // sticky: once a mirror answers, use it first for the remaining chunks
-  // v370 — CHECKPOINT. Inference runs on a COPY so the raw guess flags survive to
-  // the next checkpoint, and so surfGuess records what was GUESSED rather than
-  // what this pass happened to infer from a partial picture.
-  const commit=async()=>{
-    const work=result.map(v=>v?{cat:v.cat,guess:v.guess}:null);
-    surfInferNeighbours(work,done);
-    r.surfaceSegs=surfBuildSegs(samples,work);
-    r.surfDone=surfRangesFromDone(samples,done,r.totalDist);
-    const g=[];let k=0;
-    while(k<samples.length){
-      if(result[k]&&result[k].guess){let e=k;while(e<samples.length&&result[e]&&result[e].guess)e++;g.push([samples[k].dist,samples[e-1].dist]);k=e;}
-      else k++;
-    }
-    r.surfGuess=g;
-    await saveAll();
-  };
   // Queue-based: a chunk too heavy for Overpass (dense track networks) gets
   // split in half and retried rather than silently returning partial data
   const chunkQueue=[...chunks];
-  const startKm=surfFetchedKm(r);
-  let processed=0,okChunks=0,sinceSave=0,consecFail=0,brokeOff=false;
-  let lastOkAt=Date.now();
-  // v370 — CIRCUIT BREAKER, and it is load-bearing. Making a failed chunk
-  // non-fatal removed the thing that used to stop a hopeless run: v369 returned
-  // the moment one chunk gave up, so a dead network cost ~90 requests. Without a
-  // brake the same outage walks all 86 chunks AND bisects each one down to 1.5 km
-  // before giving up on it — 8,034 requests, measured on the simulated Divide.
-  //
-  // ⚠ It takes TWO signals, and the first cut got this wrong by using only a
-  // consecutive-failure count of 6. A single genuinely dead 60 km band trips that
-  // on its own: the 50→25→12→6→3 km split chain is 1+2+4+8+16 = 31 attempts per
-  // chunk, all consecutive, all legitimate. It stopped the good run at 898 km.
-  // So: a COUNT high enough to clear two full split chains (fast failures, e.g.
-  // the browser refusing offline — 80 attempts is over in a second), and a
-  // TIME-SINCE-LAST-SUCCESS budget for the slow kind (mirrors queueing, ~36 s per
-  // attempt across three mirrors, where a count that high would mean 45 minutes).
-  // Whichever trips first stops the run with everything so far checkpointed.
-  //
-  // ⚠ Do NOT "fix" this by raising the 3 km split floor. Bisecting to 3 km is what
-  // rescues a heavy chunk in a dense track network, which is the normal case this
-  // whole retry path exists for. The floor is not the problem; the brake was.
-  const FAIL_STREAK_STOP=80, NO_PROGRESS_MS=4*60*1000;
+  let processed=0;
   while(chunkQueue.length){
     const chunk=chunkQueue.shift();
-    UI.surfaceMsg=`Fetching surface data… ${processed+1}/${processed+1+chunkQueue.length}`+(startKm>1?` (${Math.round(startKm)} km already stored)`:'');
+    UI.surfaceMsg=`Fetching surface data\u2026 ${processed+1}/${processed+1+chunkQueue.length}`;
     const msgEl=document.getElementById('surface-status-msg');
     if(msgEl)msgEl.textContent=UI.surfaceMsg;
     // Corridor query — only ways within ~80 m of the route line. Vastly less
@@ -4422,12 +4246,11 @@ async function fetchSurfaceData(force){
         }).filter(w=>w.cat!==null);
         chunk.forEach(s=>{
           const idx=sampleIdxMap.get(s);
-          if(idx===undefined||done[idx])return;
+          if(idx===undefined||result[idx]!==null)return;
           const snap=snapToWay(s.lat,s.lon,ways,MAX_OFF_M);
-          done[idx]=1;
           result[idx]=snap?{cat:snap.cat,guess:!!snap.guess}:null;
         });
-        goodMirror=mirror;consecFail=0;lastOkAt=Date.now();
+        goodMirror=mirror;
         console.log(`[surface] chunk ${processed+1} via ${mirror.split('/')[2]} in ${Date.now()-t0}ms`);
         fetched=true;break;
       }catch(e){
@@ -4438,11 +4261,6 @@ async function fetchSurfaceData(force){
       finally{clearTimeout(abortTimer);}
     }
     if(!fetched){
-      const stalledMs=Date.now()-lastOkAt;
-      if(++consecFail>=FAIL_STREAK_STOP||stalledMs>NO_PROGRESS_MS){
-        console.log(`[surface] no mirror has answered for ${consecFail} attempts / ${Math.round(stalledMs/1000)}s — stopping, the ${Math.round(surfFetchedKm(r))} km already stored is kept`);
-        brokeOff=true;break;
-      }
       // Every mirror choked on this stretch — usually a dense track network.
       // Split it and try the halves; only give up when even a small piece fails.
       const spanKm=chunk[chunk.length-1].dist-chunk[0].dist;
@@ -4452,30 +4270,47 @@ async function fetchSurfaceData(force){
         console.log(`[surface] splitting heavy ${spanKm.toFixed(0)}km chunk and retrying`);
         continue;
       }
-      // v370 — a stretch nothing will answer for is a GAP, not the end of the run.
-      // Before this, one stubborn 3 km of singletrack discarded 4,000 km of good
-      // data. It stays out of surfDone, so the next Refresh comes back for it.
-      console.log(`[surface] giving up on ${chunk[0].dist.toFixed(1)}-${chunk[chunk.length-1].dist.toFixed(1)}km (${lastErr}) — left as a gap`);
-      processed++;
-      if(++sinceSave>=10){sinceSave=0;await commit();}
-      continue;
+      UI.surfaceStatus='error';UI.surfaceMsg=`Surface fetch failed (${lastErr})`;renderKeepScroll();return;
     }
-    okChunks++;processed++;
-    if(++sinceSave>=10){sinceSave=0;await commit();}
+    processed++;
     await new Promise(res=>setTimeout(res,300));
   }
-  await commit();
-  const gapKm=surfGapKm(r);
-  if(!okChunks&&chunks.length&&!(r.surfaceSegs&&r.surfaceSegs.length)){
-    // Nothing answered and there was nothing stored to begin with — the old error path.
-    UI.surfaceStatus='error';UI.surfaceMsg=`Surface fetch failed (${lastErr||'no response'})`;renderKeepScroll();return;
+  // Neighbour inference for untagged minor roads: if the nearest confidently-known
+  // surface on either side of an untagged stretch is dirt, assume the stretch is
+  // dirt too (roads rarely change surface exactly where an OSM way happens to end).
+  // Explicitly tagged surfaces are never overridden. If both sides are dirt, take
+  // the rougher — conservative for pacing.
+  const ROUGHNESS=['road','road_minor','grade1','grade2','grade3','grade4','grade5','path'];
+  const isDirtCat=c=>ROUGHNESS.indexOf(c)>=3; // grade2 and rougher
+  let gi=0;
+  while(gi<result.length){
+    if(result[gi]&&result[gi].guess){
+      let ge=gi;while(ge<result.length&&result[ge]&&result[ge].guess)ge++;
+      let L=gi-1;while(L>=0&&(!result[L]||result[L].guess))L--;
+      let R=ge;while(R<result.length&&(!result[R]||result[R].guess))R++;
+      const lc=L>=0&&result[L]?result[L].cat:null;
+      const rc=R<result.length&&result[R]?result[R].cat:null;
+      const dirt=[lc,rc].filter(c=>c&&isDirtCat(c));
+      if(dirt.length){
+        const cat=dirt.sort((a,b)=>ROUGHNESS.indexOf(b)-ROUGHNESS.indexOf(a))[0];
+        for(let k=gi;k<ge;k++)if(result[k])result[k]={cat,guess:false};
+      }
+      gi=ge;
+    } else gi++;
   }
+  const cats=result.map(v=>v?v.cat:null);
+  const segs=[];
+  let runCat=cats[0],runFrom=samples[0].dist;
+  for(let i=1;i<samples.length;i++){
+    if(cats[i]!==runCat){
+      if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[i-1].dist,cat:runCat});
+      runCat=cats[i];runFrom=samples[i].dist;
+    }
+  }
+  if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[samples.length-1].dist,cat:runCat});
+  r.surfaceSegs=segs;
   UI.surfaceStatus='done';
-  UI.surfaceMsg=brokeOff
-    ?`OpenStreetMap stopped answering (${lastErr}) — kept the ${Math.round(surfFetchedKm(r))} km fetched so far. Refresh picks up from there.`
-    :gapKm>1
-    ?`Surface data stored for ${Math.round(surfFetchedKm(r))} of ${Math.round(r.totalDist)} km — ${Math.round(gapKm)} km still to go. Hit Refresh to carry on from there.`
-    :`Surface data loaded (${r.surfaceSegs.length} segments)`;
+  UI.surfaceMsg=`Surface data loaded (${segs.length} segments)`;
   UI.hiddenMapTypes.delete('surface');
   UI.routeOverlay='surf';
   updateOverlayButtons();
@@ -4487,6 +4322,7 @@ async function fetchSurfaceData(force){
   renderDesktopMap();
 }
 
+
 // v351 — BIKE STANDS. Two OSM tags, one PackTimes type: a public repair stand
 // (amenity=bicycle_repair_station — bolted-down tools, usually a track pump) and a plain air
 // point (amenity=compressed_air, often at a servo). Both answer "can I get air / turn a bolt
@@ -4497,38 +4333,14 @@ async function fetchSurfaceData(force){
 function _bikeStandTag(tags){return tags.amenity==='bicycle_repair_station'||tags.amenity==='compressed_air';}
 function _bikeStandName(tags,dist){return (tags.amenity==='compressed_air'?'Air pump ':'Bike stand ')+dist.toFixed(1)+'km';}
 const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
-
-// ─── v371 — CHUNKED POI SEARCH ───────────────────────────────────────────────
-// ⚠ THE BUG THIS FIXES LOOKED LIKE AN EMPTY RESULT, NOT A FAILURE, and that is the
-// only reason it survived: the old version built ONE bounding box around the WHOLE
-// route. On a 4,300 km route that box is about 2.2 million km². Overpass gives up
-// on it after ~31 s and answers HTTP 200 with an empty element list plus a
-// "remark" saying the query timed out. Nothing here read remark, so the search
-// reported "✓ Found 0 points along route" — indistinguishable from a corridor that
-// genuinely has no towns in it. (fetchSurfaceData has always checked remark; this
-// path never did.)
-//
-// Measured 28 Aug 2026 against overpass-api.de:
-//   whole-route box (31-51°N, 106-116°W), towns only ...... timed out, 0 elements
-//   ~400 km slice of the same query ....................... 2.7 s, 49 towns
-//   ~100 km slice, towns+food+shops+hotels ................ 11.6 s, 721 elements
-//
-// A per-chunk BOUNDING BOX also beats a corridor (around:) query here, and it is
-// not close — the same 100 km stretch took 11.6 s as a box against 90 s as a
-// 2.4 km-radius corridor, because around: cost scales with both vertex count and
-// radius. The extra area a box drags in costs nothing: the snap.off filter below
-// throws it away client-side, exactly as it always did.
-//
-// Chunks that still time out are BISECTED and retried rather than silently
-// dropped — same shape as the surface fetcher's queue, and for the same reason:
-// one heavy chunk (a city, every category ticked) must not cost you the route.
 async function fetchOverpass(){
   const r=cur();if(!r)return;
   if(!r.points.length){UI.opStatus='error';UI.opMsg='Corridor search needs a route. Use Town Search instead.';renderKeepScroll();return;}
   UI.opStatus='loading';UI.opMsg='Searching OSM…';renderKeepScroll();
+  const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
+  const bb=`${(lats.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lons.reduce((a,b)=>a<b?a:b,Infinity)-.04).toFixed(5)},${(lats.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)},${(lons.reduce((a,b)=>a>b?a:b,-Infinity)+.04).toFixed(5)}`;
   // Build query based on UI.osmOpts flags
   const opts=UI.osmOpts||{towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,pubs:false,camp:false,huts:false,hotels:false,toilets:false,peaks:false,churches:false,schools:false,halls:false,fire:false,caravan:false,police:false,bike:false,bikestand:false};
-  const partsFor=bb=>{
   const parts=[];
   if(opts.towns) parts.push(`node["place"~"^(town|village|city)$"](${bb})`);
   if(opts.water){parts.push(`nwr["amenity"="drinking_water"](${bb})`);parts.push(`nwr["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`nwr["man_made"="water_tap"](${bb})`);}
@@ -4554,41 +4366,13 @@ async function fetchOverpass(){
   if(opts.fire)parts.push(`nwr["amenity"="fire_station"](${bb})`);
   if(opts.caravan)parts.push(`nwr["tourism"~"^(caravan_site|caravan_park)$"](${bb})`);
   if(opts.police)parts.push(`nwr["amenity"="police"](${bb})`);
-    return parts;
-  };
-  if(!partsFor('0,0,0,0').length){UI.opStatus='error';UI.opMsg='Tick at least one thing to search for.';renderKeepScroll();return;}
-
-  // ── Chunk the route by distance ───────────────────────────────────────────
-  // 300 km is sized off the measurements above: comfortable for the light
-  // categories, and anything heavier bisects its way down on the first timeout.
-  const CHUNK_KM=300, MIN_CHUNK_KM=8;
-  const idxAtDist=d=>{let lo=0,hi=r.points.length-1;while(lo<hi){const m=(lo+hi)>>1;if(r.points[m].dist<d)lo=m+1;else hi=m;}return lo;};
-  // Towns get 2× the search radius (see typeR below), so the box has to reach at
-  // least that far past the route or the widest category clips at the edges.
-  const padKm=(UI.searchRadiusKm||0.4)*2+0.5;
-  const chunkFor=(from,to)=>{
-    const i0=idxAtDist(from),i1=Math.min(r.points.length-1,idxAtDist(to));
-    let mnLa=Infinity,mxLa=-Infinity,mnLo=Infinity,mxLo=-Infinity;
-    for(let i=i0;i<=i1;i++){const p=r.points[i];
-      if(p.lat<mnLa)mnLa=p.lat;if(p.lat>mxLa)mxLa=p.lat;
-      if(p.lon<mnLo)mnLo=p.lon;if(p.lon>mxLo)mxLo=p.lon;}
-    const padLa=padKm/111, padLo=padKm/(111*Math.max(0.2,Math.cos((mnLa+mxLa)/2*Math.PI/180)));
-    // Snap against THIS chunk's stretch of route (±20 km of slack) rather than the
-    // whole line. It keeps the scan cheap on a long route, and where a route passes
-    // the same town twice it now yields one stop per pass instead of one arbitrary
-    // pick — which is the more useful answer anyway.
-    const mIdx=idxAtDist(Math.max(0,from-20)),mEnd=idxAtDist(Math.min(r.totalDist,to+20));
-    return{from,to,
-      bb:`${(mnLa-padLa).toFixed(5)},${(mnLo-padLo).toFixed(5)},${(mxLa+padLa).toFixed(5)},${(mxLo+padLo).toFixed(5)}`,
-      sub:{points:r.points.slice(mIdx,mEnd+1)}};
-  };
-  const queue=[];
-  for(let d=0;d<r.totalDist;d+=CHUNK_KM)queue.push([d,Math.min(d+CHUNK_KM,r.totalDist)]);
-  if(!queue.length)queue.push([0,r.totalDist]);
-
-  // Everything below this line is the original element handling, unchanged apart
-  // from taking the chunk's route slice to snap against.
-  const ingest=(json,sub)=>{
+  const q=`[out:json][timeout:30];(${parts.join(';')};);out center tags;`;
+  let lastErr='';
+  for(const mirror of MIRRORS){
+    try{
+      const res=await fetch(mirror+'?data='+encodeURIComponent(q),{mode:'cors'});
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      const json=await res.json();
       // Don't wipe existing stops — just add new ones, skipping duplicates by name+dist proximity
       const waterwayBuckets={}; // key = Math.floor(dist/0.5), value = {dist, snap, name, offOpts}
       json.elements.forEach(el=>{
@@ -4596,7 +4380,7 @@ async function fetchOverpass(){
         const lon=el.lon!==undefined?el.lon:el.center?.lon;
         const tags=el.tags||{};
         if(!lat||!lon)return;
-        const snap=snapTo(sub,lat,lon);if(!snap)return;
+        const snap=snapTo(r,lat,lon);if(!snap)return;
         // Type-based radius
         const baseR=UI.searchRadiusKm||0.4;
         const typeR=tags.place||(tags.tourism&&tags.tourism.includes('hut'))||tags.shelter_type||tags.amenity==='hut'?baseR*2:baseR;
@@ -4667,72 +4451,11 @@ async function fetchOverpass(){
         const isDupe=r.stops.some(s=>s.auto&&s.crossing&&Math.abs(s.dist-w.dist)<0.5);
         if(!isDupe)addStop(r,w.dist,'crossing',w.name,{auto:true,...w.offOpts,crossing:true});
       });
-  };
-
-  // ── Run the queue ─────────────────────────────────────────────────────────
-  // Circuit breaker, same two signals the surface fetcher uses: a plain failure
-  // COUNT catches the fast kind (browser offline — over in a second), and a
-  // time-since-last-success budget catches the slow kind (every mirror queueing),
-  // where a count that high would mean sitting here for half an hour.
-  const FAIL_STREAK_STOP=30, NO_PROGRESS_MS=4*60*1000;
-  const before=r.stops.filter(s=>s.auto).length;
-  let goodMirror=null,lastErr='',failStreak=0,lastOkAt=Date.now();
-  let okChunks=0,brokeOff=false,skippedKm=0;
-  while(queue.length){
-    const [from,to]=queue.shift();
-    const ch=chunkFor(from,to);
-    UI.opMsg=`Searching OSM… ${Math.round(from)}–${Math.round(to)} km of ${Math.round(r.totalDist)}`;
-    const msgEl=document.getElementById('osm-status-msg');
-    if(msgEl)msgEl.textContent=UI.opMsg;
-    const q=`[out:json][timeout:60];(${partsFor(ch.bb).join(';')};);out center tags;`;
-    const order=goodMirror?[goodMirror,...MIRRORS.filter(m=>m!==goodMirror)]:MIRRORS;
-    let ok=false;
-    for(const mirror of order){
-      const abort=new AbortController();
-      const abortTimer=setTimeout(()=>abort.abort(),75000);
-      try{
-        // POST — a 60 s timeout hint plus every ticked category makes the query
-        // too long to sit safely in a GET URL.
-        const res=await fetch(mirror,{method:'POST',mode:'cors',signal:abort.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
-        if(!res.ok)throw new Error('HTTP '+res.status);
-        const json=await res.json();
-        // ⚠ THE ORIGINAL BUG. Overpass answers 200 with an empty (or partial)
-        // element list and a remark when it runs out of time or memory. Taking
-        // that at face value is what turned "this box is far too big" into a
-        // cheerful "found 0 points".
-        if(json.remark&&/tim(ed)?\s*out|out of memory|exceeded|runtime error/i.test(json.remark))throw new Error('overpass: '+String(json.remark).slice(0,80));
-        ingest(json,ch.sub);
-        goodMirror=mirror;ok=true;failStreak=0;lastOkAt=Date.now();okChunks++;
-        break;
-      }catch(e){
-        lastErr=e.name==='AbortError'?'timeout':e.message;
-      }finally{clearTimeout(abortTimer);}
-    }
-    if(ok){await saveAll();renderKeepScroll();continue;}
-    failStreak++;
-    // Too heavy for every mirror — halve it and try the pieces, down to the floor.
-    if(to-from>MIN_CHUNK_KM){
-      const mid=(from+to)/2;
-      queue.unshift([mid,to]);queue.unshift([from,mid]);
-    } else {
-      skippedKm+=to-from;   // genuinely hopeless stretch; keep the rest of the route
-    }
-    if(failStreak>=FAIL_STREAK_STOP||Date.now()-lastOkAt>NO_PROGRESS_MS){brokeOff=true;break;}
+      UI.opStatus='done';UI.opMsg=`Found ${r.stops.filter(s=>s.auto).length} points along route`;
+      await saveAll();renderKeepScroll();return;
+    }catch(e){lastErr=e.message;}
   }
-
-  const added=r.stops.filter(s=>s.auto).length-before;
-  await saveAll();
-  if(!okChunks){
-    UI.opStatus='error';UI.opMsg=`Could not reach OSM (${lastErr}). Works best in Firefox or when hosted.`;
-  } else if(brokeOff||skippedKm>0.5){
-    // Never report a partial sweep as a clean one — a silent gap reads as "there is
-    // nothing out there", which is exactly the failure this rewrite exists to kill.
-    UI.opStatus='error';
-    UI.opMsg=`Added ${added} points, but ${brokeOff?'stopped early':Math.round(skippedKm)+' km could not be searched'} (${lastErr}). Run it again to fill the gaps.`;
-  } else {
-    UI.opStatus='done';UI.opMsg=`Found ${r.stops.filter(s=>s.auto).length} points along route`;
-  }
-  renderKeepScroll();
+  UI.opStatus='error';UI.opMsg=`Could not reach OSM (${lastErr}). Works best in Firefox or when hosted.`;renderKeepScroll();
 }
 
 // ─── Town search: geocode name → Overpass within town bbox ───────────────────
@@ -11977,15 +11700,21 @@ function drawMap(cvs,r,opts){
   // blue cycle-route dashes.
   // Bonus, and it is not small: this skips ~600 etaAt calls per redraw on a 300 km route —
   // on the one map that redraws at blink rate (130 ms) while a turn is lit.
-  if(id!=='live-map'&&startDT(r)){
-    // v371 — the sun is read at THIS POINT's lat/lon, not a single route midpoint.
-    // On a 4,300 km route the ends differ by the better part of an hour of daylight,
-    // and the old midpoint lookup could not express that. (It also keyed the sun
-    // cache by a browser-local calendar date, which is the bug that made the whole
-    // line read as night when planning a US route from Australia — see sunAt.)
-    const getCol=(eta,lat,lon)=>{
+  if(id!=='live-map'&&startDT(r)&&Object.keys(_sunCache).length){
+    const sdt=startDT(r);
+    const lats=pts.map(p=>p.lat),lons=pts.map(p=>p.lon);
+    const midLat=(Math.min(...lats)+Math.max(...lats))/2;
+    const midLon=(Math.min(...lons)+Math.max(...lons))/2;
+    const getSun=eta=>{
+      if(!eta)return null;
+      const dateStr=eta.toLocaleDateString('en-CA');
+      return _sunCache[`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`]||null;
+    };
+    const getCol=eta=>{
       if(!eta)return'#22d3ee';
-      const bg=dayNightBg(eta,sunAt(lat,lon,eta));
+      const sun=getSun(eta);
+      if(!sun)return'#22d3ee';
+      const bg=dayNightBg(eta,sun);
       const m=bg.match(/rgba?\((\d+),(\d+),(\d+)/);
       return m?`rgb(${m[1]},${m[2]},${m[3]})`:'#22d3ee';
     };
@@ -11997,12 +11726,12 @@ function drawMap(cvs,r,opts){
     // Batch segments by colour — sample every ~500m of route distance
     const dnSampleKm=0.5;
     let nextSampleDist=0;
-    let curCol=getCol(etaAt(pts[0].dist,r),pts[0].lat,pts[0].lon);
+    let curCol=getCol(etaAt(pts[0].dist,r));
     ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
     for(let i=1;i<pts.length;i++){
       let col=curCol;
       if(pts[i].dist>=nextSampleDist){
-        col=getCol(etaAt(pts[i].dist,r),pts[i].lat,pts[i].lon);
+        col=getCol(etaAt(pts[i].dist,r));
         nextSampleDist=pts[i].dist+dnSampleKm;
       }
       if(col!==curCol){
@@ -14673,6 +14402,8 @@ function renderDesktopMap(){
     const ey=e=>(H-pad)-(e-minE)/eRange*(H-pad*2)-pad;
     // No background — transparent so map shows through
     // Draw coloured fill segments first, then line on top
+    const emidLat=(r.points.reduce((a,p)=>a<p.lat?a:p.lat,Infinity)+r.points.reduce((a,p)=>a>p.lat?a:p.lat,-Infinity))/2;
+    const emidLon=(r.points.reduce((a,p)=>a<p.lon?a:p.lon,Infinity)+r.points.reduce((a,p)=>a>p.lon?a:p.lon,-Infinity))/2;
     // Colour the profile to match the map's route-line mode: off = day/night, surf, grade
     const elevGrSegs=UI.routeOverlay==='grade'?getGradeSegs(r):null;
     const elevSfSegs=(UI.routeOverlay==='surf'&&r.surfaceSegs&&r.surfaceSegs.length)?r.surfaceSegs:null;
@@ -14688,12 +14419,13 @@ function renderDesktopMap(){
         const seg=elevSfSegs.find(sg=>d>=sg.fromDist-0.05&&d<=sg.toDist+0.05);
         return seg&&SURFACE_COLS[seg.cat]?SURFACE_COLS[seg.cat]:SURF_UNKNOWN;
       }
-      if(!startDT(r))return'rgba(34,211,238,0.85)';
+      if(!startDT(r)||!Object.keys(_sunCache).length)return'rgba(34,211,238,0.85)';
       const eta=etaAt(epts[i].dist,r);
       if(!eta)return'rgba(34,211,238,0.85)';
-      // v371 — this point's own sun (see sunAt). Matches the map line exactly,
-      // which is the whole point of the strip: same colour language, same source.
-      const bg=dayNightBg(eta,sunAt(epts[i].lat,epts[i].lon,eta));
+      const dateStr=eta.toLocaleDateString('en-CA');
+      const sun=_sunCache[`${emidLat.toFixed(2)},${emidLon.toFixed(2)},${dateStr}`];
+      if(!sun)return'rgba(34,211,238,0.85)';
+      const bg=dayNightBg(eta,sun);
       const m=bg.match(/rgba?\((\d+),(\d+),(\d+)/);
       return m?`rgba(${m[1]},${m[2]},${m[3]},0.9)`:'rgba(34,211,238,0.85)';
     };
@@ -16526,6 +16258,8 @@ function _render(){
   const r=cur();
   document.getElementById('hroute').textContent=r?(r.label||r.name):'';
   updateGPSPill();
+  // Always ensure sun cache is populated for current route
+  if(r)ensureSunCache(r);
   if(r)ensureWeatherCache(r);
   const wrap=document.getElementById('content-wrap');
   try{
@@ -16654,7 +16388,7 @@ function tStopsShell(r){
             return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span class="tag t-'+t+'" style="font-size:13px;">'+lbl+'</span></label>';
           }).join('')}
         </div>
-        ${UI.opStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="osm-status-msg">${UI.opMsg}</span></div>`:''}
+        ${UI.opStatus==='loading'?`<div class="ld"><div class="spin"></div>${UI.opMsg}</div>`:''}
         ${UI.opStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.opMsg}</span></div>`:''}
         ${UI.opStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.opMsg}</span></div>`:''}
         ${UI.opStatus==='idle'?`<p style="font-size:17px;color:var(--text3);">Searches OpenStreetMap for stops near your route.</p>`:''}
@@ -18519,7 +18253,7 @@ function tRoutes(r){
     ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle via the Surface layer in the map legend.</p>`:''}
-    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail',single:'Singletrack',single_tech:'Singletrack tech'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}${(()=>{/* v370 — TWO DIFFERENT THINGS, and only surfDone tells them apart. "Unknown" is queried but untagged in OSM, and Refresh will never help. "Not fetched" is a stretch the run never reached, and Refresh resumes exactly there. Before v370 both showed as "Unknown — try Refresh", which sent you re-querying ground that has no data to find. */const covered=r.surfaceSegs.reduce((a,s)=>a+(s.toDist-s.fromDist),0);const gap=surfGapKm(r);const unknown=Math.max(0,r.totalDist-covered-gap);let out='';if(unknown>1)out+=`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${SURF_UNKNOWN};color:#fff;white-space:nowrap;">Unknown ${unknown.toFixed(0)}km</span>`;if(gap>1)out+=`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:#f97316;color:#fff;white-space:nowrap;">Not fetched ${gap.toFixed(0)}km — Refresh resumes</span>`;return out;})()}</div>`:''}
+    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail',single:'Singletrack',single_tech:'Singletrack tech'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}${(()=>{const covered=r.surfaceSegs.reduce((a,s)=>a+(s.toDist-s.fromDist),0);const unknown=r.totalDist-covered;return unknown>1?`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${SURF_UNKNOWN};color:#fff;white-space:nowrap;">Unknown ${unknown.toFixed(0)}km — try Refresh</span>`:'';})()}</div>`:''}
   </div>
   <div class="card">
     <div id="hike-card-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${UI.hikeExpanded?'margin-bottom:10px;':''}">
@@ -19580,11 +19314,12 @@ function weatherBarHTML(){
     // Sunrise/sunset from sun cache
     let sunHTML='';
     if(r2&&r2.points.length){
-      // v371 — sun at the RIDER's position when we have a fix, else the route start.
-      // (Was a route-midpoint lookup keyed by browser-local date; see sunAt.)
-      const gp=UI.gpsPos,p0=r2.points[0];
-      const sLat=gp&&gp.lat!=null?gp.lat:p0.lat, sLon=gp&&gp.lat!=null?gp.lon:p0.lon;
-      const sun=sunAt(sLat,sLon,new Date());
+      const lats=r2.points.map(p=>p.lat),lons=r2.points.map(p=>p.lon);
+      const midLat=(Math.min(...lats)+Math.max(...lats))/2;
+      const midLon=(Math.min(...lons)+Math.max(...lons))/2;
+      const now=new Date();
+      const dateStr=now.toLocaleDateString('en-CA');
+      const sun=_sunCache[`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`];
       if(sun){
         const fmt=d=>fmt12h(d.getHours(),d.getMinutes());   // v334 — "7:03am", matching the chips
         sunHTML=`<span style="font-size:15px;color:var(--wx-text);">🌅 ${fmt(sun.sunrise)} · 🌇 ${fmt(sun.sunset)}</span>`;
@@ -19668,80 +19403,76 @@ function weatherBarHTML(){
   </div>`;
 }
 
-// ─── Sun times — computed locally, no network (v371) ─────────────────────────
-// ⚠ WHY THIS REPLACED THE API. The old version fetched api.sunrise-sunset.org and
-// cached each answer under a key ending in a CALENDAR DATE — and that date came
-// from eta.toLocaleDateString(), i.e. it was formed in the BROWSER's timezone,
-// while the sun times themselves belong to the ROUTE's. Plan a US route from
-// Sydney (16 h apart) and every lookup landed on the wrong day: measured on the
-// Divide, thirteen hours of real daylight collapsed to about one, and a 4,300 km
-// route line read as night almost end to end. There is no calendar date anywhere
-// in this version — you pass an INSTANT and a POSITION, so there is no timezone
-// left to get wrong.
-//
-// Two things fall out of that, and the second one is why a midpoint was never
-// good enough on a long route:
-//   • No network. The old code fired one request per ride-day, in parallel, at a
-//     free rate-limited API on every route load — and when they failed the
-//     fallback (_sunApprox) assumed 06:00–18:00 UTC, which is wrong in exactly
-//     the same way, just silently.
-//   • Sun times are PER POSITION rather than per route-midpoint. On 2 Sep the
-//     Divide gets 13h30 of daylight at Banff and 12h47 at the New Mexico border.
-//     One midpoint figure cannot say that.
-//
-// NOAA sunrise equation. Validated against the API it replaces across nine
-// lat/date combinations from Reykjavik to Canberra: sunrise and sunset within
-// 1–3 min (8 min at 64°N). It also handles the polar cases the API gets WRONG —
-// at 64°N in June the API returns a 1970 timestamp for a nautical twilight that
-// never happens; this returns continuous twilight.
-const _sunMemo=new Map();
-function sunAt(lat,lon,t){
-  const tMs=(t instanceof Date)?t.getTime():t;
-  const RAD=Math.PI/180,lw=-lon;              // the sunrise equation is west-positive
-  // n = the LOCAL SOLAR DAY containing tMs. Julian day numbers tick over at UTC
-  // noon, so (J−2451545) is integral at UTC noon and (J−2451545−lw/360) is
-  // integral at LOCAL noon — rounding that therefore picks the local civil day.
-  // (02:00 local is 10 h from today's noon and 14 h from yesterday's; 23:00 local
-  // is 11 h from today's and 13 h from tomorrow's. Both land on today, which is
-  // what dayNightBg needs in order to bracket the instant correctly.)
-  const n=Math.round(tMs/86400000+2440587.5-2451545.0+0.0008-lw/360);
-  const key=lat.toFixed(1)+','+lon.toFixed(1)+','+n;  // 0.1° ≈ 11 km, well under a minute of sun time
-  const hit=_sunMemo.get(key);if(hit)return hit;
-  const Jstar=n+lw/360;
-  const M=(357.5291+0.98560028*Jstar)%360;                                      // solar mean anomaly
-  const C=1.9148*Math.sin(M*RAD)+0.0200*Math.sin(2*M*RAD)+0.0003*Math.sin(3*M*RAD);
-  const lam=(M+C+180+102.9372)%360;                                             // ecliptic longitude
-  const Jtr=2451545.0+Jstar+0.0053*Math.sin(M*RAD)-0.0069*Math.sin(2*lam*RAD);  // solar transit
-  const sinDec=Math.sin(lam*RAD)*Math.sin(23.4397*RAD),cosDec=Math.cos(Math.asin(sinDec));
-  const noon=(Jtr-2440587.5)*86400000;
-  // Hour angle at a given solar altitude. −0.833° is sunrise/sunset (atmospheric
-  // refraction plus the sun's own radius); −12° is nautical twilight, which is
-  // exactly what the old API call asked for — so the dayNightBg gradient below
-  // keeps the same shape it always had.
-  const pair=alt=>{
-    const c=(Math.sin(alt*RAD)-Math.sin(lat*RAD)*sinDec)/(Math.cos(lat*RAD)*cosDec);
-    if(c>=1)return[noon,noon];                       // sun never climbs this high — polar night
-    if(c<=-1)return[noon-43200000,noon+43200000];    // never drops this low — midnight sun
-    const w=Math.acos(c)/RAD*240000;                 // degrees → ms (86400000/360)
-    return[noon-w,noon+w];
-  };
-  const [sr,ss]=pair(-0.833);
-  let dw,dk;
-  if(ss<=sr){dw=sr;dk=ss;}                           // polar night: no dawn or dusk either, dark all day
-  else{[dw,dk]=pair(-12);if(dw>sr)dw=sr-3600000;if(dk<ss)dk=ss+3600000;}
-  const out={sunrise:new Date(sr),sunset:new Date(ss),dawn:new Date(dw),dusk:new Date(dk)};
-  if(_sunMemo.size>4000)_sunMemo.clear();
-  _sunMemo.set(key,out);
-  return out;
+// ─── Sunrise/sunset cache and fetch ───
+const _sunCache={}; // key = 'lat,lon,date' → {sunrise, sunset} as Date objects
+
+function ensureSunCache(r){
+  const sdt=startDT(r);
+  if(!sdt||!r.points.length)return;
+  const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
+  const midLat=(lats.reduce((a,b)=>a<b?a:b,Infinity)+lats.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+  const midLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+  const finEtaTmp=etaAt(r.totalDist,r);
+  const days=finEtaTmp?Math.ceil((finEtaTmp-sdt)/86400000)+1:3;
+  const missingDays=[];
+  for(let d=0;d<days;d++){
+    const dt=new Date(sdt.getTime()+d*86400000);
+    const dateStr=dt.toLocaleDateString('en-CA');
+    const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${dateStr}`;
+    if(!_sunCache[key])missingDays.push(dateStr);
+  }
+  if(missingDays.length){
+    Promise.all(missingDays.map(d=>fetchSunTimes(midLat,midLon,d)))
+      .then(()=>{
+        // Persist updated cache to kv store
+        const serialisable={};
+        Object.entries(_sunCache).forEach(([k,v])=>{
+          serialisable[k]={sunrise:v.sunrise.toISOString(),sunset:v.sunset.toISOString(),dawn:v.dawn.toISOString(),dusk:v.dusk.toISOString()};
+        });
+        DB.setKV('sunCache',serialisable).catch(()=>{});
+        renderKeepScroll();
+      });
+  }
 }
 
-// Sun times at a route DISTANCE, for callers that hold a km rather than a position.
-function sunAtKm(r,dist,t){
-  if(!t||!r||!r.points||!r.points.length)return null;
-  let lo=0,hi=r.points.length-1;
-  while(lo<hi){const mid=(lo+hi)>>1;if(r.points[mid].dist<dist)lo=mid+1;else hi=mid;}
-  const p=r.points[lo];
-  return sunAt(p.lat,p.lon,t);
+async function fetchSunTimes(lat,lon,dateStr){
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)},${dateStr}`;
+  if(_sunCache[key])return _sunCache[key];
+  try{
+    // Request UTC times, then we compare against UTC ETAs — should be consistent
+    const url=`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&date=${dateStr}&formatted=0`;
+    const res=await fetch(url);
+    const j=await res.json();
+    if(j.status==='OK'){
+      // API returns UTC times. Date.getTime() comparisons are always UTC so no shift needed.
+      const result={
+        sunrise:new Date(j.results.sunrise),
+        sunset:new Date(j.results.sunset),
+        dawn:new Date(j.results.nautical_twilight_begin),
+        dusk:new Date(j.results.nautical_twilight_end)
+      };
+      _sunCache[key]=result;
+      return result;
+    }
+  }catch(e){}
+  // Fallback: approximate sun times based on latitude (assume 6am-6pm as baseline, adjust)
+  const approx=_sunApprox(lat,dateStr);
+  _sunCache[key]=approx;
+  return approx;
+}
+
+// Rough fallback sunrise/sunset when API unavailable
+function _sunApprox(lat,dateStr){
+  // Use UTC midnight as base to match the sun API which returns UTC times
+  const base=new Date(dateStr+'T00:00:00Z');
+  const riseH=6,setH=18;
+  const sunrise=new Date(base.getTime()+riseH*3600000);
+  const sunset=new Date(base.getTime()+setH*3600000);
+  return{
+    sunrise,sunset,
+    dawn:new Date(sunrise.getTime()-60*60000),
+    dusk:new Date(sunset.getTime()+60*60000)
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -19773,13 +19504,12 @@ function _resolveTheme(){
   const m=(UI&&UI.themeMode)||'auto';
   if(m==='paper'||m==='graphite')return m;
   try{
-    // v371 — the DEVICE's sun, not the route's. The old version scanned the sun
-    // cache for any key matching today's date and took the first hit, so planning a
-    // trip abroad let that route's sunset decide the theme back home.
-    const now=new Date(),gp=UI.gpsPos;
-    if(gp&&gp.lat!=null){
-      const s=sunAt(gp.lat,gp.lon,now);
-      return (now>=s.sunrise&&now<s.sunset)?'paper':'graphite';
+    const now=new Date();
+    if(Object.keys(_sunCache).length){
+      const dateStr=now.toISOString().slice(0,10);
+      let sr=null,ss=null;
+      for(const k in _sunCache){ if(k.endsWith(','+dateStr)){ const v=_sunCache[k]; sr=v.sunrise; ss=v.sunset; break; } }
+      if(sr&&ss)return (now>=sr&&now<ss)?'paper':'graphite';
     }
   }catch(e){}
   const h=new Date().getHours();
@@ -19915,6 +19645,9 @@ function tPlan(r){
   if(!r.stops.length) return header+'<div class="banner info"><span>📊</span><span>Add stops on the Stops tab to see your plan.</span></div>';
   const unstarredCount=r.stops.filter(s=>s.starred===false&&s.type!=='sleep'&&!(s.type==='stop'&&(s.sleepAt||s.sleepH))).length;
 
+  // Ensure sun times are fetched/cached for this route
+  ensureSunCache(r);
+
   const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||(s.type==='stop')||(s.sleepAt));
   const clusters=clusterStops(planStops);
   // Build nodes: sleep/sleepAt stops get their own timeline entry
@@ -19978,9 +19711,16 @@ function tPlan(r){
   const finEta=etaAt(r.totalDist,r);
   let _planDay=1,_planLeg=1; // counters for day/leg labels
 
-  // Sun data for day/night colours — v371, at the stop's own place on the route
-  // rather than one midpoint, and with no calendar-date key to get wrong (see sunAt).
-  const getSun=(dt,dist)=>dt?sunAtKm(r,dist==null?0:dist,dt):null;
+  // Sun data for day/night colours
+  const lats=r.points.map(p=>p.lat),lons=r.points.map(p=>p.lon);
+  const midLat=(lats.reduce((a,b)=>a<b?a:b,Infinity)+lats.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+  const midLon=(lons.reduce((a,b)=>a<b?a:b,Infinity)+lons.reduce((a,b)=>a>b?a:b,-Infinity))/2;
+  const getSun=(dt)=>{
+    if(!dt)return null;
+    const localDateStr=dt.toLocaleDateString('en-CA'); // local date for correct sun lookup
+    const key=`${midLat.toFixed(2)},${midLon.toFixed(2)},${localDateStr}`;
+    return _sunCache[key]||null;
+  };
 
   let rows='';
   for(let i=0;i<nodes.length;i++){
@@ -20024,7 +19764,7 @@ function tPlan(r){
     const isLast=i===nodes.length-1;
     const isSleep=node.isSleep;
     const isRest=isSleep&&node.sleepStop?.type==='stop'&&!node.sleepStop?.sleepAt;
-    const sun=getSun(eta,node.isStart?0:node.isFinish?r.totalDist:node.dist);
+    const sun=getSun(eta);
     const dnBg=(!node.isStart&&!node.isFinish&&!isSleep)?dayNightBg(eta,sun):'';
     const dnIcon=(!node.isStart&&!node.isFinish)?dayNightLabel(eta,sun):'';
     // Restyle: regular nodes KEEP their calculated day/night SKY-colour background (Peter wants

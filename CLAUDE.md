@@ -50,6 +50,175 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v371 (28 Aug) — TWO SILENT LIES ON THE TOUR DIVIDE: a search that found nothing, and a route that was always night.
+
+Peter, still on the 4,300 km Divide: *"I did an OSM search for towns, and nothing came up… most
+of it is in darkness… This is in the Northern Hemisphere, so perhaps something has gone wrong."*
+
+Two unrelated bugs. What they had in common is the thing worth remembering: **neither one
+reported a failure.** The search returned a green tick. The map drew a route line. Both were
+wrong, and both looked like answers.
+
+---
+
+#### 1. The OSM search: one bounding box around 2.2 million km²
+
+`fetchOverpass` built a SINGLE bbox around the whole route. On the Divide that box spans
+31–51°N and 105–116°W. Overpass gives up on it after ~31 s and returns **HTTP 200 with an empty
+element list and a `remark`** saying the query timed out. Nothing in that function read `remark`,
+so an empty array was taken at face value: *"✓ Found 0 points along route."* Indistinguishable
+from a corridor with genuinely no towns in it.
+
+`fetchSurfaceData` has checked `remark` since v370 for exactly this reason. This path never did.
+
+Measured 28 Aug against overpass-api.de:
+
+| query | result |
+|---|---|
+| whole-route box, towns only | **timed out, 0 elements** |
+| ~400 km slice, towns only | 2.7 s, 49 towns |
+| ~100 km slice, towns+food+shops+hotels | 11.6 s, 721 elements |
+| ~100 km **corridor** (`around:2400`), same categories | **90 s** |
+
+**Chunked bounding boxes, 300 km each, bisecting on failure.** Worth stating plainly because it
+contradicts the surface fetcher sitting a few hundred lines above: a *corridor* query is right
+for surfaces (250 m radius, hugging the line) and **wrong** for POIs. `around:` cost scales with
+both vertex count and radius, and POI radii are ~10× the surface one — 90 s against 11.6 s for the
+same stretch. The extra area a box drags in costs nothing, because `snap.off` throws it away
+client-side exactly as it always did.
+
+A chunk no mirror will answer is **halved and retried** down to an 8 km floor, same shape as
+v370's queue. And a partial sweep now reports itself as partial — "Added 41 points, but 60 km
+could not be searched" — rather than as a clean tick over a hole.
+
+Verified end to end against the live API: a 771 km route through twelve known Rockies towns
+returned all twelve in 12.5 s across three chunks, everything inside the search radius, no
+duplicates at the chunk seams.
+
+#### 2. Day/night: the sun cache was keyed by the BROWSER's calendar date
+
+The route line, the elevation strip and the mission cards all asked the sun cache for
+`midLat,midLon,<date>` where `<date>` came from `eta.toLocaleDateString()` — i.e. formed in
+**Peter's** timezone — while the cached sun times belonged to the **route's**. Sydney to Mountain
+Time is 16 hours.
+
+Worked through hour by hour, for a route day of 2 September in Wyoming, the only instants whose
+Sydney-local date matched the sun record that bracketed them fell in a **1h20m window**
+(12:40–14:00 UTC). Everything else read as night. Thirteen hours of real daylight collapsed to
+about one — which is precisely the line Peter was looking at. The bug never showed up before
+because every route until now was Australian, where browser and route share a timezone and the
+key happens to be right.
+
+**Fixed by removing the calendar date from the problem entirely.** `sunAt(lat, lon, instant)`
+computes sunrise/sunset/dawn/dusk locally with the NOAA sunrise equation. You pass a position and
+a moment, so there is no date string and no timezone left to get wrong.
+
+Three things fall out of it:
+
+- **No network.** The old code fired one request per ride-day, in parallel, at a free rate-limited
+  API on every route load. When those failed the fallback `_sunApprox` assumed 06:00–18:00 **UTC**
+  — wrong in exactly the same way, just silently. All of that is gone.
+- **Per position, not per route-midpoint.** On 2 Sep the Divide gets 13h30 of daylight at Banff
+  and 12h47 at the New Mexico border. One midpoint figure could not say that; the line now does.
+- **The polar cases are now right.** At 64°N in June the API returns a *1970 timestamp* for a
+  nautical twilight that never happens. `sunAt` returns continuous twilight.
+
+Accuracy checked against the API it replaces at nine lat/date combinations from Reykjavik to
+Canberra: sunrise and sunset within **1–3 minutes** (8 at 64°N). Colouring the whole Divide from a
+07:00 start at 15 km/h now gives 54% day / 8% twilight / 38% night, with midday blue at 10:00 and
+14:00 local and navy at midnight. Cost: 3.9 ms per full-route redraw for 8,600 lookups, memoised
+on (0.1°, 0.1°, solar day).
+
+Auto theme also stopped consulting the route's sun. It used to scan the cache for any key
+matching today and take the first hit, so planning a trip abroad let **Wyoming's sunset decide
+the theme in Sydney**. It now uses the device's own GPS fix, falling back to the 07:00–18:00 clock
+rule when there isn't one.
+
+#### Still outstanding (deliberately not touched)
+
+The sunrise/sunset row in the weather pill formats with `d.getHours()` — the browser's clock. On
+the ride that is correct, because you are standing in the route's timezone. Planning a US route
+from Sydney it will show US sunrise in Sydney time. Fixing it properly needs a lat/lon → timezone
+lookup the app doesn't have, and a longitude guess would make it *worse* for a rider actually out
+there. Left alone on purpose — raise it if the planning-side reading starts to bite.
+
+
+### v370 (28 Aug) — THE SURFACE FETCH FINISHES A 4,300 km ROUTE, OR TELLS YOU HOW FAR IT GOT.
+
+Peter, loading the Tour Divide: *"the fetch surface timed out… Is there a way that when one of
+the sections is fetched it can be stored, so following fetches can skip it?"* Yes. But the store
+was the second fix, not the first, and the first one is the one that mattered.
+
+**The actual bug was that success was thrown away.** `fetchSurfaceData` walks the route in 50 km
+Overpass chunks — 86 of them for the Divide — and on a chunk no mirror would answer it did:
+
+```
+UI.surfaceStatus='error'; UI.surfaceMsg=`Surface fetch failed`; renderKeepScroll(); return;
+```
+
+`return`, with 85 good chunks sitting in a local `result` array that was never written anywhere.
+Every stretch already fetched died with the function. On a 200 km ride you'd never notice — the
+odds of one bad chunk are low and a retry is cheap. At 4,300 km one bad chunk is close to
+certain, and it costs the entire run. **A failed chunk is now a GAP: recorded, skipped, and the
+loop moves on.** That alone is most of the win.
+
+**Then the store, so a run that can't finish in one sitting resumes.** `r.surfDone` holds the
+[fromKm,toKm] ranges actually queried, checkpointed to IndexedDB every 10 chunks, so a crash, a
+sleeping phone or a closed tab keeps everything up to that point. Refresh re-chunks only the
+uncovered stretches — measured at 6 requests to fill 189 km of gaps, against 87 for a full run.
+
+**⚠ surfDone is NOT derivable from surfaceSegs, and that is the whole point.** A stretch missing
+from segs is either *queried, and OSM has no usable tag* (genuinely Unknown — re-querying will
+never help) or *never queried* (a gap — do re-query). Only surfDone separates them, which is why
+it's a field of its own and why the Settings card now shows **"Unknown 12km"** and **"Not fetched
+340km — Refresh resumes"** as two chips instead of the old single "Unknown — try Refresh", which
+sent you re-querying ground that has no data to find.
+
+**⚠ Refresh means RESUME when there are gaps, and full re-fetch only when coverage is complete.**
+Same button, and the message tells you which one you're getting. `force` no longer means "wipe".
+
+**Two bugs found by the test harness, both invisible below ~1,000 km.** Neither would have shown
+up in hand testing, which is why `test-surface-resume.js` now exists — it lifts the real v370
+block out of index.html by comment anchor and runs it in a vm against a synthetic 4,300 km route
+and a fake Overpass. No network, ~2 s, and no stubbed copy of the logic to drift out of sync.
+
+1. **Phantom gaps at every chunk boundary.** The first cut accumulated a `[first,last]` range per
+   chunk and merged them with a fixed 0.25 km epsilon. Consecutive chunks meet *at* a sample, so
+   every join left a hole one sample-spacing wide — 0.3 km × 10 joins = **3 km of "gap" that no
+   Refresh could ever close**, because every sample inside it had already been queried. The run
+   reported work outstanding and then issued zero requests. Coverage is now derived by walking
+   the `done` bitmap, which makes adjacent chunks contiguous *by construction*. No epsilon, and
+   none possible: sample spacing follows the GPX and is not a constant.
+2. **The brake I added was worse than the disease.** Making failures non-fatal removed the thing
+   that used to stop a hopeless run, so a dead network went from ~90 requests to **8,034** —
+   86 chunks each bisected 50→25→12→6→3 km. My first breaker (6 consecutive failures) then
+   **stopped a perfectly good run at 898 km**, because one genuinely dead 60 km band produces
+   31 consecutive failures all on its own — that split chain is legitimate. It takes two signals:
+   a count high enough to clear two full chains (80, over in a second when failures are instant)
+   and a **4-minute time-since-last-success** budget for the slow kind, where mirrors queue at
+   ~36 s per attempt and a count that high would mean 45 minutes. Whichever trips first stops the
+   run with everything checkpointed.
+
+**⚠ Do NOT "fix" the breaker by raising the 3 km split floor.** Bisecting down to 3 km is what
+rescues a heavy chunk in a dense track network, which is the normal case the retry path exists
+for. The floor was never the problem; the brake was.
+
+**⚠ r.surfGuess holds the PRE-inference "untagged minor road" ranges, deliberately.** Storing the
+post-inference answer would bake in a call made with less evidence — a guessed stretch whose
+informative neighbour only arrives on the second pass would never be revisited. Restoring guesses
+*as guesses* lets the neighbour pass re-run from scratch each time. Relatedly, that pass now stops
+at an unqueried sample: without the guard a part-fetched route would infer a stretch's surface
+from a sample hundreds of km away on the far side of a gap.
+
+**What Peter should expect on the Divide.** First Fetch runs ~86 chunks at 3-5 s each — call it
+6-8 minutes — and finishes, or stops and tells you how far it got. Any gaps: hit Refresh, it goes
+straight to them. Two or three presses and the route is complete, and nothing is ever re-fetched.
+
+**Not done, and it's the obvious next lever if 6-8 minutes is too long:** the chunks still run
+strictly sequentially with a 300 ms pause. Two workers on different mirrors would roughly halve
+it. Left alone because parallel hammering of public Overpass mirrors invites rate-limiting, and
+resume already turns "fails at 4,300 km" into "finishes in two presses".
+
 ### v369 (27 Aug) — THE END OF THE ROUTE. The finish holds the right edge; the rider comes to it.
 
 Peter: *"what happens when you get to the end? … I suspect that the route has been stretched/
