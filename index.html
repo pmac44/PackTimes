@@ -1746,7 +1746,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v375';
+window.APP_VERSION='v376';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1845,8 +1845,8 @@ function todayStr(){return new Date().toISOString().slice(0,10);}
 // stale caches were written into the saved plan and handed straight back by unpackRoute.
 // Two rules from here on, both cheap: they never get saved, and any code that assigns
 // r.points calls clearRouteCaches(). Rebuilding them is O(n) and happens on next read.
-function clearRouteCaches(r){ if(!r)return r; delete r._gradeSegs; delete r._smEle; delete r._climbs; delete r._hasEle; return r; }
-function packRoute(r){const{_moffM,_moffDiag,_gradeSegs,_smEle,_climbs,_hasEle,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session; _gradeSegs/_smEle/_climbs are derived from points and MUST NOT be persisted (v350)
+function clearRouteCaches(r){ if(!r)return r; delete r._gradeSegs; delete r._smEle; delete r._climbs; delete r._hasEle; delete r._kmLen; return r; }
+function packRoute(r){const{_moffM,_moffDiag,_gradeSegs,_smEle,_climbs,_hasEle,_kmLen,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session; _gradeSegs/_smEle/_climbs are derived from points and MUST NOT be persisted (v350)
   points:r.points.map(p=>[
     Math.round(p.lat*1e5)/1e5,Math.round(p.lon*1e5)/1e5,
     Math.round(p.ele),Math.round(p.dist*10)/10,p.time?p.time.getTime():0]),
@@ -11974,7 +11974,21 @@ function drawTiles(ctx,W,H,cLon,cLat,scale,kx,ky,anchor,cvsId){
   }
 }
 
-function cidx(r,d){let b=0,bd=Infinity;r.points.forEach((p,i)=>{const v=Math.abs(p.dist-d);if(v<bd){bd=v;b=i;}});return b;}
+// Nearest route-point INDEX to a route distance. v376 — was a full forEach scan of every
+// point, and drawMap calls this in loops: once per km-marker candidate (4,300 of them on the
+// Divide zoomed to 1 km spacing) and once per turn marker, EVERY redraw. 4,300 × 150,000 =
+// 645 MILLION iterations per frame — this is why toggling km markers transformed the lag.
+// points[].dist is cumulative along-route distance, monotonic by construction, so binary
+// search gives the identical answer (the tie-break below keeps the old scan's first-wins
+// behaviour when d sits exactly between two points). Same shape and reason as _nearestPt.
+function cidx(r,d){
+  const pts=r.points;if(!pts||pts.length===0)return 0;
+  let lo=0,hi=pts.length-1;
+  while(lo<hi){const m=(lo+hi)>>1;if(pts[m].dist<d)lo=m+1;else hi=m;}
+  if(lo>0&&Math.abs(pts[lo-1].dist-d)<=Math.abs(pts[lo].dist-d))lo--;
+  while(lo>0&&pts[lo-1].dist===pts[lo].dist)lo--;   // duplicate dists (zero-length segments): the old scan returned the FIRST of the run
+  return lo;
+}
 
 // Draw map onto canvas. anchor=0.5 centres normally; 0.75 puts GPS dot 3/4 down.
 function drawMap(cvs,r,opts){
@@ -12457,11 +12471,22 @@ function drawMap(cvs,r,opts){
   // opts.noKm is PackView's off switch (its own control; it has no Settings tab).
   if(!opts.noKm&&!(UI.hiddenMapTypes.has('kmmarkers')&&(cvs.id==='desktop-map'||id==='stops-map'))){
     ctx.save();
-    let totalScreenPx=0;
-    for(let i=1;i<pts.length;i++){
-      const dx=px(pts[i].lon)-px(pts[i-1].lon),dy=py(pts[i].lat)-py(pts[i-1].lat);
-      totalScreenPx+=Math.sqrt(dx*dx+dy*dy);
+    // v376 — the screen length of the polyline used to be re-summed from every segment on
+    // every redraw: 150,000 px()/py() calls per frame on the Divide, to derive one number
+    // that only ever changes with zoom. px/py are linear in `scale` (rotation lives in the
+    // canvas transform, which preserves length), so screen length = scale × the route's
+    // planar length in km-units — a per-route constant. Computed once, cached as r._kmLen
+    // (cleared by clearRouteCaches, stripped by packRoute, same family as _smEle; kx is in
+    // the stamp because it follows the bbox mid-latitude if the geometry changes).
+    if(!r._kmLen||r._kmLen.n!==pts.length||r._kmLen.kx!==kx){
+      let u=0;
+      for(let i=1;i<pts.length;i++){
+        const dx=(pts[i].lon-pts[i-1].lon)*kx,dy=(pts[i].lat-pts[i-1].lat)*ky;
+        u+=Math.sqrt(dx*dx+dy*dy);
+      }
+      r._kmLen={n:pts.length,kx:kx,v:u};
     }
+    const totalScreenPx=r._kmLen.v*scale;
     const totalKm=pts[pts.length-1].dist;
     const pxPerKm=totalKm>0?totalScreenPx/totalKm:1;
 
