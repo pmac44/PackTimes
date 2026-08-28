@@ -50,6 +50,32 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v375 (28 Aug) — THE OVERLAY BUTTON NAMES THE MODE YOU'RE IN, like the tile button always has.
+
+Peter, on the desktop map: *"the map type button and the route line type button work
+differently. The map type button shows you what is currently displayed, but the route type
+shows the one you will get if you press it next."* Right, and the cause was this file's
+favourite shape — **three authorities for one label**, disagreeing:
+
+- `updateOverlayButtons` had the correct current-mode map (`off:'DAY', surf:'SURF',
+  grade:'GRAD'`) — but nothing called it until the first press.
+- The desktop column's **static HTML hard-coded `SURF`**, so from page load the button
+  always advertised the NEXT mode while the line wore day/night.
+- `mapCtrlHTML` (the stops-map builder) had its own two-way ternary
+  (`grade?'GRAD':'SURF'`) — also SURF while off, and being rebuilt on every render it
+  would even UNDO updateOverlayButtons' correction.
+
+**Fix, one authority:** the labels map is hoisted to `OVERLAY_BTN_LABELS` (~4246) and all
+three sites read it. `_renderDesktopMapInner` now calls `updateOverlayButtons()` right
+beside its existing tile-label repaint — the exact same treatment the tile button has
+always had, which is why THAT one was correct. Static HTML default reads `DAY` (the 'off'
+default) for the pre-render first paint. Convention settled: **the button shows the
+CURRENT mode, green when an overlay is active** — matching the tile button; the cycle
+order stays in the tooltip.
+
+Verified: `node verify.js` all green, and live on :8777 — off→DAY (plain), surf→SURF
+(green), grade→GRAD (green), state restored after the probe. NOT pushed.
+
 ### v374 (28 Aug) — THE PLAN RUNS ON THE ROUTE'S CLOCK, NOT THE BROWSER'S.
 
 Peter: *"the tour divide route I have active shows daylight when it should be night. It seems
