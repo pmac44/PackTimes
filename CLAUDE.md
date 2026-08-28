@@ -50,6 +50,126 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v372 (28 Aug) — THE LAG WAS NEVER ONE SLOW REDRAW. IT WAS NINETEEN OF THEM PER DRAG.
+
+Peter, on the Divide and on a 1,000 km route too: *"the browser is quite slow and
+lagging. I have a new powerful computer. What is the thing that is most likely to be
+slowing down my browser?"*
+
+Profiled in a real browser against a synthetic 4,300 km route (150,001 points at 29 m
+spacing — a realistic RWGPS export — and 274 stops). Four separate faults, and the
+first one is the answer to his question.
+
+| | v371 | v372 |
+|---|---|---|
+| one map redraw (75k pts) | 774 ms | 226 ms |
+| elevation strip alone | 624 ms | 95 ms |
+| **one 20-event drag** | **18,124 ms** | **126 ms** |
+| the same route at 150k pts | **RangeError, nothing drawn** | 390 ms |
+
+---
+
+#### 1. One redraw per input event — this is the lag
+
+`dragMove` called `redrawMap` **synchronously on every mousemove**. `zoomMap` did the
+same on every wheel event, and every map tile that finished loading fired one too.
+Nothing was coalesced.
+
+So the cost was never "a redraw takes 0.8 s". It was "a twenty-event drag runs
+nineteen of them, back to back, and the gesture takes eighteen seconds." Measured, not
+estimated. And 186 tiles fade in on a whole-route view — in v371 that was 186 full
+redraws just to paint the basemap.
+
+**⚠ THE NEW COMPUTER MAKES THIS WORSE, NOT BETTER, and that is worth holding on to.** A
+120 Hz display and a high-polling mouse simply deliver more move events per second for
+the app to fall behind on. There is no amount of CPU that fixes an unbounded queue —
+which is exactly why "I have a new powerful computer" and "it lags" were never in
+tension.
+
+All three paths now go through `_mapRedrawSoon`, which coalesces to at most one draw
+per animation frame. An expensive route now DROPS FRAMES — a slightly coarse pan —
+instead of building a backlog that outlives the gesture.
+
+#### 2. etaAt, called ~23,600 times per redraw, and O(stops) each time
+
+The map sampled day/night every 0.5 km and the elevation strip every 10th point — and
+the strip pays it twice, once in the fill loop and once in the line loop. On the Divide
+that is 8,600 + 15,000 = 23,600 `etaAt` calls per redraw, to colour a line 880 px wide.
+About ten samples per pixel, nine of which cannot be seen.
+
+And `etaAt` is not cheap. Its pure-planning branch **rebuilt the whole stop plan on
+every call** — clustered the meals, filtered and sorted the stops, walked every sleep
+ahead of the requested distance. Measured: 0.6 µs with no stops, **21 µs with 274**.
+That is 410 ms of an 800 ms redraw.
+
+Two fixes, and the second is the interesting one:
+
+- **Sample at screen resolution, not route resolution.** Two samples per pixel is the
+  most that can ever show. 23,600 calls → 5,020. Checked against the exact colour at
+  every one of 880 pixel columns: **1 column differs by more than 2/255**. The old
+  0.5 km sampling had 27 such columns — the coarser rate is *closer* to exact, because
+  both are step functions and the error is about where the boundary lands, not how fine
+  the steps are.
+- **The stop walk was always a prefix sum.** Nothing inside that loop depends on the
+  distance being asked for; the distance only decided where to stop adding. So
+  `_planOffTable` computes the running total once and `_planOffAt` binary-searches it.
+  O(stops) → O(log stops).
+
+⚠ **The table is scoped to a draw pass, deliberately.** Caching it on the route would
+mean invalidating it everywhere a stop, sleep, pace or start time changes, and one
+missed spot is a silently stale ETA — the exact regression this file must never ship.
+`redrawMap`, `_render`, `renderDesktopMap` and `drawElev` open it on entry and close it
+in a `finally`, depth-counted for nesting; nothing inside a draw mutates the plan.
+Outside a pass it rebuilds per call, which is what the old code did every time anyway.
+
+**Verified identical: 6,411 comparisons against the v371 implementation** across six
+route shapes (0 to 500 stops, 2k to 50k points, covering the `departTime`, `sleepH`,
+`sleepAt` and `noCluster` paths), including `dist−ε`, `dist` and `dist+ε` at every stop
+boundary. Worst difference: **0 ms.**
+
+#### 3. O(stops × points): 20.5 million iterations to place 274 dots
+
+The elevation strip found each stop's elevation with a **full reduce over every route
+point, once per stop**. 274 × 75,001 = 20.5 million iterations per redraw. Replaced
+with `_nearestPt`, a binary search — verified to return the identical point for all 274
+stops, zero error.
+
+This is the shape that makes a long route *quadratic* rather than merely big: both
+halves grow with the route, so doubling the length roughly quadruples the work. It is
+why the 1,000 km route lagged too, just less.
+
+Stop markers also had no viewport cull — all 274 drawn (connector, dot, glow, mission
+ring, label pill with a `measureText`) whether on screen or not. Now culled with a
+240 px margin, testing both the dot and its on-route anchor. Verified: at the fitted
+view all 274 still draw; zoomed into one town, 7 draw instead of 274, and
+**`onCanvasButCulled` is 0 at every zoom tested**.
+
+#### 4. Math.min(...points) is a hard crash past ~124,000 points
+
+Not slow — **broken**. Spreading an array pushes one argument per element onto the call
+stack; Chrome 148's ceiling is 124,128 (binary-searched, not looked up). A 4,300 km GPX
+at typical spacing is 150,000 points, so `renderDesktopMap` died with "Maximum call
+stack size exceeded" before drawing anything. Four route-scale spreads replaced with
+`_minMax` — the elevation strip, the accommodation search bbox, and two in the pack
+view. Verified equal to the spread on a route small enough to spread.
+
+The remaining `Math.min(...)` calls are over weather hours and colour candidates —
+small arrays, left alone.
+
+#### Left on the table
+
+`drawMap` still projects every route point on every pass; decimating the drawn polyline
+to pixel resolution (~85 points per pixel are currently drawn at the fitted view) is the
+next lever if 226 ms still isn't enough. Not done here because the measured wins above
+already took the felt cost of a gesture from 18 s to 0.13 s, and decimation is the one
+change of the four that can actually alter what the line looks like.
+
+Also new: `serve.js` + `.claude/launch.json`, a 15-line static server. Opening
+`index.html` over `file://` blocks the service worker and is awkward for IndexedDB;
+`node serve.js` gives a real origin on :8777. And `test-perf-longroute.js`, which
+rebuilds this benchmark in the console.
+
+
 ### v371 (28 Aug) — TWO SILENT LIES ON THE TOUR DIVIDE: a search that found nothing, and a route that was always night.
 
 Peter, still on the 4,300 km Divide: *"I did an OSM search for towns, and nothing came up… most
