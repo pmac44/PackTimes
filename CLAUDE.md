@@ -73,8 +73,48 @@ default) for the pre-render first paint. Convention settled: **the button shows 
 CURRENT mode, green when an overlay is active** — matching the tile button; the cycle
 order stays in the tooltip.
 
-Verified: `node verify.js` all green, and live on :8777 — off→DAY (plain), surf→SURF
-(green), grade→GRAD (green), state restored after the probe. NOT pushed.
+**Same version, same disease, the TILE button:** Peter's next screenshot — *"cycle doesn't
+fit in the button."* `TILE_LABELS` (the authority, ~13434) already said **CYC**, and the
+mapCtrlHTML template used it — but THREE repaint sites carried their own stale copy
+`['off','OSM','SAT','Cycle','Topo']`: the `[data-tilemap]` click handler, and the
+desktop/pace tile-button syncs. So the button was born fitting and overflowed the 38px
+square the moment you cycled to mode 3. All three now read `TILE_LABELS`, which also
+unifies the off label ('off' → 'OFF'). CYC not "CYC." — no other label in the set carries
+a dot.
+
+**Also v375 — PLACES NOW SAY HOW HIGH THEY ARE.** Peter: *"there is an overall lack of how
+high each stop or each town is… it says how much climbing you've got to go, but it doesn't
+really say how high each place is."* Two surfaces, his two named examples:
+
+- **The hover tooltip** (map + elevation strip, both via `_hoverTipHTML`) — the height joins
+  the position line: `📍 Grenfell · 245.3 km · 620 m asl`. Deliberately on the FIRST line
+  with the km (position facts together), not the ETA line.
+- **The Mission tiles** — the height rides each node's km line (`38.0 km · 1352 m asl`),
+  same mono font and colour. Peter mentioned it beside the pop badge; the km line won
+  because mono figures belong with mono figures — one-line move if he prefers it up top.
+
+One authority: `eleAtStr(r,d)` (TIME CALC, beside `smEleAt`). Two rules baked in:
+**smoothed, not raw** (v276's rule — the number must match the height the profile line
+draws at that spot, or the strip's own tooltip contradicts its own graph), and **empty on
+a route with no elevation data** — a flat-zero decode (pre-v8 shared route) says nothing
+rather than "0 m asl" at every town. The has-data flag caches as `r._hasEle` in the same
+family as `_smEle`: cleared by `clearRouteCaches`, stripped by `packRoute`. Accepted blind
+spot: a route entirely at/below sea level reads as no-data.
+
+**And the stop tiles, at Peter's yes:** all three `si-meta` stop-tile copies (the main
+stops list, the Ride tab's stop list, and its desktop twin) carry the height after the km
+figure — `38.0 km · 1352 m asl · food · 07:30–19:00` — in the meta line's own muted mono,
+so the accent km stays the loud one. The two pace-SEGMENT rows that also wear `si-meta`
+were left alone: a from–to range has no single height. Note the Ride tab's km is
+distance-TO-GO while the height is the STOP's own — correct, a place's height doesn't
+change as you approach it.
+
+Verified: `node verify.js` all green; helpers truth-tested in the live page (smoothed value
+exact at a synthetic 5 km point, flat route → empty, empty route safe) and the Alpine Ultra
+demo's Mission tab rendered with all 9 nodes carrying sane heights (937→1352→372 m asl
+tracking the profile). Also this version: overlay button off→DAY / surf→SURF / grade→GRAD
+verified live; tile button clicked through the full real cycle OSM→SAT→CYC→TOPO→OFF→OSM,
+ending on its starting mode. NOT pushed.
 
 ### v374 (28 Aug) — THE PLAN RUNS ON THE ROUTE'S CLOCK, NOT THE BROWSER'S.
 

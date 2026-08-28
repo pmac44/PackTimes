@@ -1845,8 +1845,8 @@ function todayStr(){return new Date().toISOString().slice(0,10);}
 // stale caches were written into the saved plan and handed straight back by unpackRoute.
 // Two rules from here on, both cheap: they never get saved, and any code that assigns
 // r.points calls clearRouteCaches(). Rebuilding them is O(n) and happens on next read.
-function clearRouteCaches(r){ if(!r)return r; delete r._gradeSegs; delete r._smEle; delete r._climbs; return r; }
-function packRoute(r){const{_moffM,_moffDiag,_gradeSegs,_smEle,_climbs,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session; _gradeSegs/_smEle/_climbs are derived from points and MUST NOT be persisted (v350)
+function clearRouteCaches(r){ if(!r)return r; delete r._gradeSegs; delete r._smEle; delete r._climbs; delete r._hasEle; return r; }
+function packRoute(r){const{_moffM,_moffDiag,_gradeSegs,_smEle,_climbs,_hasEle,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session; _gradeSegs/_smEle/_climbs are derived from points and MUST NOT be persisted (v350)
   points:r.points.map(p=>[
     Math.round(p.lat*1e5)/1e5,Math.round(p.lon*1e5)/1e5,
     Math.round(p.ele),Math.round(p.dist*10)/10,p.time?p.time.getTime():0]),
@@ -13060,8 +13060,9 @@ function _hoverTipHTML(r,hovDist,stop){
   const d=stop?stop.dist:hovDist;
   const eta=startDT(r)?etaAt(d,r):null;
   const sub=(eta?fmtDT(eta):'set a start date for an ETA');
-  const head=stop?((stop.icon||'📍')+' '+stop.name+' · '+fmtDistKm(d)+' km')
-                 :('📍 '+fmtDistKm(d)+' km');
+  const ele=eleAtStr(r,d); // v375 — the height belongs with the position facts, not the ETA line
+  const head=stop?((stop.icon||'📍')+' '+stop.name+' · '+fmtDistKm(d)+' km'+(ele?' · '+ele:''))
+                 :('📍 '+fmtDistKm(d)+' km'+(ele?' · '+ele:''));
   return head+'<br><span style="font-size:13px;font-weight:400;color:var(--text3);">'+sub+'</span>';
 }
 // Place the shared tooltip inside the desktop map pane, flipping it left/down at
@@ -13672,8 +13673,10 @@ document.addEventListener('click',e=>{
     _tileMode=(_tileMode+1)%5;
     // Update all tile toggle button styles on the page
     document.querySelectorAll('[data-tilemap]').forEach(btn=>{
-      const labels=['off','OSM','SAT','Cycle','Topo'];
-      btn.textContent=labels[_tileMode];
+      // v375: TILE_LABELS is the ONE authority — this and the two setTimeout syncs below had
+      // their own stale copies saying 'Cycle', which overflowed the 38px square (Peter's
+      // screenshot). Same drift shape as the overlay button fixed this same version.
+      btn.textContent=TILE_LABELS[_tileMode];
       btn.style.color=_tileMode>0?'var(--accent)':'';
       btn.style.borderColor=_tileMode>0?'var(--accent3)':'';
     });
@@ -13862,7 +13865,7 @@ function openPaceModal(editIdx,startDist){
     setTimeout(()=>{
       // Sync tile button label
       const tb=document.getElementById('pace-tile-btn');
-      if(tb)tb.textContent=['off','OSM','SAT','Cycle','Topo'][_tileMode];
+      if(tb)tb.textContent=TILE_LABELS[_tileMode]; // v375: one authority, see the [data-tilemap] handler
       // Fit to route extents
       const state=ms('pace-map');
       state.zoom=null;state.cx=null;state.cy=null;
@@ -14838,7 +14841,7 @@ function _renderDesktopMapInner(){
   const cvs=document.getElementById('desktop-map');if(!cvs)return;
   // Update tile button text
   const tb=document.getElementById('desktop-tile-btn');
-  if(tb)tb.textContent=['off','OSM','SAT','Cycle','Topo'][_tileMode];
+  if(tb)tb.textContent=TILE_LABELS[_tileMode]; // v375: one authority, see the [data-tilemap] handler
   // v375: the surface/overlay button gets the same treatment — the desktop column's static
   // HTML can't know the restored state at load, so repaint it here like the tile label above.
   updateOverlayButtons();
@@ -16091,6 +16094,23 @@ function smEleAt(r,d){
   let a=0,b=last;while(b-a>1){const m=(a+b)>>1;if(pts[m].dist<d)a=m;else b=m;}
   const t=(d-pts[a].dist)/((pts[b].dist-pts[a].dist)||1);
   return sm[a]+(sm[b]-sm[a])*t;
+}
+// v375 — "how high is this place?" (Peter: the app says how much CLIMBING is ahead but never
+// how HIGH anywhere is). One authority for stating a height at a route distance, used by the
+// map/elevation-strip hover tooltip and the Mission tiles. Two rules baked in:
+//   · SMOOTHED, not raw — same v276 rule as the grade readout: the number must match the
+//     height the profile line draws at that spot, or the strip's own tooltip contradicts it.
+//   · EMPTY when the route has no real elevation data — a flat-zero decode (e.g. a pre-v8
+//     shared PackRide route) must say nothing rather than "0 m asl" at every town. The
+//     has-data test is "any point above sea level", cached as r._hasEle in the same family
+//     as _smEle (cleared by clearRouteCaches, stripped by packRoute). Known blind spot,
+//     accepted: a route ENTIRELY at or below sea level reads as no-data — no-data-at-all is
+//     common and a whole route below 0 m is a curiosity.
+function eleAtStr(r,d){
+  if(!r||!r.points||r.points.length<2)return'';
+  if(r._hasEle===undefined)r._hasEle=r.points.some(p=>(p.ele||0)>0);
+  if(!r._hasEle)return'';
+  return Math.round(smEleAt(r,d))+' m asl';
 }
 
 // ── v276 — CLIMB DETECTION, Wahoo's definition (Peter gave the numbers). ────────────────
@@ -17595,7 +17615,7 @@ function tLiveShell(r){
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
             <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}</div>
-            <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${(s.dist-liveDist).toFixed(1)} km</span> · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
+            <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${(s.dist-liveDist).toFixed(1)} km</span>${(e=>e?' · '+e:'')(eleAtStr(r,s.dist))} · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
             ${stEl?`<div class="si-st" style="margin-top:2px;">${stEl}</div>`:''}
             ${hasSleep?`<div style="margin-top:2px;font-size:14px;color:#b39ddb;">😴 ${s.sleepH||10}h bivi</div>`:''}
           </div>
@@ -19446,7 +19466,7 @@ function stopRow(s,r,sdt,inCluster){
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">
         <div style="flex:1;min-width:0;">
           <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}${autoBadge}</div>
-          <div class="si-meta">${r.points.length?'<span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">'+s.dist.toFixed(1)+' km</span> · ':''}<span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
+          <div class="si-meta">${r.points.length?'<span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">'+s.dist.toFixed(1)+' km</span>'+((e)=>e?' · '+e:'')(eleAtStr(r,s.dist))+' · ':''}<span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
           ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
           <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='bike')&&s.ohRules?stEl:''}</div>
         </div>
@@ -20515,7 +20535,7 @@ function tPlan(r){
         +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.72);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.9);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
             +'<div style="font-size:18px;font-weight:500;color:'+textCol+';line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+((node.clusterAll||node.cluster)?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.clusterAll||node.cluster)):'')+'</div>'
-            +'<div style="font-size:18px;font-weight:500;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km</div>'
+            +'<div style="font-size:18px;font-weight:500;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+((e)=>e?' · '+e:'')(eleAtStr(r,node.dist))+'</div>' // v375 — the town's height rides the km line (mono figures together); empty on a route with no elevation data
             +(node.isStart?
               '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">'
                 +'<div style="flex:1;font-family:var(--font);font-size:16px;font-weight:500;color:rgba(246,244,239,0.92);">'
@@ -21859,7 +21879,7 @@ function updateLive(){
             <div class="sdot d-${s.type}"></div>
             <div class="si-inf">
               <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}</div>
-              <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${dt} km</span> · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
+              <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${dt} km</span>${(e=>e?' · '+e:'')(eleAtStr(r2,s.dist))} · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
               ${stEl?`<div class="si-st" style="margin-top:2px;">${stEl}</div>`:''}
               ${sleepEl?`<div style="margin-top:2px;">${sleepEl}</div>`:''}
             </div>
