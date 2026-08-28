@@ -89,9 +89,12 @@ really say how high each place is."* Two surfaces, his two named examples:
 - **The hover tooltip** (map + elevation strip, both via `_hoverTipHTML`) — the height joins
   the position line: `📍 Grenfell · 245.3 km · 620 m asl`. Deliberately on the FIRST line
   with the km (position facts together), not the ETA line.
-- **The Mission tiles** — the height rides each node's km line (`38.0 km · 1352 m asl`),
-  same mono font and colour. Peter mentioned it beside the pop badge; the km line won
-  because mono figures belong with mono figures — one-line move if he prefers it up top.
+- **The Mission tiles** — the height rides each node's km line (`38.0 km · 1352 m asl`).
+  Peter mentioned it beside the pop badge; the km line won because mono figures belong with
+  mono figures. **His screenshot then caught the first cut giving both figures the same
+  18px — equal rank, and it wrapped on narrow tiles.** Now the height is a 13px span (the
+  pop badge's size) at 0.8 opacity with `white-space:nowrap`, so the km stays the hero and
+  "1009 m asl" can never break mid-phrase.
 
 One authority: `eleAtStr(r,d)` (TIME CALC, beside `smEleAt`). Two rules baked in:
 **smoothed, not raw** (v276's rule — the number must match the height the profile line
