@@ -1746,7 +1746,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v373';
+window.APP_VERSION='v374';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2727,7 +2727,8 @@ function buildCumRiding(pts,paceSegs,r){
         const cat=surfaceCatAt(midDist,r)||'grade2';
         timeH=segTimeH(dx,dz,cat,rm,lm);
         if(fp){
-          const hr=fClock!=null?(new Date(fClock).getHours()+new Date(fClock).getMinutes()/60):null;
+          // v374 — the circadian dip follows the RIDER's clock, i.e. the route's, not the browser's
+          const hr=fClock!=null?(()=>{const fc=toRouteClock(new Date(fClock),r);return fc.getHours()+fc.getMinutes()/60;})():null;
           timeH*=fatigueMult(fp,hr,fSince);
         }
       }
@@ -2739,7 +2740,7 @@ function buildCumRiding(pts,paceSegs,r){
           const s=fStops[fSi++];
           const mealH=(s.meals||[]).filter(m=>m.source!=='here-carry').reduce((a,m)=>a+(m.durationMin||20)/60,0);
           const hasSleep=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&s.sleepH);
-          const sleepH=hasSleep?sleepHoursFor(s,fClock!=null?new Date(fClock):null):0;
+          const sleepH=hasSleep?sleepHoursFor(s,fClock!=null?new Date(fClock):null,r):0;
           if(fClock!=null)fClock+=(mealH+sleepH)*3600000;
           // Partial, diminishing-returns recovery (τ=4.2h): a short nap barely
           // dents the debt, ~4h clears most of it, a full night resets you. (A flat
@@ -2860,6 +2861,79 @@ function fmtOHSummary(rules,ohRaw){
 // ═══════════════════════════════════════════
 //  TIME CALC
 // ═══════════════════════════════════════════
+// ─── v374 — THE ROUTE'S CLOCK, NOT THE BROWSER'S ─────────────────────────────
+// Every wall-clock time a plan carries (startTime, departTime, opening hours) means
+// ROUTE-local time. But `new Date("2026-06-12T07:00:00")` parses in the BROWSER's
+// timezone — so planning the Tour Divide from Sydney (16 h from Mountain Time), a
+// 07:00 Banff start became 07:00 Sydney = 3 pm the previous day in Banff. Every ETA
+// inherited the skew, and sunAt — which is CORRECT for any true instant — faithfully
+// painted daylight onto the plan's night hours. v371 fixed the sun; this fixes the
+// instants it is fed, plus the inverse problem: displaying those instants back as
+// route-local wall clock rather than the browser's.
+//
+// The offset source, in order of trust:
+//   1. r.tzOffsetMin — Open-Meteo's utc_offset_seconds for the route START point,
+//      captured whenever weather is fetched (see _adoptRouteTz) and persisted with
+//      the route. Civil time, DST included, for the forecast window.
+//   2. A solar estimate from the start longitude (round(lon/15)) — BUT only when it
+//      differs from the device's own offset by ≥3 h. Within 3 h we trust the DEVICE:
+//      a rider standing on the route has the exact civil clock in their phone, and an
+//      estimate would make it worse (the v371 note warned exactly this). ⚠ 3 h, not
+//      2: DST puts civil clocks up to ~2 h east of solar at a zone's western edge —
+//      Banff itself is solar −7.7 but civil −6, a 2 h gap that a 2 h threshold handed
+//      to the estimate. The estimate only takes over when the device is obviously on
+//      another continent, where being wrong by ±1 h beats being wrong by 16.
+// One offset per route: fine for the Divide (Mountain end to end); a route that
+// crosses a zone mid-way shows its start zone's clock throughout, which is at worst
+// 1 h — and civil zone data per point is not worth a tz-database dependency here.
+function routeTzOffsetMin(r){
+  if(!r)return null;
+  if(r.tzOffsetMin!=null)return r.tzOffsetMin;
+  const p=r.points&&r.points[0];
+  if(!p||p.lon==null)return null;
+  const est=Math.round(p.lon/15)*60;
+  const dev=-new Date().getTimezoneOffset();
+  return Math.abs(est-dev)<180?dev:est;
+}
+// Instant → a Date whose LOCAL getters read as the route's wall clock. Display /
+// wall-clock-arithmetic only — never treat the result as a real instant. Durations
+// computed between two shifted dates are timeline-invariant, which is what the
+// sleep/wake arithmetic below relies on. Identity when the offsets agree (every
+// Australian route planned at home), so nothing changes for the common case.
+function toRouteClock(d,r){
+  if(!d)return d;
+  const off=routeTzOffsetMin(r);
+  if(off==null)return d;
+  const delta=off+d.getTimezoneOffset(); // getTimezoneOffset is minutes WEST; off is minutes EAST
+  return delta?new Date(d.getTime()+delta*60000):d;
+}
+// Route-local wall clock ("2026-06-12", "07:00") → true instant. The inverse of
+// toRouteClock, used everywhere the plan's stored strings become a Date. Falls back
+// to the old browser-local parse only when the route can't say where it is.
+function routeWallToInstant(dateStr,timeStr,r){
+  const off=routeTzOffsetMin(r);
+  if(off==null)return new Date(`${dateStr}T${timeStr}:00`);
+  const [y,mo,da]=String(dateStr).split('-').map(Number);
+  const [h,mi]=String(timeStr).split(':').map(Number);
+  return new Date(Date.UTC(y,(mo||1)-1,da||1,h||0,mi||0)-off*60000);
+}
+// Count route-local midnights between two instants (nights on the road), and the
+// 1-based route-local calendar day an instant falls on. These replace five copies of
+// a setHours(24,0,0,0) loop that counted BROWSER-local midnights — on a US route
+// planned from Sydney the day boundaries landed mid-afternoon.
+function routeNightsBetween(sdt,finEta,r){
+  if(!sdt||!finEta)return 0;
+  const s=toRouteClock(sdt,r),f=toRouteClock(finEta,r);
+  let n=0,d=new Date(s);d.setHours(24,0,0,0);
+  while(d<f){n++;d.setDate(d.getDate()+1);}
+  return n;
+}
+function routeDayNum(sdt,eta,r){
+  const s=toRouteClock(sdt,r),e=toRouteClock(eta,r);
+  let n=1,d=new Date(s);d.setHours(24,0,0,0);
+  while(d<=e){n++;d.setDate(d.getDate()+1);}
+  return n;
+}
 function startDT(r){
   if(!r)return null;
   // Use actual recorded start time if GPS captured it — overrides planned start.
@@ -2876,12 +2950,12 @@ function startDT(r){
   // of intent the rider can make — they told us, out loud, today.
   if(rideNowOn(r))return new Date(UI.rideNowTs);
   if(r.actualStartTime){
-    const planned=(r.startDate&&r.startTime)?new Date(`${r.startDate}T${r.startTime}:00`):null;
+    const planned=(r.startDate&&r.startTime)?routeWallToInstant(r.startDate,r.startTime,r):null;
     if(!planned||r.actualStartTime>=planned.getTime())return new Date(r.actualStartTime);
     return planned;
   }
   if(!r.startDate||!r.startTime)return null;
-  return new Date(`${r.startDate}T${r.startTime}:00`);
+  return routeWallToInstant(r.startDate,r.startTime,r); // v374 — startTime is ROUTE-local
 }
 // True when the rider has said "yes, I'm riding this now" for THIS route. Deliberately
 // narrow: tied to one route id, and cleared the moment the ride ends, so it can never
@@ -2921,7 +2995,7 @@ function rideNowRestore(){
 // rewrite the plan; but the screen must still tell him the truth about today.
 function planStartInFuture(r){
   if(!r||!r.startDate||!r.startTime)return false;
-  const t=new Date(`${r.startDate}T${r.startTime}:00`).getTime();
+  const t=routeWallToInstant(r.startDate,r.startTime,r).getTime(); // v374 — route-local
   return isFinite(t)&&t>Date.now();
 }
 // DISPLAY gate: true = show the planned clock (we're planning); false = show real
@@ -2944,19 +3018,24 @@ function clearRouteActuals(r){
   return changed;
 }
 // Get effective sleep hours for a stop — handles fixed departure time
-function sleepHoursFor(s,arrivalEta){
+// v374 — departTime ("07:00") is ROUTE-local wall clock, so the wake arithmetic runs
+// on the route's clock via toRouteClock. The returned DURATION is timeline-invariant,
+// so callers are unaffected beyond getting the right answer. r is optional: without
+// it (or with browser and route in the same zone) this is byte-identical to before.
+function sleepHoursFor(s,arrivalEta,r){
   if(!s.departTime)return s.sleepH||(s.sleepAt||s.type==='sleep'?10:0);
   // Fixed wake time mode — calculate hours from arrival to next occurrence of wakeTime
   const [dh,dm]=s.departTime.split(':').map(Number);
   if(!arrivalEta)return s.sleepH||10;
-  const wake=new Date(arrivalEta);
+  const arr=toRouteClock(arrivalEta,r);
+  const wake=new Date(arr);
   wake.setHours(dh,dm,0,0);
   // If wake time is at or before arrival, advance to next day
-  if(wake<=arrivalEta){
+  if(wake<=arr){
     wake.setDate(wake.getDate()+1);
     wake.setHours(dh,dm,0,0);
   }
-  const hrs=(wake-arrivalEta)/3600000;
+  const hrs=(wake-arr)/3600000;
   // If result is unreasonably long (>14h), the wake time must be early morning
   // and arrival was also early morning — advance wake by one more day would be wrong,
   // so instead cap at the sleepH fallback or 10h
@@ -3061,7 +3140,7 @@ function _sleepDone(s,r,atDist){
   const now=Date.now();
   const nearHere=atDist!=null&&Math.abs(atDist-s.dist)<=SLEEP_NEAR_KM;
   if(s.actualArrival){                                          // 4. arrival + its own night
-    const planH=sleepHoursFor(s,new Date(s.actualArrival));
+    const planH=sleepHoursFor(s,new Date(s.actualArrival),r);
     if(now-s.actualArrival>=planH*3600000)return _sleepStamp(s,s.actualArrival+planH*3600000);
     return false;                                               //    arrived, still in it
   }
@@ -3078,7 +3157,7 @@ function _sleepDone(s,r,atDist){
   }
   const _arr=UI._lastGpsState&&UI._lastGpsState.arrivedAt?UI._lastGpsState.arrivedAt:null;
   if(nearHere&&_arr){                                           // 7. the old dwell rule, kept
-    const planH=sleepHoursFor(s,new Date(_arr));
+    const planH=sleepHoursFor(s,new Date(_arr),r);
     if((now-_arr)/3600000>=planH)return _sleepStamp(s,now);
   }
   return false;                                                 // genuinely unknown — ask (chip)
@@ -3087,7 +3166,7 @@ function _sleepDone(s,r,atDist){
 // Get total sleep hours accounting for fixed departure times
 function totalSleepHours(r){
   return r.stops.filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH)))
-    .reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0);
+    .reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r),r),0);
 }
 function totalMealHours(r){
   return r.stops.filter(s=>s.meals&&s.meals.length)
@@ -3169,7 +3248,7 @@ function _planOffTable(r,base,targetTotal,crTot){
         const crStop=cumRidingAt(st.dist,r);
         if(crStop!==null&&crTot&&crTot>0){rideHrsToStop=crStop*(targetTotal/crTot);}
         else{rideHrsToStop=targetTotal*(st.dist/r.totalDist);}
-        off+=sleepHoursFor(st,new Date(base.getTime()+(rideHrsToStop+off)*3600000));
+        off+=sleepHoursFor(st,new Date(base.getTime()+(rideHrsToStop+off)*3600000),r);
       } else {
         off+=st.sleepH||(st.type==='stop'?0.25:10);
       }
@@ -3257,7 +3336,7 @@ function etaAt(distKm,r){
           if(crNow!==null&&crStop!==null&&crTot&&crTot>0){remToStop=Math.max(0,crStop-crNow)*(targetTotal/crTot);}
           else{remToStop=targetTotal*(Math.max(0,s.dist-nowDist)/r.totalDist);}
           const arrivalEta=new Date(nowTime.getTime()+(remToStop+stopOffset)*3600000);
-          stopOffset+=sleepHoursFor(s,arrivalEta);
+          stopOffset+=sleepHoursFor(s,arrivalEta,r);
         } else {
           stopOffset+=s.sleepH||(s.type==='stop'?0.25:10);
         }
@@ -3331,7 +3410,7 @@ function etaAt(distKm,r){
         if(hs){
           if(s.actualArrival){
             // This intermediate stop also has a recorded time — use it to anchor further
-            const hs2=sleepHoursFor(s,new Date(s.actualArrival));
+            const hs2=sleepHoursFor(s,new Date(s.actualArrival),r);
             anchorTime=s.actualArrival+hs2*3600000;
             remRidingHrs=0;fwdOffset=0;
           } else if(_sleepDone(s,r,null)){
@@ -3340,7 +3419,7 @@ function etaAt(distKm,r){
             // position-dependent rules stay out of it and can't touch a future night.
           } else if(s.departTime){
             const arrEta=new Date(anchorTime+remRidingHrs*3600000+fwdOffset*3600000);
-            fwdOffset+=sleepHoursFor(s,arrEta);
+            fwdOffset+=sleepHoursFor(s,arrEta,r);
           } else {
             fwdOffset+=s.sleepH||(s.type==='stop'?0.25:10);
           }
@@ -3372,7 +3451,7 @@ function etaAt(distKm,r){
       // was still the bed. Old rule said "not slept" and anchored every ETA for the
       // day at now + 10 h. With a fixed wake time it was worse still — it read the
       // NEXT 07:00, i.e. tomorrow, and put the day 24 h out.
-      const sleepH=sleepHoursFor(nearSleep,_arr?new Date(_arr):new Date(now));
+      const sleepH=sleepHoursFor(nearSleep,_arr?new Date(_arr):new Date(now),r);
       const sleepDone=_sleepDone(nearSleep,r,savedDist);
       if(!sleepDone){
         // Still in sleep window — calculate departure as anchor
@@ -3406,7 +3485,7 @@ function etaAt(distKm,r){
         if(hs&&!_sleepDone(s,r,null)){   // v361 — a marked/known-done night costs no hours
           if(s.departTime){
             const arrEta=new Date(anchorTime+remRidingHrs*3600000+fwdOffset*3600000);
-            fwdOffset+=sleepHoursFor(s,arrEta);
+            fwdOffset+=sleepHoursFor(s,arrEta,r);
           } else {
             fwdOffset+=s.sleepH||(s.type==='stop'?0.25:10);
           }
@@ -3980,13 +4059,20 @@ function _riddenKm(){ return _rec ? _rec.totalDist : 0; }
 //     caught it there too. THIRD occurrence in this file: when a format switches on a
 //     threshold, the threshold must be tested against the formatted output.
 function fmtDistKm(v){ const d=v.toFixed(1); return +d>=1000 ? v.toFixed(0) : d; }
-function fmtT(d){if(!d)return'—';return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
+// v374 — fmtT/fmtDT/fmtDTY/dayOff show PLAN times, and plan times read in the ROUTE's
+// wall clock (see toRouteClock). Identity when browser and route share a zone. The
+// *Dev variants keep the device's clock for RECORDING timestamps — a saved ride's
+// stamp must not be re-labelled by whichever route happens to be active when viewed.
+function _fmtTRaw(d){return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
+function fmtT(d){if(!d)return'—';return _fmtTRaw(toRouteClock(d,cur()));}
+function fmtTDev(d){if(!d)return'—';return _fmtTRaw(d);}
 // v334 — 12-hour clock for the weather panel (Peter: "change the time format to 1pm 2pm").
 // hh is 0–23; with mm omitted you get the bare hour ("2pm"), with mm you get "7:03am".
 // Lowercase am/pm, no space — compact enough for the hourly chips.
 function fmt12h(hh,mm){const h=(hh%12)||12,ap=hh<12?'am':'pm';return mm==null?h+ap:h+':'+String(mm).padStart(2,'0')+ap;}
-function fmtDT(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
-function fmtDTY(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=fmtT(d);return`${day} ${date} ${time}`;}
+function fmtDT(d){if(!d)return'—';d=toRouteClock(d,cur());const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
+function fmtDTY(d){if(!d)return'—';d=toRouteClock(d,cur());const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
+function fmtDTYDev(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
 // ── v337 — THE CARRY. "2h 60m" (Peter's screenshot, Day 1 · Leg 3). Every h/m formatter
 // in the file did floor(hours) + round(fraction*60) SEPARATELY, so 2.9958 h formatted as
 // hours=2, minutes=60 — nobody carried the rounded 60 back into the hours. Fires whenever
@@ -4002,7 +4088,7 @@ function hmParts(h){const t=Math.round(h*60);return[Math.floor(t/60),t%60];}
 // durations) — it was copy-pasted 8× with the bug in every copy.
 function fmtDurHM(h){const t=Math.round(h*60);if(t<60)return t+'min';const hh=Math.floor(t/60),mm=t%60;return hh+'h'+(mm>0?' '+mm+'m':'');}
 function fmtHM(h){if(!h)return'—';const[hh,mm]=hmParts(h);return hh+'h'+(mm>0?' '+mm+'m':'');}
-function dayOff(d,b){if(!d||!b)return'';const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];return ' '+days[d.getDay()];}
+function dayOff(d,b){if(!d||!b)return'';const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];return ' '+days[toRouteClock(d,cur()).getDay()];} // v374 — route-local weekday
 
 // ═══════════════════════════════════════════
 //  STOPS
@@ -4031,7 +4117,7 @@ function delStop(r,id){r.stops=r.stops.filter(s=>String(s.id)!==String(id));}
 function shopSt(s,r){
   if(!s.ohRules)return'unknown';
   const eta=etaAt(s.dist,r);if(!eta)return'unknown';
-  const open=isOpen(s.ohRules,eta);return open===null?'unknown':open?'open':'closed';
+  const open=isOpen(s.ohRules,toRouteClock(eta,r));return open===null?'unknown':open?'open':'closed'; // v374 — opening hours are route-local
 }
 
 // ═══════════════════════════════════════════
@@ -6163,7 +6249,7 @@ function _recGapShow(){
     ? 'Missing GPS section ' + (ctx.idx + 1) + ' of ' + ctx.gaps.length
     : 'Missing GPS section';
   document.getElementById('rgm-details').innerHTML =
-    durMin + ' min from ' + fmtT(new Date(gap.startT)) + '<br>' +
+    durMin + ' min from ' + fmtTDev(new Date(gap.startT)) + '<br>' +
     lineKm.toFixed(1) + ' km between the last and next GPS points';
   // Route-based options only make sense when the ride has a matchable route
   const hasRoute = !!_recRouteFor(ctx.rec);
@@ -6303,7 +6389,7 @@ function _recRecoveryShow(){
     ? 'Unfinished recording (1 of ' + _recRecovery.length + ')'
     : 'Unfinished recording';
   document.getElementById('rrm-details').innerHTML =
-    'Started ' + fmtDTY(new Date(rec.startTS)) + '<br>' +
+    'Started ' + fmtDTYDev(new Date(rec.startTS)) + '<br>' +
     pts + ' points · ' + km + ' km<br>' +
     'Last point ' + _dbxAgoStr(last);
   // Can't resume a second recording while one is already live
@@ -6458,7 +6544,7 @@ function _recDetailOpen(recId){
   const gapsFilled = gapsAll.filter(g => g.fillStrategy && g.fillStrategy !== 'none').length;
   const gapsOpen = gapsAll.length - gapsFilled;
   document.getElementById('rdm-stats').innerHTML =
-    fmtDTY(new Date(rec.startTS)) + '<br>' +
+    fmtDTYDev(new Date(rec.startTS)) + '<br>' +
     (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(durH) + '<br>' +
     (rt ? 'Route: ' + (rt.label || rt.name) : 'No linked route') + '<br>' +
     (rec.points ? rec.points.length : 0) + ' points' + (stopsN ? ' · ' + stopsN + ' stop' + (stopsN !== 1 ? 's' : '') : '') + '<br>' +
@@ -6654,7 +6740,7 @@ function _recDefaultName(rec){
 }
 
 function _recDisplayName(rec){
-  return rec.name || fmtDTY(new Date(rec.startTS));
+  return rec.name || fmtDTYDev(new Date(rec.startTS));
 }
 
 // Ride time in hours for calibration: elapsed minus deliberate breaks.
@@ -18692,7 +18778,7 @@ function tRoutes(r){
     ${(()=>{
       const lbl='font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block;';
       const accent='font-size:18px;font-weight:600;color:var(--accent);font-family:var(--font);';
-      const startStr=r.startDate&&r.startTime?fmtDTY(new Date(r.startDate+'T'+r.startTime)):null;
+      const startStr=r.startDate&&r.startTime?fmtDTY(routeWallToInstant(r.startDate,r.startTime,r)):null; // v374 — parse route-local; fmtDTY shows it back route-local, so this round-trips to the entered clock
       const finishStr=adjDur&&sdt?fmtDTY(new Date(sdt.getTime()+(adjDur+totalSleepH+totalMealH)*3600000)):null;
       return'<div style="margin-bottom:12px;">'
         +'<div style="flex:1;padding:4px 0;">'
@@ -18718,7 +18804,7 @@ function tRoutes(r){
       const totalH=(adjDur||0)+totalSleepH+totalMealH;
       const[thh,thm]=hmParts(totalH); // v337 carry
       const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
-      const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():0;
+      const nights=sdt&&finEta?routeNightsBetween(sdt,finEta,r):0; // v374 — route-local midnights
       const avgSleepPerNight=nights>0?(totalSleepH/nights).toFixed(1):null;
       const dayCount=nights?nights+1:1;
       const avgDist=(r.totalDist/dayCount).toFixed(1);
@@ -19594,6 +19680,10 @@ async function fetchWeather(lat,lon,days){
     const curFeelsLike=j.hourly.apparent_temperature?j.hourly.apparent_temperature[idx]:null;
     const result={
       fetchedAt:Date.now(),
+      // v374 — the POINT's civil UTC offset, straight from timezone=auto. This is what
+      // lets h.time (a tz-naive local string) become a true instant in weatherAtEta,
+      // and what _adoptRouteTz copies onto the route as r.tzOffsetMin.
+      utcOffsetSec:(typeof j.utc_offset_seconds==='number')?j.utc_offset_seconds:null,
       current:{temp:cw.temperature,feelsLike:curFeelsLike,windspeed:cw.windspeed,winddeg:cw.winddirection,code:cw.weathercode},
       hourly
     };
@@ -19603,8 +19693,21 @@ async function fetchWeather(lat,lon,days){
   }catch(e){return null;}
 }
 
+// v374 — copy the route START point's civil UTC offset (from Open-Meteo) onto the
+// route, where routeTzOffsetMin trusts it above everything else. Persisted with the
+// route, so once any weather has been fetched the plan's clock is exact — including
+// offline later. Changing it moves every ETA, which is the point; the caller renders.
+function _adoptRouteTz(r){
+  if(!r||!r.points||!r.points.length)return;
+  const p0=r.points[0];
+  const w=_weatherCache[`${p0.lat.toFixed(2)},${p0.lon.toFixed(2)}`];
+  if(!w||w.utcOffsetSec==null)return;
+  const min=Math.round(w.utcOffsetSec/60);
+  if(r.tzOffsetMin!==min){r.tzOffsetMin=min;saveAll().catch(()=>{});}
+}
 function ensureWeatherCache(r){
   if(!r.points.length)return;
+  _adoptRouteTz(r); // v374 — the cache may already hold the start point from a previous session
   // Detect radar URL from GPS position or route start
   if(!_radarUrl){
     const rp=UI.gpsPos||r.points[0];
@@ -19638,7 +19741,7 @@ function ensureWeatherCache(r){
   if(_weatherFetching)return;
   _weatherFetching=true;
   Promise.all(toFetch.map(({lat,lon,days})=>fetchWeather(lat,lon,days)))
-    .then(()=>{_weatherFetching=false;render();})
+    .then(()=>{_weatherFetching=false;_adoptRouteTz(r);render();})
     .catch(()=>{_weatherFetching=false;});
 }
 
@@ -19647,12 +19750,18 @@ function weatherAtEta(lat,lon,eta){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
   const w=_weatherCache[key];
   if(!w||!w.hourly||!w.hourly.length)return null;
-  // Find the hourly entry closest to the ETA
-  // h.time is "YYYY-MM-DDTHH:MM" local — compare as epoch ms by appending local offset
+  // Find the hourly entry closest to the ETA.
+  // v374 — h.time is a tz-naive string in the POINT's local time (timezone=auto), and
+  // eta is now a TRUE instant (startDT parses route-local). So the string must become
+  // an instant via the point's own offset (w.utcOffsetSec, captured at fetch). The old
+  // browser-local parse only worked because BOTH sides carried the same browser-tz
+  // error — fixing startDT alone would have broken the pairing by the full 16 h.
+  // Entries cached before v374 have no offset; the legacy parse keeps them usable.
   let best=w.hourly[0],bestDiff=Infinity;
   w.hourly.forEach(h=>{
-    // Parse tz-naive ISO as local time by replacing T with space (works in all browsers)
-    const hMs=new Date(h.time.replace('T',' ')).getTime();
+    const hMs=(w.utcOffsetSec!=null)
+      ?Date.UTC(+h.time.slice(0,4),+h.time.slice(5,7)-1,+h.time.slice(8,10),+h.time.slice(11,13),+h.time.slice(14,16)||0)-w.utcOffsetSec*1000
+      :new Date(h.time.replace('T',' ')).getTime();
     const diff=Math.abs(hMs-eta.getTime());
     if(diff<bestDiff){bestDiff=diff;best=h;}
   });
@@ -19774,9 +19883,20 @@ function weatherPillHTML(code,temp,label){
 // locally-built key rather than parsing to a Date, which is what the chips already do.
 function _wxFromNow(w){
   if(!w||!w.hourly||!w.hourly.length)return [];
-  const n=new Date();
-  const key=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0')
-           +'T'+String(n.getHours()).padStart(2,'0');
+  // v374 — "now" must be expressed on the FORECAST POINT's clock before comparing
+  // against its local-time strings. Planning the Divide from Sydney, the browser-local
+  // key ("…T21") landed 16 h into the wrong part of Wyoming's day. With the point's
+  // offset the key is built in UTC getters on a shifted instant; without it (pre-v374
+  // cache) the browser clock is the old, riding-is-fine behaviour.
+  const P=x=>String(x).padStart(2,'0');
+  let key;
+  if(w.utcOffsetSec!=null){
+    const n=new Date(Date.now()+w.utcOffsetSec*1000);
+    key=n.getUTCFullYear()+'-'+P(n.getUTCMonth()+1)+'-'+P(n.getUTCDate())+'T'+P(n.getUTCHours());
+  }else{
+    const n=new Date();
+    key=n.getFullYear()+'-'+P(n.getMonth()+1)+'-'+P(n.getDate())+'T'+P(n.getHours());
+  }
   const i=w.hourly.findIndex(h=>(h.time||'')>=key);
   return i<0?[]:w.hourly.slice(i);   // i<0 = the forecast is entirely in the past → say nothing
 }
@@ -19850,7 +19970,10 @@ function weatherBarHTML(){
       const sLat=gp&&gp.lat!=null?gp.lat:p0.lat, sLon=gp&&gp.lat!=null?gp.lon:p0.lon;
       const sun=sunAt(sLat,sLon,new Date());
       if(sun){
-        const fmt=d=>fmt12h(d.getHours(),d.getMinutes());   // v334 — "7:03am", matching the chips
+        // v374 — shown on the ROUTE's clock (the v371 "still outstanding" item). On the
+        // ride, route offset == browser offset and this is byte-identical to before;
+        // planning a US route from Sydney it now reads as the rider will live it.
+        const fmt=d=>{const x=toRouteClock(d,r2);return fmt12h(x.getHours(),x.getMinutes());};   // v334 — "7:03am", matching the chips
         sunHTML=`<span style="font-size:15px;color:var(--wx-text);">🌅 ${fmt(sun.sunrise)} · 🌇 ${fmt(sun.sunset)}</span>`;
       }
     }
@@ -20328,7 +20451,7 @@ function tPlan(r){
       const beforeMealH=beforeMeals.reduce((a,m)=>a+(m.durationMin||20)/60,0);
       const afterMealH=afterMeals.reduce((a,m)=>a+(m.durationMin||20)/60,0);
       const arrivalWithMeals=eta&&beforeMealH>0?new Date(eta.getTime()+beforeMealH*3600000):eta;
-      const hrs=sleepHoursFor(s,arrivalWithMeals);
+      const hrs=sleepHoursFor(s,arrivalWithMeals,r);
       const wake=arrivalWithMeals?new Date(arrivalWithMeals.getTime()+hrs*3600000):null;
       const depart=wake&&afterMealH>0?new Date(wake.getTime()+afterMealH*3600000):wake;
       const wakeDay=wake&&sdt?dayOff(wake,sdt):'';
@@ -20366,7 +20489,7 @@ function tPlan(r){
         +'</div>';
     }
     // Cluster sleep departure
-    const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0):0;
+    const clusterSleepH=node.cluster?node.cluster.stops.filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r),r),0):0;
     const depart=clusterSleepH>0&&eta?new Date(eta.getTime()+clusterSleepH*3600000):null;
     const departDay=depart&&sdt?dayOff(depart,sdt):'';
     const departDiv=depart?'<div style="font-size:14px;color:'+text3Col+';font-family:var(--font);margin-top:1px;">▶ '+(departDay?departDay.trim()+' ':'')+fmtT(depart)+'</div>':'';
@@ -20484,11 +20607,11 @@ function tPlan(r){
         const beforeMealH=clMeals.filter(m=>m.when==='before'||!m.when).reduce((a,m)=>a+(m.durationMin||20)/60,0);
         const afterMealH=clMeals.filter(m=>m.when==='after').reduce((a,m)=>a+(m.durationMin||20)/60,0);
         const arrivalWithMeals=beforeMealH>0?new Date(eta.getTime()+beforeMealH*3600000):eta;
-        const hrs=sleepHoursFor(s,arrivalWithMeals);
+        const hrs=sleepHoursFor(s,arrivalWithMeals,r);
         const wake=new Date(arrivalWithMeals.getTime()+hrs*3600000);
         departEta=afterMealH>0?new Date(wake.getTime()+afterMealH*3600000):wake;
       } else if(node.cluster){
-        const clusterSleepH=node.cluster.stops.filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r)),0);
+        const clusterSleepH=node.cluster.stops.filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).reduce((a,s)=>a+sleepHoursFor(s,etaAt(s.dist,r),r),0);
         departEta=eta&&clusterSleepH>0?new Date(eta.getTime()+clusterSleepH*3600000):
           node.isStart?sdt:eta;
       } else {
@@ -20548,7 +20671,7 @@ function tPlan(r){
   }
   if(finEta&&sdt)summaryParts.push('<span style="color:var(--accent);">Finish '+fmtT(finEta)+dayOff(finEta,sdt)+'</span>');
   // Sleep per night + unplanned nights warning
-  const nights=sdt&&finEta?(()=>{let n=0,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():null;
+  const nights=sdt&&finEta?routeNightsBetween(sdt,finEta,r||cur()):null; // v374 — route-local midnights
   const sleepStops=r.stops.filter(s=>s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt).length;
   let sleepExtra='';
   if(nights>0&&totalSleepH){
@@ -20858,7 +20981,7 @@ function tFood(r){
   }
 
   // ── Per-day breakdown ──
-  const totalDays=sdt&&finEta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<finEta){n++;d.setDate(d.getDate()+1);}return n;})():1;
+  const totalDays=sdt&&finEta?routeNightsBetween(sdt,finEta,r)+1:1; // v374 — route-local midnights
   const mealsByDay={};
   for(let d=1;d<=totalDays;d++)mealsByDay[d]={meals:0,snacks:0,items:[]};
   allMeals.forEach(m=>{
@@ -20868,11 +20991,11 @@ function tFood(r){
       const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
       if(hasSleep){
         const beforeMealH=(s.meals||[]).filter(b=>b.when!=='after').reduce((a,b)=>a+(b.durationMin||20)/60,0);
-        const sleepH=sleepHoursFor(s,new Date(eta.getTime()+beforeMealH*3600000));
+        const sleepH=sleepHoursFor(s,new Date(eta.getTime()+beforeMealH*3600000),r);
         eta=new Date(eta.getTime()+(beforeMealH+sleepH)*3600000);
       }
     }
-    const day=sdt&&eta?(()=>{let n=1,d=new Date(sdt);d.setHours(24,0,0,0);while(d<=eta){n++;d.setDate(d.getDate()+1);}return n;})():1;
+    const day=sdt&&eta?routeDayNum(sdt,eta,r):1; // v374 — route-local calendar day
     if(!mealsByDay[day])mealsByDay[day]={meals:0,snacks:0,items:[]};
     if(m.type==='snack')mealsByDay[day].snacks++;else mealsByDay[day].meals++;
     mealsByDay[day].items.push({m,eta});
@@ -20936,7 +21059,7 @@ function printMission(){
         <td style="padding:6px 8px;font-size:13px;color:#666;">${s.dist.toFixed(1)}</td>
         <td style="padding:6px 8px;font-size:14px;font-weight:${isSleep?'600':'400'};">${s.icon||'📍'} ${s.name}${chips?'<br><span style="font-size:11px;color:#888;">'+chips+'</span>':''}</td>
         <td style="padding:6px 8px;font-size:13px;">${eta?fmtDT(eta):''}</td>
-        <td style="padding:6px 8px;font-size:13px;color:#666;">${isSleep?(+sleepHoursFor(s,eta).toFixed(1))+'h sleep':''}</td>
+        <td style="padding:6px 8px;font-size:13px;color:#666;">${isSleep?(+sleepHoursFor(s,eta,r).toFixed(1))+'h sleep':''}</td>
       </tr>`;
     });
   });
@@ -21003,7 +21126,7 @@ function patchSpeedFactor(r){
   const totSpd=(adj>0.1)?(r.totalDist/adj).toFixed(1):null;
   const[thh,thm]=hmParts(totalH); // v337 carry
   const totalHM=thh+'h'+(thm>0?' '+String(thm).padStart(2,'0')+'m':'');
-  const nights=sdt&&finEta?(()=>{let n=0,dd=new Date(sdt);dd.setHours(24,0,0,0);while(dd<finEta){n++;dd.setDate(dd.getDate()+1);}return n;})():0;
+  const nights=sdt&&finEta?routeNightsBetween(sdt,finEta,r):0; // v374 — route-local midnights
   const avgSleepPerNight=nights>0?(sleepH/nights).toFixed(1):null;
   const dayCount=nights?nights+1:1;
   const avgDist=(r.totalDist/dayCount).toFixed(1);
