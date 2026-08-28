@@ -50,6 +50,115 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### v373 (28 Aug) — THE HOVER TOOLTIP FOLLOWS THE WHOLE ROUTE, NOT JUST THE STOPS.
+
+Peter: *"there is a tooltip that pops up when you hover over the big map… It only pops
+up when you're over a stop. I'd like it to pop up wherever you are on the route… it
+shows the distance on the route and the time you're expected to go through there."*
+
+Done, on the map and on the elevation strip. Hover anywhere on the line and you get
+
+```
+📍 1750 km
+Sun 06/09 08:46
+```
+
+and when a stop really is at that spot, its name joins the same two lines:
+
+```
+📍 Stop 45 · 752.5 km
+Tue 01/09 17:58
+```
+
+Both surfaces now build that from one helper (`_hoverTipHTML`), because the two hover
+handlers had already drifted — one offset the tooltip by −36 px and the other by −44.
+
+---
+
+#### The order was wrong, not just the coverage
+
+The old handler found the nearest stop DOT ON SCREEN within 28 px and gave up if there
+wasn't one. Both halves of that break on a long route, and the second is the one worth
+remembering.
+
+- **28 px is a distance on the screen, not on the route.** At the whole-route zoom of the
+  Divide one pixel is ~4.9 km, so the radius reached 137 km up the line. That number came
+  from the TAP hit-test, where a fat target is a kindness; as a HOVER test it was a lie.
+- **⚠ "Nearest on screen" is not "nearest along the route."** Wherever a route wiggles or
+  doubles back, two points that share a pixel can be tens of kilometres apart in route
+  terms. Measured before the fix: the tooltip named a stop **23 km** from where the cursor
+  actually was, with complete confidence.
+
+So the order is now inverted. **Anchor to the line first** — 14 px, a little wider than
+the drawn line — which yields an honest route position. *Then* ask whether a stop is at
+that position, judged in ROUTE kilometres rather than screen pixels. That question cannot
+produce a near miss, because the answer is measured against the place the cursor actually
+is.
+
+#### Doing it without reintroducing v372's problem
+
+The obvious implementation — nearest of `r.points` to the cursor — is exactly the
+O(points)-per-event shape v372 just finished removing: 150,001 distance calculations per
+mousemove. So the hover tests a **screen-space index** instead, built once per view and
+reused until the projection changes (the stamp covers centre, scale, canvas size and
+route, so pan/zoom/resize/route-switch all rebuild it and nothing needs manual
+invalidation).
+
+Two rules keep it small: points off the canvas are dropped, and points within 1 px of the
+last kept one are dropped — a polyline thinned to one vertex per pixel is exactly as
+accurate as the screen it is hovered on. **On the Divide that is 150,001 points down to
+813.** Hover work is bounded by the canvas, not the route. Hover is also skipped mid-drag,
+where the projection changes every event and nobody is reading the tooltip anyway.
+
+The index also reports km-of-route per screen pixel *along the line*, which is not the
+map's km-per-pixel — a wiggling route packs far more of itself into a pixel than a
+straight one. That is what sets the stop-naming window.
+
+#### The tolerance, and the one judgement call in this change
+
+A stop is named when it is within **1.5 px worth of route** of the hovered position. It
+tightens automatically with zoom: ~8 km of slack at full zoom-out, ~700 m at 6×,
+centimetres inside a town.
+
+⚠ **1.5 was not the first try, and the reason matters.** At 3 px the window was 16 km wide
+while 274 stops sat 16 km apart, so a stop was ALWAYS within tolerance and the bare
+position never appeared once — the feature would have shipped looking exactly like the old
+behaviour. Measured across zooms after the change (4,300 km, 274 stops, sampling ~60 points
+along the visible line):
+
+| zoom | km per px | names a stop | bare position | no tooltip |
+|---|---|---|---|---|
+| 1 (whole route) | 5.29 | 57 | 3 | 0 |
+| 6 | 0.86 | 8 | 41 | 0 |
+| 40 | 0.14 | 1 | 53 | 0 |
+
+**"No tooltip" is 0 at every zoom** — that column is the feature.
+
+**The honest caveat, and it is Peter's call whether to change it.** At the fully zoomed-out
+view of a stop-dense route you still get a stop name almost every time. That is not the
+tolerance failing; at 5.3 km per pixel with a stop every 16 km there is a dot every three
+pixels, so you genuinely are pointing at one. Every tooltip still carries distance and
+ETA, which is what was asked for. Zoom in one notch and the continuous readout takes over.
+If he'd rather see bare positions more often at full zoom-out, the `1.5` in `_stopAtHover`
+is the single number to turn down.
+
+#### Elevation strip
+
+Needs no index — its x axis IS the route, and `hoverDist` was already being computed for
+the scrubber dot. It goes straight to the same two-step and the same tooltip body. Its stop
+test is restricted to the stops the strip actually DRAWS (it hides unstarred non-sleep
+stops), so it can no longer name a dot that isn't on screen. Verified across the full
+0–4,300 km strip: 28 bare, 13 named, 0 misses, distance within 0.6 km of the cursor, and it
+clears on `mouseleave`.
+
+#### Known, not fixed
+
+The map hover tests every stop regardless of `hiddenMapTypes`, so if stop types are hidden
+it could name a dot that isn't drawn. It cannot bite on the defaults (nothing is hidden, so
+every stop is drawn) and replicating the marker loop's visibility rule is more than this
+change needs — worth doing if the map filters ever get used in anger.
+
+
 ### v372 (28 Aug) — THE LAG WAS NEVER ONE SLOW REDRAW. IT WAS NINETEEN OF THEM PER DRAG.
 
 Peter, on the Divide and on a 1,000 km route too: *"the browser is quite slow and

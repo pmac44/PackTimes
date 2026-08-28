@@ -1746,7 +1746,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v372';
+window.APP_VERSION='v373';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -12872,6 +12872,117 @@ function _minMax(arr,get){
   return[mn,mx];
 }
 
+// ═══ v373 — HOVER ANYWHERE ON THE ROUTE ══════════════════════════════════════
+// Peter: *"I'd like it to pop up wherever you are on the route… it shows the
+// distance on the route and the time you're expected to go through there."*
+// The tooltip used to fire only within 28 px of a STOP, which on a long route is
+// a handful of places on a very long line.
+//
+// The obvious implementation — nearest of r.points to the cursor — is the exact
+// O(points)-per-event shape v372 just finished removing: 150,001 distance
+// calculations per mousemove. So the hover tests against a SCREEN-SPACE index
+// instead, built once per view and reused until the projection changes.
+//
+// Two things keep that index small, and both matter on a 4,300 km route:
+//   • points outside the canvas are dropped — they cannot be hovered, and
+//   • points closer than 1 px to the last kept one are dropped, because a
+//     polyline thinned to one vertex per pixel is exactly as accurate as the
+//     screen it is being hovered on.
+// Whole-route view: ~150,000 points collapse to a few thousand. Zoomed into a
+// town: everything off-screen is gone. Either way the per-mousemove scan is
+// bounded by the canvas, not by the route.
+//
+// ⚠ The stamp covers the projection AND the route, so a pan, a zoom, a resize or
+// a route switch all rebuild it. It never needs manual invalidation.
+function _routeHoverIndex(cvs,r){
+  const stamp=r.id+'|'+cvs._cLon+'|'+cvs._cLat+'|'+cvs._scale+'|'+cvs._W+'|'+cvs._H+'|'+cvs._anchor+'|'+r.points.length;
+  if(cvs._hoverIdx&&cvs._hoverIdx.stamp===stamp)return cvs._hoverIdx;
+  const px=cvs._px,py=cvs._py,W=cvs._W,H=cvs._H,M=60;
+  const xs=[],ys=[],ds=[];
+  let lx=-1e9,ly=-1e9;
+  for(let i=0;i<r.points.length;i++){
+    const pt=r.points[i],x=px(pt.lon),y=py(pt.lat);
+    // Off-canvas: skip, and forget the last kept point, so the first vertex back
+    // on screen is always kept. (Without that, a route that leaves one edge and
+    // returns near where it left would have the return vertex dropped.)
+    if(x<-M||x>W+M||y<-M||y>H+M){lx=-1e9;ly=-1e9;continue;}
+    if((x-lx)*(x-lx)+(y-ly)*(y-ly)<1)continue;
+    xs.push(x);ys.push(y);ds.push(pt.dist);lx=x;ly=y;
+  }
+  // Route km covered by one screen pixel ALONG THE LINE — which is not the map's
+  // km-per-pixel, because a wiggling route packs far more of itself into a pixel
+  // than a straight one does. Entries are ~1 px apart by construction, so the mean
+  // step between them is exactly the number wanted. It sets how close a stop has to
+  // be, in route terms, before naming it is honest (see _stopAtHover).
+  let step=0;
+  for(let i=1;i<ds.length;i++)step+=Math.abs(ds[i]-ds[i-1]);
+  cvs._hoverIdx={stamp,xs:Float32Array.from(xs),ys:Float32Array.from(ys),ds:Float64Array.from(ds),
+    kmPerPx:ds.length>1?step/(ds.length-1):0.01};
+  return cvs._hoverIdx;
+}
+// Nearest point ON THE ROUTE to a canvas position, or null if further than maxPx.
+function _routeHoverAt(cvs,r,mx,my,maxPx){
+  if(!cvs._px||!r||!r.points||r.points.length<2)return null;
+  const ix=_routeHoverIndex(cvs,r),xs=ix.xs,ys=ix.ys;
+  let best=-1,bd=maxPx*maxPx;
+  for(let i=0;i<xs.length;i++){
+    const dx=xs[i]-mx,dy=ys[i]-my,d=dx*dx+dy*dy;
+    if(d<bd){bd=d;best=i;}
+  }
+  return best<0?null:{dist:ix.ds[best],x:xs[best],y:ys[best],kmPerPx:ix.kmPerPx};
+}
+// Is there a stop AT the hovered position? Judged in ROUTE distance, not screen
+// distance, and that distinction is the whole point.
+//
+// ⚠ THE BUG THIS EXISTS TO PREVENT: the old hover picked the nearest stop DOT ON
+// SCREEN. Wherever a route wiggles or doubles back, screen-adjacent is not
+// route-adjacent — measured on a 4,300 km route at full zoom-out, the nearest dot
+// to the cursor was 23 km further up the line, and the tooltip named it with
+// complete confidence. Anchoring to the line first and then asking "is a stop
+// HERE?" cannot make that mistake.
+//
+// The window is a few pixels' worth of route, so it tightens automatically as you
+// zoom in. At full zoom-out on a stop-dense route the dots genuinely do tile the
+// line, and naming one is then the honest answer rather than a near miss.
+function _stopAtHover(r,hovDist,kmPerPx,stops){
+  // 1.5 px of route. Worth stating why it is so tight: on a 4,300 km route zoomed
+  // all the way out, one pixel is ~5 km of route and 274 stops sit ~16 km apart —
+  // so at 3 px a stop was ALWAYS within tolerance and the tooltip never once showed
+  // a bare position, which is the whole thing this change exists to provide. At
+  // 1.5 px a name appears when a dot really is under the cursor and not otherwise.
+  // It tightens automatically as you zoom: 8 km of slack at full zoom-out, 700 m at
+  // 12x, centimetres when you are looking at one town.
+  const tol=Math.max(0.05,1.5*(kmPerPx||0.01));
+  let best=null,bd=tol;
+  const list=stops||r.stops;
+  for(let i=0;i<list.length;i++){const dd=Math.abs(list[i].dist-hovDist);if(dd<bd){bd=dd;best=list[i];}}
+  return best;
+}
+// One tooltip body for both surfaces: a stop's name when one is genuinely there,
+// otherwise the bare position. Either way it answers the same two questions —
+// how far in, and when do I get there.
+function _hoverTipHTML(r,hovDist,stop){
+  const d=stop?stop.dist:hovDist;
+  const eta=startDT(r)?etaAt(d,r):null;
+  const sub=(eta?fmtDT(eta):'set a start date for an ETA');
+  const head=stop?((stop.icon||'📍')+' '+stop.name+' · '+fmtDistKm(d)+' km')
+                 :('📍 '+fmtDistKm(d)+' km');
+  return head+'<br><span style="font-size:13px;font-weight:400;color:var(--text3);">'+sub+'</span>';
+}
+// Place the shared tooltip inside the desktop map pane, flipping it left/down at
+// the edges. Lifted out of the two hover handlers, which had already drifted
+// apart — one offset the tooltip by -36 px and the other by -44.
+function _placeTip(tt,clientX,clientY){
+  const pane=document.getElementById('desktop-map-pane');
+  if(!pane)return;
+  const pr=pane.getBoundingClientRect();
+  let tx=clientX-pr.left+14,ty=clientY-pr.top-44;
+  if(tx+230>pr.width)tx=clientX-pr.left-230;
+  if(ty<0)ty=clientY-pr.top+14;
+  tt.style.left=Math.round(tx)+'px';tt.style.top=Math.round(ty)+'px';
+  tt.style.display='block';
+}
+
 // Attach pinch zoom + optional tap callback to a canvas
 // tapCb(distKm) — if null canvas is display-only
 function attachMap(cvs,tapCb){
@@ -14754,29 +14865,25 @@ function _renderDesktopMapInner(){
       const r2=cur();
       const tt=document.getElementById('desktop-tooltip');
       if(!r2||!cvs._px||!tt)return;
+      // v373 — while panning, the projection changes on every event, so the hover
+      // index would rebuild per mousemove for a tooltip nobody is reading.
+      if(_mapDragging){tt.style.display='none';return;}
       const rect=cvs.getBoundingClientRect();
       const mx=e.clientX-rect.left,my=e.clientY-rect.top;
-      const{_px:px,_py:py,_pts:pts}=cvs;
-      let bestStop=null,bestD=Infinity;
-      r2.stops.forEach(s=>{
-        const dotLon=(s.lat&&s.lon)?s.lon:pts[cidx(r2,s.dist)].lon;
-        const dotLat=(s.lat&&s.lon)?s.lat:pts[cidx(r2,s.dist)].lat;
-        const dx=px(dotLon)-mx,dy=py(dotLat)-my,d=dx*dx+dy*dy;
-        if(d<bestD){bestD=d;bestStop=s;}
-      });
-      if(bestStop&&Math.sqrt(bestD)<28){
-        const sdt=startDT(r2);
-        const eta=etaAt(bestStop.dist,r2);
-        const etaStr=sdt&&eta?fmtDT(eta):'';
-        const distStr=bestStop.dist.toFixed(1)+'km';
-        tt.innerHTML=`${bestStop.icon||'📍'} ${bestStop.name}<br><span style="font-size:13px;font-weight:400;color:var(--text3);">${distStr}${etaStr?' · '+etaStr:''}</span>`;
-        const paneW=rect.width;
-        let tx=mx+14,ty=my-36;
-        if(tx+230>paneW)tx=mx-230;
-        if(ty<0)ty=my+14;
-        tt.style.left=Math.round(tx)+'px';tt.style.top=Math.round(ty)+'px';
-        tt.style.display='block';
-        cvs.style.cursor='pointer';
+      // v373 — ANCHOR TO THE LINE FIRST, then ask whether a stop is at that spot.
+      // The old order was the other way round (nearest stop dot on screen, 28 px)
+      // and it had two faults that only showed up on a long route: at 4.9 km per
+      // pixel that radius reached 137 km up the line, and 'nearest on screen' is
+      // not 'nearest along the route' wherever the line wiggles or doubles back —
+      // measured, it named a town 23 km from where the cursor actually was.
+      // 14 px is a little wider than the drawn line, so the route is easy to catch
+      // without the tooltip flickering on as the cursor crosses empty ground.
+      const hov=_routeHoverAt(cvs,r2,mx,my,14);
+      if(hov){
+        const stop=_stopAtHover(r2,hov.dist,hov.kmPerPx);
+        tt.innerHTML=_hoverTipHTML(r2,hov.dist,stop);
+        _placeTip(tt,e.clientX,e.clientY);
+        cvs.style.cursor=stop?'pointer':'crosshair';
       } else {
         tt.style.display='none';
         cvs.style.cursor='';
@@ -14958,26 +15065,18 @@ function _renderDesktopMapInner(){
       });
       // Tooltip for nearby stops
       if(tt){
-        let bestStop=null,bestDx=Infinity;
-        r2.stops.forEach(s=>{
-          if(s.starred===false&&s.type!=='sleep'&&s.type!=='stop'&&!s.sleepAt)return;
-          const dx=Math.abs(ex2(s.dist)-mx);
-          if(dx<bestDx){bestDx=dx;bestStop=s;}
-        });
-        if(bestStop&&bestDx<12){
-          const sdt=startDT(r2);
-          const eta=etaAt(bestStop.dist,r2);
-          const etaStr=sdt&&eta?fmtDT(eta):'';
-          tt.innerHTML=`${bestStop.icon||'📍'} ${bestStop.name}<br><span style="font-size:13px;font-weight:400;color:var(--text3);">${bestStop.dist.toFixed(1)}km${etaStr?' · '+etaStr:''}</span>`;
-          const pr=document.getElementById('desktop-map-pane').getBoundingClientRect();
-          let tx=e.clientX-pr.left+14,ty=e.clientY-pr.top-44;
-          if(tx+230>pr.width)tx=e.clientX-pr.left-230;
-          if(ty<0)ty=e.clientY-pr.top+14;
-          tt.style.left=Math.round(tx)+'px';tt.style.top=Math.round(ty)+'px';
-          tt.style.display='block';
-        } else {
-          tt.style.display='none';
-        }
+        // v373 — the strip needs no hover index: its x axis IS the route, and
+        // hoverDist above already turned the cursor into a route distance for the
+        // scrubber dot. So it goes straight to the same two-step the map uses —
+        // position first, then 'is a stop actually here?' — and shares the same
+        // tooltip body, so the two surfaces cannot drift apart again.
+        // Only stops the strip actually DRAWS are eligible (it hides unstarred
+        // non-sleep stops), or the tooltip would name a dot that isn't there.
+        const drawn=r2.stops.filter(s=>!(s.starred===false&&s.type!=='sleep'&&s.type!=='stop'&&!s.sleepAt));
+        const kmPerPx=vS/Math.max(1,W2-pad2*2);
+        const stop=_stopAtHover(r2,hoverDist,kmPerPx,drawn);
+        tt.innerHTML=_hoverTipHTML(r2,hoverDist,stop);
+        _placeTip(tt,e.clientX,e.clientY);
       }
     });
     ec.addEventListener('mouseleave',()=>{
