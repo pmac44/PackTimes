@@ -1416,6 +1416,7 @@ select option{background:var(--bg3);}
     <div style="display:flex;flex-direction:column;gap:8px;">
       <button class="btn btn-p btn-full" id="rdm-fillgaps" style="display:none;">Fill missing GPS sections&hellip;</button>
       <button class="btn btn-full" id="rdm-strava" style="display:none;">Upload to Strava</button>
+      <button class="btn btn-full" id="rdm-icu" style="display:none;">Send to intervals.icu</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-p" id="rdm-fit" style="flex:1;justify-content:center;">Export FIT</button>
         <button class="btn" id="rdm-gpx" style="flex:1;justify-content:center;">Export GPX</button>
@@ -1746,7 +1747,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v376';
+window.APP_VERSION='v377';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1756,7 +1757,7 @@ const newRoute=name=>({
   adaptiveSpeed:true,baseTimeFactor:1.0,riderPreset:'regular',loadPreset:'moderate',daySplitCount:0,
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxExpiresAt:null,dbxSavedAt:null,
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxExpiresAt:null,dbxSavedAt:null,icuKey:null,icuAthleteId:null,icuAthleteName:null,icuAutoUpload:true,
   calibRides:[],   // Advanced Calibration sample rides — global (rider property, not route)
   estModeAdv:false, // Basic vs Advanced estimation — global (rider property, not route); syncs via plan.json
   fatigueMode:'off', // Optional fatigue model: off|mild|moderate|strong — global rider setting
@@ -1772,7 +1773,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   gpsTravelledKm:0,
   _lastSnapIdx:null,                       // route point index of last snap (for directional bias)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,turnAlertM:50,turnMarkerOffsetM:30,
-  settingsExp:{appearance:true,sharing:false,packride:false,strava:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
+  settingsExp:{appearance:true,sharing:false,packride:false,strava:false,intervals:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,
   powerMaxForceN:null,powerMinForceN:null,powerMaxTorqueNm:null,powerHasPeak:false,powerCpsFlags:0,   // v360 — pedal force pill
@@ -1907,6 +1908,8 @@ async function saveAll(){
   await DB.setKV('dbxExpiresAt',UI.dbxExpiresAt||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
+  // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
+  await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
   await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
@@ -1926,6 +1929,8 @@ async function loadAll(){
     UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
     const sa=await DB.getKV('stravaAuth').catch(()=>null);
     if(sa){UI.stravaToken=sa.token||null;UI.stravaRefreshToken=sa.refresh||null;UI.stravaExpiresAt=sa.expiresAt||null;UI.stravaAthlete=sa.athlete||null;UI.stravaAutoUpload=sa.autoUpload!==false;}
+    const ia=await DB.getKV('intervalsAuth').catch(()=>null);
+    if(ia){UI.icuKey=ia.key||null;UI.icuAthleteId=ia.athleteId||null;UI.icuAthleteName=ia.athleteName||null;UI.icuAutoUpload=ia.autoUpload!==false;}
     // Location sharing — own KV row, deliberately outside uiPrefs (the write token
     // is a secret and must not ride along to Dropbox with the rest of the prefs).
     const sh=await DB.getKV('shareAuth').catch(()=>null);
@@ -5451,7 +5456,7 @@ function _doStartGPS(){
   UI.gpsWatchId=navigator.geolocation.watchPosition(_gpsOnFix=pos=>{
     // A fix after a >2 min silence usually means signal is back — good moment
     // to retry any queued Strava uploads (cheap no-op when queue is empty)
-    if(_gpsLastFixMs&&Date.now()-_gpsLastFixMs>120000)setTimeout(()=>stravaProcessQueue(true),0);
+    if(_gpsLastFixMs&&Date.now()-_gpsLastFixMs>120000)setTimeout(()=>{stravaProcessQueue(true);icuProcessQueue(true);},0);
     _gpsLastFixMs=Date.now();// feed the dead-watch watchdog
     const prevPos=UI.gpsPos;// save before overwrite for cumulative distance
     UI.gpsPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,speed:pos.coords.speed,ts:pos.timestamp};
@@ -6295,6 +6300,7 @@ async function _recGapFinish(){
   render();
   // Gap decisions made — NOW the ride is ready for auto-upload (the FIT includes fills)
   if(ctx.auto && UI.stravaToken && UI.stravaAutoUpload !== false) stravaQueue(ctx.rec);
+  if(ctx.auto && icuAutoOn()) icuQueue(ctx.rec);
   // …and totals are final, so the name/calibration prompt can use them
   if(_recSavePending && _recSavePending.id === ctx.rec.id){
     const p = _recSavePending;
@@ -6507,11 +6513,7 @@ function _ridesCardHTML(){
       + '<div style="font-size:16px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _recDisplayName(rec) + '</div>'
       + '<div style="font-size:14px;color:var(--accent);font-family:var(--font);">' + (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(durH) + (rt ? ' · ' + (rt.label || rt.name) : ' · No route') + '</div>'
       + '</div>'
-      + (rec.stravaUploadedAt
-          ? '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid var(--accent2);color:var(--accent);white-space:nowrap;flex-shrink:0;">On Strava ✓</span>'
-          : rec.stravaUploadStatus === 'queued'
-          ? '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid rgba(249,115,22,.4);color:#f97316;white-space:nowrap;flex-shrink:0;">Queued</span>'
-          : '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);white-space:nowrap;flex-shrink:0;">Local only</span>')
+      + _recSyncBadgeHTML(rec)
       + '</div>';
   }).join('');
   const trigger=`<div class="card" id="btn-open-rides" style="margin-top:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
@@ -6562,7 +6564,7 @@ function _recDetailOpen(recId){
       ? '<a href="' + rec.stravaActivityUrl + '" target="_blank" rel="noopener" style="color:var(--accent);">On Strava ✓ — view activity</a>'
       : rec.stravaUploadStatus === 'queued'
       ? '<span style="color:#f97316;">Queued for Strava upload' + (()=>{const a=rec.stravaUploadAttempts||[];const l=a[a.length-1];return (l&&!l.ok&&l.error)?' — last try: '+l.error:'';})() + '</span>'
-      : '<span style="color:var(--text3);">Local only — not uploaded</span>') +
+      : '<span style="color:var(--text3);">' + ((rec.icuUploadedAt || rec.icuUploadStatus) ? 'Not on Strava' : 'Local only — not uploaded') + '</span>') +
     // A rename that hasn't landed on Strava must SAY so, and say WHY. A silent
     // "pending" forever is how the v197 bug hid: the rename was failing every time
     // and the only sign was a toast that said it would keep trying.
@@ -6570,7 +6572,8 @@ function _recDetailOpen(recId){
       ? '<br><span style="color:var(--amber);">Name not yet synced to Strava'
         + (rec.stravaNameError ? ' — ' + String(rec.stravaNameError).replace(/</g,'&lt;') : '')
         + '</span>'
-      : '');
+      : '') +
+    _recIcuStatusHTML(rec);
   // Strava button: hidden unless connected; label reflects upload state
   const sBtn = document.getElementById('rdm-strava');
   if(!UI.stravaToken){
@@ -6580,6 +6583,16 @@ function _recDetailOpen(recId){
     sBtn.textContent = rec.stravaUploadedAt ? 'Upload to Strava again'
                      : rec.stravaUploadStatus === 'queued' ? 'Retry Strava upload now'
                      : 'Upload to Strava';
+  }
+  const iBtn = document.getElementById('rdm-icu');
+  if(iBtn){
+    if(!UI.icuKey) iBtn.style.display = 'none';
+    else {
+      iBtn.style.display = 'block';
+      iBtn.textContent = rec.icuUploadedAt ? 'Send to intervals.icu again'
+                       : rec.icuUploadStatus === 'queued' ? 'Retry intervals.icu now'
+                       : 'Send to intervals.icu';
+    }
   }
   document.getElementById('rdm-del-confirm').style.display = 'none';
   // Offer gap fill for any gaps still awaiting a decision (e.g. the end-of-ride
@@ -6693,6 +6706,19 @@ async function _recDetailDelete(){
     _recToast('Uploading to Strava…');
     _stravaLastForce = 0;   // bypass the trigger debounce for an explicit tap
     stravaQueue(rec);
+    _recDetailClose();
+  });
+  $('rdm-icu').addEventListener('click', ()=>{
+    const rec = _recDetailRec;
+    if(!rec) return;
+    if(rec.icuUploadedAt){
+      if(!confirm('This ride is already on intervals.icu. Send it again? (It will be ignored if nothing changed.)')) return;
+      rec.icuUploadedAt = null;
+      rec.icuActivityUrl = null;
+    }
+    _recToast('Sending to intervals.icu…');
+    _icuLastForce = 0;   // bypass the trigger debounce for an explicit tap
+    icuQueue(rec);
     _recDetailClose();
   });
   $('rdm-fit').addEventListener('click', ()=>exportRecordingAsFIT());
@@ -6901,6 +6927,7 @@ async function _recSaveConfirm(){
   const i = RECS.findIndex(x => x.id === rec.id);
   if(i >= 0) RECS[i] = rec;
   if(name) stravaMarkRename(rec);   // keep Strava's title in step with ours
+  if(name) icuMarkRename(rec);
   _recSaveClose();
   render();
 }
@@ -7019,6 +7046,7 @@ function _recCalibAdd(entry){
       rec.name = name;
       await DB.putRecording(rec).catch(()=>{});
       stravaMarkRename(rec);   // keep Strava's title in step with ours
+      icuMarkRename(rec);
       $('rdm-title').textContent = name;
       render();   // refresh the Recorded Rides list behind the modal
     }
@@ -7764,6 +7792,251 @@ async function stravaProcessQueue(force){
 setInterval(()=>stravaProcessQueue(false), 60000);
 window.addEventListener('online', ()=>stravaProcessQueue(true));
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) stravaProcessQueue(true); });
+// ═══════════════════════════════════════════
+//  INTERVALS.ICU (v377)
+//  ───────────────────────────────────────────
+//  Direct FIT upload to intervals.icu — the ride data path for the Bike Coach
+//  project (../BikeCoach-project/CLAUDE.md). Rides that reach intervals.icu via
+//  Strava are walled off from its API, so the coach needs the file itself.
+//  The queued plan was "write the FIT into a Dropbox folder intervals.icu watches"
+//  and it is a DEAD END: the PackTimes Dropbox app is APP-FOLDER scoped (its
+//  token can only write inside /Apps/PackTimes — that is where plan.json lives),
+//  while intervals.icu watches ITS OWN app folder (/Apps/Intervals.icu/Activities).
+//  Dropbox permission type cannot be changed after an app is created. So the FIT
+//  goes straight to intervals.icu's own API instead: API-key basic auth (username
+//  API_KEY), CORS open to pmac44.github.io (checked with a preflight, 8 Sep 2026),
+//  de-duped server-side by file hash so a re-send is harmless (HTTP 200 = "had it
+//  already", 201 = new). Same shape as the Strava code above: a per-ride queue with
+//  the same backoff, the same retry triggers, and a best-effort rename pass. The
+//  key is a secret: it lives in its own `intervalsAuth` KV row — never in uiPrefs,
+//  never in plan.json. `device_name` is free text here, so the ride shows as
+//  recorded on "PackTimes" — the thing Strava never allowed (see Settled).
+// ═══════════════════════════════════════════
+
+const ICU_API = 'https://intervals.icu/api/v1';
+let _icuBusy = false;
+let _icuLastForce = 0;
+
+function icuAuthHeader(key){ return 'Basic ' + btoa('API_KEY:' + (key || UI.icuKey || '')); }
+function icuAutoOn(){ return !!UI.icuKey && UI.icuAutoUpload !== false; }
+
+// Check a pasted key against the account it belongs to (athlete "0" = the key's
+// owner). Resolves {id, name}, or throws with a message fit to show the rider.
+async function icuVerifyKey(key){
+  const res = await fetch(ICU_API + '/athlete/0', {headers: {'Authorization': icuAuthHeader(key)}});
+  if(res.status === 401 || res.status === 403)
+    throw new Error('intervals.icu rejected that key — copy it again from intervals.icu → Settings → Developer Settings');
+  if(!res.ok) throw new Error('intervals.icu answered HTTP ' + res.status);
+  const a = await res.json().catch(()=>({}));
+  return {id: a.id || null,
+          name: a.name || [a.firstname, a.lastname].filter(Boolean).join(' ') || null};
+}
+
+function icuDisconnect(){
+  UI.icuKey = null; UI.icuAthleteId = null; UI.icuAthleteName = null;
+  saveAll();
+  render();
+}
+
+// Mark a recording for upload and kick the queue.
+function icuQueue(rec){
+  if(!rec || rec.icuUploadedAt) return;
+  rec.icuUploadStatus = 'queued';
+  rec.icuUploadAttempts = rec.icuUploadAttempts || [];
+  DB.putRecording(rec).catch(()=>{});
+  if(UI.tab === 'routes') render();
+  icuProcessQueue(true);
+}
+
+// One-off backfill from Settings: queue every saved ride that hasn't gone up.
+// Safe to press twice — intervals.icu hashes the file, so a ride it already
+// holds just comes back 200 and gets marked as sent. Returns how many were queued.
+function icuQueueAll(){
+  let n = 0;
+  for(const rec of RECS){
+    if(rec.icuUploadedAt || rec.icuUploadStatus === 'queued') continue;
+    if(!rec.points || !rec.points.length) continue;
+    rec.icuUploadStatus = 'queued';
+    rec.icuUploadAttempts = rec.icuUploadAttempts || [];
+    DB.putRecording(rec).catch(()=>{});
+    n++;
+  }
+  _icuLastForce = 0;   // an explicit tap bypasses the trigger debounce
+  if(n) icuProcessQueue(true);
+  return n;
+}
+
+// Upload one recording as FIT. Resolves {url, note} or throws.
+// The FIT is byte-identical to the Strava one (same encoder, same inputs), so the
+// server-side hash de-dupe also protects a ride that gets queued twice.
+async function icuUpload(rec){
+  if(!UI.icuKey) throw new Error('not connected — add your API key in Settings');
+  const bytes = encodeActivityFit({
+    startTS: rec.startTS,
+    endTS: rec.endTS || _recLastActivityTS(rec),
+    points: rec.points,
+  });
+  const fd = new FormData();
+  fd.append('file', new Blob([bytes], {type: 'application/octet-stream'}), _recExportName(rec) + '.fit');
+  const q = new URLSearchParams({
+    name: rec.name || _recDefaultName(rec),
+    external_id: 'packtimes-' + rec.id,
+    device_name: 'PackTimes',
+  });
+  const res = await fetch(ICU_API + '/athlete/0/activities?' + q, {
+    method: 'POST',
+    headers: {'Authorization': icuAuthHeader()},
+    body: fd,
+  });
+  if(res.status === 401 || res.status === 403) throw new Error('API key rejected — check it in Settings');
+  const up = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(up.error || up.message || ('upload failed, HTTP ' + res.status));
+  const acts = Array.isArray(up.activities) ? up.activities : [];
+  const id = acts.length ? (acts[0].id || null) : null;
+  return {url: id ? 'https://intervals.icu/activities/' + id : null,
+          note: res.status === 200 ? 'duplicate' : undefined};
+}
+
+function _icuSyncRecs(rec){ const i = RECS.findIndex(x => x.id === rec.id); if(i >= 0) RECS[i] = rec; }
+
+// Push a renamed ride's title up. Best-effort and cosmetic — never blocks or
+// re-sends the upload. Mirrors stravaSyncName, including the v260 rule: a 404
+// means the rider deleted it there, so stop claiming it's there (and never
+// silently re-upload). announce=true → user-initiated, so toast the outcome.
+async function icuSyncName(rec, announce){
+  if(!rec || !rec.icuNamePending || !UI.icuKey) return;
+  const m = (rec.icuActivityUrl || '').match(/activities\/([^/?#]+)/);
+  if(!m){   // sent as a duplicate with no id handed back — nothing to rename
+    rec.icuNamePending = false;
+    await DB.putRecording(rec).catch(()=>{});
+    return;
+  }
+  try{
+    const res = await fetch(ICU_API + '/activity/' + m[1], {
+      method: 'PUT',
+      headers: {'Authorization': icuAuthHeader(), 'Content-Type': 'application/json'},
+      body: JSON.stringify({name: rec.name || ''}),
+    });
+    if(res.status === 404){
+      rec.icuNamePending = false; rec.icuNameError = null;
+      rec.icuActivityUrl = null; rec.icuUploadedAt = null; rec.icuUploadStatus = null;
+      await DB.putRecording(rec).catch(()=>{});
+      _icuSyncRecs(rec);
+      if(announce) _recToast('That ride is no longer on intervals.icu — link cleared');
+      const dm = document.getElementById('rec-detail-modal');
+      if(dm && dm.style.display === 'flex') _recDetailOpen(rec.id);
+      return;
+    }
+    if(!res.ok){
+      const txt = await res.text().catch(()=>'');
+      throw new Error('HTTP ' + res.status + (txt ? ' · ' + txt.slice(0, 140) : ''));
+    }
+    rec.icuNamePending = false; rec.icuNameError = null;
+    await DB.putRecording(rec).catch(()=>{});
+    _icuSyncRecs(rec);
+    if(announce) _recToast('Name updated on intervals.icu ✓');
+  }catch(e){
+    rec.icuNameError = (e && e.message) ? e.message : 'rename failed';
+    await DB.putRecording(rec).catch(()=>{});
+    _icuSyncRecs(rec);
+    if(announce) _recToast('intervals.icu rename failed — ' + rec.icuNameError);
+  }
+}
+
+// Called from both rename paths, beside stravaMarkRename. Only marks rides that
+// are bound for intervals.icu; a ride still in the queue needs nothing extra
+// because the upload itself carries rec.name.
+function icuMarkRename(rec){
+  if(!rec || !UI.icuKey) return;
+  if(!rec.icuUploadedAt && rec.icuUploadStatus !== 'queued') return;
+  rec.icuNamePending = true;
+  DB.putRecording(rec).catch(()=>{});
+  if(rec.icuUploadedAt) icuSyncName(rec, true);
+}
+
+// Work through everything queued. force=true ignores per-ride backoff
+// (online/foreground/GPS-return triggers), debounced to 20 s — same as Strava.
+async function icuProcessQueue(force){
+  if(_icuBusy || !UI.icuKey) return;
+  if(force){
+    if(Date.now() - _icuLastForce < 20000) return;
+    _icuLastForce = Date.now();
+  }
+  const queued = RECS.filter(r => r.icuUploadStatus === 'queued' && !r.icuUploadedAt);
+  const needsRename = () => RECS.filter(r => r.icuNamePending && r.icuUploadedAt);
+  if(!queued.length && !needsRename().length) return;
+  _icuBusy = true;
+  let sent = 0, failed = 0;
+  try{
+    for(const rec of queued){
+      const attempts = rec.icuUploadAttempts || [];
+      if(!force && attempts.length){
+        const last = attempts[attempts.length - 1].at;
+        const delay = STRAVA_BACKOFF_MS[Math.min(attempts.length - 1, STRAVA_BACKOFF_MS.length - 1)];
+        if(Date.now() - last < delay) continue;
+      }
+      try{
+        const r = await icuUpload(rec);
+        rec.icuUploadedAt = Date.now();
+        rec.icuActivityUrl = r.url;
+        rec.icuUploadStatus = null;
+        rec.icuNamePending = false;   // the upload carried rec.name
+        (rec.icuUploadAttempts = rec.icuUploadAttempts || []).push({at: Date.now(), ok: true, note: r.note});
+        sent++;
+        if(queued.length === 1) _recToast(r.note === 'duplicate' ? 'Already on intervals.icu ✓' : 'Ride sent to intervals.icu ✓');
+      }catch(e){
+        (rec.icuUploadAttempts = rec.icuUploadAttempts || []).push({at: Date.now(), ok: false, error: String(e.message || e)});
+        failed++;
+      }
+      await DB.putRecording(rec).catch(()=>{});
+    }
+    if(queued.length > 1 && (sent || failed))
+      _recToast(sent + ' ride' + (sent !== 1 ? 's' : '') + ' sent to intervals.icu' + (failed ? ' · ' + failed + ' failed — will retry' : ''));
+    for(const rec of needsRename()) await icuSyncName(rec);
+  } finally {
+    _icuBusy = false;
+    if(UI.tab === 'routes' || UI.tab === 'settings') render();
+  }
+}
+
+// Ride detail modal: the intervals.icu status line(s). Empty when the rider has
+// never connected AND this ride has never been near it — no noise for non-users.
+function _recIcuStatusHTML(rec){
+  if(!UI.icuKey && !rec.icuUploadedAt && !rec.icuUploadStatus) return '';
+  const a = rec.icuUploadAttempts || [], l = a[a.length - 1];
+  const lastErr = (l && !l.ok && l.error) ? ' — last try: ' + String(l.error).replace(/</g,'&lt;') : '';
+  let s = '<br>' + (rec.icuUploadedAt
+    ? (rec.icuActivityUrl
+        ? '<a href="' + rec.icuActivityUrl + '" target="_blank" rel="noopener" style="color:var(--accent);">On intervals.icu ✓ — view activity</a>'
+        : '<span style="color:var(--accent);">On intervals.icu ✓</span>')
+    : rec.icuUploadStatus === 'queued'
+    ? '<span style="color:#f97316;">Queued for intervals.icu' + lastErr + '</span>'
+    : '<span style="color:var(--text3);">Not on intervals.icu</span>');
+  if(rec.icuNamePending)
+    s += '<br><span style="color:var(--amber);">Name not yet synced to intervals.icu'
+       + (rec.icuNameError ? ' — ' + String(rec.icuNameError).replace(/</g,'&lt;') : '') + '</span>';
+  return s;
+}
+
+// Rides card: the sync pills on the right of each row. One per service it has
+// been sent to (or is queued for); "Local only" when neither.
+function _recSyncBadgeHTML(rec){
+  const pill = (txt, border, color) =>
+    '<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg2);border:1px solid ' + border + ';color:' + color + ';white-space:nowrap;">' + txt + '</span>';
+  const out = [];
+  if(rec.stravaUploadedAt) out.push(pill('On Strava ✓', 'var(--accent2)', 'var(--accent)'));
+  else if(rec.stravaUploadStatus === 'queued') out.push(pill('Queued · Strava', 'rgba(249,115,22,.4)', '#f97316'));
+  if(rec.icuUploadedAt) out.push(pill('intervals.icu ✓', 'var(--accent2)', 'var(--accent)'));
+  else if(rec.icuUploadStatus === 'queued') out.push(pill('Queued · intervals', 'rgba(249,115,22,.4)', '#f97316'));
+  if(!out.length) out.push(pill('Local only', 'var(--border)', 'var(--text3)'));
+  return '<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end;flex-shrink:0;">' + out.join('') + '</div>';
+}
+
+// Retry triggers — the same three as Strava's (plus the GPS-return one in the watch callback)
+setInterval(()=>icuProcessQueue(false), 60000);
+window.addEventListener('online', ()=>icuProcessQueue(true));
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) icuProcessQueue(true); });
+
 
 // ── Live-tab recording control: tap handlers for the play/pause/stop buttons ──
 //
@@ -8023,6 +8296,7 @@ function _recFlushEndOfRide(){
   _recGapPending = null;    // its prompt dies unshown — deliberate, see above
   _recSavePending = null;   // ditto the name/save prompt
   if(justFinished && UI.stravaToken && UI.stravaAutoUpload!==false) stravaQueue(justFinished);
+  if(justFinished && icuAutoOn()) icuQueue(justFinished);
   if(justFinished || hadGaps){
     _recToast(hadGaps ? 'Last ride saved — fill its GPS gaps any time from the Rides card'
                       : 'Last ride saved');
@@ -8049,6 +8323,7 @@ async function _recStopConfirm(){
     if(!_recGapCtx && justFinished && UI.stravaToken && UI.stravaAutoUpload !== false){
       stravaQueue(justFinished);
     }
+    if(!_recGapCtx && justFinished && icuAutoOn()) icuQueue(justFinished);
     if(_recGapCtx){
       // Gap decisions first (they change the totals) — save prompt follows in _recGapFinish
       _recSavePending = justFinished;
@@ -18990,6 +19265,37 @@ function tSettings(r){
     </div>`;
   };
 
+  // ── intervals.icu (v377) — the Bike Coach data path. API key, not OAuth. ──
+  const intervalsBody=(()=>{
+    if(!UI.icuKey)return`
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Sends each finished ride's FIT file straight to <a href="https://intervals.icu" target="_blank" rel="noopener" style="color:var(--accent);">intervals.icu</a> for training analysis. Nothing goes through Strava, and the Strava upload is unchanged.</p>
+      <div style="font-size:14px;color:var(--text3);margin-bottom:10px;line-height:1.5;">Your API key is at <strong style="color:var(--text2);">intervals.icu → Settings → Developer Settings</strong>. Paste it below — PackTimes checks it against your account before saving.</div>
+      <div class="field">
+        <label class="lbl">API Key</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="password" id="icu-key-input" placeholder="paste your key" autocomplete="off" style="flex:1;font-size:14px;letter-spacing:0.5px;">
+          <button class="btn btn-sm btn-p" id="btn-icu-save">Connect</button>
+        </div>
+      </div>
+      <div id="icu-status" style="font-size:13px;font-family:var(--font);margin-top:4px;color:var(--text3);">Not connected.</div>`;
+    const queued=RECS.filter(r=>r.icuUploadStatus==='queued'&&!r.icuUploadedAt);
+    const lastFail=(()=>{if(!queued.length)return null;const a=queued[0].icuUploadAttempts||[];const l=a[a.length-1];return l&&!l.ok?l.error:null;})();
+    const unsent=RECS.filter(r=>!r.icuUploadedAt&&r.icuUploadStatus!=='queued'&&r.points&&r.points.length).length;
+    return`
+      <p style="font-size:15px;color:var(--text2);margin-bottom:10px;">Connected${UI.icuAthleteName?' as <strong>'+UI.icuAthleteName+'</strong>':''}</p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:15px;margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="icu-auto-toggle" ${UI.icuAutoUpload!==false?'checked':''}> Send each ride when it's finished
+      </label>
+      ${queued.length
+        ?`<div style="font-size:14px;color:#f97316;margin-bottom:8px;line-height:1.4;">${queued.length} upload${queued.length!==1?'s':''} waiting${lastFail?' — last attempt: '+lastFail:''}</div>
+          <button class="btn btn-sm" id="btn-icu-retry">Retry now</button>`
+        :`<div style="font-size:14px;color:var(--text3);margin-bottom:8px;">No uploads waiting.</div>`}
+      ${unsent
+        ?`<div style="font-size:14px;color:var(--text3);margin:10px 0 6px;line-height:1.4;">${unsent} saved ride${unsent!==1?'s':''} not yet sent. intervals.icu ignores any it already has.</div>
+          <button class="btn btn-sm" id="btn-icu-send-all">Send all saved rides</button>`
+        :''}
+      <div style="margin-top:10px;"><button class="btn btn-sm" id="btn-icu-disconnect">Disconnect</button></div>`;
+  })();
   const dropboxBody=`
     <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Syncs routes and stops to Dropbox. Saves 5 seconds after any change, loads on startup if cloud is newer.</p>
     <div id="dbx-status" style="font-size:14px;color:var(--text3);margin-bottom:8px;font-family:var(--font);">${UI.dbxToken?(UI.dbxSavedAt?'☁️ Last synced '+new Date(UI.dbxSavedAt).toLocaleTimeString():'☁️ Connected'):'Not connected'}</div>
@@ -19416,6 +19722,7 @@ function tSettings(r){
         :`<div style="font-size:14px;color:var(--text3);margin-bottom:8px;">No uploads waiting.</div>`}
       <div style="margin-top:10px;"><button class="btn btn-sm" id="btn-strava-disconnect">Disconnect</button></div>`;
   })())}
+  ${section('intervals','intervals.icu',intervalsBody)}
   ${section('dropbox','Dropbox Sync',dropboxBody)}
   ${section('alerts','Proximity Alerts',alertsBody,!!r)}
   ${section('ftp','⚡❤️ Sensors & Zones',ftpBody)}
@@ -22912,6 +23219,26 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-strava-retry')){_recToast('Retrying Strava uploads…');_stravaLastForce=0;stravaProcessQueue(true);return;}
   if(e.target.closest('#btn-strava-disconnect')){stravaDisconnect();return;}
   if(e.target.id==='strava-auto-toggle'){UI.stravaAutoUpload=e.target.checked;saveAll();return;}
+  if(e.target.closest('#btn-icu-save')){
+    const val=(document.getElementById('icu-key-input')?.value||'').trim();
+    const st=document.getElementById('icu-status');
+    if(!val){if(st){st.textContent='Paste your API key first.';st.style.color='var(--red)';}return;}
+    if(st){st.textContent='Checking the key with intervals.icu…';st.style.color='var(--text3)';}
+    icuVerifyKey(val).then(a=>{
+      UI.icuKey=val;UI.icuAthleteId=a.id;UI.icuAthleteName=a.name;
+      if(UI.icuAutoUpload==null)UI.icuAutoUpload=true;   // default ON at first connect
+      saveAll();render();
+      _recToast('Connected to intervals.icu'+(a.name?' as '+a.name:''));
+    }).catch(err=>{
+      const s2=document.getElementById('icu-status');
+      if(s2){s2.textContent=err.message||'Could not reach intervals.icu';s2.style.color='var(--red)';}
+    });
+    return;
+  }
+  if(e.target.closest('#btn-icu-retry')){_recToast('Retrying intervals.icu uploads…');_icuLastForce=0;icuProcessQueue(true);return;}
+  if(e.target.closest('#btn-icu-send-all')){const n=icuQueueAll();_recToast(n?'Sending '+n+' ride'+(n!==1?'s':'')+' to intervals.icu…':'Nothing to send');render();return;}
+  if(e.target.closest('#btn-icu-disconnect')){icuDisconnect();return;}
+  if(e.target.id==='icu-auto-toggle'){UI.icuAutoUpload=e.target.checked;saveAll();return;}
   if(e.target.closest('#btn-dbx-connect')){sessionStorage.setItem('dbx_return_tab',UI.tab);window.location.href=dbxAuthURL();return;}
   if(e.target.closest('#btn-dbx-save')){dbxSave(false);return;}
   if(e.target.closest('#btn-dbx-load')){dbxLoad(true);return;}
