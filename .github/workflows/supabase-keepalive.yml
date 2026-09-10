@@ -1,0 +1,45 @@
+# Keeps the PackTimes Supabase project awake.
+#
+# Supabase's free tier pauses any project with no database activity for 7 days,
+# and PackTimes only talks to its backend during a ride with sharing on — so a
+# fortnight off the bike gets the "scheduled to be paused" email (first one:
+# 10 Sep 2026). A paused project breaks sharing / PackRide / PackView silently,
+# and after 90 days paused it is deleted along with every event and schema.
+#
+# This calls event_info with a code that can never exist. That runs a real
+# SELECT on the events table (counts as activity), writes nothing, and returns
+# {"error":"not_found"} with HTTP 200. The key is the app's public key — it is
+# already in index.html and grants no ability to read or write anyone's data.
+#
+# Runs every 3 days. GitHub disables schedules on repos with no commits for 60
+# days, so if PackTimes ever goes quiet that long, push anything to re-arm it —
+# or run it by hand from the Actions tab (workflow_dispatch).
+
+name: Supabase keepalive
+
+on:
+  schedule:
+    - cron: '17 3 */3 * *'   # 03:17 UTC every 3rd day (odd minute avoids the top-of-hour crush)
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the database
+        env:
+          SUPA_URL: https://iwlgfkedrkajesgorysz.supabase.co
+          SUPA_KEY: sb_publishable_iPzIO8HsrE3v50IIBP7KSg_Zl9TnGMt
+        run: |
+          body=$(curl -sS --fail --max-time 30 \
+            -X POST "$SUPA_URL/rest/v1/rpc/event_info" \
+            -H "Content-Type: application/json" \
+            -H "apikey: $SUPA_KEY" \
+            -H "Authorization: Bearer $SUPA_KEY" \
+            -d '{"p_code":"KEEPALIVE"}')
+          echo "response: $body"
+          # Success means the database answered — not_found is the expected answer.
+          case "$body" in
+            *not_found*) echo "database is awake" ;;
+            *) echo "unexpected response" ; exit 1 ;;
+          esac

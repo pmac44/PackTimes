@@ -30,6 +30,7 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 | `manifest.json` | PWA manifest (name, icons, theme colour, standalone display). |
 | `icon-192.png`, `icon-512.png` | PWA icons. |
 | `push.bat` | Peter's Windows one-click deploy: `git add . && git commit -m "Update app" && git push`. |
+| `.github/workflows/supabase-keepalive.yml` | Scheduled GitHub Action: pings the Supabase backend every 3 days so the free tier never pauses it. See External services. |
 | `_planning/` | Architecture plan, Phase 1a build plan (with progress notes), GPS-fixes log, and the `fit-spike/` FIT-encoder test harness (incl. Garmin SDK for round-trip verification via Node). |
 | `PackTimes-style-guide.md` | Styling source of truth — read before UI changes. |
 | `backup/` | Pre-restyle backup of index.html. |
@@ -205,8 +206,14 @@ Everything the app talks to:
 | Strava API | Ride upload (OAuth + FIT upload + status polling) | **Yes** — client ID 230638; secret embedded in `index.html` (accepted trade-off, no backend). Athlete capacity raised to 10 (Jul 2026) for beta testers; beyond 10 needs Strava's app review. |
 | intervals.icu API (`intervals.icu/api/v1`) | Ride FIT upload for the Bike Coach project (v377) | **Yes** — user pastes their own API key in Settings (intervals.icu → Settings → Developer Settings). CORS is open to pmac44.github.io. De-dupes by file hash. |
 | Weather radar sites per country | External link in Live tab | No |
+| Supabase (`iwlgfkedrkajesgorysz.supabase.co`, free tier, Sydney) | Location sharing, PackRide events, PackView. RLS-locked tables, all access via SQL functions in `supabase/schema-v*.sql` | Public key embedded by design |
 
-No analytics, no user accounts, no backend.
+No analytics, no user accounts. The ONLY backend is Supabase, and only sharing touches it.
+**Supabase free tier pauses a project after 7 days without database activity** (email
+received 10 Sep 2026 after a week off the bike). `.github/workflows/supabase-keepalive.yml`
+pings `event_info` every 3 days to keep it awake; opening Settings → Location Sharing on
+the phone also counts. A paused project can be restored from the Supabase dashboard within
+90 days; after that it is deleted with every event and schema.
 
 ---
 
@@ -384,6 +391,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 ## Recent version log
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
+
+### (no version) 10 Sep — Supabase keepalive workflow
+- **Changed:** new `.github/workflows/supabase-keepalive.yml`; CLAUDE.md external-services table and the stale "no backend" line.
+- **Why:** Supabase emailed that the project would be paused for 7 days' inactivity — sharing only calls the backend during a ride, and Peter was off the bike with a broken collarbone.
+- **Watch out:** GitHub disables scheduled workflows after 60 days with no commits; push anything to re-arm, or run it from the Actions tab. No APP_VERSION bump — the app is untouched.
+- **Verified:** the exact curl run live against the backend → HTTP 200 `{"error":"not_found"}`. Workflow itself runs only once pushed; check the Actions tab after the first `push.bat`.
 
 ### v377 (8 Sep) — rides go straight to intervals.icu (the Bike Coach data path)
 - **Changed:** new `INTERVALS.ICU` section after Strava's retry triggers; hooks beside every `stravaQueue`/`stravaMarkRename` call (gap finish, end-of-ride flush, undo timer, both rename paths, GPS-return trigger); `rdm-icu` button + status line in the ride detail modal; `_recSyncBadgeHTML` now draws the Rides card pills for both services; Settings gains an **intervals.icu** panel (paste API key → verified against `/athlete/0` before saving, auto-send toggle, retry, **Send all saved rides** backfill, disconnect); STATE/PERSIST carry `icuKey/icuAthleteId/icuAthleteName/icuAutoUpload` in the `intervalsAuth` KV row.
