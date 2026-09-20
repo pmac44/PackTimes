@@ -30,7 +30,7 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 | `manifest.json` | PWA manifest (name, icons, theme colour, standalone display). |
 | `icon-192.png`, `icon-512.png` | PWA icons. |
 | `push.bat` | Peter's Windows one-click deploy: `git add . && git commit -m "Update app" && git push`. |
-| `.github/workflows/supabase-keepalive.yml` | Scheduled GitHub Action: pings the Supabase backend every 3 days so the free tier never pauses it. See External services. |
+| `.github/workflows/supabase-keepalive.yml` | Scheduled GitHub Action: pings the Supabase backend daily so the free tier never pauses it. Every 3 days was NOT enough — see External services. |
 | `_planning/` | Architecture plan, Phase 1a build plan (with progress notes), GPS-fixes log, and the `fit-spike/` FIT-encoder test harness (incl. Garmin SDK for round-trip verification via Node). |
 | `PackTimes-style-guide.md` | Styling source of truth — read before UI changes. |
 | `backup/` | Pre-restyle backup of index.html. |
@@ -209,11 +209,15 @@ Everything the app talks to:
 | Supabase (`iwlgfkedrkajesgorysz.supabase.co`, free tier, Sydney) | Location sharing, PackRide events, PackView. RLS-locked tables, all access via SQL functions in `supabase/schema-v*.sql` | Public key embedded by design |
 
 No analytics, no user accounts. The ONLY backend is Supabase, and only sharing touches it.
-**Supabase free tier pauses a project after 7 days without database activity** (email
-received 10 Sep 2026 after a week off the bike). `.github/workflows/supabase-keepalive.yml`
-pings `event_info` every 3 days to keep it awake; opening Settings → Location Sharing on
-the phone also counts. A paused project can be restored from the Supabase dashboard within
-90 days; after that it is deleted with every event and schema.
+**Supabase free tier pauses a project without enough database activity** (warning email
+10 Sep 2026 after a week off the bike; actually paused ~18 Sep). The threshold is stricter
+than it sounds — Supabase's own wording is "typically **a few user requests to the database
+each day** over the previous week", so a ping every 3 days does NOT hold it open: that is
+exactly what the first keepalive did, and the project paused anyway between two green runs.
+`.github/workflows/supabase-keepalive.yml` now pings `event_info` **daily, 3 times a run**;
+opening Settings → Location Sharing on the phone also counts. A paused project can be
+resumed from the Supabase dashboard for up to a year, data and config intact — but sharing,
+PackRide and PackView stay dead, silently, until someone notices.
 
 ---
 
@@ -392,11 +396,17 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### (no version) 21 Sep — the keepalive was too slow; Supabase paused the project anyway
+- **Changed:** `.github/workflows/supabase-keepalive.yml` — cron every 3 days → **daily**, 3 pings per run, one or two failed pings no longer fail the job, and the failure message now names the failure mode (curl 6 = hostname gone = paused; 7 = platform/mid-restore; 28 = timeout; 0 = DB answered with something unexpected). CLAUDE.md external-services note rewritten.
+- **Why:** runs on 10, 13 and 16 Sep were all green and the project was paused anyway; the 19 Sep run failed with **curl exit 6, could not resolve host**, which is what a paused project looks like. Supabase's threshold is "a few user requests to the database **each day** over the previous week" (https://supabase.com/docs/guides/platform/free-project-pausing) — every 3 days met neither half of it. Peter resumed it from the dashboard on 21 Sep.
+- **Watch out:** don't slow the cadence back down to save Actions minutes — daily IS the fix, and the file says so in a banner comment. A green run only proves the DB answered; it does not prove the project won't be paused, so the real test is that no pause email arrives.
+- **Verified:** the run block extracted from the YAML and executed under `bash -e` against stubbed responses — 6/6 cases correct (all-good, first-ping-blip, only-last-ping-good → exit 0; all-DNS-fail, unexpected-body, all-timeout → exit 1 with the right message). Three real pings at the live project: 200 `{"error": "not_found"}` each, 944/39/33 ms. NOT pushed — no APP_VERSION bump, the app is untouched.
+
 ### (no version) 10 Sep — Supabase keepalive workflow
 - **Changed:** new `.github/workflows/supabase-keepalive.yml`; CLAUDE.md external-services table and the stale "no backend" line.
 - **Why:** Supabase emailed that the project would be paused for 7 days' inactivity — sharing only calls the backend during a ride, and Peter was off the bike with a broken collarbone.
 - **Watch out:** GitHub disables scheduled workflows after 60 days with no commits; push anything to re-arm, or run it from the Actions tab. No APP_VERSION bump — the app is untouched.
-- **Verified:** the exact curl run live against the backend → HTTP 200 `{"error":"not_found"}`. Workflow itself runs only once pushed; check the Actions tab after the first `push.bat`.
+- **Verified:** the exact curl run live against the backend → HTTP 200 `{"error":"not_found"}`; pushed 10 Sep and run #1 (manual trigger, 8 s) green in the Actions tab. Schedule fires every 3rd day at 03:17 UTC.
 
 ### v377 (8 Sep) — rides go straight to intervals.icu (the Bike Coach data path)
 - **Changed:** new `INTERVALS.ICU` section after Strava's retry triggers; hooks beside every `stravaQueue`/`stravaMarkRename` call (gap finish, end-of-ride flush, undo timer, both rename paths, GPS-return trigger); `rdm-icu` button + status line in the ride detail modal; `_recSyncBadgeHTML` now draws the Rides card pills for both services; Settings gains an **intervals.icu** panel (paste API key → verified against `/athlete/0` before saving, auto-send toggle, retry, **Send all saved rides** backfill, disconnect); STATE/PERSIST carry `icuKey/icuAthleteId/icuAthleteName/icuAutoUpload` in the `intervalsAuth` KV row.

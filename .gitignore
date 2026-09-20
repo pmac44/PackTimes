@@ -4,3 +4,6 @@ _planning/
 
 # Orphaned copies left by the desktop file-bridge when a file is overwritten while open.
 .fuse_hidden*
+
+# Claude Code local config — machine-specific, never pushed to GitHub Pages.
+.claude/

@@ -1,25 +1,43 @@
 # Keeps the PackTimes Supabase project awake.
 #
-# Supabase's free tier pauses any project with no database activity for 7 days,
-# and PackTimes only talks to its backend during a ride with sharing on — so a
+# Supabase's free tier pauses any project without enough database activity, and
+# PackTimes only talks to its backend during a ride with sharing on — so a
 # fortnight off the bike gets the "scheduled to be paused" email (first one:
-# 10 Sep 2026). A paused project breaks sharing / PackRide / PackView silently,
-# and after 90 days paused it is deleted along with every event and schema.
+# 10 Sep 2026). A paused project breaks sharing / PackRide / PackView silently.
 #
-# This calls event_info with a code that can never exist. That runs a real
+# ⚠ THE CADENCE IS THE WHOLE POINT — DON'T SLOW IT DOWN AGAIN.
+# The first version of this file ran every 3 days. It ran green on 10, 13 and
+# 16 Sep and the project was paused anyway, some time before the 19 Sep run
+# failed with curl exit 6 (hostname gone). The reason is Supabase's own
+# threshold, which is stricter than "one ping a week" folklore says:
+#
+#   "Typically a few user requests to the database each day over the previous
+#    week is enough to keep the project from being paused."
+#   https://supabase.com/docs/guides/platform/free-project-pausing
+#
+# A few requests EACH DAY. Every 3 days met neither half of that. So: daily,
+# three pings per run. A paused project can be resumed from the dashboard for
+# up to a year, but everything stays down until someone notices.
+#
+# Each ping calls event_info with a code that can never exist. That runs a real
 # SELECT on the events table (counts as activity), writes nothing, and returns
 # {"error":"not_found"} with HTTP 200. The key is the app's public key — it is
 # already in index.html and grants no ability to read or write anyone's data.
 #
-# Runs every 3 days. GitHub disables schedules on repos with no commits for 60
-# days, so if PackTimes ever goes quiet that long, push anything to re-arm it —
-# or run it by hand from the Actions tab (workflow_dispatch).
+# One failed ping does not fail the job: a transient blip shouldn't land in
+# Peter's inbox. All three have to fail, and the error then says WHICH kind of
+# failure it was, because "could not resolve host" means paused and everything
+# else doesn't.
+#
+# GitHub disables schedules on repos with no commits for 60 days, so if
+# PackTimes ever goes quiet that long, push anything to re-arm it — or run it
+# by hand from the Actions tab (workflow_dispatch).
 
 name: Supabase keepalive
 
 on:
   schedule:
-    - cron: '17 3 */3 * *'   # 03:17 UTC every 3rd day (odd minute avoids the top-of-hour crush)
+    - cron: '17 3 * * *'   # 03:17 UTC daily (odd minute avoids the top-of-hour crush)
   workflow_dispatch:
 
 jobs:
@@ -31,15 +49,40 @@ jobs:
           SUPA_URL: https://iwlgfkedrkajesgorysz.supabase.co
           SUPA_KEY: sb_publishable_iPzIO8HsrE3v50IIBP7KSg_Zl9TnGMt
         run: |
-          body=$(curl -sS --fail --max-time 30 \
-            -X POST "$SUPA_URL/rest/v1/rpc/event_info" \
-            -H "Content-Type: application/json" \
-            -H "apikey: $SUPA_KEY" \
-            -H "Authorization: Bearer $SUPA_KEY" \
-            -d '{"p_code":"KEEPALIVE"}')
-          echo "response: $body"
-          # Success means the database answered — not_found is the expected answer.
-          case "$body" in
-            *not_found*) echo "database is awake" ;;
-            *) echo "unexpected response" ; exit 1 ;;
+          ping_once () {
+            curl -sS --max-time 30 \
+              -X POST "$SUPA_URL/rest/v1/rpc/event_info" \
+              -H "Content-Type: application/json" \
+              -H "apikey: $SUPA_KEY" \
+              -H "Authorization: Bearer $SUPA_KEY" \
+              -d '{"p_code":"KEEPALIVE"}'
+          }
+
+          ok=0
+          last_rc=0
+          for i in 1 2 3; do
+            rc=0
+            body=$(ping_once) || rc=$?
+            echo "ping $i: exit=$rc body=${body:-<none>}"
+            case "$rc:$body" in
+              0:*not_found*) ok=$((ok + 1)) ;;
+              *)             last_rc=$rc ;;
+            esac
+            if [ "$i" -lt 3 ]; then
+              if [ "$rc" -eq 0 ]; then sleep 10; else sleep 30; fi
+            fi
+          done
+
+          if [ "$ok" -gt 0 ]; then
+            echo "database is awake — $ok of 3 pings answered"
+            exit 0
+          fi
+
+          case "$last_rc" in
+            6)  echo "::error::Could not resolve $SUPA_URL. That is exactly what a PAUSED or deleted project looks like. Open the Supabase dashboard and press Resume project." ;;
+            7)  echo "::error::Resolved the hostname but could not connect. Supabase platform trouble, or the project is mid-restore. Check status.supabase.com." ;;
+            28) echo "::error::Timed out after 30 seconds, three times. The database may be waking up or under load." ;;
+            0)  echo "::error::The database answered, but not with the expected not_found (body logged above). The event_info function or the key may have changed." ;;
+            *)  echo "::error::curl failed with exit code $last_rc — see the messages above." ;;
           esac
+          exit 1
