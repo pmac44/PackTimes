@@ -396,6 +396,23 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v380 (25 Sep) — "Near a place" no longer drops results >5 km off the route
+- **Changed:** `fetchTownSearch` — removed `snap.off>5.0` (Peter's call). `fetchOverpass` corridor search untouched.
+- **Why:** the search exists for off-route places; the v379 radius now bounds the area instead.
+- **Verified:** live search "Meiringen" on the demo route: 0 → 45 stops, each carrying `offRouteM` (~9 km). Test stops removed. NOT pushed.
+
+### v379 (25 Sep) — "Near a place" gets its own radius
+- **Changed:** `fetchTownSearch` queries `around:R,lat,lon` (a circle at the place's centre) instead of Nominatim's bounding box; new `UI.placeRadiusKm` (default 2, slider 0.5–20 km, saved in uiPrefs) with `#place-radius-sl` in the sheet. Sheet body padded clear of the overlay scrollbar.
+- **Why:** the bounding box for "Sydney" is all of Greater Sydney; a small town's box can miss its own edges.
+- **Watch out:** results more than 5 km from the route are still dropped (`snap.off>5.0`), so a big place radius only helps near the route. Search button is pinned outside the scrolling body — keep it there.
+- **Verified:** live Overpass: Braidwood/Meiringen query well-formed (Meiringen 36 hits, all >5 km off the demo line so 0 added); Bingen at 5 km → 36 stops added. 375×560: button stays on screen, body scrolls. NOT pushed.
+
+### v378 (25 Sep) — Stops search moves from an expanding card to a full-screen sheet
+- **Changed:** new `SEARCH SHEET` banner after `tStopsShell`: `openSearchSheet(mode)`, `_searchStatusHTML()`, `OSM_OPT_DEFS`. The Search card is now one button (`#btn-open-search`) plus status banners. "Clear auto (n)" moved to the All Stops header. Geoapify search renamed **Advanced accommodation** (sheet tab + Settings panel title). `UI.osmExpanded/tsExpanded` → `UI.searchMode`.
+- **Why:** three searches, a slider and 20 tick boxes inside an expanding panel was a scroll inside a scroll on the phone, and it hid the map.
+- **Watch out:** the sheet lives on `<body>`, so content-wrap's delegators never see it. Its handlers (radius, osm-opt, ALL/NONE, ts-input Enter) live inside `openSearchSheet`; the old content-wrap copies were deleted. Search closes the sheet *before* fetching, so results land on a visible map.
+- **Verified:** `node verify.js` green; preview at 375×812: all three modes, validation (empty place, nothing ticked), ALL/NONE, stubbed-fetch error banner on the Stops card, clear-auto confirm, Settings jump. No real OSM/Geoapify call made. NOT pushed.
+
 ### (no version) 21 Sep — the keepalive was too slow; Supabase paused the project anyway
 - **Changed:** `.github/workflows/supabase-keepalive.yml` — cron every 3 days → **daily**, 3 pings per run, one or two failed pings no longer fail the job, and the failure message now names the failure mode (curl 6 = hostname gone = paused; 7 = platform/mid-restore; 28 = timeout; 0 = DB answered with something unexpected). CLAUDE.md external-services note rewritten.
 - **Why:** runs on 10, 13 and 16 Sep were all green and the project was paused anyway; the 19 Sep run failed with **curl exit 6, could not resolve host**, which is what a paused project looks like. Supabase's threshold is "a few user requests to the database **each day** over the previous week" (https://supabase.com/docs/guides/platform/free-project-pausing) — every 3 days met neither half of it. Peter resumed it from the dashboard on 21 Sep.

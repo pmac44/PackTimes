@@ -428,6 +428,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    full-screen on phones — see PackTimes-style-guide.md "Modals" note. Reverts to a normal
    bottom sheet on desktop widths below. */
 .modal-sheet-full{height:100dvh;border-radius:0;}
+/* v378 — Stops search sheet mode switch (Along route / Near a place / Advanced accommodation). */
+.ss-seg{display:flex;gap:4px;padding:3px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);flex-shrink:0;}
+.ss-seg button{flex:1;min-width:0;border:0;background:transparent;color:var(--text2);font-family:var(--sans);font-size:var(--fs-xs);font-weight:600;line-height:1.25;padding:8px 4px;border-radius:var(--r-ctrl);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.ss-seg button.on{background:var(--accent3);color:#fff;}
+.ss-seg button:disabled{opacity:.4;cursor:default;}
 @media(min-width:900px){
   .app{max-width:100%;flex-direction:column;}
   .desktop-layout{display:flex!important;}
@@ -1747,7 +1752,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v377';
+window.APP_VERSION='v380';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1757,7 +1762,7 @@ const newRoute=name=>({
   adaptiveSpeed:true,baseTimeFactor:1.0,riderPreset:'regular',loadPreset:'moderate',daySplitCount:0,
 });
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
-const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,crossingNames:{},lastSleepH:10,stopsShowStarred:false,osmExpanded:false,tsExpanded:false,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxExpiresAt:null,dbxSavedAt:null,icuKey:null,icuAthleteId:null,icuAthleteName:null,icuAutoUpload:true,
+const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,placeRadiusKm:2,crossingNames:{},lastSleepH:10,stopsShowStarred:false,searchMode:null,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxExpiresAt:null,dbxSavedAt:null,icuKey:null,icuAthleteId:null,icuAthleteName:null,icuAutoUpload:true,
   calibRides:[],   // Advanced Calibration sample rides — global (rider property, not route)
   estModeAdv:false, // Basic vs Advanced estimation — global (rider property, not route); syncs via plan.json
   fatigueMode:'off', // Optional fatigue model: off|mild|moderate|strong — global rider setting
@@ -1910,7 +1915,7 @@ async function saveAll(){
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
   // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
   await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -1946,6 +1951,7 @@ async function loadAll(){
       if(prefs.offRouteM!==undefined)UI.offRouteM=prefs.offRouteM;
       if(prefs.offRouteSecs!==undefined)UI.offRouteSecs=prefs.offRouteSecs;
       if(prefs.searchRadiusKm!==undefined)UI.searchRadiusKm=prefs.searchRadiusKm;
+      if(prefs.placeRadiusKm!==undefined)UI.placeRadiusKm=prefs.placeRadiusKm;
       if(prefs.gpsZoom!==undefined)UI.gpsZoom=prefs.gpsZoom;
       if(prefs.weatherSpacingKm!==undefined)UI.weatherSpacingKm=prefs.weatherSpacingKm;
       if(prefs.ftp)UI.ftp=prefs.ftp;
@@ -4919,7 +4925,11 @@ async function fetchTownSearch(query){
   // 2. Overpass within town bbox using same opts as corridor search
   UI.tsMsg=`Found ${place.display_name.split(',')[0]} — searching for stops…`;renderKeepScroll();
   const opts=UI.osmOpts||{food:false,water:false,towns:false,hotels:false,pubs:false,toilets:false,bike:false,bikestand:false};
-  const bb=place.bb;
+  // v379 — a CIRCLE around the place's centre, sized by the sheet's radius slider. The
+  // Nominatim bounding box was used before, and it's the wrong size both ways: "Sydney" is
+  // all of Greater Sydney (~100 km across → a huge, slow query and hundreds of stops),
+  // while a small town's box can stop short of the servo on its edge.
+  const bb=`around:${Math.round((UI.placeRadiusKm||2)*1000)},${place.lat},${place.lon}`;
   const parts=[];
   // Use nwr (node/way/relation) so shops & restaurants tagged as ways are included
   if(opts.water){parts.push(`nwr["amenity"="drinking_water"](${bb})`);parts.push(`nwr["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`nwr["man_made"="water_tap"](${bb})`);}
@@ -4963,7 +4973,10 @@ async function fetchTownSearch(query){
         let dist=0,offM=0,offOpts,snapOff=0;
         if(r.points.length){
           // Route exists — snap to route
-          const snap=snapTo(r,lat,lon);if(!snap||snap.off>5.0)return;
+          // v380 — no distance cut-off here (was `snap.off>5.0`). This search is FOR places off
+          // the route, and the radius slider already bounds the area; the off-route badge shows
+          // how far each stop is. The corridor search (fetchOverpass) keeps its own limit.
+          const snap=snapTo(r,lat,lon);if(!snap)return;
           dist=snap.dist;offM=Math.round(snap.off*1000);snapOff=snap.off;
           offOpts={lat,lon,offRouteM:Math.max(offM,1),snapIdx:snap.idx};
         } else {
@@ -5053,7 +5066,7 @@ async function fetchTownSearch(query){
 async function fetchAccommodation(){
   const r=cur();if(!r||!r.points.length)return;
   if(!UI.geoapifyKey){
-    UI.accomStatus='error';UI.accomMsg='Add a Geoapify API key in Settings → Accommodation Search';
+    UI.accomStatus='error';UI.accomMsg='Add a Geoapify API key in Settings → Advanced Accommodation Search';
     renderKeepScroll();return;
   }
   UI.accomStatus='loading';UI.accomMsg='Searching for accommodation…';renderKeepScroll();
@@ -17311,81 +17324,185 @@ function tStopsShell(r){
         <div style="display:flex;align-items:center;gap:6px;"><span>👇</span><span>Or search for stops below</span></div>
         <div style="display:flex;align-items:center;gap:6px;"><span>⭐</span><span>Star the ones you want in your Mission</span></div>
       </div>
-      <div class="card" style="${UI.osmExpanded?'':'padding-top:10px;padding-bottom:10px;'}">
-        <div class="secrow" style="cursor:pointer;margin-bottom:${UI.osmExpanded?'10':'0'}px;" id="osm-card-hdr">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span id="osm-arrow" style="font-size:22px;color:var(--text3);user-select:none;line-height:1;display:flex;align-items:center;">${UI.osmExpanded?'▼':'▶'}</span>
-            <div class="ctitle" style="line-height:1;">Search</div>
-          </div>
-          <button class="btn btn-sm btn-p" id="btn-overpass" ${UI.opStatus==='loading'?'disabled':''} style="${UI.osmExpanded?'':'display:none'}">
-            ${UI.opStatus==='loading'?'<div class="spin"></div> Searching…':'🔍 Search OSM'}</button>
-        </div>
-        <div id="osm-body" style="${UI.osmExpanded?'':'display:none'}">
-        <div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;">
-          <span style="font-size:12px;color:var(--text3);font-family:var(--font);white-space:nowrap;flex-shrink:0;">RADIUS</span>
-          <input type="range" id="search-radius-sl" min="0.1" max="3" step="0.1" value="${UI.searchRadiusKm}" style="flex:1;accent-color:var(--accent);height:18px;">
-          <span id="search-radius-val" style="font-size:12px;font-family:var(--font);color:var(--accent);min-width:36px;text-align:right;">${(UI.searchRadiusKm*1000).toFixed(0)}m</span>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <span style="font-size:13px;color:var(--text3);font-family:var(--font);">Select stops to search</span>
-          <button id="osm-all-toggle" style="font-family:var(--font);font-size:12px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;letter-spacing:.5px;">${(()=>{const keys=['towns','water','crossings','toilets','food','fuel','pubs','bike','bikestand','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks','stockwater'];const allOn=keys.every(k=>UI.osmOpts&&UI.osmOpts[k]);return allOn?'NONE':'ALL';})()}</button>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;">
-          ${[['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['food','food','food',false],['fuel','fuel','fuel',false],['pubs','pub','pub',false],['bike','bike','bike shop',false],['bikestand','bikestand','bike stand',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false],['stockwater','stockwater','stock h2o',false]].map(([k,t,lbl,def])=>{
-            const checked=(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
-            return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><input type="checkbox" class="osm-opt" data-key="'+k+'" '+(checked?'checked':'')+'><span class="tag t-'+t+'" style="font-size:13px;">'+lbl+'</span></label>';
-          }).join('')}
-        </div>
-        ${UI.opStatus==='loading'?`<div class="ld"><div class="spin"></div><span id="osm-status-msg">${UI.opMsg}</span></div>`:''}
-        ${UI.opStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.opMsg}</span></div>`:''}
-        ${UI.opStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.opMsg}</span></div>`:''}
-        ${UI.opStatus==='idle'?`<p style="font-size:17px;color:var(--text3);">Searches OpenStreetMap for stops near your route.</p>`:''}
-        <div style="height:1px;background:var(--border);margin:10px 0;"></div>
-        <div class="ctitle" style="font-size:14px;margin-bottom:6px;">Search by Place</div>
-        <p style="font-size:15px;color:var(--text3);margin-bottom:8px;">Find stops near a specific town, area or landmark — useful for places that may be off your route.</p>
-        <div style="display:flex;gap:6px;">
-          <input id="ts-input" type="text" class="inp" placeholder="e.g. Braidwood NSW" style="flex:1;" value="${UI.tsQuery||''}">
-          <button class="btn btn-p" id="btn-townsearch" ${UI.tsStatus==='loading'?'disabled':''}>${UI.tsStatus==='loading'?'<div class="spin"></div>':'🔍'}</button>
-        </div>
-        ${UI.tsStatus==='loading'?`<div class="ld" style="margin-top:6px;"><div class="spin"></div>${UI.tsMsg}</div>`:''}
-        ${UI.tsStatus==='done'?`<div class="banner ok" style="margin-top:6px;"><span>✓</span><span>${UI.tsMsg}</span></div>`:''}
-        ${UI.tsStatus==='error'?`<div class="banner err" style="margin-top:6px;"><span>✗</span><span>${UI.tsMsg}</span></div>`:''}
-        ${auto.length?`
-          <div id="clearauto-wrap" style="margin-top:8px;">
-            <button class="btn btn-r btn-sm btn-full" id="btn-clearauto">✕ Remove all auto stops</button>
-            <div id="clearauto-confirm" style="display:none;gap:8px;align-items:center;">
-              <span style="font-size:16px;color:var(--text2);flex:1;">Remove ${auto.length} auto stop${auto.length!==1?'s':''}?</span>
-              <button class="btn btn-r btn-sm" id="btn-clearauto-yes">Yes</button>
-              <button class="btn btn-sm" id="btn-clearauto-no">No</button>
-            </div>
-          </div>`:''}
-        <div style="height:1px;background:var(--border);margin:10px 0;"></div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <div class="ctitle" style="font-size:14px;margin-bottom:0;">Accommodation Search</div>
-          <button class="btn btn-sm btn-p" id="btn-accom-search" ${UI.accomStatus==='loading'?'disabled':''}>
-            ${UI.accomStatus==='loading'?'<div class="spin"></div> Searching…':'🔍 Search'}</button>
-        </div>
-        <p style="font-size:15px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Unlike the OSM search above, this uses the <strong style="color:var(--text2);">Geoapify API</strong> — richer accommodation data (hotels, hostels, B&amp;Bs, guesthouses, huts) with Booking.com deep-links. Each result gets a <strong style="color:#c084fc;">Book</strong> button. Requires a free API key in Settings.</p>
-        ${UI.accomStatus==='loading'?`<div class="ld"><div class="spin"></div>${UI.accomMsg}</div>`:''}
-        ${UI.accomStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.accomMsg}</span></div>`:''}
-        ${UI.accomStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.accomMsg}</span></div>`:''}
-        ${UI.accomStatus==='idle'?`<p style="font-size:14px;color:var(--text3);">${UI.geoapifyKey?'Ready — tap Search to find accommodation along your route.':'⚠️ No API key set — add one in Settings → Accommodation Search.'}</p>`:''}
-        ${UI.opStatus==='done'?`<div class="banner ok" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✓</span><span>${UI.opMsg}</span></div>`:''}
-        ${UI.opStatus==='error'?`<div class="banner err" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✗</span><span>${UI.opMsg}</span></div>`:''}
-        ${UI.tsStatus==='done'?`<div class="banner ok" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✓</span><span>${UI.tsMsg}</span></div>`:''}
-        ${UI.tsStatus==='error'?`<div class="banner err" style="margin-top:6px;${UI.osmExpanded?'display:none':''}"><span>✗</span><span>${UI.tsMsg}</span></div>`:''}
-      </div>
+      <!-- v378 — Search is one button now; the options live in the full-screen sheet
+           (openSearchSheet). Progress and results report here, next to the map. -->
+      <div class="card" style="padding-top:10px;padding-bottom:10px;">
+        <button class="btn btn-p btn-full" id="btn-open-search"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="5.5"/><path d="M11.5 11.5 L16 16"/></svg>Search for stops</button>
+        ${_searchStatusHTML()}
       </div>
       ${r.stops.length?`<div class="card">
         <div class="secrow">
           <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).length:r.stops.length})</div>
-          <button class="btn btn-sm" id="btn-toggle-starred" title="${UI.stopsShowStarred?'Showing starred only':'Showing all stops'}" style="background:var(--stop-card-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;${UI.stopsShowStarred?'border-color:rgba(251,191,36,0.7);color:#fbbf24;':'border-color:var(--hair-light);color:var(--on-dark);'}">${UI.stopsShowStarred?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
+          <span style="display:flex;gap:6px;align-items:center;">${auto.length?`<button class="btn btn-sm btn-r" id="btn-clearauto" title="Remove every stop the searches added">Clear auto (${auto.length})</button>`:''}<button class="btn btn-sm" id="btn-toggle-starred" title="${UI.stopsShowStarred?'Showing starred only':'Showing all stops'}" style="background:var(--stop-card-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;${UI.stopsShowStarred?'border-color:rgba(251,191,36,0.7);color:#fbbf24;':'border-color:var(--hair-light);color:var(--on-dark);'}">${UI.stopsShowStarred?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button></span>
         </div>
+        ${auto.length?`<div id="clearauto-confirm" style="display:none;gap:8px;align-items:center;margin-bottom:8px;">
+          <span style="font-size:var(--fs-sm);color:var(--text2);flex:1;">Remove ${auto.length} auto stop${auto.length!==1?'s':''}?</span>
+          <button class="btn btn-r btn-sm" id="btn-clearauto-yes">Yes</button>
+          <button class="btn btn-sm" id="btn-clearauto-no">No</button>
+        </div>`:''}
         <div id="stops-list-rows">${clusteredStopRows(r,sdt)}</div>
       </div>`:''}
       ${!sdt?`<div class="banner warn"><span>⚠️</span><span>Set start date & time on the Route tab to see ETAs.</span></div>`:''}
     </div>
   </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//  SEARCH SHEET (v378)
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Peter, 25 Sep 2026: the Search card had grown into three searches, a slider and 20 tick
+// boxes inside an expanding panel, inside a scrolling list, under a draggable map. On the
+// phone that's a scroll inside a scroll with the map pushed off screen. Now the Stops tab
+// shows one button, and this full-screen sheet (a bottom sheet on desktop, via
+// .modal-sheet-full) holds the options.
+// Tapping Search CLOSES the sheet before the fetch starts, so results land on a map you can
+// see. Progress and result banners are drawn by _searchStatusHTML() on the Stops tab.
+// The sheet lives on <body>, not #content-wrap, so render() can't wipe it mid-edit. That
+// also means content-wrap's delegators never see its events: it wires its own below.
+// "Advanced accommodation" is the Geoapify search — named so it doesn't read as a duplicate
+// of the plain "accom" category, which already finds places to stay through OSM.
+const OSM_OPT_DEFS=[['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['food','food','food',false],['fuel','fuel','fuel',false],['pubs','pub','pub',false],['bike','bike','bike shop',false],['bikestand','bikestand','bike stand',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false],['stockwater','stockwater','stock h2o',false]];
+const _osmOptOn=(k,def)=>(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
+
+function _searchStatusHTML(){
+  const b=(st,msg,id)=>st==='loading'?`<div class="ld" style="margin-top:8px;"><div class="spin"></div><span${id?` id="${id}"`:''}>${msg}</span></div>`
+    :st==='done'?`<div class="banner ok" style="margin-top:8px;"><span>✓</span><span>${msg}</span></div>`
+    :st==='error'?`<div class="banner err" style="margin-top:8px;"><span>✗</span><span>${msg}</span></div>`:'';
+  return b(UI.opStatus,UI.opMsg,'osm-status-msg')+b(UI.tsStatus,UI.tsMsg)+b(UI.accomStatus,UI.accomMsg);
+}
+
+function openSearchSheet(mode){
+  const r=cur();if(!r)return;
+  document.getElementById('search-sheet-ov')?.remove();
+  const hasRoute=r.points.length>0;
+  let m=mode||UI.searchMode||(hasRoute?'route':'place');
+  if(!hasRoute)m='place';   // along-route and Geoapify both need a route line
+  const busy=s=>s==='loading';
+
+  const ov=document.createElement('div');
+  ov.id='search-sheet-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:998;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.innerHTML=`<div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
+      <span style="font-size:19px;font-weight:600;color:var(--text);">Search for stops</span>
+      <button class="btn btn-sm" id="ss-x" aria-label="Close">✕</button>
+    </div>
+    <div class="ss-seg" role="tablist">
+      <button data-mode="route" ${hasRoute?'':'disabled'}>Along route</button>
+      <button data-mode="place">Near a place</button>
+      <button data-mode="accom" ${hasRoute?'':'disabled'}>Advanced accommodation</button>
+    </div>
+    <div id="ss-body" style="overflow-y:auto;flex:1;min-height:0;padding:14px 8px 4px 0;"></div>
+    <div id="ss-msg" class="banner err" style="display:none;margin-top:10px;flex-shrink:0;"></div>
+    <button class="btn btn-p btn-full" id="ss-go" style="flex-shrink:0;margin-top:10px;margin-bottom:env(safe-area-inset-bottom,0px);"></button>
+  </div>`;
+  const body=ov.querySelector('#ss-body'),go=ov.querySelector('#ss-go'),msg=ov.querySelector('#ss-msg');
+  const say=t=>{msg.textContent=t||'';msg.style.display=t?'':'none';};
+  const meta=t=>`<p style="font-size:var(--fs-sm);color:var(--text3);line-height:1.5;margin-bottom:12px;">${t}</p>`;
+  const allOn=()=>OSM_OPT_DEFS.every(([k])=>UI.osmOpts&&UI.osmOpts[k]);
+  const anyOn=()=>OSM_OPT_DEFS.some(([k,,,d])=>_osmOptOn(k,d));
+  const chips=()=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px;">
+      <label class="lbl" style="margin:0;">What to look for</label>
+      <button id="osm-all-toggle" style="font-family:var(--font);font-size:12px;font-weight:600;padding:3px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;letter-spacing:.5px;">${allOn()?'NONE':'ALL'}</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      ${OSM_OPT_DEFS.map(([k,t,lbl,d])=>`<label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:8px 10px;"><input type="checkbox" class="osm-opt" data-key="${k}" ${_osmOptOn(k,d)?'checked':''}><span class="tag t-${t}" style="font-size:13px;">${lbl}</span></label>`).join('')}
+    </div>`;
+
+  const paint=()=>{
+    UI.searchMode=m;say('');go.style.display='';
+    ov.querySelectorAll('.ss-seg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+    if(m==='route'){
+      body.innerHTML=meta('Finds stops within this distance of your whole route, from OpenStreetMap.')+`
+        <div style="display:flex;align-items:center;gap:8px;">
+          <label class="lbl" style="margin:0;white-space:nowrap;">Radius</label>
+          <input type="range" id="search-radius-sl" min="0.1" max="3" step="0.1" value="${UI.searchRadiusKm}" style="flex:1;accent-color:var(--accent);height:18px;">
+          <span id="search-radius-val" style="font-size:13px;font-family:var(--font);color:var(--accent);min-width:48px;text-align:right;">${(UI.searchRadiusKm*1000).toFixed(0)} m</span>
+        </div>`+chips();
+      go.textContent='Search along route';go.disabled=busy(UI.opStatus);
+    }else if(m==='place'){
+      body.innerHTML=`<label class="lbl" for="ts-input">Town, area or landmark</label>
+        <input id="ts-input" type="text" placeholder="e.g. Braidwood NSW" value="${(UI.tsQuery||'').replace(/"/g,'&quot;')}" enterkeyhint="search" autocomplete="off">
+        <div style="margin-top:8px;">${meta('Finds stops within this distance of the centre of a place. Useful for somewhere off your route.')}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <label class="lbl" style="margin:0;white-space:nowrap;">Radius</label>
+          <input type="range" id="place-radius-sl" min="0.5" max="20" step="0.5" value="${UI.placeRadiusKm}" style="flex:1;accent-color:var(--accent);height:18px;">
+          <span id="place-radius-val" style="font-size:13px;font-family:var(--font);color:var(--accent);min-width:48px;text-align:right;">${UI.placeRadiusKm} km</span>
+        </div>`+chips();
+      go.textContent='Search near this place';go.disabled=busy(UI.tsStatus);
+    }else{
+      body.innerHTML=meta('Uses the <strong style="color:var(--text2);">Geoapify API</strong> rather than OpenStreetMap, for richer accommodation data: hotels, hostels, B&amp;Bs, guesthouses and huts. Each result gets a <strong style="color:#c084fc;">Book</strong> button that opens Booking.com.')
+        +meta('For a quick look, the <span class="tag t-accom" style="font-size:13px;">accom</span> category in Along route already finds places to stay.')
+        +(UI.geoapifyKey
+          ?`<div style="font-size:13px;font-family:var(--font);color:var(--accent);">✓ API key set</div>`
+          :`<div class="banner warn" style="margin-bottom:10px;"><span>⚠️</span><span>Needs a free Geoapify API key.</span></div><button class="btn btn-full" id="ss-settings">Add a key in Settings</button>`);
+      go.textContent='Search accommodation';go.disabled=!UI.geoapifyKey||busy(UI.accomStatus);
+      go.style.display=UI.geoapifyKey?'':'none';   // a disabled .btn-p still looks live — the Settings button stands in
+    }
+  };
+
+  const close=()=>{ov.remove();document.removeEventListener('keydown',onEsc);};
+  const onEsc=e=>{if(e.key==='Escape')close();};
+  const run=()=>{
+    if(go.disabled)return;
+    if(m==='route'){
+      if(!anyOn())return say('Tick at least one thing to look for.');
+      close();fetchOverpass();
+    }else if(m==='place'){
+      const inp=ov.querySelector('#ts-input');const q=(inp?.value||'').trim();
+      if(!q){say('Type a town, area or landmark.');inp?.focus();return;}
+      if(!anyOn())return say('Tick at least one thing to look for.');
+      UI.tsQuery=q;close();fetchTownSearch(q);
+    }else{close();fetchAccommodation();}
+  };
+
+  ov.addEventListener('click',e=>{
+    if(e.target===ov||e.target.closest('#ss-x')){close();return;}
+    const seg=e.target.closest('.ss-seg button');
+    if(seg){if(!seg.disabled){m=seg.dataset.mode;paint();if(m==='place')ov.querySelector('#ts-input')?.focus();}return;}
+    if(e.target.closest('#ss-go')){run();return;}
+    if(e.target.closest('#ss-settings')){close();UI.tab='settings';UI.settingsExp.geoapify=true;
+      _render();document.getElementById('settings-hdr-geoapify')?.scrollIntoView({block:'start'});return;}   // sync render so there's a panel to scroll to
+    if(e.target.closest('#osm-all-toggle')){
+      if(!UI.osmOpts)UI.osmOpts={};
+      const on=!allOn();
+      OSM_OPT_DEFS.forEach(([k])=>UI.osmOpts[k]=on);
+      saveAll();
+      ov.querySelectorAll('.osm-opt').forEach(cb=>cb.checked=on);
+      e.target.closest('#osm-all-toggle').textContent=on?'NONE':'ALL';
+      say('');return;
+    }
+  });
+  ov.addEventListener('input',e=>{
+    if(e.target.id==='search-radius-sl'){
+      UI.searchRadiusKm=+e.target.value;
+      const v=ov.querySelector('#search-radius-val');
+      if(v)v.textContent=(UI.searchRadiusKm*1000).toFixed(0)+' m';
+      saveAll();
+    }
+    if(e.target.id==='place-radius-sl'){
+      UI.placeRadiusKm=+e.target.value;
+      const v=ov.querySelector('#place-radius-val');
+      if(v)v.textContent=UI.placeRadiusKm+' km';
+      saveAll();
+    }
+  });
+  ov.addEventListener('change',e=>{
+    if(!e.target.classList.contains('osm-opt'))return;
+    // Seed from the defaults the chips were drawn with, so ticking one box doesn't
+    // silently switch off 'towns' (the only default-on category).
+    if(!UI.osmOpts)UI.osmOpts=Object.fromEntries(OSM_OPT_DEFS.map(([k,,,d])=>[k,d]));
+    UI.osmOpts[e.target.dataset.key]=e.target.checked;
+    saveAll();
+    const t=ov.querySelector('#osm-all-toggle');if(t)t.textContent=allOn()?'NONE':'ALL';
+    say('');
+  });
+  ov.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='ts-input'){e.preventDefault();run();}});
+  document.addEventListener('keydown',onEsc);
+  document.body.appendChild(ov);
+  paint();
+  if(m==='place')ov.querySelector('#ts-input')?.focus();
 }
 
 // ── HOW MUCH ROOM THE MAP + HANDLE + LIST ACTUALLY SHARE ─────────────────────────────
@@ -19730,7 +19847,7 @@ function tSettings(r){
   ${section('weather','Weather Map Spacing',weatherBody,!!r)}
   ${section('offline','Offline Storage',offlineBody)}
   ${section('offlineMaps','Offline Maps',offlineMapsBody)}
-  ${section('geoapify','Accommodation Search',`
+  ${section('geoapify','Advanced Accommodation Search',`
     <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">Searches for hotels, hostels, B&Bs and mountain huts near your route using the <a href="https://www.geoapify.com/" target="_blank" style="color:var(--accent);">Geoapify Places API</a> (OpenStreetMap data). Free tier: 3,000 requests/day — more than enough for personal use.</p>
     <div style="font-size:14px;color:var(--text3);margin-bottom:10px;line-height:1.5;">Get a free API key at <strong style="color:var(--text2);">myprojects.geoapify.com</strong> — no credit card required. Paste it below.</div>
     <div class="field">
@@ -19742,7 +19859,7 @@ function tSettings(r){
       </div>
     </div>
     <div id="geoapify-status" style="font-size:13px;font-family:var(--font);margin-top:4px;${UI.geoapifyKey?'color:var(--accent);':'color:var(--text3);'}">
-      ${UI.geoapifyKey?'✓ Key saved — use 🏨 Accommodation on the Stops tab to search.':'No key set.'}
+      ${UI.geoapifyKey?'✓ Key saved — on the Stops tab, tap Search for stops → Advanced accommodation.':'No key set.'}
     </div>
     <p style="font-size:13px;color:var(--text3);margin-top:10px;line-height:1.5;">Each search uses 1-2 API credits. Results appear as stops with a <strong style="color:#c084fc;">Book</strong> button that opens Booking.com pre-filtered to that location.</p>
   `)}
@@ -22395,18 +22512,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   // FTP clear
   if(e.target.id==='ftp-clear'){UI.ftp=null;saveAll();if(UI.tab==='settings')render();return;}
   if(e.target.id==='maxhr-clear'){UI.maxHr=null;saveAll();if(UI.tab==='settings')render();return;}
-  // OSM all/none toggle
-  if(e.target.closest('#osm-all-toggle')){
-    const keys=['towns','water','crossings','toilets','food','fuel','pubs','bike','bikestand','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks','stockwater'];
-    if(!UI.osmOpts)UI.osmOpts={};
-    const allOn=keys.every(k=>UI.osmOpts[k]);
-    keys.forEach(k=>UI.osmOpts[k]=!allOn);
-    saveAll();
-    // Update checkboxes and button label directly — no re-render
-    document.querySelectorAll('.osm-opt').forEach(cb=>{if(keys.includes(cb.dataset.key))cb.checked=!allOn;});
-    const allToggle=document.getElementById('osm-all-toggle');
-    if(allToggle)allToggle.textContent=allOn?'ALL':'NONE';
-    return;}
   // Route list select
   const rli=e.target.closest('.rli');
   if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('.reload-route')&&!e.target.closest('.share-route')&&!e.target.closest('.packride-route')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
@@ -23248,7 +23353,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     UI.geoapifyKey=val||null;
     saveAll();
     const st=document.getElementById('geoapify-status');
-    if(st){st.textContent=UI.geoapifyKey?'✓ Key saved — use 🏨 Accommodation on the Stops tab to search.':'Key cleared.';
+    if(st){st.textContent=UI.geoapifyKey?'✓ Key saved — on the Stops tab, tap Search for stops → Advanced accommodation.':'Key cleared.';
     st.style.color=UI.geoapifyKey?'var(--accent)':'var(--text3)';}
     render();return;
   }
@@ -23458,17 +23563,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     if(rows)rows.innerHTML=clusteredStopRows(r,sdt);
     return;
   }
-  if(e.target.closest('#osm-card-hdr')&&!e.target.closest('#btn-overpass')){
-    UI.osmExpanded=!UI.osmExpanded;
-    const body=document.getElementById('osm-body');
-    const arrow=document.getElementById('osm-arrow');
-    const btn=document.getElementById('btn-overpass');
-    if(body)body.style.display=UI.osmExpanded?'':'none';
-    if(arrow)arrow.textContent=UI.osmExpanded?'▼':'▶';
-    if(btn)btn.style.display=UI.osmExpanded?'':'none';
-    return;
-  }
-  if(e.target.closest('#btn-accom-search')){fetchAccommodation();return;}
+  if(e.target.closest('#btn-open-search')){openSearchSheet();return;}
   if(e.target.closest('#btn-add-pace')&&r){openPaceModal(-1);return;}
   if(e.target.closest('.edit-pace')&&r){
     const idx=+e.target.closest('.edit-pace').dataset.idx;
@@ -23491,12 +23586,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const confirm=document.getElementById('clearauto-confirm');
     if(btn)btn.style.display='';
     if(confirm)confirm.style.display='none';
-    return;
-  }
-  if(e.target.closest('#btn-overpass')){fetchOverpass();return;}
-  if(e.target.closest('#btn-townsearch')){
-    const q=(document.getElementById('ts-input')?.value||'').trim();
-    if(q){UI.tsQuery=q;fetchTownSearch(q);}
     return;
   }
   if(e.target.closest('#btn-gpstoggle')||e.target.closest('#btn-live-gps')){
@@ -23715,11 +23804,6 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
     const v=document.getElementById('offroute-s-val');
     if(v)v.textContent=UI.offRouteSecs+'s';
     return;}
-  if(e.target.id==='search-radius-sl'){
-    UI.searchRadiusKm=+e.target.value;
-    const v=document.getElementById('search-radius-val');
-    if(v)v.textContent=(UI.searchRadiusKm*1000).toFixed(0)+'m';
-    saveAll();return;}
   if(e.target.id==='sim-sl'){
     const dist=+e.target.value;
     const r=cur();
@@ -23738,23 +23822,7 @@ document.getElementById('content-wrap').addEventListener('input',e=>{
   }
 });
 
-document.getElementById('content-wrap').addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&e.target.id==='ts-input'){
-    const q=e.target.value.trim();
-    if(q){UI.tsQuery=q;fetchTownSearch(q);}
-  }
-});
-
 document.getElementById('content-wrap').addEventListener('change',e=>{
-  if(e.target.classList.contains('osm-opt')){
-    if(!UI.osmOpts)UI.osmOpts={towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,pubs:false,bike:false,bikestand:false,camp:false,caravan:false,huts:false,hotels:false,halls:false,churches:false,schools:false,fire:false,police:false,peaks:false};
-    UI.osmOpts[e.target.dataset.key]=e.target.checked;
-    saveAll();
-    // Update ALL/NONE toggle label without re-rendering
-    const allToggle=document.getElementById('osm-all-toggle');
-    if(allToggle){const keys=['towns','water','crossings','toilets','food','fuel','pubs','bike','bikestand','camp','caravan','huts','hotels','halls','churches','schools','fire','police','peaks','stockwater'];allToggle.textContent=keys.every(k=>UI.osmOpts&&UI.osmOpts[k])?'NONE':'ALL';}
-    return;}
-
   if(e.target.id==='gpx-input'){
     const f=e.target.files[0];if(!f)return;
     loadRouteFile(f);
@@ -23845,8 +23913,8 @@ async function createBlankPlan(){
     r.center={lat,lon};
     if(bb){r.centerBB={s:+bb[0],n:+bb[1],w:+bb[2],e:+bb[3]};}
     ROUTES.push(r);CUR=ROUTES.length-1;
-    UI.tab='stops';UI.osmExpanded=true;UI.tsExpanded=true;
-    saveAll();render();
+    UI.tab='stops';UI.searchMode='place';
+    saveAll();render();setTimeout(()=>openSearchSheet('place'),0);
   }catch(e){
     alert('Geocoding failed: '+e.message);
   }
