@@ -1089,9 +1089,6 @@ select option{background:var(--bg3);}
 .rli{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:6px;display:flex;flex-direction:column;gap:4px;cursor:pointer;transition:border-color .15s;}
 .rli:hover{border-color:var(--border2);}.rli.active{border-color:var(--accent);}
 .rli.active .ri-name{color:var(--accent);}
-/* v381: route action row — equal-width buttons so the row always fits a phone width */
-.rli-acts{display:flex;gap:4px;align-items:stretch;}
-.rli-acts>.btn{flex:1 1 0;min-width:0;padding:6px 4px;white-space:nowrap;}
 .ri-inf{min-width:0;}.ri-name{font-weight:500;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ri-meta{font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;}
 /* alert overlay CSS removed — stop alerts now use next-strip pulse + audio chime */
@@ -1755,7 +1752,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v382';
+window.APP_VERSION='v380';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -9988,7 +9985,7 @@ function _packFullGestures(full){
     st._fitted = false;
     _packCdReset();
     redrawMap('live-map'); };
-  const end = () => { _mapDragDone();
+  const end = () => { _mapDragging = false;
     const wasTap = drag && !drag.moved && !pinch;
     if(drag && drag.moved) didDrag = true;
     drag = null; return wasTap; };
@@ -12065,16 +12062,6 @@ const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://se
 // Tile cache: key = 'mode/z/x/y'
 const _tileCache={};
 let _mapDragging=false;
-// v382 — tiles that arrive mid-gesture are held, not dropped: the map they belong to is
-// remembered here and redrawn once when the gesture ends. EVERY gesture end must go through
-// _mapDragDone — the tappable-map touchend used to null _drag without clearing _mapDragging,
-// so after one touch every later tile load was ignored and a basemap switch showed black
-// until the next pan (Peter's phone).
-const _tilesHeld={};
-function _mapDragDone(){
-  _mapDragging=false;
-  for(const id in _tilesHeld){if(_tilesHeld[id]){_tilesHeld[id]=0;_mapRedrawSoon(id);}}
-}
 let _liveDrawRaf=null; // RAF handle for throttled live map draws
 const OSM_URL='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 // Convert lon/lat to OSM tile x,y at zoom z
@@ -12101,7 +12088,7 @@ function getTile(z,x,y,redrawId){
   // that is dozens of ~200 ms redraws stacked back to back just to fade in the
   // basemap, on top of whatever the user was actually doing. _mapRedrawSoon collapses
   // a burst of arrivals into one draw per frame, which is all the screen can show.
-  img.onload=()=>{_tileCache[key]=img;if(redrawId){if(_mapDragging)_tilesHeld[redrawId]=1;else _mapRedrawSoon(redrawId);}};
+  img.onload=()=>{_tileCache[key]=img;if(redrawId&&!_mapDragging)_mapRedrawSoon(redrawId);};
   img.onerror=()=>{
     _tileCache[key]='error';
     // Only schedule retry if online — no point hammering when in airplane mode.
@@ -13513,7 +13500,7 @@ function attachMap(cvs,tapCb){
   };
   let _didDrag=false;
   const dragEnd=(x,y,tapCb)=>{
-    _mapDragDone();
+    _mapDragging=false;
     if(!_drag)return;
     const wasTap=!_drag.moved;
     _didDrag=_drag.moved;
@@ -13566,7 +13553,6 @@ function attachMap(cvs,tapCb){
     const x=e.changedTouches[0].clientX,y=e.changedTouches[0].clientY;
     const wasTap=_drag&&!_drag.moved&&_ts&&Date.now()-_ts.t<400;
     _drag=null;_ts=null;
-    _mapDragDone();   // v382 — was missing: _mapDragging stuck true, tile loads never redrew
     if(wasTap&&cvs._px){e.preventDefault();hitTest(cvs,x,y,tapCb);}
   },{passive:false});
   cvs.addEventListener('click',e=>{
@@ -19175,13 +19161,13 @@ function tRoutes(r){
         +'</div>'
         +'<div class="ri-meta">'+(rt.points.length?''+(rt.totalDist?rt.totalDist.toFixed(0)+'km':'')+(rt.totalDist?' · ':''):'Plan · ')+rt.stops.length+' stop'+(rt.stops.length!==1?'s':'')+(rt.startDate?' · '+(rt.startDate):'')+'</div>'
         +'</div>'
-        +'<div class="rli-acts">'
+        +'<div style="display:flex;gap:4px;align-items:center;">'
         +'<button class="btn btn-sm rename-route" data-ridx="'+i+'" title="Rename">'+ICON_EDIT+'</button>'
         +'<button class="btn btn-sm route-turns-btn" data-ridx="'+i+'" title="Turn navigation" style="display:inline-flex;align-items:center;">'+turnLabel+'</button>'
-        +'<button class="btn btn-sm dl-tiles-btn" data-ridx="'+i+'" title="Download offline map tiles"'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?' disabled':'')+'>'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?'<div class="spin" style="width:14px;height:14px;"></div>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>')+'</button>'
+        +'<button class="btn btn-sm dl-tiles-btn" data-ridx="'+i+'" title="Download offline map tiles" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-family:var(--font);"'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?' disabled':'')+'>'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?'<div class="spin" style="width:14px;height:14px;"></div> Downloading…':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Offline map')+'</button>'
         +'<button class="btn btn-sm share-route" data-ridx="'+i+'" title="Share this ride (route + plan)" style="display:inline-flex;align-items:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>'
         +'<button class="btn btn-sm reload-route" data-ridx="'+i+'" title="Update route (reimport GPX)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>'
-        +'<button class="btn btn-sm btn-r del-route" data-ridx="'+i+'" title="Delete route">✕</button>'
+        +'<button class="btn btn-sm btn-r del-route" data-ridx="'+i+'" style="margin-left:auto;">✕</button>'
         +'</div>'
         // PackRide doorway (v257 slice 3): on the SELECTED route only — logo + words,
         // not logo alone (the mark hasn't earned solo recognition yet).

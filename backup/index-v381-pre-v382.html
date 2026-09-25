@@ -1755,7 +1755,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v382';
+window.APP_VERSION='v381';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -9988,7 +9988,7 @@ function _packFullGestures(full){
     st._fitted = false;
     _packCdReset();
     redrawMap('live-map'); };
-  const end = () => { _mapDragDone();
+  const end = () => { _mapDragging = false;
     const wasTap = drag && !drag.moved && !pinch;
     if(drag && drag.moved) didDrag = true;
     drag = null; return wasTap; };
@@ -12065,16 +12065,6 @@ const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://se
 // Tile cache: key = 'mode/z/x/y'
 const _tileCache={};
 let _mapDragging=false;
-// v382 — tiles that arrive mid-gesture are held, not dropped: the map they belong to is
-// remembered here and redrawn once when the gesture ends. EVERY gesture end must go through
-// _mapDragDone — the tappable-map touchend used to null _drag without clearing _mapDragging,
-// so after one touch every later tile load was ignored and a basemap switch showed black
-// until the next pan (Peter's phone).
-const _tilesHeld={};
-function _mapDragDone(){
-  _mapDragging=false;
-  for(const id in _tilesHeld){if(_tilesHeld[id]){_tilesHeld[id]=0;_mapRedrawSoon(id);}}
-}
 let _liveDrawRaf=null; // RAF handle for throttled live map draws
 const OSM_URL='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 // Convert lon/lat to OSM tile x,y at zoom z
@@ -12101,7 +12091,7 @@ function getTile(z,x,y,redrawId){
   // that is dozens of ~200 ms redraws stacked back to back just to fade in the
   // basemap, on top of whatever the user was actually doing. _mapRedrawSoon collapses
   // a burst of arrivals into one draw per frame, which is all the screen can show.
-  img.onload=()=>{_tileCache[key]=img;if(redrawId){if(_mapDragging)_tilesHeld[redrawId]=1;else _mapRedrawSoon(redrawId);}};
+  img.onload=()=>{_tileCache[key]=img;if(redrawId&&!_mapDragging)_mapRedrawSoon(redrawId);};
   img.onerror=()=>{
     _tileCache[key]='error';
     // Only schedule retry if online — no point hammering when in airplane mode.
@@ -13513,7 +13503,7 @@ function attachMap(cvs,tapCb){
   };
   let _didDrag=false;
   const dragEnd=(x,y,tapCb)=>{
-    _mapDragDone();
+    _mapDragging=false;
     if(!_drag)return;
     const wasTap=!_drag.moved;
     _didDrag=_drag.moved;
@@ -13566,7 +13556,6 @@ function attachMap(cvs,tapCb){
     const x=e.changedTouches[0].clientX,y=e.changedTouches[0].clientY;
     const wasTap=_drag&&!_drag.moved&&_ts&&Date.now()-_ts.t<400;
     _drag=null;_ts=null;
-    _mapDragDone();   // v382 — was missing: _mapDragging stuck true, tile loads never redrew
     if(wasTap&&cvs._px){e.preventDefault();hitTest(cvs,x,y,tapCb);}
   },{passive:false});
   cvs.addEventListener('click',e=>{
