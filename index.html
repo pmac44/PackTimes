@@ -4662,8 +4662,11 @@ function _bikeStandName(tags,dist){return (tags.amenity==='compressed_air'?'Air 
 // Peter's rule: ONE tick box per job. "Water" finds every kind of drinkable water (bubbler, tap,
 // RV fill point, drinking fountain, spring marked drinkable) and the tile says which kind it is.
 // A spring NOT marked drinkable goes to Waterways, the "may or may not be potable" search.
-// Showers have no box of their own: a standalone shower comes with Toilets, and a campground's or
-// caravan park's showers show on that stop's tile — so no double-up.
+// Showers have no box of their own and never become a stop. OSM maps them two ways (Muttaburra QLD
+// has both, 10 m apart): a camp/toilet tagged shower=yes (→ _stopInfo), or a separate
+// amenity=shower point beside the toilet block. The separate point is ATTACHED to the nearest
+// toilet/camp/caravan stop by _attachShowers; one with nothing nearby is dropped — in NSW/VIC
+// those are ~300 of 984 and ~94% are coastal beach rinse showers (measured 26 Sep 2026).
 function _poiParts(opts,bb){
   const p=[];
   if(opts.water){
@@ -4673,7 +4676,7 @@ function _poiParts(opts,bb){
     p.push(`node["natural"="spring"]["drinking_water"="yes"](${bb})`);
   }
   if(opts.crossings)p.push(`node["natural"="spring"]["drinking_water"!="yes"](${bb})`);
-  if(opts.toilets)p.push(`nwr["amenity"="shower"](${bb})`);
+  if(opts.toilets||opts.camp||opts.caravan)p.push(`nwr["amenity"="shower"](${bb})`);
   if(opts.food)p.push(`nwr["shop"="kiosk"](${bb})`);
   // Shops that fix bikes without being a bike shop (sports/hire/outdoor shops, servos).
   if(opts.bike)p.push(`nwr["service:bicycle:repair"="yes"]["shop"!="bicycle"](${bb})`);
@@ -4700,7 +4703,7 @@ function _stopInfo(tags){
   if(tags['service:bicycle:retail']==='yes')bs.push('parts');
   if(tags['service:bicycle:rental']==='yes')bs.push('hire');
   if(bs.length)out.push((tags.shop==='bicycle'?'Bike ':'Not a bike shop, but does bike ')+bs.join(', '));
-  // Showers: on a camp/caravan/toilet stop, or a standalone shower.
+  // Showers tagged ON a camp/caravan/toilet stop (separate shower points: _attachShowers).
   const hot=tags.hot_water==='yes'||tags.shower==='hot';
   if(tags.amenity==='shower')out.push(hot?'Hot shower':tags.hot_water==='no'?'Cold shower':'Shower');
   else if(yes(tags.shower))out.push(hot?'Hot showers':'Showers');
@@ -4726,13 +4729,32 @@ function _poiClassify(tags,dist,name,opts){
     if(tags.drinking_water==='yes')return W('Tap at toilets');
     return{type:'wc',name:name||('Toilets '+km),info};   // v383 — drinking_water=no used to fall through and read SHOP
   }
-  if(a==='shower')return{type:'wc',name:name||('Shower '+km),info};
+  if(a==='shower')return{shower:true};   // never a stop of its own — see _attachShowers
   if(a==='vending_machine')return{type:'vending',name:name||('Vending machine '+km),info,oh:true};
   if(tags.railway==='station'||tags.railway==='halt')return name&&!/^(subway|miniature|funicular)$/.test(tags.station||'')?{type:'train',name,info}:false;
   if(tags.shop==='kiosk')return name?{type:'food',name,info,oh:true}:false;
   if(tags.shop==='outdoor')return name?{type:'shop',name,info,oh:true}:false;
   if(opts.bike&&tags['service:bicycle:repair']==='yes'&&tags.shop!=='bicycle')return name?{type:'bike',name,info,oh:true}:false;
   return null;
+}
+// Run AFTER the element loop — Overpass returns elements in any order, so the toilet block may
+// arrive after its shower. Looks across ALL the route's stops with coordinates, so a shower still
+// finds a caravan park added by an earlier search.
+function _attachShowers(r,showers){
+  showers.forEach(({lat,lon,tags})=>{
+    let best=null,bd=Infinity;
+    r.stops.forEach(s=>{
+      if(!s.lat||!s.lon)return;
+      const lim=s.type==='wc'?0.1:(s.type==='camp'||s.type==='caravan')?0.25:0;   // km: a park's centre can sit well away from its amenities block
+      if(!lim)return;
+      const d=hav({lat,lon},s);if(d<=lim&&d<bd){bd=d;best=s;}
+    });
+    if(!best)return;
+    const hot=tags.hot_water==='yes',note=(hot?'Hot shower':tags.hot_water==='no'?'Cold shower':'Shower')+(tags.access==='customers'?' (paying guests)':'');
+    const cur=best.info||'';
+    if(!/shower/i.test(cur))best.info=cur?cur+' · '+note:note;
+    else if(hot&&!/hot shower/i.test(cur))best.info=cur.replace(/\bShowers?\b/,'Hot showers');
+  });
 }
 const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 
@@ -4829,6 +4851,7 @@ async function fetchOverpass(){
   const ingest=(json,sub)=>{
       // Don't wipe existing stops — just add new ones, skipping duplicates by name+dist proximity
       const waterwayBuckets={}; // key = Math.floor(dist/0.5), value = {dist, snap, name, offOpts}
+      const showers=[];         // v383 — attached to a toilet/camp stop after the loop
       json.elements.forEach(el=>{
         const lat=el.lat!==undefined?el.lat:el.center?.lat;
         const lon=el.lon!==undefined?el.lon:el.center?.lon;
@@ -4861,6 +4884,7 @@ async function fetchOverpass(){
         const pop=tags.population?parseInt(tags.population,10)||null:null;
         const pc=tags.place?null:_poiClassify(tags,dist,name,opts);   // v383
         if(pc===false)return;
+        if(pc&&pc.shower){showers.push({lat,lon,tags});return;}
         const dupeStop=r.stops.find(s=>s.auto&&Math.abs(s.dist-dist)<0.5&&(
           (name&&s.name.trim().toLowerCase()===name.toLowerCase())||
           (!name&&s.type===( tags.place?'town':pc?pc.type:_bikeStandTag(tags)?'bikestand':'wc'))
@@ -4897,6 +4921,7 @@ async function fetchOverpass(){
           addStop(r,dist,type,name||(tags.natural==='saddle'?'Saddle':'Peak'),{auto:true,ohRaw,ohRules,info:_stopInfo(tags),...offOpts});
         }
       });
+      _attachShowers(r,showers);
       // Add best waterway per 500m bucket
       Object.values(waterwayBuckets).forEach(w=>{
         const isDupe=r.stops.some(s=>s.auto&&s.crossing&&Math.abs(s.dist-w.dist)<0.5);
@@ -5050,6 +5075,7 @@ async function fetchTownSearch(query){
       const existing=r.stops.filter(s=>s.auto);
       let added=0;
       const waterwayBuckets={}; // v362 — see the waterway branch below
+      const showers=[];         // v383 — attached to a toilet/camp stop after the loop
       json.elements.forEach(el=>{
         const lat=el.lat!==undefined?el.lat:el.center?.lat;
         const lon=el.lon!==undefined?el.lon:el.center?.lon;
@@ -5097,6 +5123,7 @@ async function fetchTownSearch(query){
         const pop=tags.population?parseInt(tags.population,10)||null:null;
         const pc=tags.place?null:_poiClassify(tags,dist,name,opts);   // v383 — same helper as the corridor search
         if(pc===false)return;
+        if(pc&&pc.shower){showers.push({lat,lon,tags});return;}
         const dupeStop=r.stops.find(s=>s.auto&&(
           r.points.length?
             (Math.abs(s.dist-dist)<0.5&&((name&&s.name.trim().toLowerCase()===name.toLowerCase())||(!name&&s.type===(tags.place?'town':pc?pc.type:_bikeStandTag(tags)?'bikestand':'wc')))):
@@ -5130,6 +5157,7 @@ async function fetchTownSearch(query){
           addStop(r,dist,type,name||(tags.natural==='saddle'?'Saddle':'Peak'),{auto:true,ohRaw,ohRules,info:_stopInfo(tags),...offOpts});added++;
         }
       });
+      _attachShowers(r,showers);
       // v362 — add the best waterway per 500 m bucket (route plans) or per name (blank plans)
       Object.values(waterwayBuckets).forEach(w=>{
         const isDupe=w.dist===null
