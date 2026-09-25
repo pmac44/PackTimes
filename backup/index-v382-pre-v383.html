@@ -203,7 +203,6 @@
   --cat-wc:#6b7680;--cat-stop:#8a7a5e;--cat-church:#9a6fb0;--cat-school:#4a6fa5;
   --cat-hall:#a07845;--cat-fire:#c0392b;--cat-police:#2f5f9e;
   --cat-bike:#b03a76;--cat-bikestand:#c26a92;   /* v351 — bike shop / bike repair stand */
-  --cat-vending:#8a6d1f;--cat-train:#4b4fa8;   /* v383 — vending machine / train station */
   /* Active tab indicator (icon + label + underline) — the neutral slate, NOT the olive accent
      (Peter): green is accent-only, the active tab is a neutral. */
   --tab-active:var(--stop-card-bg);
@@ -218,7 +217,6 @@
   --chip-wc:#5f6b78;--chip-stop:#867653;--chip-church:#9560ac;--chip-school:#3f66a5;
   --chip-hall:#a07440;--chip-fire:#cc3a2b;--chip-police:#2f5f9e;
   --chip-bike:#c23d80;--chip-bikestand:#cf6a95;
-  --chip-vending:#a8841f;--chip-train:#5458c0;
   /* Slate-card palette — Route/Supplies cards use the ONE contrast colour (--stop-card-bg,
      now the warm ink — v341: the cool greys here are warm equivalents so the undertone
      matches; the names keep "slate" because ~40 call sites read them). Text lifts light so
@@ -392,7 +390,6 @@
   --cat-wc:#8b98a5;--cat-stop:#a89a80;--cat-church:#d9b8e8;--cat-school:#93c5fd;
   --cat-hall:#d4a373;--cat-fire:#ef4444;--cat-police:#5b8ce0;
   --cat-bike:#f472b6;--cat-bikestand:#f9a8d4;   /* v351 — bike shop / bike repair stand */
-  --cat-vending:#e6c35c;--cat-train:#a5b4fc;   /* v383 */
   /* Active tab indicator — v345: back to the old scheme's MINT (`.tab.active{color:var(--accent)}`
      in the April build; Peter circled the white tab as part of the restore). This reverses the
      v312-324 "neutral, not green" call for GRAPHITE only — Paper keeps its neutral. One token
@@ -1043,7 +1040,6 @@ select option{background:var(--bg3);}
   --cat-caravan:#c3d68a;--cat-peak:#b6c2ce;--cat-crossing:#93bcc9;--cat-wc:#b6c2ce;
   --cat-stop:#cabf9f;--cat-church:#d9b8e8;--cat-school:#a9c9f5;--cat-hall:#dcc08a;
   --cat-fire:#f28b7a;--cat-police:#8fb0e0;--cat-bike:#eda0c4;--cat-bikestand:#f4c2d8;
-  --cat-vending:#eed489;--cat-train:#c0c8f7;
   --sleep-deep:#c3b2ec;--food-deep:#ffd166;--water-deep:#8fbfe8;--finish-deep:#f2a08f;}
 /* Icon buttons on stop cards take the CARD's own background (Peter) so they blend in — the symbol
    carries the contrast, and an ACTIVE button shows via its own border + coloured icon. Both themes. */
@@ -1052,7 +1048,7 @@ select option{background:var(--bg3);}
 .si:hover{border-color:var(--border2);}
 .si.hi{border-color:var(--accent)!important;}
 .sdot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
-.d-food{background:var(--cat-food);}.d-water{background:var(--cat-water);}.d-crossing{background:var(--cat-crossing);}.d-sleep{background:var(--cat-sleep);}.d-accom{background:var(--cat-accom);}.d-wc{background:var(--cat-wc);}.d-hut{background:var(--cat-hut);}.d-fuel{background:var(--cat-fuel);}.d-peak{background:var(--cat-peak);}.d-camp{background:var(--cat-camp);}.d-caravan{background:var(--cat-caravan);}.d-stop{background:var(--cat-stop);}.d-town{background:var(--cat-town);}.d-shop{background:var(--cat-shop);}.d-bike{background:var(--cat-bike);}.d-bikestand{background:var(--cat-bikestand);}.d-vending{background:var(--cat-vending);}.d-train{background:var(--cat-train);}
+.d-food{background:var(--cat-food);}.d-water{background:var(--cat-water);}.d-crossing{background:var(--cat-crossing);}.d-sleep{background:var(--cat-sleep);}.d-accom{background:var(--cat-accom);}.d-wc{background:var(--cat-wc);}.d-hut{background:var(--cat-hut);}.d-fuel{background:var(--cat-fuel);}.d-peak{background:var(--cat-peak);}.d-camp{background:var(--cat-camp);}.d-caravan{background:var(--cat-caravan);}.d-stop{background:var(--cat-stop);}.d-town{background:var(--cat-town);}.d-shop{background:var(--cat-shop);}.d-bike{background:var(--cat-bike);}.d-bikestand{background:var(--cat-bikestand);}
 .si-inf{flex:1;min-width:0;}.si-name{font-weight:500;font-size:var(--fs-base);color:var(--text);line-height:1.35;}
 .si-meta{font-family:var(--font);font-size:var(--fs-sm);color:var(--text3);margin-top:2px;}
 .si-rt{text-align:right;flex-shrink:0;}.si-time,.si-eta{font-family:var(--font);font-size:var(--fs-base);font-weight:500;color:var(--accent);}
@@ -1060,7 +1056,7 @@ select option{background:var(--bg3);}
 .tag{display:inline-block;padding:2px 7px;border-radius:6px;font-size:var(--fs-xs);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;--c:var(--text2);background:color-mix(in srgb,var(--c) 15%,transparent);color:var(--c);}
 /* Each chip only names its category hue via --c; the .tag base turns it into the wash. Add a
    new category = add ONE --cat-* token + one .t-x{--c:...} line, and both themes just work. */
-.t-food{--c:var(--cat-food);--cs:var(--chip-food);}.t-water{--c:var(--cat-water);--cs:var(--chip-water);}.t-sleep{--c:var(--cat-sleep);--cs:var(--chip-sleep);}.t-accom{--c:var(--cat-accom);--cs:var(--chip-accom);}.t-wc{--c:var(--cat-wc);--cs:var(--chip-wc);}.t-town{--c:var(--cat-town);--cs:var(--chip-town);}.t-shop{--c:var(--cat-shop);--cs:var(--chip-shop);}.t-hut{--c:var(--cat-hut);--cs:var(--chip-hut);}.t-fuel{--c:var(--cat-fuel);--cs:var(--chip-fuel);}.t-peak{--c:var(--cat-peak);--cs:var(--chip-peak);}.t-camp{--c:var(--cat-camp);--cs:var(--chip-camp);}.t-stop{--c:var(--cat-stop);--cs:var(--chip-stop);}.t-crossing{--c:var(--cat-crossing);--cs:var(--chip-crossing);}.t-church{--c:var(--cat-church);--cs:var(--chip-church);}.t-school{--c:var(--cat-school);--cs:var(--chip-school);}.t-hall{--c:var(--cat-hall);--cs:var(--chip-hall);}.t-fire{--c:var(--cat-fire);--cs:var(--chip-fire);}.t-police{--c:var(--cat-police);--cs:var(--chip-police);}.t-caravan{--c:var(--cat-caravan);--cs:var(--chip-caravan);}.t-bike{--c:var(--cat-bike);--cs:var(--chip-bike);}.t-bikestand{--c:var(--cat-bikestand);--cs:var(--chip-bikestand);}.t-vending{--c:var(--cat-vending);--cs:var(--chip-vending);}.t-train{--c:var(--cat-train);--cs:var(--chip-train);}
+.t-food{--c:var(--cat-food);--cs:var(--chip-food);}.t-water{--c:var(--cat-water);--cs:var(--chip-water);}.t-sleep{--c:var(--cat-sleep);--cs:var(--chip-sleep);}.t-accom{--c:var(--cat-accom);--cs:var(--chip-accom);}.t-wc{--c:var(--cat-wc);--cs:var(--chip-wc);}.t-town{--c:var(--cat-town);--cs:var(--chip-town);}.t-shop{--c:var(--cat-shop);--cs:var(--chip-shop);}.t-hut{--c:var(--cat-hut);--cs:var(--chip-hut);}.t-fuel{--c:var(--cat-fuel);--cs:var(--chip-fuel);}.t-peak{--c:var(--cat-peak);--cs:var(--chip-peak);}.t-camp{--c:var(--cat-camp);--cs:var(--chip-camp);}.t-stop{--c:var(--cat-stop);--cs:var(--chip-stop);}.t-crossing{--c:var(--cat-crossing);--cs:var(--chip-crossing);}.t-church{--c:var(--cat-church);--cs:var(--chip-church);}.t-school{--c:var(--cat-school);--cs:var(--chip-school);}.t-hall{--c:var(--cat-hall);--cs:var(--chip-hall);}.t-fire{--c:var(--cat-fire);--cs:var(--chip-fire);}.t-police{--c:var(--cat-police);--cs:var(--chip-police);}.t-caravan{--c:var(--cat-caravan);--cs:var(--chip-caravan);}.t-bike{--c:var(--cat-bike);--cs:var(--chip-bike);}.t-bikestand{--c:var(--cat-bikestand);--cs:var(--chip-bikestand);}
 /* Paper (light) theme ONLY: chips invert to a SOLID category fill with white ink, so they read
    as proper badges on the light Ride strip AND on the dark slate cards. The dark (Graphite)
    theme keeps the wash above — its brighter hues suit white-on-tint and already worked well.
@@ -1759,7 +1755,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v383';
+window.APP_VERSION='v382';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4117,7 +4113,7 @@ function addStop(r,dist,type,name,opts){
   r.stops.push({id:(_sid++).toString(),dist:+dist,type,name:capName(name||(type+' stop')),
     sleepH:opts.sleepH!==undefined?opts.sleepH:(type==='sleep'?10:null),departTime:opts.departTime||null,
     ohRaw:opts.ohRaw||null,ohRules:opts.ohRules||null,
-    icon:{food:'🍴',water:'💧',sleep:'😴',stop:'📍',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐',bike:'🚲',bikestand:'🔧',vending:'🥤',train:'🚆'}[type]||'📍',
+    icon:{food:'🍴',water:'💧',sleep:'😴',stop:'📍',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',church:'⛪',school:'🏫',hall:'🏛️',fire:'🚒',police:'🚔',caravan:'🚐',bike:'🚲',bikestand:'🔧'}[type]||'📍',
     auto:opts.auto||false,
     starred:opts.starred!==undefined?opts.starred:(type==='town'?true:!opts.auto),
     crossing:opts.crossing||false,
@@ -4128,7 +4124,6 @@ function addStop(r,dist,type,name,opts){
     noCluster:opts.noCluster||false,
     snapIdx:opts.snapIdx!==undefined?opts.snapIdx:null,
     bookingUrl:opts.bookingUrl||null,
-    info:opts.info||null,   // v383 — "what's here" line from OSM tags (_stopInfo), shown on the stop tile
     population:opts.population||null});
   r.stops.sort((a,b)=>a.dist-b.dist);
 }
@@ -4652,88 +4647,6 @@ async function fetchSurfaceData(force){
 // own copy (this file's oldest trap).
 function _bikeStandTag(tags){return tags.amenity==='bicycle_repair_station'||tags.amenity==='compressed_air';}
 function _bikeStandName(tags,dist){return (tags.amenity==='compressed_air'?'Air pump ':'Bike stand ')+dist.toFixed(1)+'km';}
-
-// v383 — ONE authority for the categories added in v383 and for the water search, used by BOTH
-// search paths (same drift trap as the bike stand above). Three pieces:
-//   _poiParts    — the Overpass lines for those options
-//   _poiClassify — which stop an element becomes (or false = drop it). Runs BEFORE the old type
-//                  chain, because that chain bins anything unnamed and most of these are unnamed.
-//   _stopInfo    — a short "what's here" line for the stop tile, read from the OSM tags.
-// Peter's rule: ONE tick box per job. "Water" finds every kind of drinkable water (bubbler, tap,
-// RV fill point, drinking fountain, spring marked drinkable) and the tile says which kind it is.
-// A spring NOT marked drinkable goes to Waterways, the "may or may not be potable" search.
-// Showers have no box of their own: a standalone shower comes with Toilets, and a campground's or
-// caravan park's showers show on that stop's tile — so no double-up.
-function _poiParts(opts,bb){
-  const p=[];
-  if(opts.water){
-    p.push(`nwr["amenity"~"^(drinking_water|water_point)$"](${bb})`);
-    p.push(`nwr["amenity"~"^(toilets|fountain)$"]["drinking_water"="yes"](${bb})`);
-    p.push(`nwr["man_made"="water_tap"]["drinking_water"!="no"](${bb})`);
-    p.push(`node["natural"="spring"]["drinking_water"="yes"](${bb})`);
-  }
-  if(opts.crossings)p.push(`node["natural"="spring"]["drinking_water"!="yes"](${bb})`);
-  if(opts.toilets)p.push(`nwr["amenity"="shower"](${bb})`);
-  if(opts.food)p.push(`nwr["shop"="kiosk"](${bb})`);
-  // Shops that fix bikes without being a bike shop (sports/hire/outdoor shops, servos).
-  if(opts.bike)p.push(`nwr["service:bicycle:repair"="yes"]["shop"!="bicycle"](${bb})`);
-  if(opts.outdoor)p.push(`nwr["shop"="outdoor"](${bb})`);
-  // Unanchored regex on purpose: vending is often multi-valued ("drinks;sweets").
-  if(opts.vending)p.push(`nwr["amenity"="vending_machine"]["vending"~"drinks|food|sweets|snacks|coffee|water|bicycle"](${bb})`);
-  // Train stations = bail-out points. Metro, funicular and miniature/tourist railways are no use for that.
-  if(opts.trains)p.push(`nwr["railway"~"^(station|halt)$"]["station"!~"^(subway|miniature|funicular)$"]["usage"!="tourism"](${bb})`);
-  return p;
-}
-const _VEND_LBL={drinks:'drinks',water:'water',food:'food',sweets:'snacks',snacks:'snacks',coffee:'coffee',bicycle_tube:'bike tubes',bicycle_parts:'bike parts',bicycle_light:'bike lights'};
-function _stopInfo(tags){
-  const out=[],yes=v=>v&&v!=='no';
-  if(tags.amenity==='vending_machine'){
-    const g=[...new Set(String(tags.vending||'').split(';').map(v=>_VEND_LBL[v.trim()]).filter(Boolean))];
-    if(g.length)out.push('Sells '+g.join(', '));
-  }
-  if(tags.railway==='halt')out.push('Small stop (halt)');
-  if(tags.shop==='outdoor')out.push('Outdoor / camping gear');
-  if(tags.shop==='kiosk')out.push('Kiosk');
-  const bs=[];
-  if(tags['service:bicycle:repair']==='yes')bs.push('repairs');
-  if(tags['service:bicycle:pump']==='yes')bs.push('pump');
-  if(tags['service:bicycle:retail']==='yes')bs.push('parts');
-  if(tags['service:bicycle:rental']==='yes')bs.push('hire');
-  if(bs.length)out.push((tags.shop==='bicycle'?'Bike ':'Not a bike shop, but does bike ')+bs.join(', '));
-  // Showers: on a camp/caravan/toilet stop, or a standalone shower.
-  const hot=tags.hot_water==='yes'||tags.shower==='hot';
-  if(tags.amenity==='shower')out.push(hot?'Hot shower':tags.hot_water==='no'?'Cold shower':'Shower');
-  else if(yes(tags.shower))out.push(hot?'Hot showers':'Showers');
-  if(tags.amenity!=='toilets'&&yes(tags.toilets))out.push('Toilets');
-  if(tags.drinking_water==='yes'&&tags.amenity!=='drinking_water'&&tags.amenity!=='toilets'&&tags.amenity!=='fountain'&&tags.natural!=='spring')out.push('Drinking water');
-  if(tags.fee==='yes')out.push('Fee');
-  return out.join(' · ')||null;
-}
-// → {type,name,info,oh,crossing?} | false (drop it) | null (not ours — fall through to the old chain)
-function _poiClassify(tags,dist,name,opts){
-  const km=dist.toFixed(1)+'km',a=tags.amenity,info=_stopInfo(tags);
-  // Unnamed → the kind IS the name, so don't repeat it on the info line.
-  const W=kind=>({type:'water',name:name||kind,info:[name?kind:null,info].filter(Boolean).join(' · ')||null});
-  if(tags.natural==='spring'){
-    if(tags.drinking_water==='yes'||(a==='drinking_water'&&tags.drinking_water!=='no'))return W('Spring (marked drinkable)');
-    return{type:'crossing',crossing:true,name:name||'Spring',info:'Spring — not marked drinkable'};
-  }
-  if(a==='drinking_water')return W('Bubbler / drinking tap');
-  if(a==='water_point')return W('Water fill point (RV / caravan)');
-  if(a==='fountain'&&tags.drinking_water==='yes')return W('Drinking fountain');
-  if(tags.man_made==='water_tap'&&tags.drinking_water!=='no')return W('Tap');
-  if(a==='toilets'){
-    if(tags.drinking_water==='yes')return W('Tap at toilets');
-    return{type:'wc',name:name||('Toilets '+km),info};   // v383 — drinking_water=no used to fall through and read SHOP
-  }
-  if(a==='shower')return{type:'wc',name:name||('Shower '+km),info};
-  if(a==='vending_machine')return{type:'vending',name:name||('Vending machine '+km),info,oh:true};
-  if(tags.railway==='station'||tags.railway==='halt')return name&&!/^(subway|miniature|funicular)$/.test(tags.station||'')?{type:'train',name,info}:false;
-  if(tags.shop==='kiosk')return name?{type:'food',name,info,oh:true}:false;
-  if(tags.shop==='outdoor')return name?{type:'shop',name,info,oh:true}:false;
-  if(opts.bike&&tags['service:bicycle:repair']==='yes'&&tags.shop!=='bicycle')return name?{type:'bike',name,info,oh:true}:false;
-  return null;
-}
 const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 
 // ─── v371 — CHUNKED POI SEARCH ───────────────────────────────────────────────
@@ -4765,10 +4678,11 @@ async function fetchOverpass(){
   if(!r.points.length){UI.opStatus='error';UI.opMsg='Corridor search needs a route. Use Town Search instead.';renderKeepScroll();return;}
   UI.opStatus='loading';UI.opMsg='Searching OSM…';renderKeepScroll();
   // Build query based on UI.osmOpts flags
-  const opts=UI.osmOpts||{towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,pubs:false,camp:false,huts:false,hotels:false,toilets:false,peaks:false,churches:false,schools:false,halls:false,fire:false,caravan:false,police:false,bike:false,bikestand:false,outdoor:false,vending:false,trains:false};
+  const opts=UI.osmOpts||{towns:true,water:false,crossings:false,stockwater:false,food:false,fuel:false,pubs:false,camp:false,huts:false,hotels:false,toilets:false,peaks:false,churches:false,schools:false,halls:false,fire:false,caravan:false,police:false,bike:false,bikestand:false};
   const partsFor=bb=>{
   const parts=[];
   if(opts.towns) parts.push(`node["place"~"^(town|village|city)$"](${bb})`);
+  if(opts.water){parts.push(`nwr["amenity"="drinking_water"](${bb})`);parts.push(`nwr["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`nwr["man_made"="water_tap"](${bb})`);}
   if(opts.toilets)parts.push(`nwr["amenity"="toilets"](${bb})`);
   if(opts.stockwater){parts.push(`node["amenity"="watering_place"](${bb})`);parts.push(`node["man_made"="water_well"](${bb})`);}
   if(opts.food){parts.push(`nwr["amenity"~"^(cafe|restaurant|fast_food)$"](${bb})`);parts.push(`nwr["shop"~"^(supermarket|convenience|bakery|deli|general)$"](${bb})`);}
@@ -4791,7 +4705,6 @@ async function fetchOverpass(){
   if(opts.fire)parts.push(`nwr["amenity"="fire_station"](${bb})`);
   if(opts.caravan)parts.push(`nwr["tourism"~"^(caravan_site|caravan_park)$"](${bb})`);
   if(opts.police)parts.push(`nwr["amenity"="police"](${bb})`);
-  parts.push(..._poiParts(opts,bb));   // v383 — water, vending, trains, kiosks, outdoor, showers, springs, bike-repair shops
     return parts;
   };
   if(!partsFor('0,0,0,0').length){UI.opStatus='error';UI.opMsg='Tick at least one thing to search for.';renderKeepScroll();return;}
@@ -4859,14 +4772,13 @@ async function fetchOverpass(){
 
         // Dedup by name+dist, OR by type+dist for unnamed stops
         const pop=tags.population?parseInt(tags.population,10)||null:null;
-        const pc=tags.place?null:_poiClassify(tags,dist,name,opts);   // v383
-        if(pc===false)return;
         const dupeStop=r.stops.find(s=>s.auto&&Math.abs(s.dist-dist)<0.5&&(
           (name&&s.name.trim().toLowerCase()===name.toLowerCase())||
-          (!name&&s.type===( tags.place?'town':pc?pc.type:_bikeStandTag(tags)?'bikestand':'wc'))
+          (!name&&s.type===( tags.place?'town':tags.amenity==='drinking_water'||tags.drinking_water==='yes'?'water':_bikeStandTag(tags)?'bikestand':'wc'))
         ));
         if(dupeStop){if(pop&&!dupeStop.population)dupeStop.population=pop;return;}
-        if(pc){addStop(r,dist,pc.type,pc.name,{auto:true,info:pc.info,crossing:!!pc.crossing,...(pc.oh?{ohRaw,ohRules}:{}),...offOpts});return;}
+        if(tags.amenity==='toilets'&&!tags.drinking_water){
+          addStop(r,dist,'wc',name||('Toilets '+dist.toFixed(1)+'km'),{auto:true,...offOpts});return;}
         // v351 — BIKE STAND, handled up here with toilets/water and NOT in the type chain below,
         // because that chain ends in `if(!name&&type!=='peak')return;` and a public repair stand
         // is almost never named in OSM. Dropped through the chain, every one of them would have
@@ -4874,6 +4786,8 @@ async function fetchOverpass(){
         if(_bikeStandTag(tags)){
           addStop(r,dist,'bikestand',name||_bikeStandName(tags,dist),{auto:true,...offOpts});return;}
         if(tags.place){if(!name)return;addStop(r,dist,'town',name,{auto:true,ohRaw,ohRules,population:pop,...offOpts});}
+        else if(tags.amenity==='drinking_water'||(tags.amenity==='toilets'&&tags.drinking_water==='yes'))
+          addStop(r,dist,'water',name||('Water '+dist.toFixed(1)+'km'),{auto:true,...offOpts});
         else{
           let type='shop';
           if(tags.amenity==='cafe'||tags.amenity==='restaurant'||tags.amenity==='fast_food')type='food';
@@ -4893,8 +4807,10 @@ async function fetchOverpass(){
           else if(tags.natural==='peak'||tags.natural==='saddle')type='peak';
           if(tags.amenity==='watering_place'||tags.man_made==='water_well'){
             addStop(r,dist,'water',name||(tags.amenity==='watering_place'?'Stock water':'Water well'),{auto:true,...offOpts,stockwater:true});return;}
+          if(tags.man_made==='water_tap'){
+            addStop(r,dist,'water',name||('Water tap'),{auto:true,...offOpts});return;}
           if(!name&&type!=='peak')return;
-          addStop(r,dist,type,name||(tags.natural==='saddle'?'Saddle':'Peak'),{auto:true,ohRaw,ohRules,info:_stopInfo(tags),...offOpts});
+          addStop(r,dist,type,name||(tags.natural==='saddle'?'Saddle':'Peak'),{auto:true,ohRaw,ohRules,...offOpts});
         }
       });
       // Add best waterway per 500m bucket
@@ -5011,7 +4927,7 @@ async function fetchTownSearch(query){
   }
   // 2. Overpass within town bbox using same opts as corridor search
   UI.tsMsg=`Found ${place.display_name.split(',')[0]} — searching for stops…`;renderKeepScroll();
-  const opts=UI.osmOpts||{food:false,water:false,towns:false,hotels:false,pubs:false,toilets:false,bike:false,bikestand:false,outdoor:false,vending:false,trains:false};
+  const opts=UI.osmOpts||{food:false,water:false,towns:false,hotels:false,pubs:false,toilets:false,bike:false,bikestand:false};
   // v379 — a CIRCLE around the place's centre, sized by the sheet's radius slider. The
   // Nominatim bounding box was used before, and it's the wrong size both ways: "Sydney" is
   // all of Greater Sydney (~100 km across → a huge, slow query and hundreds of stops),
@@ -5019,6 +4935,7 @@ async function fetchTownSearch(query){
   const bb=`around:${Math.round((UI.placeRadiusKm||2)*1000)},${place.lat},${place.lon}`;
   const parts=[];
   // Use nwr (node/way/relation) so shops & restaurants tagged as ways are included
+  if(opts.water){parts.push(`nwr["amenity"="drinking_water"](${bb})`);parts.push(`nwr["amenity"="toilets"]["drinking_water"="yes"](${bb})`);parts.push(`nwr["man_made"="water_tap"](${bb})`);}
   if(opts.toilets)parts.push(`nwr["amenity"="toilets"](${bb})`);
   if(opts.stockwater){parts.push(`node["amenity"="watering_place"](${bb})`);parts.push(`node["man_made"="water_well"](${bb})`);}
   if(opts.food){parts.push(`nwr["amenity"~"^(cafe|restaurant|fast_food)$"](${bb})`);parts.push(`nwr["shop"~"^(supermarket|convenience|bakery|deli|general)$"](${bb})`);}
@@ -5037,7 +4954,6 @@ async function fetchTownSearch(query){
   if(opts.fire)parts.push(`nwr["amenity"="fire_station"](${bb})`);
   if(opts.caravan)parts.push(`nwr["tourism"~"^(caravan_site|caravan_park)$"](${bb})`);
   if(opts.police)parts.push(`nwr["amenity"="police"](${bb})`);
-  parts.push(..._poiParts(opts,bb));   // v383 — same helper as the corridor search
   // Always add the town place node itself
   parts.push(`node["place"~"^(town|village|city|suburb|hamlet)$"]["name"](${bb})`);
   const q=`[out:json][timeout:30];(${parts.join(';')};);out center tags;`;
@@ -5095,18 +5011,19 @@ async function fetchTownSearch(query){
         }
         // Dedup by name+coords for blank plans, or by name+dist for route plans
         const pop=tags.population?parseInt(tags.population,10)||null:null;
-        const pc=tags.place?null:_poiClassify(tags,dist,name,opts);   // v383 — same helper as the corridor search
-        if(pc===false)return;
         const dupeStop=r.stops.find(s=>s.auto&&(
           r.points.length?
-            (Math.abs(s.dist-dist)<0.5&&((name&&s.name.trim().toLowerCase()===name.toLowerCase())||(!name&&s.type===(tags.place?'town':pc?pc.type:_bikeStandTag(tags)?'bikestand':'wc')))):
+            (Math.abs(s.dist-dist)<0.5&&((name&&s.name.trim().toLowerCase()===name.toLowerCase())||(!name&&s.type===(tags.place?'town':tags.amenity==='drinking_water'||tags.drinking_water==='yes'?'water':_bikeStandTag(tags)?'bikestand':'wc')))):
             (name&&s.name.trim().toLowerCase()===name.toLowerCase()&&s.lat&&Math.abs(s.lat-lat)<0.001&&Math.abs(s.lon-lon)<0.001)
         ));
         if(dupeStop){if(pop&&!dupeStop.population)dupeStop.population=pop;return;}
-        if(pc){addStop(r,dist,pc.type,pc.name,{auto:true,info:pc.info,crossing:!!pc.crossing,...(pc.oh?{ohRaw,ohRules}:{}),...offOpts});added++;return;}
+        if(tags.amenity==='toilets'&&!tags.drinking_water){
+          addStop(r,dist,'wc',name||('Toilets '+dist.toFixed(1)+'km'),{auto:true,...offOpts});added++;return;}
         if(_bikeStandTag(tags)){   // v351 — before the name gate; see the corridor search's note
           addStop(r,dist,'bikestand',name||_bikeStandName(tags,dist),{auto:true,...offOpts});added++;return;}
         if(tags.place){if(!name)return;addStop(r,dist,'town',name,{auto:true,ohRaw,ohRules,population:pop,...offOpts});added++;}
+        else if(tags.amenity==='drinking_water'||(tags.amenity==='toilets'&&tags.drinking_water==='yes')||tags.man_made==='water_tap'){
+          addStop(r,dist,'water',name||(tags.man_made==='water_tap'?'Water tap':'Water '+dist.toFixed(1)+'km'),{auto:true,...offOpts});added++;}
         else{
           let type='shop';
           if(tags.amenity==='cafe'||tags.amenity==='restaurant'||tags.amenity==='fast_food')type='food';
@@ -5126,8 +5043,10 @@ async function fetchTownSearch(query){
           else if(tags.natural==='peak'||tags.natural==='saddle')type='peak';
           if(tags.amenity==='watering_place'||tags.man_made==='water_well'){
             addStop(r,dist,'water',name||(tags.amenity==='watering_place'?'Stock water':'Water well'),{auto:true,...offOpts,stockwater:true});return;}
+          if(tags.man_made==='water_tap'){
+            addStop(r,dist,'water',name||('Water tap'),{auto:true,...offOpts});return;}
           if(!name&&type!=='peak')return;
-          addStop(r,dist,type,name||(tags.natural==='saddle'?'Saddle':'Peak'),{auto:true,ohRaw,ohRules,info:_stopInfo(tags),...offOpts});added++;
+          addStop(r,dist,type,name||(tags.natural==='saddle'?'Saddle':'Peak'),{auto:true,ohRaw,ohRules,...offOpts});added++;
         }
       });
       // v362 — add the best waterway per 500 m bucket (route plans) or per name (blank plans)
@@ -12697,7 +12616,7 @@ function drawMap(cvs,r,opts){
   } // end if(hasRoute) — route line, surface, pace, arrows
 
   // Stop dots (with off-route connectors for auto-stops with real coords)
-  const dc={food:'#fbbf24',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',stop:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#78909c',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',bike:'#f472b6',bikestand:'#f9a8d4',vending:'#e6c35c',train:'#a5b4fc'};
+  const dc={food:'#fbbf24',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',stop:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#78909c',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',bike:'#f472b6',bikestand:'#f9a8d4'};
   (_hideRoute?[]:r.stops).forEach(s=>{   // v365 — no plan stops on a free ride
     const isSleepRelated=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
     const isOnMap=cvs.id==='desktop-map'||cvs.id==='stops-map';
@@ -15916,7 +15835,7 @@ function exportPlan(r){
       id:s.id,dist:s.dist,type:s.type,name:s.name,
       sleepH:s.sleepH,ohRaw:s.ohRaw,auto:s.auto,
       lat:s.lat,lon:s.lon,offRouteM:s.offRouteM,snapIdx:s.snapIdx,
-      population:s.population||null,info:s.info||null
+      population:s.population||null
     }))
   });
 }
@@ -16010,7 +15929,7 @@ function importPlan(jsonStr,r){
     if(existingIds.has(s.id))return;
     r.stops.push({...s,
       ohRules:s.ohRaw?parseOH(s.ohRaw):null,
-      icon:{food:'🍴',water:'💧',sleep:'😴',stop:'📍',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',bike:'🚲',bikestand:'🔧',vending:'🥤',train:'🚆'}[s.type]||'📍'
+      icon:{food:'🍴',water:'💧',sleep:'😴',stop:'📍',accom:'🏨',town:'🏘️',shop:'🛒',wc:'🚻',hut:'🏔',fuel:'⛽',peak:'🏔️',camp:'🏕️',bike:'🚲',bikestand:'🔧'}[s.type]||'📍'
     });
   });
   r.stops.sort((a,b)=>a.dist-b.dist);
@@ -16066,7 +15985,7 @@ function exportRideFileObj(r){
       id:s.id,dist:s.dist,type:s.type,name:s.name,
       sleepH:s.sleepH,sleepAt:s.sleepAt,ohRaw:s.ohRaw,auto:s.auto,starred:s.starred,
       lat:s.lat,lon:s.lon,offRouteM:s.offRouteM,snapIdx:s.snapIdx,
-      population:s.population||null,info:s.info||null
+      population:s.population||null
     })),
   };
 }
@@ -16232,7 +16151,7 @@ function liveStripIcons(s,reason){
     stop:'#94856a',camp:'#4a7c59',caravan:'#84cc16',hut:'#c8a96e',
     wc:'#78909c',peak:'#94a3b8',church:'#e8c4f0',school:'#93c5fd',
     hall:'#d4a373',police:'#3b82f6',fire:'#ef4444',stockwater:'#94a3b8',
-    bike:'#f472b6',bikestand:'#f9a8d4',vending:'#e6c35c',train:'#a5b4fc'
+    bike:'#f472b6',bikestand:'#f9a8d4'
   };
   const typeLabel={
     town:'TOWN',water:'WATER',crossing:'WATERWAYS',sleep:'SLEEP',food:'FOOD',meal:'EAT',
@@ -16240,7 +16159,7 @@ function liveStripIcons(s,reason){
     stop:'MANUAL STOP',camp:'CAMP',caravan:'CARAVAN',hut:'HUT',
     wc:'TOILET',peak:'PEAK',church:'CHURCH',school:'SCHOOL',
     hall:'HALL',police:'POLICE',fire:'FIRE STN',stockwater:'STOCK H2O',
-    bike:'BIKE SHOP',bikestand:'BIKE STAND',vending:'VENDING',train:'TRAIN'
+    bike:'BIKE SHOP',bikestand:'BIKE STAND'
   };
   const type=s.sleepAt&&s.type!=='sleep'?'sleep':s.type;
   // A PLANNED MEAL outranks the stop's own type: if you've planned to eat here, show
@@ -16340,7 +16259,7 @@ function buildLiveStrip(r,liveDist,sdt){
     :(s.type==='stop')?4
     :(s.type==='camp'||s.type==='hut'||s.type==='caravan'||s.type==='peak'||s.type==='bike')?3
     :(s.type==='water')?2
-    :(s.type==='wc'||s.type==='bikestand'||s.type==='vending'||s.type==='train')?1:0;
+    :(s.type==='wc'||s.type==='bikestand')?1:0;
   const coLocated=s=>ahead.filter(x=>Math.abs(x.dist-s.dist)<=MERGE_KM);
   const slot1Group=coLocated(ahead[0]);
   const slot1=slot1Group.reduce((a,b)=>rank(b)>rank(a)?b:a,ahead[0]);
@@ -17101,8 +17020,6 @@ const LAYER_TYPES=[
   {type:'caravan',col:'#84cc16',label:'Caravan'},
   {type:'bike',col:'#f472b6',label:'Bike shops'},
   {type:'bikestand',col:'#f9a8d4',label:'Bike stands'},
-  {type:'vending',col:'#e6c35c',label:'Vending'},
-  {type:'train',col:'#a5b4fc',label:'Train stns'},
   {type:'pub',col:'#f59e0b',label:'Pubs'},
   {type:'hut',col:'#c8a96e',label:'Huts'},
   {type:'accom',col:'#c084fc',label:'Accom'},
@@ -17458,7 +17375,7 @@ function tStopsShell(r){
 // also means content-wrap's delegators never see its events: it wires its own below.
 // "Advanced accommodation" is the Geoapify search — named so it doesn't read as a duplicate
 // of the plain "accom" category, which already finds places to stay through OSM.
-const OSM_OPT_DEFS=[['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['food','food','food',false],['fuel','fuel','fuel',false],['pubs','pub','pub',false],['bike','bike','bike shop',false],['bikestand','bikestand','bike stand',false],['outdoor','shop','outdoor shop',false],['vending','vending','vending',false],['trains','train','train stn',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false],['stockwater','stockwater','stock h2o',false]];
+const OSM_OPT_DEFS=[['towns','town','town',true],['water','water','water',false],['crossings','crossing','waterways',false],['toilets','wc','toilet',false],['food','food','food',false],['fuel','fuel','fuel',false],['pubs','pub','pub',false],['bike','bike','bike shop',false],['bikestand','bikestand','bike stand',false],['camp','camp','camp',false],['caravan','caravan','caravan',false],['huts','hut','hut',false],['hotels','accom','accom',false],['halls','hall','hall',false],['churches','church','church',false],['schools','school','school',false],['fire','fire','fire stn',false],['police','police','police',false],['peaks','peak','peaks',false],['stockwater','stockwater','stock h2o',false]];
 const _osmOptOn=(k,def)=>(UI.osmOpts&&UI.osmOpts[k]!==undefined)?UI.osmOpts[k]:def;
 
 function _searchStatusHTML(){
@@ -18130,7 +18047,6 @@ function tLiveShell(r){
           <div class="si-inf">
             <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}</div>
             <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${(s.dist-liveDist).toFixed(1)} km</span>${(e=>e?' · '+e:'')(eleAtStr(r,s.dist))} · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
-            ${s.info?`<div class="si-meta">${s.info}</div>`:''}
             ${stEl?`<div class="si-st" style="margin-top:2px;">${stEl}</div>`:''}
             ${hasSleep?`<div style="margin-top:2px;font-size:14px;color:#b39ddb;">😴 ${s.sleepH||10}h bivi</div>`:''}
           </div>
@@ -20014,7 +19930,6 @@ function stopRow(s,r,sdt,inCluster){
         <div style="flex:1;min-width:0;">
           <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}${autoBadge}</div>
           <div class="si-meta">${r.points.length?'<span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">'+s.dist.toFixed(1)+' km</span>'+((e)=>e?' · '+e:'')(eleAtStr(r,s.dist))+' · ':''}<span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
-          ${s.info?`<div class="si-meta">${s.info}</div>`:''}
           ${sleepBadge?`<div style="margin-top:2px;">${sleepBadge}</div>`:''}
           <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='bike')&&s.ohRules?stEl:''}</div>
         </div>
@@ -22428,7 +22343,6 @@ function updateLive(){
             <div class="si-inf">
               <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}</div>
               <div class="si-meta"><span style="font-size:16px;font-weight:600;color:var(--accent);font-family:var(--font);">${dt} km</span>${(e=>e?' · '+e:'')(eleAtStr(r2,s.dist))} · <span class="tag t-${s.type}">${s.type==='crossing'?'waterways':s.type}</span>${ohHint}</div>
-              ${s.info?`<div class="si-meta">${s.info}</div>`:''}
               ${stEl?`<div class="si-st" style="margin-top:2px;">${stEl}</div>`:''}
               ${sleepEl?`<div style="margin-top:2px;">${sleepEl}</div>`:''}
             </div>

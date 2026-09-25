@@ -135,7 +135,8 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
   id: string,              // alphanumeric, migrated on load if short/numeric
   dist: km,
   type: 'food'|'water'|'shop'|'town'|'fuel'|'accom'|'camp'|'caravan'
-       |'pub'|'church'|'school'|'hall'|'fire'|'police'|'sleep'|'stop'|'hut'|'wc',
+       |'pub'|'church'|'school'|'hall'|'fire'|'police'|'sleep'|'stop'|'hut'|'wc'
+       |'bike'|'bikestand'|'vending'|'train',
   name: string,
   lat, lon: number,
   sleepAt: bool,           // overnight at this stop
@@ -143,6 +144,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
   ohRaw: string,           // OSM opening-hours source
   ohRules: [{days:Set, ...}],   // parsed; Sets are restored on load
   starred: bool,
+  info: string|null,       // v383: short "what's here" line from OSM tags (_stopInfo) — water kind, showers, bike services, vending goods
   waterHere: true|undefined, // v232: MANUAL water assignment (like meals). true=assigned (tile/node 💧 blue, auto-stars); undefined=not assigned. waterAssigned(s)=water===true drives the icons+star; stopHasWater(s)=implied||assigned drives the Ride strip + water filter.
   meals: [{type:'meal'|'snack', name, source, when:'before'|'after', durationMin}],  // planned eat events
 }
@@ -395,6 +397,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 ## Recent version log
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
+
+### v383 (26 Sep) — Search finds all drinkable water, vending machines, train stations, outdoor shops
+- **Changed:** new `_poiParts` / `_poiClassify` / `_stopInfo` beside `_bikeStandTag` (OVERPASS), called from BOTH `fetchOverpass` and `fetchTownSearch`. New types `vending` 🥤 and `train` 🚆 (tokens, `.d-/.t-`, icon maps, `dc`, live strip, legend); new boxes `outdoor` (type `shop`), `vending`, `trains`. Stops carry `info` (tile line under the tag; also in share/plan export).
+- **Why:** Peter: one box per job. Water now = bubbler, tap, RV fill point, drinking fountain, spring marked drinkable; unmarked springs go to Waterways; kiosks with Food; non-bike shops doing repairs with Bike shop; showers with Toilets, and on camp/caravan tiles.
+- **Watch out:** `_poiClassify` runs BEFORE the old type chain (it ends in an unnamed-drop). A standalone shower is type `wc`, so it lights the "Toilet here" tick. Fixed on the way: toilets tagged `drinking_water=no` used to read SHOP.
+- **Verified:** `node verify.js`; classifier run on live Overpass (Melbourne, Bright, Engelberg). Live corridor search on the demo route: 43 water, 8 vending, 5 train, 6 bike, 1 outdoor, 29 wc. Tiles, legend and sheet boxes checked in the preview. Funicular stations and bubbler-tagged springs fixed after that run. Demo stops restored. Backup `backup/index-v382-pre-v383.html`. NOT pushed.
 
 ### v382 (26 Sep) — Basemap switch no longer shows black on phone until you pan
 - **Changed:** `attachMap` tappable-map `touchend` now clears the drag flag; new `_mapDragDone()` + `_tilesHeld` beside `_mapDragging` (tile section); `getTile` onload holds mid-gesture arrivals instead of dropping them.
