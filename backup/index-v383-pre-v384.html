@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v384';
+window.APP_VERSION='v383';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4133,19 +4133,6 @@ function addStop(r,dist,type,name,opts){
   r.stops.sort((a,b)=>a.dist-b.dist);
 }
 function delStop(r,id){r.stops=r.stops.filter(s=>String(s.id)!==String(id));}
-// v384 — ONE rule for "does the map legend hide this stop?", used by the planning maps (drawMap)
-// AND the Stops list, so turning Water off in the legend hides it in both. Lifted unchanged from
-// drawMap: a hidden type is still shown if it's a sleep stop while "All sleep" is on, has a planned
-// meal while "Meals/Snacks" is on, or is starred while "Mission" is on.
-function stopHiddenByLegend(s){
-  const H=UI.hiddenMapTypes;
-  if(!H.has(s.type))return false;
-  const isSleep=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
-  if(isSleep&&!H.has('allsleep'))return false;
-  if(s.meals&&s.meals.length&&!H.has('allfood'))return false;
-  if(!H.has('mission')&&(s.starred!==false||isSleep))return false;
-  return true;
-}
 function shopSt(s,r){
   if(!s.ohRules)return'unknown';
   const eta=etaAt(s.dist,r);if(!eta)return'unknown';
@@ -12740,8 +12727,14 @@ function drawMap(cvs,r,opts){
   // Stop dots (with off-route connectors for auto-stops with real coords)
   const dc={food:'#fbbf24',water:'#60a5fa',crossing:'#6b9eb0',sleep:'#b39ddb',stop:'#94856a',town:'#4ade80',shop:'#c084fc',accom:'#c084fc',wc:'#78909c',hut:'#c8a96e',fuel:'#f97316',peak:'#94a3b8',camp:'#4a7c59',church:'#e8c4f0',school:'#93c5fd',hall:'#d4a373',fire:'#ef4444',police:'#3b82f6',caravan:'#84cc16',bike:'#f472b6',bikestand:'#f9a8d4',vending:'#e6c35c',train:'#a5b4fc'};
   (_hideRoute?[]:r.stops).forEach(s=>{   // v365 — no plan stops on a free ride
+    const isSleepRelated=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH));
     const isOnMap=cvs.id==='desktop-map'||cvs.id==='stops-map';
-    const isHidden=isOnMap&&stopHiddenByLegend(s);   // v384 — shared with the Stops list
+    const isFoodRelated=!!(s.meals&&s.meals.length);
+    const hiddenByType=(UI.hiddenMapTypes.has(s.type))&&isOnMap
+      &&!(isSleepRelated&&!UI.hiddenMapTypes.has('allsleep')&&isOnMap)
+      &&!(isFoodRelated&&!UI.hiddenMapTypes.has('allfood')&&isOnMap);
+    const savedByMission=isOnMap&&!UI.hiddenMapTypes.has('mission')&&(s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH)));
+    const isHidden=hiddenByType&&!savedByMission;
     const isHighlighted=opts.highlightId&&String(opts.highlightId)===String(s.id);
     // Skip hidden stops unless they are highlighted
     if(isHidden&&!isHighlighted)return;
@@ -15388,7 +15381,6 @@ function _renderDesktopMapInner(){
         else{filtered2.forEach(t=>UI.hiddenMapTypes.add(t.type));}
         legend.dataset.rendered='';
         renderDesktopMap();
-        if(UI.tab==='stops')renderKeepScroll();   // v384 — list follows the legend
         return;
       }
       const li=e.target.closest('.map-legend-item');
@@ -15399,7 +15391,6 @@ function _renderDesktopMapInner(){
       legend.dataset.rendered='';
       saveAll();
       renderDesktopMap();
-      if(UI.tab==='stops')renderKeepScroll();   // v384 — list follows the legend
     });
   }
   // Attach pan/zoom/tap interactions — once only
@@ -20008,13 +19999,9 @@ function tSettings(r){
 // Render stops list grouped by cluster for the Stops tab
 function clusteredStopRows(r,sdt){
   if(!r.stops.length)return'';
-  const base=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))||String(s.id)===String(UI._tempRevealId)):r.stops;
-  // v384 — the list follows the map legend (a temp-revealed stop always shows).
-  const stops=base.filter(s=>!stopHiddenByLegend(s)||String(s.id)===String(UI._tempRevealId));
-  const nHid=base.length-stops.length;
-  let html=nHid?`<div style="display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:var(--fs-sm);color:var(--text3);"><span style="flex:1;">${nHid} stop${nHid!==1?'s':''} hidden by the map legend</span><button class="btn btn-sm" id="btn-legend-showall">Show all</button></div>`:'';
-  if(!stops.length)return html;
+  const stops=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))||String(s.id)===String(UI._tempRevealId)):r.stops;
   const clusters=clusterStops(stops);
+  let html='';
   clusters.forEach(cl=>{
     if(cl.stops.length>1){
       // Group header
@@ -20048,10 +20035,7 @@ function stopRow(s,r,sdt,inCluster){
   const hasSt=s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='hut'||s.type==='bike';
   const tileBg=s.type==='sleep'||s.sleepAt?'border-color:rgba(179,158,236,0.9);':s.type==='stop'?'border-color:rgba(176,161,134,0.85);':
     hasSt&&s.ohRules?(st==='open'?'border-color:rgba(74,222,128,0.85);':st==='closed'?'border-color:rgba(248,113,113,0.85);':''):'';
-  // v384 — category stripe down the left edge. Declared AFTER tileBg so it overrides only the
-  // left side; the open/closed/sleep colour stays on the other three.
-  const stripe=`border-left:4px solid var(--cat-${s.type},var(--text3));`;
-  return`<div class="si tap-stop" data-sid="${s.id}" style="${tileBg}${stripe}">
+  return`<div class="si tap-stop" data-sid="${s.id}" style="${tileBg}">
     <div class="sdot d-${s.type}"></div>
     <div class="si-inf">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;">
@@ -22823,13 +22807,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       const v=parseFloat(raw);      if(!isNaN(v)&&v>0&&v<=24){s.sleepH=v;saveAll();render();}
       else alert('Enter hours between 0 and 24');
     }
-    return;
-  }
-  // v384 — "Show all" under the Stops list: unhide every stop type the legend is hiding
-  if(e.target.closest('#btn-legend-showall')){
-    const r2=cur();if(!r2)return;
-    r2.stops.forEach(s=>{if(stopHiddenByLegend(s))UI.hiddenMapTypes.delete(s.type);});
-    renderKeepScroll();redrawMap('stops-map');if(IS_DESKTOP())renderDesktopMap();
     return;
   }
   // Mobile "All" layer toggle

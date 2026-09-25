@@ -30,6 +30,7 @@ PackTimes is an ultra-cycling and bikepacking route planner **and ride recorder*
 | `manifest.json` | PWA manifest (name, icons, theme colour, standalone display). |
 | `icon-192.png`, `icon-512.png` | PWA icons. |
 | `push.bat` | Peter's Windows one-click deploy: `git add . && git commit -m "Update app" && git push`. |
+| `.github/workflows/supabase-keepalive.yml` | Scheduled GitHub Action: pings the Supabase backend daily so the free tier never pauses it. Every 3 days was NOT enough — see External services. |
 | `_planning/` | Architecture plan, Phase 1a build plan (with progress notes), GPS-fixes log, and the `fit-spike/` FIT-encoder test harness (incl. Garmin SDK for round-trip verification via Node). |
 | `PackTimes-style-guide.md` | Styling source of truth — read before UI changes. |
 | `backup/` | Pre-restyle backup of index.html. |
@@ -80,6 +81,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
 | 2779 | `RECORDING` | The whole Phase 1a recording pipeline: movement-based sampler (`_appendPoint`, active/stationary state machine), **gap detection** (>15 s no-fix + ≥100 m moved; ≤2 min auto-fills silently), **gap fill engine** (`_recFillGap`, route/Naismith via `cumRiding` weighting, straight-line fallback, `_synthetic:true` points, `_recRecomputeTotals`), **crash recovery** (`_recRehydrate`, recovery modal, typed-delete), **saved rides** (`RECS` in-memory cache, `_ridesCardHTML`, detail modal incl. `_recAsRoute` route-shaped projection + dashed synthetic overlay), **end-of-ride gap prompt** (`_recGapArm/_recGapMaybeShow`, never mid-ride), export helpers (`exportRecordingAsFIT/GPX`, `_recToast`), stop/undo tap handlers, and the **ride save prompt + calibration feed** (v178–179: `_recDefaultName`, `_recMovingH` ride time via the faff rule (<15 min stops count, longer breaks excluded), `_recCalibAuto` route-derived surface/climb/load, `_recSaveShow` modal, `_recCalibAdd` → `UI.calibRides` entries carrying `src:'rec'`/`recId`/`name`, oldest-recorded eviction when full). |
 | 3571 | `FIT WRITER` | Hand-rolled Activity FIT encoder (`encodeActivityFit`), proven against Strava + Garmin SDK (spike harness in `_planning/fit-spike/`). |
 | 3968 | `STRAVA` | OAuth (authorization-code; secret embedded — accepted trade-off), `stravaFreshToken` silent refresh, `stravaUpload` (FIT multipart + status polling, `external_id packtimes-<recId>` dedupe), `stravaQueue`/`stravaProcessQueue` retry queue (backoff 30s→daily + online/visibility/GPS-return triggers). Auto-upload fires only AFTER gap decisions. **v197:** `stravaSyncName`/`stravaMarkRename` push a renamed ride's title to Strava via PUT `/activities/{id}` (name only, no re-upload); the queue has a best-effort rename pass so failures retry on the same triggers. Upload FormData `name` now uses `rec.name`. |
+| after STRAVA's retry triggers | `INTERVALS.ICU` (v377) | Direct FIT upload to intervals.icu with an API key (basic auth, username `API_KEY`, athlete `0` = key owner): `icuVerifyKey`, `icuQueue`/`icuQueueAll`/`icuUpload`/`icuProcessQueue` (same backoff constant + triggers as Strava), `icuSyncName`/`icuMarkRename`, `_recIcuStatusHTML` (detail modal line), `_recSyncBadgeHTML` (Rides card pills — now also draws the Strava pill). Auto-send fires at the same three points as Strava. Key lives in the `intervalsAuth` KV row. |
 | 4280 | `RIDE SIMULATOR` | GPX playback. Gap detection + watchdog + Strava GPS-trigger all skip when sim is running. |
 | 4984 | `MAP ENGINE` | Canvas maps: `_ms` per-canvas state, `getTile/drawTiles/drawMap` (stores projection on canvas: `cvs._px/_py`), `redrawMap` (special-cases `rec-detail-map` → `_recDetailRedraw`), `attachMap` (gestures), offline-tile prefetcher. |
 | 6363 | `ELEVATION CANVAS` | `drawElev(cvs, r)`. |
@@ -133,7 +135,8 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
   id: string,              // alphanumeric, migrated on load if short/numeric
   dist: km,
   type: 'food'|'water'|'shop'|'town'|'fuel'|'accom'|'camp'|'caravan'
-       |'pub'|'church'|'school'|'hall'|'fire'|'police'|'sleep'|'stop'|'hut'|'wc',
+       |'pub'|'church'|'school'|'hall'|'fire'|'police'|'sleep'|'stop'|'hut'|'wc'
+       |'bike'|'bikestand'|'vending'|'train',
   name: string,
   lat, lon: number,
   sleepAt: bool,           // overnight at this stop
@@ -141,6 +144,7 @@ The file is organised with clear banner comments (`// ═══...`). Section bo
   ohRaw: string,           // OSM opening-hours source
   ohRules: [{days:Set, ...}],   // parsed; Sets are restored on load
   starred: bool,
+  info: string|null,       // v383: short "what's here" line from OSM tags (_stopInfo) — water kind, showers, bike services, vending goods
   waterHere: true|undefined, // v232: MANUAL water assignment (like meals). true=assigned (tile/node 💧 blue, auto-stars); undefined=not assigned. waterAssigned(s)=water===true drives the icons+star; stopHasWater(s)=implied||assigned drives the Ride strip + water filter.
   meals: [{type:'meal'|'snack', name, source, when:'before'|'after', durationMin}],  // planned eat events
 }
@@ -171,6 +175,7 @@ Old stop types `rest` and standalone `sleep` are migrated on load to `stop` with
   stravaUploadStatus: null|'queued',   // 'queued' = in the retry queue
   stravaUploadAttempts: [{at, ok, error?, note?}],
   stravaNamePending: bool,             // v197: a rename needs syncing up to Strava (best-effort, retried by the queue)
+  icuUploadedAt, icuActivityUrl, icuUploadStatus, icuUploadAttempts, icuNamePending, icuNameError,  // v377: the same six for intervals.icu (icuActivityUrl may be null on a hash-duplicate 200)
 }
 ```
 
@@ -181,7 +186,7 @@ Old stop types `rest` and standalone `sleep` are migrated on load to `stop` with
 - **IndexedDB `packtimes` v4**
   - `routes` store, keyed by route id (packed via `packRoute`)
   - `recordings` store, keyed by recording id (raw objects)
-  - `kv` store for: `cur`, `dbxToken`, `dbxRefreshToken`, `dbxSavedAt`, **`stravaAuth`** (token/refresh/expiresAt/athlete/autoUpload blob), `uiPrefs` (big blob, incl. `recId` for mid-ride reload recovery), `lastGpsState`, `sunCache`, `weatherCache`.
+  - `kv` store for: `cur`, `dbxToken`, `dbxRefreshToken`, `dbxSavedAt`, **`stravaAuth`** (token/refresh/expiresAt/athlete/autoUpload blob), **`intervalsAuth`** (v377: key/athleteId/athleteName/autoUpload — a secret, never in uiPrefs), `uiPrefs` (big blob, incl. `recId` for mid-ride reload recovery), `lastGpsState`, `sunCache`, `weatherCache`.
 - **Cache API**
   - `packtimes-v{N}` — app shell; name derives from `APP_VERSION` (v188 as of 9 July 2026).
   - `packtimes-tiles-v1` — prefetched map tiles (survives app updates).
@@ -201,9 +206,20 @@ Everything the app talks to:
 | Geoapify Places | Accommodation search | **Yes** — user supplies `UI.geoapifyKey` in Settings |
 | Dropbox API | Plan sync | OAuth PKCE, no secret needed |
 | Strava API | Ride upload (OAuth + FIT upload + status polling) | **Yes** — client ID 230638; secret embedded in `index.html` (accepted trade-off, no backend). Athlete capacity raised to 10 (Jul 2026) for beta testers; beyond 10 needs Strava's app review. |
+| intervals.icu API (`intervals.icu/api/v1`) | Ride FIT upload for the Bike Coach project (v377) | **Yes** — user pastes their own API key in Settings (intervals.icu → Settings → Developer Settings). CORS is open to pmac44.github.io. De-dupes by file hash. |
 | Weather radar sites per country | External link in Live tab | No |
+| Supabase (`iwlgfkedrkajesgorysz.supabase.co`, free tier, Sydney) | Location sharing, PackRide events, PackView. RLS-locked tables, all access via SQL functions in `supabase/schema-v*.sql` | Public key embedded by design |
 
-No analytics, no user accounts, no backend.
+No analytics, no user accounts. The ONLY backend is Supabase, and only sharing touches it.
+**Supabase free tier pauses a project without enough database activity** (warning email
+10 Sep 2026 after a week off the bike; actually paused ~18 Sep). The threshold is stricter
+than it sounds — Supabase's own wording is "typically **a few user requests to the database
+each day** over the previous week", so a ping every 3 days does NOT hold it open: that is
+exactly what the first keepalive did, and the project paused anyway between two green runs.
+`.github/workflows/supabase-keepalive.yml` now pings `event_info` **daily, 3 times a run**;
+opening Settings → Location Sharing on the phone also counts. A paused project can be
+resumed from the Supabase dashboard for up to a year, data and config intact — but sharing,
+PackRide and PackView stay dead, silently, until someone notices.
 
 ---
 
@@ -270,6 +286,8 @@ Specifically for this repo:
 
 ---
 
+
+
 ## Open questions for Peter (things I'd want to know)
 
 These aren't urgent — just things to clarify when relevant:
@@ -316,6 +334,22 @@ recorded here so nobody spends another hour on it.
   toggle, or not at all. **Peter chose not at all.** Boilerplate on every posted ride wasn't worth
   the attribution to him. The field stays free for his own notes. Don't add it back unasked.
 
+### DEAD END (8 Sep) — PackTimes CANNOT drop files into intervals.icu's Dropbox folder. Don't re-plan it.
+
+The queued plan was to write each ride's FIT into the Dropbox folder intervals.icu watches, using
+the Dropbox token PackTimes already holds. It cannot work, and the reason is structural:
+- **The PackTimes Dropbox app is APP-FOLDER scoped.** Its token can only write inside
+  `/Apps/PackTimes/` — that is why `plan.json` lives at `F:\Dropbox\Apps\PackTimes\plan.json` even
+  though the code writes to `/plan.json`. Dropbox does not let you change an app's permission type
+  after creation; a Full-Dropbox app would mean a new app key and every device reconnecting.
+- **intervals.icu watches ITS OWN app folder**, `/Apps/Intervals.icu/Activities/` — the folder
+  exists in Peter's Dropbox. No setting points it anywhere else.
+- **The fix that shipped (v377) skips Dropbox entirely:** intervals.icu's own API takes a FIT
+  upload with a per-user API key, allows browser calls from pmac44.github.io (preflight checked),
+  de-dupes by file hash, and its `device_name` field is free text — so rides show as recorded on
+  "PackTimes", which Strava never allowed. Rides already on intervals.icu via Strava are replaced
+  by the native upload (same behaviour the Wahoo import showed on 8 Sep).
+
 ### NOT A BUG (28 Aug) — "316 km before the Divide line goes dark" is CORRECT. Don't re-chase it.
 
 Peter, on the Divide plan in New Mexico: sleep at 3564 km (arrive 21:36, depart 05:36), and
@@ -338,13 +372,89 @@ honest and the question is about the plan's pace, not the sun.
 
 ---
 
-<!-- VERSION-LOG-START — newest first. Only the last 10 live here.
+## How to write a version log entry
+
+The log is for a future Claude session picking up cold, not for Peter. It answers one
+question: what do I need to know before I touch this code again? Keep each entry under
+about 120 words, in this shape:
+
+```
+### v377 (4 Sep) — one-line summary of what changed
+- **Changed:** function or banner section names
+- **Why:** one line
+- **Watch out:** the constraint a future change could break — omit if there isn't one
+- **Verified:** node verify.js / extracted the function and asserted on real output / not yet
+```
+
+Long investigations do not belong here. Write them up in `_planning/` and link the file
+from the entry — that is what `_planning/performance-and-verification-lessons.md` already
+does for v367–v373. Dead ends go in "Settled — do not re-chase these", not the log.
+
+<!-- VERSION-LOG-START — newest first. Only the last 3 live here.
      Older entries are in CLAUDE-log-archive.md. Run `python trim_log.py --write` after
      adding a version and anything past the cut is moved there automatically. -->
 
 ## Recent version log
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
+
+### v384 (26 Sep) — Stops list follows the map legend; category stripe on stop tiles
+- **Changed:** new `stopHiddenByLegend(s)` (STOPS) — the rule lifted out of `drawMap`, now used by `drawMap` AND `clusteredStopRows`. List shows "N stops hidden by the map legend · Show all" (`#btn-legend-showall`, content-wrap delegator). Desktop legend click re-renders the list on the Stops tab. `stopRow` gets a 4px `border-left` in `var(--cat-<type>)`.
+- **Why:** long routes put hundreds of stops in the list; Peter wanted to sort through them. Full-colour tiles rejected (23 hues, border already means open/closed/sleep).
+- **Watch out:** starred stops stay visible while "Mission" is on, sleep stops while "All sleep" is on — same as the map. The stripe is declared AFTER `tileBg` so status colour keeps the other three sides.
+- **Verified:** `node verify.js`; preview: mobile legend Water/Toilets and desktop legend Food hide the right tiles, starred food kept, Show all restores; 375 px width fits. Backup `backup/index-v383-pre-v384.html`. NOT pushed.
+
+### v383 (26 Sep) — Search finds all drinkable water, vending machines, train stations, outdoor shops
+- **Changed:** new `_poiParts` / `_poiClassify` / `_stopInfo` beside `_bikeStandTag` (OVERPASS), called from BOTH `fetchOverpass` and `fetchTownSearch`. New types `vending` 🥤 and `train` 🚆 (tokens, `.d-/.t-`, icon maps, `dc`, live strip, legend); new boxes `outdoor` (type `shop`), `vending`, `trains`. Stops carry `info` (tile line under the tag; also in share/plan export).
+- **Why:** Peter: one box per job. Water now = bubbler, tap, RV fill point, drinking fountain, spring marked drinkable; unmarked springs go to Waterways; kiosks with Food; non-bike shops doing repairs with Bike shop. Showers never become stops: `_attachShowers` (after the element loop) adds a separate shower point to the nearest toilet (≤100 m) or camp/caravan (≤250 m) stop's `info`; lone ones (mostly coastal beach showers, ~300 of 984 in NSW/VIC) are dropped.
+- **Watch out:** `_poiClassify` runs BEFORE the old type chain (it ends in an unnamed-drop). Showers are queried when Toilets, Camp or Caravan is ticked. Fixed on the way: toilets tagged `drinking_water=no` used to read SHOP.
+- **Verified:** `node verify.js`; classifier run on live Overpass (Melbourne, Bright, Engelberg). Live corridor search on the demo route: 43 water, 8 vending, 5 train, 6 bike, 1 outdoor, 29 wc. Tiles, legend and sheet boxes checked in the preview. Funicular stations and bubbler-tagged springs fixed after that run. Shower attach checked on real Muttaburra QLD data: the hot shower lands on the toilet block, the camp's own shower=yes tag shows on its tile, and a beach shower with nothing nearby is dropped. Demo stops restored. Backup `backup/index-v382-pre-v383.html`. Pushed 26 Sep.
+
+### v382 (26 Sep) — Basemap switch no longer shows black on phone until you pan
+- **Changed:** `attachMap` tappable-map `touchend` now clears the drag flag; new `_mapDragDone()` + `_tilesHeld` beside `_mapDragging` (tile section); `getTile` onload holds mid-gesture arrivals instead of dropping them.
+- **Why:** that touchend nulled `_drag` but never reset `_mapDragging`, so after one touch every tile load skipped its redraw.
+- **Watch out:** every gesture end must call `_mapDragDone()`, never set `_mapDragging=false` directly.
+- **Verified:** `node verify.js`; in the browser, simulated touch tap then switch to CYC: 0 → 30 tiles loaded and drawn with no pan, flag false. Held-tile path queued its redraw (pane stopped painting frames, so the final paint wasn't seen). Backup `backup/index-v381-pre-v382.html`. NOT pushed.
+
+### v381 (26 Sep) — Route-list button row fits a phone
+- **Changed:** route picker rows — buttons now sit in `.rli-acts` (equal-width `flex:1 1 0`, 4px side padding). "Offline map" is icon-only (title kept; spinner only while downloading). Delete ✕ no longer `margin-left:auto`.
+- **Why:** a turn count ("166") plus the two-line "Offline map" label pushed ✕ off-screen on Peter's phone.
+- **Verified:** 390px and 360px viewports, 166 turns — six buttons 52px / 47px each, no overflow. Backup `backup/index-v380-pre-v381.html`. NOT pushed.
+
+### v380 (25 Sep) — "Near a place" no longer drops results >5 km off the route
+- **Changed:** `fetchTownSearch` — removed `snap.off>5.0` (Peter's call). `fetchOverpass` corridor search untouched.
+- **Why:** the search exists for off-route places; the v379 radius now bounds the area instead.
+- **Verified:** live search "Meiringen" on the demo route: 0 → 45 stops, each carrying `offRouteM` (~9 km). Test stops removed. NOT pushed.
+
+### v379 (25 Sep) — "Near a place" gets its own radius
+- **Changed:** `fetchTownSearch` queries `around:R,lat,lon` (a circle at the place's centre) instead of Nominatim's bounding box; new `UI.placeRadiusKm` (default 2, slider 0.5–20 km, saved in uiPrefs) with `#place-radius-sl` in the sheet. Sheet body padded clear of the overlay scrollbar.
+- **Why:** the bounding box for "Sydney" is all of Greater Sydney; a small town's box can miss its own edges.
+- **Watch out:** results more than 5 km from the route are still dropped (`snap.off>5.0`), so a big place radius only helps near the route. Search button is pinned outside the scrolling body — keep it there.
+- **Verified:** live Overpass: Braidwood/Meiringen query well-formed (Meiringen 36 hits, all >5 km off the demo line so 0 added); Bingen at 5 km → 36 stops added. 375×560: button stays on screen, body scrolls. NOT pushed.
+
+### v378 (25 Sep) — Stops search moves from an expanding card to a full-screen sheet
+- **Changed:** new `SEARCH SHEET` banner after `tStopsShell`: `openSearchSheet(mode)`, `_searchStatusHTML()`, `OSM_OPT_DEFS`. The Search card is now one button (`#btn-open-search`) plus status banners. "Clear auto (n)" moved to the All Stops header. Geoapify search renamed **Advanced accommodation** (sheet tab + Settings panel title). `UI.osmExpanded/tsExpanded` → `UI.searchMode`.
+- **Why:** three searches, a slider and 20 tick boxes inside an expanding panel was a scroll inside a scroll on the phone, and it hid the map.
+- **Watch out:** the sheet lives on `<body>`, so content-wrap's delegators never see it. Its handlers (radius, osm-opt, ALL/NONE, ts-input Enter) live inside `openSearchSheet`; the old content-wrap copies were deleted. Search closes the sheet *before* fetching, so results land on a visible map.
+- **Verified:** `node verify.js` green; preview at 375×812: all three modes, validation (empty place, nothing ticked), ALL/NONE, stubbed-fetch error banner on the Stops card, clear-auto confirm, Settings jump. No real OSM/Geoapify call made. NOT pushed.
+
+### (no version) 21 Sep — the keepalive was too slow; Supabase paused the project anyway
+- **Changed:** `.github/workflows/supabase-keepalive.yml` — cron every 3 days → **daily**, 3 pings per run, one or two failed pings no longer fail the job, and the failure message now names the failure mode (curl 6 = hostname gone = paused; 7 = platform/mid-restore; 28 = timeout; 0 = DB answered with something unexpected). CLAUDE.md external-services note rewritten.
+- **Why:** runs on 10, 13 and 16 Sep were all green and the project was paused anyway; the 19 Sep run failed with **curl exit 6, could not resolve host**, which is what a paused project looks like. Supabase's threshold is "a few user requests to the database **each day** over the previous week" (https://supabase.com/docs/guides/platform/free-project-pausing) — every 3 days met neither half of it. Peter resumed it from the dashboard on 21 Sep.
+- **Watch out:** don't slow the cadence back down to save Actions minutes — daily IS the fix, and the file says so in a banner comment. A green run only proves the DB answered; it does not prove the project won't be paused, so the real test is that no pause email arrives.
+- **Verified:** the run block extracted from the YAML and executed under `bash -e` against stubbed responses — 6/6 cases correct (all-good, first-ping-blip, only-last-ping-good → exit 0; all-DNS-fail, unexpected-body, all-timeout → exit 1 with the right message). Three real pings at the live project: 200 `{"error": "not_found"}` each, 944/39/33 ms. NOT pushed — no APP_VERSION bump, the app is untouched.
+
+### (no version) 10 Sep — Supabase keepalive workflow
+- **Changed:** new `.github/workflows/supabase-keepalive.yml`; CLAUDE.md external-services table and the stale "no backend" line.
+- **Why:** Supabase emailed that the project would be paused for 7 days' inactivity — sharing only calls the backend during a ride, and Peter was off the bike with a broken collarbone.
+- **Watch out:** GitHub disables scheduled workflows after 60 days with no commits; push anything to re-arm, or run it from the Actions tab. No APP_VERSION bump — the app is untouched.
+- **Verified:** the exact curl run live against the backend → HTTP 200 `{"error":"not_found"}`; pushed 10 Sep and run #1 (manual trigger, 8 s) green in the Actions tab. Schedule fires every 3rd day at 03:17 UTC.
+
+### v377 (8 Sep) — rides go straight to intervals.icu (the Bike Coach data path)
+- **Changed:** new `INTERVALS.ICU` section after Strava's retry triggers; hooks beside every `stravaQueue`/`stravaMarkRename` call (gap finish, end-of-ride flush, undo timer, both rename paths, GPS-return trigger); `rdm-icu` button + status line in the ride detail modal; `_recSyncBadgeHTML` now draws the Rides card pills for both services; Settings gains an **intervals.icu** panel (paste API key → verified against `/athlete/0` before saving, auto-send toggle, retry, **Send all saved rides** backfill, disconnect); STATE/PERSIST carry `icuKey/icuAthleteId/icuAthleteName/icuAutoUpload` in the `intervalsAuth` KV row.
+- **Why:** the queued Dropbox-folder plan was impossible (see Settled) and the coach needs per-ride files that Strava walls off.
+- **Watch out:** the API key is a secret — keep it out of uiPrefs and plan.json. A hash-duplicate upload returns 200 with no activity id, so `icuActivityUrl` can be null on a sent ride; `icuSyncName` treats that as nothing-to-rename. Backoff reuses `STRAVA_BACKOFF_MS` on purpose. Strava upload is untouched.
+- **Verified:** `node verify.js` green; in the served app with `fetch` stubbed: queue → POST `/athlete/0/activities?name&external_id&device_name` with a 716-byte FIT → uploaded/url set; rename → PUT `/activity/{id}`; 401 → attempt logged, stays queued; 200-duplicate → marked sent, url null. Real API: bogus key → the rejection message. Settings panel rendered both states on the phone viewport. NOT pushed; no real ride sent — Peter's key never touched.
 
 ### v376 (28 Aug) — THE KM MARKERS WERE v372's DISEASE WITH TWO SURVIVORS. Peter's read was exact.
 
@@ -526,600 +636,5 @@ a Sydney browser: 07:00 MDT start → `2026-06-12T13:00:00Z`, displayed back as 
 Behavioural note for existing plans: the Divide's ETAs will shift ~2 h once (solar estimate)
 and then snap exact on the first weather fetch (`_adoptRouteTz` → −360). Australian plans are
 untouched — every conversion is the identity when browser and route share a zone.
-
-### v373 (28 Aug) — THE HOVER TOOLTIP FOLLOWS THE WHOLE ROUTE, NOT JUST THE STOPS.
-
-Peter: *"there is a tooltip that pops up when you hover over the big map… It only pops
-up when you're over a stop. I'd like it to pop up wherever you are on the route… it
-shows the distance on the route and the time you're expected to go through there."*
-
-Done, on the map and on the elevation strip. Hover anywhere on the line and you get
-
-```
-📍 1750 km
-Sun 06/09 08:46
-```
-
-and when a stop really is at that spot, its name joins the same two lines:
-
-```
-📍 Stop 45 · 752.5 km
-Tue 01/09 17:58
-```
-
-Both surfaces now build that from one helper (`_hoverTipHTML`), because the two hover
-handlers had already drifted — one offset the tooltip by −36 px and the other by −44.
-
----
-
-#### The order was wrong, not just the coverage
-
-The old handler found the nearest stop DOT ON SCREEN within 28 px and gave up if there
-wasn't one. Both halves of that break on a long route, and the second is the one worth
-remembering.
-
-- **28 px is a distance on the screen, not on the route.** At the whole-route zoom of the
-  Divide one pixel is ~4.9 km, so the radius reached 137 km up the line. That number came
-  from the TAP hit-test, where a fat target is a kindness; as a HOVER test it was a lie.
-- **⚠ "Nearest on screen" is not "nearest along the route."** Wherever a route wiggles or
-  doubles back, two points that share a pixel can be tens of kilometres apart in route
-  terms. Measured before the fix: the tooltip named a stop **23 km** from where the cursor
-  actually was, with complete confidence.
-
-So the order is now inverted. **Anchor to the line first** — 14 px, a little wider than
-the drawn line — which yields an honest route position. *Then* ask whether a stop is at
-that position, judged in ROUTE kilometres rather than screen pixels. That question cannot
-produce a near miss, because the answer is measured against the place the cursor actually
-is.
-
-#### Doing it without reintroducing v372's problem
-
-The obvious implementation — nearest of `r.points` to the cursor — is exactly the
-O(points)-per-event shape v372 just finished removing: 150,001 distance calculations per
-mousemove. So the hover tests a **screen-space index** instead, built once per view and
-reused until the projection changes (the stamp covers centre, scale, canvas size and
-route, so pan/zoom/resize/route-switch all rebuild it and nothing needs manual
-invalidation).
-
-Two rules keep it small: points off the canvas are dropped, and points within 1 px of the
-last kept one are dropped — a polyline thinned to one vertex per pixel is exactly as
-accurate as the screen it is hovered on. **On the Divide that is 150,001 points down to
-813.** Hover work is bounded by the canvas, not the route. Hover is also skipped mid-drag,
-where the projection changes every event and nobody is reading the tooltip anyway.
-
-The index also reports km-of-route per screen pixel *along the line*, which is not the
-map's km-per-pixel — a wiggling route packs far more of itself into a pixel than a
-straight one. That is what sets the stop-naming window.
-
-#### The tolerance, and the one judgement call in this change
-
-A stop is named when it is within **1.5 px worth of route** of the hovered position. It
-tightens automatically with zoom: ~8 km of slack at full zoom-out, ~700 m at 6×,
-centimetres inside a town.
-
-⚠ **1.5 was not the first try, and the reason matters.** At 3 px the window was 16 km wide
-while 274 stops sat 16 km apart, so a stop was ALWAYS within tolerance and the bare
-position never appeared once — the feature would have shipped looking exactly like the old
-behaviour. Measured across zooms after the change (4,300 km, 274 stops, sampling ~60 points
-along the visible line):
-
-| zoom | km per px | names a stop | bare position | no tooltip |
-|---|---|---|---|---|
-| 1 (whole route) | 5.29 | 57 | 3 | 0 |
-| 6 | 0.86 | 8 | 41 | 0 |
-| 40 | 0.14 | 1 | 53 | 0 |
-
-**"No tooltip" is 0 at every zoom** — that column is the feature.
-
-**The honest caveat, and it is Peter's call whether to change it.** At the fully zoomed-out
-view of a stop-dense route you still get a stop name almost every time. That is not the
-tolerance failing; at 5.3 km per pixel with a stop every 16 km there is a dot every three
-pixels, so you genuinely are pointing at one. Every tooltip still carries distance and
-ETA, which is what was asked for. Zoom in one notch and the continuous readout takes over.
-If he'd rather see bare positions more often at full zoom-out, the `1.5` in `_stopAtHover`
-is the single number to turn down.
-
-#### Elevation strip
-
-Needs no index — its x axis IS the route, and `hoverDist` was already being computed for
-the scrubber dot. It goes straight to the same two-step and the same tooltip body. Its stop
-test is restricted to the stops the strip actually DRAWS (it hides unstarred non-sleep
-stops), so it can no longer name a dot that isn't on screen. Verified across the full
-0–4,300 km strip: 28 bare, 13 named, 0 misses, distance within 0.6 km of the cursor, and it
-clears on `mouseleave`.
-
-#### Known, not fixed
-
-The map hover tests every stop regardless of `hiddenMapTypes`, so if stop types are hidden
-it could name a dot that isn't drawn. It cannot bite on the defaults (nothing is hidden, so
-every stop is drawn) and replicating the marker loop's visibility rule is more than this
-change needs — worth doing if the map filters ever get used in anger.
-
-
-### v372 (28 Aug) — THE LAG WAS NEVER ONE SLOW REDRAW. IT WAS NINETEEN OF THEM PER DRAG.
-
-Peter, on the Divide and on a 1,000 km route too: *"the browser is quite slow and
-lagging. I have a new powerful computer. What is the thing that is most likely to be
-slowing down my browser?"*
-
-Profiled in a real browser against a synthetic 4,300 km route (150,001 points at 29 m
-spacing — a realistic RWGPS export — and 274 stops). Four separate faults, and the
-first one is the answer to his question.
-
-| | v371 | v372 |
-|---|---|---|
-| one map redraw (75k pts) | 774 ms | 226 ms |
-| elevation strip alone | 624 ms | 95 ms |
-| **one 20-event drag** | **18,124 ms** | **126 ms** |
-| the same route at 150k pts | **RangeError, nothing drawn** | 390 ms |
-
----
-
-#### 1. One redraw per input event — this is the lag
-
-`dragMove` called `redrawMap` **synchronously on every mousemove**. `zoomMap` did the
-same on every wheel event, and every map tile that finished loading fired one too.
-Nothing was coalesced.
-
-So the cost was never "a redraw takes 0.8 s". It was "a twenty-event drag runs
-nineteen of them, back to back, and the gesture takes eighteen seconds." Measured, not
-estimated. And 186 tiles fade in on a whole-route view — in v371 that was 186 full
-redraws just to paint the basemap.
-
-**⚠ THE NEW COMPUTER MAKES THIS WORSE, NOT BETTER, and that is worth holding on to.** A
-120 Hz display and a high-polling mouse simply deliver more move events per second for
-the app to fall behind on. There is no amount of CPU that fixes an unbounded queue —
-which is exactly why "I have a new powerful computer" and "it lags" were never in
-tension.
-
-All three paths now go through `_mapRedrawSoon`, which coalesces to at most one draw
-per animation frame. An expensive route now DROPS FRAMES — a slightly coarse pan —
-instead of building a backlog that outlives the gesture.
-
-#### 2. etaAt, called ~23,600 times per redraw, and O(stops) each time
-
-The map sampled day/night every 0.5 km and the elevation strip every 10th point — and
-the strip pays it twice, once in the fill loop and once in the line loop. On the Divide
-that is 8,600 + 15,000 = 23,600 `etaAt` calls per redraw, to colour a line 880 px wide.
-About ten samples per pixel, nine of which cannot be seen.
-
-And `etaAt` is not cheap. Its pure-planning branch **rebuilt the whole stop plan on
-every call** — clustered the meals, filtered and sorted the stops, walked every sleep
-ahead of the requested distance. Measured: 0.6 µs with no stops, **21 µs with 274**.
-That is 410 ms of an 800 ms redraw.
-
-Two fixes, and the second is the interesting one:
-
-- **Sample at screen resolution, not route resolution.** Two samples per pixel is the
-  most that can ever show. 23,600 calls → 5,020. Checked against the exact colour at
-  every one of 880 pixel columns: **1 column differs by more than 2/255**. The old
-  0.5 km sampling had 27 such columns — the coarser rate is *closer* to exact, because
-  both are step functions and the error is about where the boundary lands, not how fine
-  the steps are.
-- **The stop walk was always a prefix sum.** Nothing inside that loop depends on the
-  distance being asked for; the distance only decided where to stop adding. So
-  `_planOffTable` computes the running total once and `_planOffAt` binary-searches it.
-  O(stops) → O(log stops).
-
-⚠ **The table is scoped to a draw pass, deliberately.** Caching it on the route would
-mean invalidating it everywhere a stop, sleep, pace or start time changes, and one
-missed spot is a silently stale ETA — the exact regression this file must never ship.
-`redrawMap`, `_render`, `renderDesktopMap` and `drawElev` open it on entry and close it
-in a `finally`, depth-counted for nesting; nothing inside a draw mutates the plan.
-Outside a pass it rebuilds per call, which is what the old code did every time anyway.
-
-**Verified identical: 6,411 comparisons against the v371 implementation** across six
-route shapes (0 to 500 stops, 2k to 50k points, covering the `departTime`, `sleepH`,
-`sleepAt` and `noCluster` paths), including `dist−ε`, `dist` and `dist+ε` at every stop
-boundary. Worst difference: **0 ms.**
-
-#### 3. O(stops × points): 20.5 million iterations to place 274 dots
-
-The elevation strip found each stop's elevation with a **full reduce over every route
-point, once per stop**. 274 × 75,001 = 20.5 million iterations per redraw. Replaced
-with `_nearestPt`, a binary search — verified to return the identical point for all 274
-stops, zero error.
-
-This is the shape that makes a long route *quadratic* rather than merely big: both
-halves grow with the route, so doubling the length roughly quadruples the work. It is
-why the 1,000 km route lagged too, just less.
-
-Stop markers also had no viewport cull — all 274 drawn (connector, dot, glow, mission
-ring, label pill with a `measureText`) whether on screen or not. Now culled with a
-240 px margin, testing both the dot and its on-route anchor. Verified: at the fitted
-view all 274 still draw; zoomed into one town, 7 draw instead of 274, and
-**`onCanvasButCulled` is 0 at every zoom tested**.
-
-#### 4. Math.min(...points) is a hard crash past ~124,000 points
-
-Not slow — **broken**. Spreading an array pushes one argument per element onto the call
-stack; Chrome 148's ceiling is 124,128 (binary-searched, not looked up). A 4,300 km GPX
-at typical spacing is 150,000 points, so `renderDesktopMap` died with "Maximum call
-stack size exceeded" before drawing anything. Four route-scale spreads replaced with
-`_minMax` — the elevation strip, the accommodation search bbox, and two in the pack
-view. Verified equal to the spread on a route small enough to spread.
-
-The remaining `Math.min(...)` calls are over weather hours and colour candidates —
-small arrays, left alone.
-
-#### Left on the table
-
-`drawMap` still projects every route point on every pass; decimating the drawn polyline
-to pixel resolution (~85 points per pixel are currently drawn at the fitted view) is the
-next lever if 226 ms still isn't enough. Not done here because the measured wins above
-already took the felt cost of a gesture from 18 s to 0.13 s, and decimation is the one
-change of the four that can actually alter what the line looks like.
-
-Also new: `serve.js` + `.claude/launch.json`, a 15-line static server. Opening
-`index.html` over `file://` blocks the service worker and is awkward for IndexedDB;
-`node serve.js` gives a real origin on :8777. And `test-perf-longroute.js`, which
-rebuilds this benchmark in the console.
-
-
-### v371 (28 Aug) — TWO SILENT LIES ON THE TOUR DIVIDE: a search that found nothing, and a route that was always night.
-
-Peter, still on the 4,300 km Divide: *"I did an OSM search for towns, and nothing came up… most
-of it is in darkness… This is in the Northern Hemisphere, so perhaps something has gone wrong."*
-
-Two unrelated bugs. What they had in common is the thing worth remembering: **neither one
-reported a failure.** The search returned a green tick. The map drew a route line. Both were
-wrong, and both looked like answers.
-
----
-
-#### 1. The OSM search: one bounding box around 2.2 million km²
-
-`fetchOverpass` built a SINGLE bbox around the whole route. On the Divide that box spans
-31–51°N and 105–116°W. Overpass gives up on it after ~31 s and returns **HTTP 200 with an empty
-element list and a `remark`** saying the query timed out. Nothing in that function read `remark`,
-so an empty array was taken at face value: *"✓ Found 0 points along route."* Indistinguishable
-from a corridor with genuinely no towns in it.
-
-`fetchSurfaceData` has checked `remark` since v370 for exactly this reason. This path never did.
-
-Measured 28 Aug against overpass-api.de:
-
-| query | result |
-|---|---|
-| whole-route box, towns only | **timed out, 0 elements** |
-| ~400 km slice, towns only | 2.7 s, 49 towns |
-| ~100 km slice, towns+food+shops+hotels | 11.6 s, 721 elements |
-| ~100 km **corridor** (`around:2400`), same categories | **90 s** |
-
-**Chunked bounding boxes, 300 km each, bisecting on failure.** Worth stating plainly because it
-contradicts the surface fetcher sitting a few hundred lines above: a *corridor* query is right
-for surfaces (250 m radius, hugging the line) and **wrong** for POIs. `around:` cost scales with
-both vertex count and radius, and POI radii are ~10× the surface one — 90 s against 11.6 s for the
-same stretch. The extra area a box drags in costs nothing, because `snap.off` throws it away
-client-side exactly as it always did.
-
-A chunk no mirror will answer is **halved and retried** down to an 8 km floor, same shape as
-v370's queue. And a partial sweep now reports itself as partial — "Added 41 points, but 60 km
-could not be searched" — rather than as a clean tick over a hole.
-
-Verified end to end against the live API: a 771 km route through twelve known Rockies towns
-returned all twelve in 12.5 s across three chunks, everything inside the search radius, no
-duplicates at the chunk seams.
-
-#### 2. Day/night: the sun cache was keyed by the BROWSER's calendar date
-
-The route line, the elevation strip and the mission cards all asked the sun cache for
-`midLat,midLon,<date>` where `<date>` came from `eta.toLocaleDateString()` — i.e. formed in
-**Peter's** timezone — while the cached sun times belonged to the **route's**. Sydney to Mountain
-Time is 16 hours.
-
-Worked through hour by hour, for a route day of 2 September in Wyoming, the only instants whose
-Sydney-local date matched the sun record that bracketed them fell in a **1h20m window**
-(12:40–14:00 UTC). Everything else read as night. Thirteen hours of real daylight collapsed to
-about one — which is precisely the line Peter was looking at. The bug never showed up before
-because every route until now was Australian, where browser and route share a timezone and the
-key happens to be right.
-
-**Fixed by removing the calendar date from the problem entirely.** `sunAt(lat, lon, instant)`
-computes sunrise/sunset/dawn/dusk locally with the NOAA sunrise equation. You pass a position and
-a moment, so there is no date string and no timezone left to get wrong.
-
-Three things fall out of it:
-
-- **No network.** The old code fired one request per ride-day, in parallel, at a free rate-limited
-  API on every route load. When those failed the fallback `_sunApprox` assumed 06:00–18:00 **UTC**
-  — wrong in exactly the same way, just silently. All of that is gone.
-- **Per position, not per route-midpoint.** On 2 Sep the Divide gets 13h30 of daylight at Banff
-  and 12h47 at the New Mexico border. One midpoint figure could not say that; the line now does.
-- **The polar cases are now right.** At 64°N in June the API returns a *1970 timestamp* for a
-  nautical twilight that never happens. `sunAt` returns continuous twilight.
-
-Accuracy checked against the API it replaces at nine lat/date combinations from Reykjavik to
-Canberra: sunrise and sunset within **1–3 minutes** (8 at 64°N). Colouring the whole Divide from a
-07:00 start at 15 km/h now gives 54% day / 8% twilight / 38% night, with midday blue at 10:00 and
-14:00 local and navy at midnight. Cost: 3.9 ms per full-route redraw for 8,600 lookups, memoised
-on (0.1°, 0.1°, solar day).
-
-Auto theme also stopped consulting the route's sun. It used to scan the cache for any key
-matching today and take the first hit, so planning a trip abroad let **Wyoming's sunset decide
-the theme in Sydney**. It now uses the device's own GPS fix, falling back to the 07:00–18:00 clock
-rule when there isn't one.
-
-#### Still outstanding (deliberately not touched)
-
-The sunrise/sunset row in the weather pill formats with `d.getHours()` — the browser's clock. On
-the ride that is correct, because you are standing in the route's timezone. Planning a US route
-from Sydney it will show US sunrise in Sydney time. Fixing it properly needs a lat/lon → timezone
-lookup the app doesn't have, and a longitude guess would make it *worse* for a rider actually out
-there. Left alone on purpose — raise it if the planning-side reading starts to bite.
-**(It bit. Resolved in v374 — Open-Meteo's `utc_offset_seconds` became the lookup, with the
-device-clock-wins-within-3h rule protecting the rider-on-route case this note worried about.)**
-
-
-### v370 (28 Aug) — THE SURFACE FETCH FINISHES A 4,300 km ROUTE, OR TELLS YOU HOW FAR IT GOT.
-
-Peter, loading the Tour Divide: *"the fetch surface timed out… Is there a way that when one of
-the sections is fetched it can be stored, so following fetches can skip it?"* Yes. But the store
-was the second fix, not the first, and the first one is the one that mattered.
-
-**The actual bug was that success was thrown away.** `fetchSurfaceData` walks the route in 50 km
-Overpass chunks — 86 of them for the Divide — and on a chunk no mirror would answer it did:
-
-```
-UI.surfaceStatus='error'; UI.surfaceMsg=`Surface fetch failed`; renderKeepScroll(); return;
-```
-
-`return`, with 85 good chunks sitting in a local `result` array that was never written anywhere.
-Every stretch already fetched died with the function. On a 200 km ride you'd never notice — the
-odds of one bad chunk are low and a retry is cheap. At 4,300 km one bad chunk is close to
-certain, and it costs the entire run. **A failed chunk is now a GAP: recorded, skipped, and the
-loop moves on.** That alone is most of the win.
-
-**Then the store, so a run that can't finish in one sitting resumes.** `r.surfDone` holds the
-[fromKm,toKm] ranges actually queried, checkpointed to IndexedDB every 10 chunks, so a crash, a
-sleeping phone or a closed tab keeps everything up to that point. Refresh re-chunks only the
-uncovered stretches — measured at 6 requests to fill 189 km of gaps, against 87 for a full run.
-
-**⚠ surfDone is NOT derivable from surfaceSegs, and that is the whole point.** A stretch missing
-from segs is either *queried, and OSM has no usable tag* (genuinely Unknown — re-querying will
-never help) or *never queried* (a gap — do re-query). Only surfDone separates them, which is why
-it's a field of its own and why the Settings card now shows **"Unknown 12km"** and **"Not fetched
-340km — Refresh resumes"** as two chips instead of the old single "Unknown — try Refresh", which
-sent you re-querying ground that has no data to find.
-
-**⚠ Refresh means RESUME when there are gaps, and full re-fetch only when coverage is complete.**
-Same button, and the message tells you which one you're getting. `force` no longer means "wipe".
-
-**Two bugs found by the test harness, both invisible below ~1,000 km.** Neither would have shown
-up in hand testing, which is why `test-surface-resume.js` now exists — it lifts the real v370
-block out of index.html by comment anchor and runs it in a vm against a synthetic 4,300 km route
-and a fake Overpass. No network, ~2 s, and no stubbed copy of the logic to drift out of sync.
-
-1. **Phantom gaps at every chunk boundary.** The first cut accumulated a `[first,last]` range per
-   chunk and merged them with a fixed 0.25 km epsilon. Consecutive chunks meet *at* a sample, so
-   every join left a hole one sample-spacing wide — 0.3 km × 10 joins = **3 km of "gap" that no
-   Refresh could ever close**, because every sample inside it had already been queried. The run
-   reported work outstanding and then issued zero requests. Coverage is now derived by walking
-   the `done` bitmap, which makes adjacent chunks contiguous *by construction*. No epsilon, and
-   none possible: sample spacing follows the GPX and is not a constant.
-2. **The brake I added was worse than the disease.** Making failures non-fatal removed the thing
-   that used to stop a hopeless run, so a dead network went from ~90 requests to **8,034** —
-   86 chunks each bisected 50→25→12→6→3 km. My first breaker (6 consecutive failures) then
-   **stopped a perfectly good run at 898 km**, because one genuinely dead 60 km band produces
-   31 consecutive failures all on its own — that split chain is legitimate. It takes two signals:
-   a count high enough to clear two full chains (80, over in a second when failures are instant)
-   and a **4-minute time-since-last-success** budget for the slow kind, where mirrors queue at
-   ~36 s per attempt and a count that high would mean 45 minutes. Whichever trips first stops the
-   run with everything checkpointed.
-
-**⚠ Do NOT "fix" the breaker by raising the 3 km split floor.** Bisecting down to 3 km is what
-rescues a heavy chunk in a dense track network, which is the normal case the retry path exists
-for. The floor was never the problem; the brake was.
-
-**⚠ r.surfGuess holds the PRE-inference "untagged minor road" ranges, deliberately.** Storing the
-post-inference answer would bake in a call made with less evidence — a guessed stretch whose
-informative neighbour only arrives on the second pass would never be revisited. Restoring guesses
-*as guesses* lets the neighbour pass re-run from scratch each time. Relatedly, that pass now stops
-at an unqueried sample: without the guard a part-fetched route would infer a stretch's surface
-from a sample hundreds of km away on the far side of a gap.
-
-**What Peter should expect on the Divide.** First Fetch runs ~86 chunks at 3-5 s each — call it
-6-8 minutes — and finishes, or stops and tells you how far it got. Any gaps: hit Refresh, it goes
-straight to them. Two or three presses and the route is complete, and nothing is ever re-fetched.
-
-**Not done, and it's the obvious next lever if 6-8 minutes is too long:** the chunks still run
-strictly sequentially with a 300 ms pause. Two workers on different mirrors would roughly halve
-it. Left alone because parallel hammering of public Overpass mirrors invites rate-limiting, and
-resume already turns "fails at 4,300 km" into "finishes in two presses".
-
-### v369 (27 Aug) — THE END OF THE ROUTE. The finish holds the right edge; the rider comes to it.
-
-Peter: *"what happens when you get to the end? … I suspect that the route has been stretched/
-extended out after the end of route so that the actual end can move over to the rider position."*
-It had been, and he was right about the mechanism. Two of his options, and he took **1 + the flag
-from 2** once the numbers were on the table.
-
-**Where this bites, and only here.** The v368 cap already guarantees `distMax ≤ totalDist` at
-every zoom level — `visSpan ≤ maxSpan ⟹ liveDist + (1-g)·visSpan ≤ totalDist`. The one thing
-that can break it is `MIN_SPAN` beating the cap, which is algebraically the last
-`(1-gpsFrac)·MIN_SPAN` = **1.7 km**, measured 1.69 km, and **independent of zoom level**
-(verified at elevZoomKm 3/10/50/9999 — all first overshoot at 1.69 km to go).
-
-**Three bugs, one cause.** Inside that stretch the window overhung the route, and the drawing
-code faithfully extended the last elevation flat, in grade colour, across the overhang:
-
-```
-  to go   invented "route" on canvas
-    1.0          35%
-    0.5          60%
-    0.0          85%      and >100% once GPS runs past the end of the GPX
-```
-
-Worse, and **neither of us was looking for it**: at the line the window held ONE real route
-point, so `if(visPts.length<2)return;` fired and **the profile vanished completely** the moment
-you crossed the line, and stayed gone for any GPS overshoot. Every ride ended with a blank
-strip. That had been true since long before this week.
-
-**The fix — pin `distMax` to the true finish.** `if(distMax>r.totalDist){distMax=r.totalDist;
-distMin=distMax-visSpan;}`. The rider then drifts right off the 15% mark across the final 1.7 km
-and arrives at the flag exactly at the line.
-
-**⚠ Yes, this is a clamp, and a clamp is what caused the v367 direction inversion. It cannot
-here, and the reason is exact rather than lucky:** it only ever binds when `MIN_SPAN` has beaten
-the cap, which is the *same condition* that pins `visSpan` solid at `MIN_SPAN`. No zoom means no
-scale transform means nothing to invert. Measured: **0 of 925 samples inside the drift zone
-where `visSpan` can still change.** Rider fraction leaves 0.1500 continuously — 0.1500 at 1.70 km
-to go, 0.1750 at 1.65, max step 0.0005 per metre ridden. If you ever raise `MIN_SPAN`, re-check
-that those two boundaries still coincide.
-
-**The bleed rule.** `flushRun` and the outline used to extend unconditionally to x=0 and x=W.
-The gap that avoids is real (the first/last visible POINT is up to one sample short of the
-edge), but unconditional means any overhang gets painted as route. Now gated on `bleedL`
-(`distMin>=0`) and `bleedR` (`distMax<=totalDist`). The right edge takes care of itself once
-distMax is pinned; the **left edge still overhangs at the start of every ride** — `distMin =
--gpsFrac*visSpan` is always negative there — so this also kills ~15% of invented pre-start route
-that had been drawn since the profile was written.
-
-**Finish flag** — black/white chequer, 3×2 of 4 px, hung left of a 1 px pole so it never runs off
-the right edge. Drawn BEFORE the rider so the dot sits on top when the two meet. No theme token,
-for the same reason the rider line is white-on-dark-outline: it sits over grade colours we don't
-control, so it carries its own contrast. Only drawn when the finish is genuinely in the window.
-**The rider dot is now x-clamped to the canvas** — with distMax pinned, a rider past the line is
-outside the window and the dot would otherwise disappear at the end of every ride.
-
-**Verified — the real `drawElevProfile` was sed-extracted from `index.html` and RENDERED to a
-canvas** with stubbed helpers, then asserted on the actual pixels (not eyeballed, and not a
-reimplementation):
-- km 0 leaves the pre-start strip empty — first painted column 50/390, was 0;
-- profile still drawn AT the line and 3 km past the end of the GPX (both were blank);
-- flag present at the line, past it, and at the cap mid-route; **absent** when zoomed in with the
-  finish off-screen;
-- rider dot present in all nine cases including past the line;
-- paint still reaches 389/390 mid-route, so the bleed gating did not reintroduce an edge gap.
-Whole 310-line function parses clean; bracket deltas against HEAD balance.
-
-**WHOLE-FILE VERIFIED — the standing rule ran after all.** Node was installed later the same day
-(`winget install OpenJS.NodeJS.LTS`, v24.19.0). Result on v369: ends `</html>` (asserted FIRST),
-23,584 lines, **all 3 inline script blocks `node --check` clean**, CSS 330/330 braces,
-151/151 CSS comment pairs — plus `sw.js` clean. So v367, v368 and v369 are now covered
-end-to-end, not just inside `drawElevProfile`.
-
-**The rule is now a script: `verify.js` in this folder. Run `node verify.js` before any push.**
-It asserts `</html>` FIRST (a truncated write makes every other check meaningless), then
-`node --check`s every inline block, then the CSS braces and comments. ⚠ It deliberately does
-NOT count `/* */` pairs in the JS: a regex literal ending in a quantifier — there is one in the
-date-prefix stripper, `/^\d{4}[-_]?\d{2}[-_]?\d{2}[-_ ]*/` — closes with the characters `*/`
-and makes a naive count read 9/10. That false failure cost time once; `node --check` catches an
-unterminated comment definitively, so the JS side needs nothing more.
-
-**NOT ride-tested.**
-
-### v368 (27 Aug) — ZOOM HAS NO DIRECTION. Peter's cap replaces my clamp. SUPERSEDES v367.
-
-Ride-tested v367: the snap was gone, and a new bug was in its place. Peter: *"the graph moves
-in the opposite direction to your finger when sideways scrolling."* My fault, same session.
-
-**Why the v367 clamp was wrong.** Clamping the window to the route bounds pins the right edge
-once the finish is in view — and a pinned edge IS the zoom anchor. Scaling leaves exactly one
-pixel fixed, the anchor, and everything on one side of it travels one way while everything on
-the other travels the other. Anchor at the right edge ⇒ the entire canvas moves against the
-finger, for the whole back half of a ride. Measured, v366 vs v367, mean drift for a 60px drag:
-
-```
- rider   v366     v367 A
-   50%   -0.082   -0.082      negative = content follows the finger
-   85%   -0.048   +0.088      <- v367 inverts
-   95%   -0.016   +0.088
-```
-
-**⚠ THE LAW, so this isn't re-derived a fourth time: you cannot make drag-to-zoom follow the
-finger across the whole canvas.** All you choose is where the anchor sits, and therefore how
-much of the canvas disagrees. At 15% from the left, 85% agrees — which is what ≤v366 did and
-why nobody ever complained. I also built and measured a blended anchor (linear and sqrt eased,
-candidates B and C): both still let the anchor drift right, both still invert. **Do not "fix"
-this by clamping the window again, and do not flip the drag sign** — flipping makes the back
-half follow and breaks the front half instead. I checked.
-
-**Peter's fix, and it's better than anything I proposed.** Nail the rider to `gpsFrac` at every
-zoom level, forever, and let the ZOOM RANGE give instead: you cannot zoom out past the point
-where the window would run off the end of the route.
-
-```js
-const MIN_SPAN=2;
-const maxSpan=Math.max(MIN_SPAN,(r.totalDist-liveDist)/(1-gpsFrac));
-const visSpan=Math.max(MIN_SPAN,Math.min(UI.elevZoomKm,maxSpan));
-```
-
-One cap does all the work. The dot never moves, so there is no snap and nothing to invert.
-No dead canvas past the finish. And Peter's own observation, which is the nice part: park it
-at the cap and the cap shrinks as you ride, so the profile **auto-zooms in** and the full width
-stays relevant all the way to the line — 235 km of window at the start, 118 km at halfway,
-12 km with 10 km to go.
-
-**Cap at the TRUE end, not a padded one.** My first cut capped at `totalDist*1.02`; that 2%
-is 4 km, which is nothing at the start and **42% of the canvas** once the window is down to
-10 km. `flushRun` already extends the fill to the canvas edge, so no pad is needed to avoid a
-gap. Measured dead-space-past-the-finish: 42.5% with the pad, 0.0% without.
-
-**Two dependents moved with it — change all three together or the gesture desyncs:**
-- `maxZoom` in the swipe handler is now the same cap, `(totalDist - gpsDistKm)/0.85`.
-- **`cvs._visSpan`** is written by `drawElevProfile` and read by `onStart`. The swipe must
-  resume from the span ON SCREEN, not from `UI.elevZoomKm` — once the cap has overridden the
-  stored preference those two differ, and starting from the stored value gives the first part
-  of the drag no visible effect at all. This is the subtle one.
-- The zoom label reads `Full route` only when the start is also on screen, otherwise `To
-  finish` at the cap. "Full route" would be a lie now: the cap means you're seeing everything
-  that's LEFT, which is only the whole route at km 0.
-
-**Verified** — the window math was sed-extracted from `index.html` verbatim (not retyped) and
-exercised in the browser-pane harness, plus a parse check of the whole 258-line function:
-- rider dot fraction **flat 0.1500** across 61×61 rider×zoom, no non-finite values;
-- **0 of 4614 drag samples oppose the finger** (was ~42% of samples in v367);
-- continuity max dot step **exactly 0.000000**, so a snap is now structurally impossible;
-- dead canvas past the finish 0.0% except the last 1.7 km, where `MIN_SPAN` necessarily takes
-  over — expected, and better than a degenerate window;
-- safe on 3/8/40 km routes, `liveDist > totalDist` (GPS past the line), and `totalDist = 0`.
-
-**Whole-file `node --check` came later** — node was absent from this machine when v368 was
-written and was installed the same day; the v369 entry above records the clean whole-file
-result, which covers this version too. **NOT ride-tested.**
-
-### v367 (27 Aug) — THE ELEVATION ZOOM SNAPPED HALFWAY. ⚠ SUPERSEDED BY v368 — the clamp described below shipped, inverted the drag direction, and was replaced the same day. Read v368 first; kept here for the diagnosis of the original snap, which was correct.
-
-Peter: *"It flips at a point, which seems like when you are halfway along a route. There is a
-snap."* He was reading the symptom exactly right, and the cause was one branch in
-`drawElevProfile` (~line 15721) that had been there since the swipe-zoom went in.
-
-**There were two different windows, and a threshold between them.**
-- Below `visSpan >= totalDist*0.95`: rider-anchored. `distMin = liveDist - 0.15*visSpan`, GPS
-  dot pinned at 15% from the left, window free to run off BOTH ends of the route.
-- At or above it: whole-route. `distMin = -0.02*totalDist`, `distMax = totalDist + 0.02`.
-
-Cross that line and the GPS dot **teleports** from x=15% to x≈`liveDist/totalDist`. The jump is
-`(liveDist/totalDist − 0.15)` of the canvas width — zero only if the rider happens to be 15%
-along, **35% of the width at halfway**, and larger past that. That is the snap, and "halfway"
-is where it first gets big enough to be obviously wrong rather than just a lurch.
-
-**The fix: clamp the window, don't branch it.** One rider-anchored range, then slid back inside
-the padded route bounds `[-0.02·T, 1.02·T]` when it would overrun — the same clamped pan every
-map does. Right edge clamps first, then left, so a window wider than the route pins to `loB`
-rather than oscillating. `visSpan` now caps at `fullSpan = 1.04·T` (was `T`), so at maximum
-zoom the clamp lands **exactly** on the old full-route framing — that view is byte-identical,
-it is just now arrived at continuously instead of jumped to.
-
-Two dependents moved with it:
-- `maxZoom` in the swipe handler: `totalDist` → `totalDist*1.04`. **Without this the full-route
-  view becomes unreachable** — the gesture could no longer produce a `visSpan` equal to
-  `fullSpan`. If you ever change `fullSpan`, change this in the same edit.
-- The `'Full route'` label: `>= totalDist*0.95` → `>= fullSpan*0.999`, so it now means what it
-  says instead of "near enough".
-
-**Side effect worth knowing about, deliberately accepted:** at km 0 zoomed right out, the dot
-sits close to the left edge instead of at 15%. That is not a regression — the old full-route
-branch put it at 1.9% too. The difference is it now *arrives* there smoothly. The old comment
-warning "allow distMin to go negative so the GPS dot always has padding from edges" was only
-ever true on the rider-anchored side of the threshold, which is precisely why the two sides
-disagreed. Free bonus: zoomed out near the end of a ride you no longer get most of a canvas of
-empty space past the finish line — the window slides back onto the route instead.
-
-**Was NOT `node --check`ed at the time** — node was absent from this machine (`python3` also
-resolves to a Windows Store stub, see universal memory). Node was installed the same day and the
-v369 entry records the clean whole-file result, so this code is covered now. Moot regardless:
-this version was superseded before it was ever ridden.
 
 <!-- VERSION-LOG-END -->

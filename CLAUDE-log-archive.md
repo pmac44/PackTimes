@@ -9,6 +9,77 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v374 (28 Aug) — THE PLAN RUNS ON THE ROUTE'S CLOCK, NOT THE BROWSER'S.
+
+Peter: *"the tour divide route I have active shows daylight when it should be night. It seems
+the timezone has not been taken care of."* Right — and it was not the sun. v371's `sunAt` is
+correct for any true instant; the bug was one step upstream, in the instants it was being fed.
+
+**`startDT` parsed `"2026-06-12T07:00:00"` in the BROWSER's timezone** (`new Date(str)` with no
+zone suffix does that), while the string means route-local. Planning the Divide from Sydney —
+16 h from Mountain Daylight Time — a 07:00 Banff start became 07:00 Sydney = 3 pm the *previous
+day* in Banff, and every ETA inherited the skew. Plan hour H landed at route-local hour H+8, so
+the plan's night hours (≈21:00–05:00) fell in Banff's 05:00–13:00: daylight painted exactly
+where night belonged. v371's own validation never caught it because it checked the day/night
+*proportions*, which survive any constant offset; only the *phase* — which stretches of the
+route read as day — was wrong. And the bug is invisible on every Australian route, where the
+two clocks agree, same reason v371's cache bug hid for a year.
+
+**The fix is one offset per route plus two conversions**, all in the TIME CALC section:
+
+- `r.tzOffsetMin` — the route START point's civil UTC offset, taken from Open-Meteo's
+  `utc_offset_seconds` (the weather fetch already asked `timezone=auto`; we simply stopped
+  throwing the answer away — `_adoptRouteTz` copies it onto the route and persists it).
+  Fallback when no weather has ever been fetched: a solar estimate from the start longitude,
+  **but only when it differs from the device's clock by ≥3 h** — within 3 h the device wins,
+  because a rider standing on the route has the exact civil time in their pocket and an
+  estimate would make it worse (the v371 "still outstanding" note warned precisely this).
+  ⚠ 3 h, not 2: DST puts civil clocks up to ~2 h east of solar at a zone's western edge —
+  Banff is solar −7.7 but civil −6, and a 2 h threshold handed a Denver rider the estimate.
+- `routeWallToInstant(dateStr,timeStr,r)` — plan strings → true instant. Used by `startDT`,
+  `planStartInFuture`, and the Route-tab start label.
+- `toRouteClock(d,r)` — instant → a Date whose local getters read as the route's wall clock.
+  Display and wall-clock arithmetic only. `fmtT`/`fmtDT`/`fmtDTY`/`dayOff` now pass through it,
+  so ~30 ETA display sites fixed themselves; `fmtTDev`/`fmtDTYDev` keep the device clock for
+  RECORDING timestamps, which must not be re-labelled by whichever route is active when viewed.
+
+**What else the offset reached, because "the plan's clock" is more than ETAs:**
+
+- `sleepHoursFor` — a fixed `departTime` of "06:00" is a route-local 06:00. Arrive 21:00, wake
+  06:00 was computed as 9 h only when the browser shared the route's zone.
+- The five `setHours(24,0,0,0)` loops counting nights / numbering days — browser-local
+  midnights landed mid-afternoon on a US route. Now `routeNightsBetween`/`routeDayNum`.
+- Opening hours (`shopSt`) — a shop's "08:00–17:00" is route-local.
+- The fatigue model's circadian dip — the rider's body clock is the route's clock.
+- **Weather pairing, and this one is subtle:** Open-Meteo's hourly times are tz-naive strings in
+  the POINT's local time, and `weatherAtEta` parsed them browser-locally — which *worked*,
+  because the ETA carried the same browser-tz error and the two cancelled. Fixing `startDT`
+  alone would have broken weather matching by the full 16 h. So `fetchWeather` now stores
+  `utcOffsetSec` per cache entry and `weatherAtEta`/`_wxFromNow` parse with it (legacy parse
+  kept for pre-v374 cache entries).
+- The weather pill's sunrise/sunset row — the v371 "still outstanding" item — now shows the
+  route's clock. On the ride the offsets agree and it is byte-identical to before.
+
+**The pill's "4 am sunrise, 4 pm sunset", diagnosed while in there:** that was the OLD
+(pre-v371) sun path's `_sunApprox` fallback, which assumed 06:00–18:00 **UTC** whenever the
+rate-limited sunrise API failed — and a 30-day Divide plan fired ~30 parallel requests at it,
+so it failed constantly. 06:00/18:00 UTC formatted in Sydney is **exactly 4:00 pm / 4:00 am**,
+every day, which is the "consistently" Peter noticed. v371 already deleted that path; v374
+fixes the remaining browser-tz formatting of the row. If the 4/4 reading survives on his
+device, it is the service worker serving a pre-v371 cache — reload twice / check the version
+line at the foot of the Stops tab reads v374.
+
+Verified: `test-route-tz.js` (new, same vm-extraction harness as `test-sun-daynight.js`) — 11
+assertions green under TZ=Sydney, 9 under TZ=Denver (the tz-dependent cases guard themselves);
+`test-sun-daynight.js` still gives 54% day / 8% twilight / 38% night; and live in the app from
+a Sydney browser: 07:00 MDT start → `2026-06-12T13:00:00Z`, displayed back as "Fri 12/06/26
+07:00", 22:00 route-local at Banff renders the after-sunset navy, wake-time sleep 9.0 h.
+
+Behavioural note for existing plans: the Divide's ETAs will shift ~2 h once (solar estimate)
+and then snap exact on the first weather fetch (`_adoptRouteTz` → −360). Australian plans are
+untouched — every conversion is the identity when browser and route share a zone.
+
+
 ### v373 (28 Aug) — THE HOVER TOOLTIP FOLLOWS THE WHOLE ROUTE, NOT JUST THE STOPS.
 
 Peter: *"there is a tooltip that pops up when you hover over the big map… It only pops
