@@ -396,6 +396,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v382 (26 Sep) — Basemap switch no longer shows black on phone until you pan
+- **Changed:** `attachMap` tappable-map `touchend` now clears the drag flag; new `_mapDragDone()` + `_tilesHeld` beside `_mapDragging` (tile section); `getTile` onload holds mid-gesture arrivals instead of dropping them.
+- **Why:** that touchend nulled `_drag` but never reset `_mapDragging`, so after one touch every tile load skipped its redraw.
+- **Watch out:** every gesture end must call `_mapDragDone()`, never set `_mapDragging=false` directly.
+- **Verified:** `node verify.js`; in the browser, simulated touch tap then switch to CYC: 0 → 30 tiles loaded and drawn with no pan, flag false. Held-tile path queued its redraw (pane stopped painting frames, so the final paint wasn't seen). Backup `backup/index-v381-pre-v382.html`. NOT pushed.
+
 ### v381 (26 Sep) — Route-list button row fits a phone
 - **Changed:** route picker rows — buttons now sit in `.rli-acts` (equal-width `flex:1 1 0`, 4px side padding). "Offline map" is icon-only (title kept; spinner only while downloading). Delete ✕ no longer `margin-left:auto`.
 - **Why:** a turn count ("166") plus the two-line "Offline map" label pushed ✕ off-screen on Peter's phone.
