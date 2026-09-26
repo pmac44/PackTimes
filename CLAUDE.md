@@ -398,6 +398,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v387 (26 Sep) — Recording at 1 s (was 5 m); power/HR sampled 1 s independent of GPS
+- **Changed:** `_appendPoint` active branch writes a point every `REC_MIN_TICK_MS` regardless of distance; stop detection moved to new `_recAnchor` (moves only on a ≥minMove step — old `_recStored` semantics). New `_recSensorFields` (shared by `_recPt`) and `_recSensorSample` → `rec.sensors[]`, fed from the power/HR BLE notifications + sim tick. `UI.powerWattsRaw` recorded instead of 3 s smoothed `powerWatts`. `encodeActivityFit` merges `rec.sensors` into seconds with no GPS point via `FIELDS_RECORD_SENSOR` (local 6).
+- **Why:** intervals.icu flagged rides as ~2 s smart recording; power bests were wrong.
+- **Watch out:** any new `_recStored` reset must null `_recAnchor` too. `rec.sensors` is FIT-only (GPX, map, stats ignore it). Sensor-only FIT records must never get position/alt fields — invalid alt decodes as 12,607 m.
+- **Verified:** `node verify.js`; `_planning/fit-spike/_tmp_1s.mjs` replays a ride through the shipped functions + Garmin SDK decode: 1 s points on a 9 km/h climb, stop/resume still detected, 118/118 s with power across GPS dropouts, 0 SDK errors. Preview loads clean. Backup `backup/index-v386-pre-v387.html`. NOT pushed.
+
 ### v386 (26 Sep) — Offline route download now Mapbox-only, with a picker; rider's own token in Settings
 - **Changed:** `TILE_URLS` gains 5=Mapbox Outdoors, 6=Mapbox Satellite (`satellite-streets-v12`, 256@2x); new `MAPBOX_MODES`, `TILE_MODE_NAMES`, `tileModeAvailable`, `tileUrl()` (all tile URLs go through it). `downloadRouteTiles` split → `_routeTileKeys`; refuses non-Mapbox modes. `startTileDownload(ridx,modes)`; new `openOfflinePicker` (route-row download button). Settings → Offline Maps: token box (`UI.mapboxToken`, in uiPrefs), checked against a real tile before saving. Tile button cycles OUTD/MSAT only with a token. `MAP_CREDITS` +2. `sw.js`: caches `api.mapbox.com/styles/v1/…/tiles/…` cache-first.
 - **Why:** OSM/CyclOSM/Topo/Esri forbid prefetch; Mapbox allows a single-device offline cache. Token not in code: URL restriction needs a paid Mapbox account.
@@ -462,11 +468,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** Supabase emailed that the project would be paused for 7 days' inactivity — sharing only calls the backend during a ride, and Peter was off the bike with a broken collarbone.
 - **Watch out:** GitHub disables scheduled workflows after 60 days with no commits; push anything to re-arm, or run it from the Actions tab. No APP_VERSION bump — the app is untouched.
 - **Verified:** the exact curl run live against the backend → HTTP 200 `{"error":"not_found"}`; pushed 10 Sep and run #1 (manual trigger, 8 s) green in the Actions tab. Schedule fires every 3rd day at 03:17 UTC.
-
-### v377 (8 Sep) — rides go straight to intervals.icu (the Bike Coach data path)
-- **Changed:** new `INTERVALS.ICU` section after Strava's retry triggers; hooks beside every `stravaQueue`/`stravaMarkRename` call (gap finish, end-of-ride flush, undo timer, both rename paths, GPS-return trigger); `rdm-icu` button + status line in the ride detail modal; `_recSyncBadgeHTML` now draws the Rides card pills for both services; Settings gains an **intervals.icu** panel (paste API key → verified against `/athlete/0` before saving, auto-send toggle, retry, **Send all saved rides** backfill, disconnect); STATE/PERSIST carry `icuKey/icuAthleteId/icuAthleteName/icuAutoUpload` in the `intervalsAuth` KV row.
-- **Why:** the queued Dropbox-folder plan was impossible (see Settled) and the coach needs per-ride files that Strava walls off.
-- **Watch out:** the API key is a secret — keep it out of uiPrefs and plan.json. A hash-duplicate upload returns 200 with no activity id, so `icuActivityUrl` can be null on a sent ride; `icuSyncName` treats that as nothing-to-rename. Backoff reuses `STRAVA_BACKOFF_MS` on purpose. Strava upload is untouched.
-- **Verified:** `node verify.js` green; in the served app with `fetch` stubbed: queue → POST `/athlete/0/activities?name&external_id&device_name` with a 716-byte FIT → uploaded/url set; rename → PUT `/activity/{id}`; 401 → attempt logged, stays queued; 200-duplicate → marked sent, url null. Real API: bogus key → the rejection message. Settings panel rendered both states on the phone viewport. NOT pushed; no real ride sent — Peter's key never touched.
 
 <!-- VERSION-LOG-END -->

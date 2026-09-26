@@ -9,6 +9,49 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v376 (28 Aug) — THE KM MARKERS WERE v372's DISEASE WITH TWO SURVIVORS. Peter's read was exact.
+
+Peter, after the v372 wins: *"the kilometre markers seem to have a very large effect on screen
+lag. They should really just be labels, so there's something that we're not doing very
+efficiently there."* Right — the labels were never the cost. Two O(points) shapes hid in the
+km-marker path, and one of them is the single worst loop v372 never found:
+
+- **`cidx` was a full `forEach` scan of every route point** — and the km-marker block calls it
+  once per marker CANDIDATE, per redraw, with the cull running only *after* the lookup. The
+  candidate count grows as you zoom IN (spacing tightens to keep labels ~90 px apart), so
+  zoomed into the Divide the spacing hits 1 km → **4,300 candidates × 150,000 points = 645
+  million iterations per frame. Measured live: 2,010 ms of cidx per redraw** — during a pan,
+  per input frame. That is the lag, and it is worst exactly where a rider actually looks.
+  `points[].dist` is cumulative and monotonic by construction, so `cidx` is now a binary
+  search, same shape as v372's `_nearestPt`. **This heals ~25 other call sites for free** —
+  drawMap's per-turn markers, the GPS-follow centre, stop fallbacks, the hover path.
+  · ⚠ The tie-break is deliberate, twice: `<=` keeps the old scan's earlier-index-wins on an
+    exact midpoint, and a duplicate-dist walk-back returns the FIRST of a zero-length-segment
+    run — the truth-table (30,275 cases incl. dupes, ties, out-of-range, empty) caught both
+    before they shipped. New `cidx` is **byte-identical to the old scan on every case.**
+- **The "true pxPerKm" loop re-summed the whole polyline's screen length every redraw** —
+  150,000 px()/py() calls to derive ONE number. But px/py are linear in `scale` and the
+  heading-up rotation lives in the canvas transform (which preserves length), so screen
+  length = scale × a per-route constant. Cached as **`r._kmLen`** ({n, kx, v} — kx in the
+  stamp because it follows the bbox mid-latitude), same family as `_smEle`: cleared by
+  `clearRouteCaches`, stripped by `packRoute`.
+
+Measured on the live page, 150k-point synthetic Divide (the v372 harness route):
+zoomed-in marker cost **2,010 ms → <1 ms** per redraw; fitted-view cost ~10 ms → ~0.
+Markers ON vs OFF now differ by nothing outside noise at every zoom tried.
+
+Verified: `node verify.js` all green (3 blocks parse, ends `</html>`); 30,275/30,275
+truth-table of the extracted-from-file cidx against the old implementation as oracle;
+live in the served app — markers render (pill-fill pixels counted on the canvas, ~21 pills
+at 200 km spacing as expected), `_kmLen` caches {n:150001, v≈4301} which is sane for a
+4,300 km route. NOT pushed, NOT phone-tested.
+
+**The pattern, for the next hunt:** v372 fixed the O(stops×points) shapes it profiled and
+this one hid because its cost SCALES WITH ZOOM — a whole-route benchmark barely sees it
+(~10 ms) while a zoomed-in pan drowns in it. If another "only sometimes" lag turns up,
+check whether the work grows as the view narrows.
+
+
 ### v375 (28 Aug) — THE OVERLAY BUTTON NAMES THE MODE YOU'RE IN, like the tile button always has.
 
 Peter, on the desktop map: *"the map type button and the route line type button work

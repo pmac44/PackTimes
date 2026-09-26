@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v387';
+window.APP_VERSION='v386';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5992,15 +5992,6 @@ let _recMode    = 'active';      // 'active' | 'stationary'
 let _recLastFix = null;          // {lat, lon, t} of last GPS fix seen (whether stored or not)
 let _recStop    = null;          // {lat, lon, t} when stationary mode entered
 let _recStored  = null;          // {lat, lon, t} of last point we actually wrote
-// v387 — the MOVEMENT anchor, split off _recStored. Before v387 one variable did two jobs:
-// "last point written" and "where stop detection measures from". Points were only written
-// after a 5 m move, so a climb at 9 km/h gave one point every 2 s and intervals.icu flagged
-// the ride as smart-recorded. Now a point is written every second, which would drag the stop
-// detector's reference along with it (10 m radius / 5 s ≈ anything under 7 km/h reads as
-// stopped). The anchor only moves on a real ≥minMove step, exactly as _recStored used to,
-// so stop/resume behaviour is unchanged. Null = re-derive from _recStored on the next fix;
-// every site that resets _recStored nulls this too.
-let _recAnchor  = null;
 
 function _recId(){
   return Date.now().toString(36) + Math.random().toString(36).slice(2,6);
@@ -6047,7 +6038,6 @@ async function startRecording(routeId){
   _recLastFix = null;
   _recStop = null;
   _recStored = null;
-  _recAnchor = null;
   _legReset(_rec.startTS, UI.gpsTravelledKm);   // v259: the leg clock starts with the ride
   _shareLastPos = null;    // new ride = push immediately, don't wait out the interval
   if(UI.shareNextRideId){ UI.shareNextRideId = null; _shareSaveAuth(); }  // consumed
@@ -6093,7 +6083,6 @@ async function finaliseRecording(){
   _recLastFix = null;
   _recStop = null;
   _recStored = null;
-  _recAnchor = null;
   _shareLastPos = null;
   UI.recId = null;
   // Per-ride privacy off is exactly that — PER RIDE. The ride is over, so the
@@ -6128,57 +6117,17 @@ async function finaliseRecording(){
 function _recPt(lat, lon, ele, t, accuracy, extra){
   const p = {lat, lon, ele: ele == null ? null : ele, t,
              accuracy: accuracy == null ? null : accuracy};
-  _recSensorFields(p);
-  if(extra) Object.assign(p, extra);
-  return p;
-}
-
-// The sensor half of a recorded point, shared by _recPt and the 1 s sensor sampler (v387).
-// Returns true if any sensor field was written.
-//
-// v387 — POWER IS THE RAW READING, not UI.powerWatts. UI.powerWatts is the 3 s smoothed
-// figure the pill shows (POWER_SMOOTH_MS); recording it flattened every sprint, so the 1 s
-// and 5 s bests on intervals.icu were really 3 s averages. powerWattsRaw is the meter's own
-// last value; the ?? falls back to the smoothed one for any feed that doesn't set raw.
-function _recSensorFields(p){
-  let any = false;
-  const pw = UI.powerWattsRaw ?? UI.powerWatts;
-  if(UI.hrConnected    && UI.hrBpm        != null){ p.hr  = UI.hrBpm;        any = true; }
-  if(UI.powerConnected && pw              != null){ p.pw  = pw;              any = true; }
-  if(UI.powerConnected && UI.powerCadence != null){ p.cad = UI.powerCadence; any = true; }
+  if(UI.hrConnected    && UI.hrBpm        != null) p.hr    = UI.hrBpm;
+  if(UI.powerConnected && UI.powerWatts   != null) p.pw    = UI.powerWatts;
+  if(UI.powerConnected && UI.powerCadence != null) p.cad   = UI.powerCadence;
   // v267 — BALANCE IS ONLY RECORDED WHEN THERE'S POWER TO BALANCE. Coasting, the meter
   // sends 0, which we'd store as "0% left / 100% right" — not a measurement, the absence of
   // one written down as a fact. Omitting it is exactly what this builder already does for a
   // missing sensor (see the note above), and FIT/GPX treat an absent field as no-data, so
   // every decoder skips it rather than averaging a phantom right-leg bias into the ride.
-  if(UI.powerConnected && UI.powerBalance != null && pw > 0) p.bal = UI.powerBalance;
-  return any;
-}
-
-// v387 — 1 s SENSOR SAMPLES, INDEPENDENT OF GPS. Points carry sensor readings, but a point
-// needs a GPS fix, and the phone doesn't deliver one every second (screen off, tree cover,
-// the OS batching fixes). Every missing fix was a missing power sample. This is driven by the
-// BLE notifications themselves (power ~1–4 Hz, HR ~1 Hz), NOT a setInterval — a hidden page's
-// timers get throttled to once a minute, but device notifications keep arriving.
-//
-// Samples go in rec.sensors, a SEPARATE array, on purpose: rec.points is read by the map,
-// elevation, distance, gap fill, stop maths and GPX, and every one of them assumes a point
-// has a position. Only the FIT writer reads rec.sensors — it fills the seconds that have no
-// GPS point with position-less records (see encodeActivityFit).
-// Only sampled while moving (_recMode 'active'), matching the point stream: stops are gaps in
-// both, so average power isn't dragged down by a lunch stop the timer never counted.
-let _recSensorLastT = 0, _recSensorSavedT = 0;
-function _recSensorSample(now){
-  if(!_rec || _rec.status !== 'active' || _recMode !== 'active' || !_recStored) return;
-  if(UI.simRunning || UI.simPaused) return;   // sim fixes use replayed timestamps, not now
-  if(now - _recSensorLastT < REC_MIN_TICK_MS) return;
-  const s = {t: now};
-  if(!_recSensorFields(s)) return;
-  _recSensorLastT = now;
-  (_rec.sensors = _rec.sensors || []).push(s);
-  // Points persist on every write; samples piggyback on that. This only matters when GPS has
-  // gone quiet and samples are the only thing arriving — keep them from being lost to a crash.
-  if(now - _recSensorSavedT >= 30000){ _recSensorSavedT = now; DB.putRecording(_rec).catch(()=>{}); }
+  if(UI.powerConnected && UI.powerBalance != null && UI.powerWatts > 0) p.bal = UI.powerBalance;
+  if(extra) Object.assign(p, extra);
+  return p;
 }
 
 // _appendPoint — the heart of movement-based sampling.
@@ -6231,14 +6180,19 @@ function _appendPoint(lat, lon, ele, t, accuracy){
   const stopDetectMs = UI.recStopDetectMs || REC_STOP_DETECT_MS_DEFAULT;
   const distFromStored = _recDist(_recStored, fix);
   if(_recMode === 'active'){
-    // v387 — stop detection runs off the movement anchor, not the last written point
-    // (see _recAnchor). This block is the pre-v387 logic with _recStored → _recAnchor.
-    if(!_recAnchor) _recAnchor = _recStored;
-    const distFromAnchor = _recDist(_recAnchor, fix);
-    if(distFromAnchor >= minMoveM){
-      _recAnchor = fix;
-      _recStop = null;          // a real step — reset the stationary clock
-    } else if(distFromAnchor < REC_STATIONARY_M){
+    // Store if moved enough AND enough time has passed
+    if(distFromStored >= minMoveM && (t - _recStored.t) >= REC_MIN_TICK_MS){
+      _rec.points.push(_recPt(lat, lon, ele, t, accuracy));
+      _rec.totalDist += distFromStored / 1000;  // store in km, _recDist returns metres
+      _recStored = fix;
+      // Reset the stationary clock (we just moved)
+      _recStop = null;
+      // Persist in the background — best-effort, don't await on the GPS critical path
+      DB.putRecording(_rec).catch(()=>{});
+      return true;
+    }
+    // Not moved enough — check if we've been stationary long enough to enter stationary mode
+    if(distFromStored < REC_STATIONARY_M){
       if(!_recStop) _recStop = fix;
       else if((t - _recStop.t) >= stopDetectMs){
         // Enter stationary mode. Mark a stop point at the current location.
@@ -6248,7 +6202,6 @@ function _appendPoint(lat, lon, ele, t, accuracy){
         // it would silently discount 5 seconds from every stop in the ride.
         _legStopT = _recStop.t;
         _recStored = fix;
-        _recAnchor = fix;
         _recMode = 'stationary';
         DB.putRecording(_rec).catch(()=>{});
         return true;
@@ -6257,17 +6210,6 @@ function _appendPoint(lat, lon, ele, t, accuracy){
       // Drifted out of the stationary radius without crossing the move threshold —
       // reset the stationary timer
       _recStop = fix;
-    }
-    // v387 — write a point every second while moving, whatever the distance. 1 s is what
-    // intervals.icu / Garmin's "every second" mode expect; sensor readings ride on each
-    // point, so fewer points meant fewer power samples.
-    if((t - _recStored.t) >= REC_MIN_TICK_MS){
-      _rec.points.push(_recPt(lat, lon, ele, t, accuracy));
-      _rec.totalDist += distFromStored / 1000;  // store in km, _recDist returns metres
-      _recStored = fix;
-      // Persist in the background — best-effort, don't await on the GPS critical path
-      DB.putRecording(_rec).catch(()=>{});
-      return true;
     }
     return false;
   }
@@ -6289,7 +6231,6 @@ function _appendPoint(lat, lon, ele, t, accuracy){
       _legStopT = null;
     }
     _recStored = fix;
-    _recAnchor = fix;
     _recStop = null;
     _recMode = 'active';
     DB.putRecording(_rec).catch(()=>{});
@@ -6414,7 +6355,6 @@ function _recFillGap(rec, gap, strategy){
   if(_rec && rec.id === _rec.id){
     const lp = synth[synth.length - 1];
     _recStored = {lat: lp.lat, lon: lp.lon, t: lp.t};
-    _recAnchor = null;
   }
   return true;
 }
@@ -6572,7 +6512,6 @@ async function _recRehydrate(){
       // Last stored point becomes our reference for the sampling state machine
       const lp = rec.points && rec.points.length ? rec.points[rec.points.length - 1] : null;
       _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
-      _recAnchor = null;
     } else {
       // Crashed session or previous-session leftover — user decides via the modal
       _recRecovery.push(rec);
@@ -6631,7 +6570,6 @@ async function _recRecoveryResume(){
   _recStop = null;
   const lp = rec.points && rec.points.length ? rec.points[rec.points.length - 1] : null;
   _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
-  _recAnchor = null;
   UI.recId = rec.id;
   await saveAll().catch(()=>{});
   if(!UI.gpsActive) startGPS();
@@ -7420,15 +7358,6 @@ const FIELDS_RECORD = [
   { fieldDefNum: 4,   baseType: BT_UINT8  }, // cadence (rpm)
   { fieldDefNum: 7,   baseType: BT_UINT16 }, // power (watts)
 ];
-// v387 — a sensor-only record (a second with power/HR but no GPS fix). Its OWN layout, with
-// no position/altitude/distance fields at all: writing them as "invalid" was not safe — the
-// Garmin SDK decoded altitude 0xFFFF as 12,607 m, which would be a spike on every chart.
-const FIELDS_RECORD_SENSOR = [
-  { fieldDefNum: 253, baseType: BT_UINT32 }, // timestamp
-  { fieldDefNum: 3,   baseType: BT_UINT8  }, // heart_rate
-  { fieldDefNum: 4,   baseType: BT_UINT8  }, // cadence
-  { fieldDefNum: 7,   baseType: BT_UINT16 }, // power
-];
 const FIELDS_LAP = [
   { fieldDefNum: 253, baseType: BT_UINT32 },
   { fieldDefNum: 2,   baseType: BT_UINT32 }, // start_time
@@ -7464,7 +7393,6 @@ const LOCAL_RECORD   = 2;
 const LOCAL_LAP      = 3;
 const LOCAL_SESSION  = 4;
 const LOCAL_ACTIVITY = 5;
-const LOCAL_RECORD_SENSOR = 6;
 
 // Encode {startTS, endTS, points:[{lat,lon,ele,t}]} → Uint8Array (.fit file)
 function encodeActivityFit(recording) {
@@ -7489,30 +7417,12 @@ function encodeActivityFit(recording) {
   });
 
   writeMesgDefinition(data, LOCAL_RECORD, MESG_RECORD, FIELDS_RECORD);
-  // v387 — rec.sensors (1 s samples taken between GPS fixes) are merged in by time. A sample
-  // is dropped when a GPS point already owns that FIT second (the point carries its own
-  // readings) or falls outside the point span (a trimmed ride). Sensor-only records use
-  // FIELDS_RECORD_SENSOR, which has NO position, altitude or distance fields at all. Never interpolated: that would be inventing a track (recording is
-  // sacred), and a repeated distance would read as a 0 km/h blip in the speed trace.
-  const pts = recording.points;
-  const pointSecs = new Set(pts.map(p => fitTime(p.t)));
-  const t0 = pts.length ? pts[0].t : 0, t1 = pts.length ? pts[pts.length-1].t : 0;
-  const sens = (recording.sensors || []).filter(s =>
-    s.t > t0 && s.t < t1 && !pointSecs.has(fitTime(s.t)));
-  if (sens.length) writeMesgDefinition(data, LOCAL_RECORD_SENSOR, MESG_RECORD, FIELDS_RECORD_SENSOR);
-  const writeSensor = s => writeMesgData(data, LOCAL_RECORD_SENSOR, FIELDS_RECORD_SENSOR, {
-    253: fitTime(s.t),
-    3:   s.hr  != null ? Math.round(s.hr)  : null,
-    4:   s.cad != null ? Math.round(s.cad) : null,
-    7:   s.pw  != null ? Math.round(s.pw)  : null,
-  });
-  let cumDist = 0, si = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    while (si < sens.length && sens[si].t < p.t) writeSensor(sens[si++]);
+  let cumDist = 0;
+  for (let i = 0; i < recording.points.length; i++) {
+    const p = recording.points[i];
     if (i > 0) {
       cumDist += haversineM(
-        pts[i-1].lat, pts[i-1].lon,
+        recording.points[i-1].lat, recording.points[i-1].lon,
         p.lat, p.lon);
     }
     writeMesgData(data, LOCAL_RECORD, FIELDS_RECORD, {
@@ -8495,7 +8405,7 @@ async function _recStopDelete(){
   _recShowStopConfirm(false);
   await DB.delRecording(rec.id).catch(()=>{});
   RECS = RECS.filter(x=>x.id!==rec.id);
-  _rec=null;_recMode='active';_recLastFix=null;_recStop=null;_recStored=null;_recAnchor=null;UI.recId=null;
+  _rec=null;_recMode='active';_recLastFix=null;_recStop=null;_recStored=null;UI.recId=null;
   // Deleting the ride ends it just as surely as finishing it — per-ride off reverts.
   if(UI.shareOffThisRide){ UI.shareOffThisRide=false; _shareSaveAuth(); }
   rideNowClear();   // ditto (v257)
@@ -8578,7 +8488,6 @@ async function _recStopUndo(){
   // Restore _recStored from the last point so sampling continues smoothly
   const lp = rec.points && rec.points.length ? rec.points[rec.points.length-1] : null;
   _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
-  _recAnchor = null;
   UI.recId = rec.id;
   rideNowRestore();   // v257 — un-stopping puts the ride's clock back as it was
   await saveAll().catch(()=>{});
@@ -11372,7 +11281,7 @@ function _simSensorsSet(on){
   if(_simSensorTimer){clearInterval(_simSensorTimer);_simSensorTimer=null;}
   if(!on){
     // Only let go of what we faked. A real meter connected in the meantime owns these.
-    if(!_powerChar){UI.powerConnected=false;UI.powerWatts=null;UI.powerWattsRaw=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerMaxForceN=null;UI.powerHasPeak=false;}
+    if(!_powerChar){UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerMaxForceN=null;UI.powerHasPeak=false;}
     if(!_hrChar){UI.hrConnected=false;UI.hrBpm=null;}
     renderKeepScroll();
     return;
@@ -11390,12 +11299,10 @@ function _simSensorTick(){
   // power pill can drift into different zones — which is the whole point of v260's change.
   const w=Math.max(0,Math.round(base+(Math.random()*30-15)));
   UI.powerWatts=w;
-  UI.powerWattsRaw=w;
   UI.powerCadence=base>0?Math.round(78+Math.random()*8):0;
   UI.powerBalance=Math.round(48+Math.random()*4);
   // HR lags power and saturates — good enough to exercise the zones, not a physiology model.
   UI.hrBpm=Math.round(Math.min(190,95+base*0.21));
-  _recSensorSample(Date.now());   // v387 — same path as the real meter
   // Feed the SAME average accumulator the BLE handler uses, or the HR pill's reversed half
   // sits on "—" on the desktop and the thing you're trying to look at never appears —
   // exactly the trap the NP accumulator would have been.
@@ -24777,7 +24684,7 @@ async function connectPowerMeter(){
       optionalServices:[CYCLING_POWER_SERVICE]
     });
     _powerDevice.addEventListener('gattserverdisconnected',()=>{
-      UI.powerConnected=false;UI.powerWatts=null;UI.powerWattsRaw=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
+      UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
       _powerChar=null;_powerWindow.length=0;
       _npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;
       // v274 — the crank length belongs to the PEDAL, so it goes when the pedal goes. Showing
@@ -24819,7 +24726,6 @@ async function connectPowerMeter(){
       while(_powerWindow.length&&now-_powerWindow[0].ts>POWER_SMOOTH_MS)_powerWindow.shift();
       const avg=Math.round(_powerWindow.reduce((a,b)=>a+b.watts,0)/_powerWindow.length);
       UI.powerWatts=avg;
-      UI.powerWattsRaw=watts;   // v387: the recording stores the raw reading, not the 3 s pill figure
       if(balance!==null&&balance>=0&&balance<=100)UI.powerBalance=balance;
       if(cadence!==null&&cadence>=0&&cadence<250)UI.powerCadence=cadence;
       // Peak force: only some pedals send it. `powerHasPeak` is what the force pill uses to
@@ -24829,7 +24735,6 @@ async function connectPowerMeter(){
       if(maxForceN!==null&&maxForceN>=0&&maxForceN<3000)UI.powerMaxForceN=maxForceN;
       if(minForceN!==null&&minForceN>-1000&&minForceN<3000)UI.powerMinForceN=minForceN;
       if(maxTorqueNm!==null&&maxTorqueNm>=0&&maxTorqueNm<500)UI.powerMaxTorqueNm=maxTorqueNm;
-      _recSensorSample(now);   // v387: 1 s sensor samples, independent of GPS fixes
       // NP: sample instantaneous watts every ~1s into 30s rolling buffer
       if(now-_npLastSampleTs>=950){
         _npLastSampleTs=now;
@@ -24904,7 +24809,7 @@ async function connectPowerMeter(){
 
 function disconnectPowerMeter(){
   if(_powerDevice&&_powerDevice.gatt.connected)_powerDevice.gatt.disconnect();
-  UI.powerConnected=false;UI.powerWatts=null;UI.powerWattsRaw=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
+  UI.powerConnected=false;UI.powerWatts=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
   _powerChar=null;_powerWindow.length=0;
   // Reset NP accumulators
   _npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;
@@ -24937,7 +24842,6 @@ async function connectHRMonitor(){
       const flags=d.getUint8(0);
       const bpm=(flags&0x1)?d.getUint16(1,true):d.getUint8(1);
       UI.hrBpm=bpm;
-      _recSensorSample(Date.now());   // v387
       // HR average accumulator
       if(!UI._hrSum){UI._hrSum=0;UI._hrCount=0;}
       UI._hrSum+=bpm;UI._hrCount++;
