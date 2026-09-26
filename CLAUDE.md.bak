@@ -398,11 +398,24 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v386 (26 Sep) — Offline route download now Mapbox-only, with a picker; rider's own token in Settings
+- **Changed:** `TILE_URLS` gains 5=Mapbox Outdoors, 6=Mapbox Satellite (`satellite-streets-v12`, 256@2x); new `MAPBOX_MODES`, `TILE_MODE_NAMES`, `tileModeAvailable`, `tileUrl()` (all tile URLs go through it). `downloadRouteTiles` split → `_routeTileKeys`; refuses non-Mapbox modes. `startTileDownload(ridx,modes)`; new `openOfflinePicker` (route-row download button). Settings → Offline Maps: token box (`UI.mapboxToken`, in uiPrefs), checked against a real tile before saving. Tile button cycles OUTD/MSAT only with a token. `MAP_CREDITS` +2. `sw.js`: caches `api.mapbox.com/styles/v1/…/tiles/…` cache-first.
+- **Why:** OSM/CyclOSM/Topo/Esri forbid prefetch; Mapbox allows a single-device offline cache. Token not in code: URL restriction needs a paid Mapbox account.
+- **Watch out:** the cache key includes the token — a NEW token misses every saved tile (re-download). sw.js changed → flight-mode test before relying on it.
+- **Verified:** `node verify.js` + `node --check sw.js`; preview: sk./bogus/real token messages, OUTD paints (0% blank), picker counts 1,745 tiles/style for 370 km, 15 km real download 110/110 saved then 110 from cache, CyclOSM refused. Backups `backup/index-v385-pre-v386.html`, `backup/sw-v385-pre-v386.js`. NOT pushed. Flight-mode test NOT yet done.
+
+### v385 (26 Sep) — Overzoom fallback + map credit line
+- **Changed:** `drawTiles` placeholder branch — walks up to 5 zoom levels up for a loaded ancestor and draws its matching sub-rectangle. New `MAP_CREDITS` + `_drawMapCredit` (end of `drawMap`, outside the rotation): per-basemap credit bottom-right of every map.
+- **Why:** offline downloads stop at z14; the Ride map zoomed closer showed grey.
+- **Watch out:** ancestors are only REQUESTED (via `getTile`) when the tile is `'error'`; while merely `'loading'` it only reuses ones already in `_tileCache`. Don't request on `'loading'` — that doubles tile traffic online.
+- **Verified:** preview, stops map zoomed ×8 with the tile URL broken: 0% of the canvas blank (drawn from z7); control with ancestors removed: 95% blank. Backup `backup/index-v384-pre-v385.html`. NOT pushed.
+- **Open:** all three free tile servers (OSM, CyclOSM/OSM-France, OpenTopoMap) and Esri PROHIBIT prefetch/offline download — the "Offline map" button breaches their policies. Research 26 Sep: only Mapbox (free 200k tiles/mo; terms allow offline cache on a single end user's device, filled by that device's own API requests), Thunderforest from $255/mo, or self-hosted PMTiles/OSM data permit it. Peter to choose before any basemap-picker work.
+
 ### v384 (26 Sep) — Stops list follows the map legend; category stripe on stop tiles
 - **Changed:** new `stopHiddenByLegend(s)` (STOPS) — the rule lifted out of `drawMap`, now used by `drawMap` AND `clusteredStopRows`. List shows "N stops hidden by the map legend · Show all" (`#btn-legend-showall`, content-wrap delegator). Desktop legend click re-renders the list on the Stops tab. `stopRow` gets a 4px `border-left` in `var(--cat-<type>)`.
 - **Why:** long routes put hundreds of stops in the list; Peter wanted to sort through them. Full-colour tiles rejected (23 hues, border already means open/closed/sleep).
 - **Watch out:** starred stops stay visible while "Mission" is on, sleep stops while "All sleep" is on — same as the map. The stripe is declared AFTER `tileBg` so status colour keeps the other three sides.
-- **Verified:** `node verify.js`; preview: mobile legend Water/Toilets and desktop legend Food hide the right tiles, starred food kept, Show all restores; 375 px width fits. Backup `backup/index-v383-pre-v384.html`. NOT pushed.
+- **Verified:** `node verify.js`; preview: mobile legend Water/Toilets and desktop legend Food hide the right tiles, starred food kept, Show all restores; 375 px width fits. Backup `backup/index-v383-pre-v384.html`. Pushed 26 Sep; Peter happy with filter + stripe ("a small amount of colour") over full-colour tiles.
 
 ### v383 (26 Sep) — Search finds all drinkable water, vending machines, train stations, outdoor shops
 - **Changed:** new `_poiParts` / `_poiClassify` / `_stopInfo` beside `_bikeStandTag` (OVERPASS), called from BOTH `fetchOverpass` and `fetchTownSearch`. New types `vending` 🥤 and `train` 🚆 (tokens, `.d-/.t-`, icon maps, `dc`, live strip, legend); new boxes `outdoor` (type `shop`), `vending`, `trains`. Stops carry `info` (tile line under the tag; also in share/plan export).
@@ -497,144 +510,5 @@ at 200 km spacing as expected), `_kmLen` caches {n:150001, v≈4301} which is sa
 this one hid because its cost SCALES WITH ZOOM — a whole-route benchmark barely sees it
 (~10 ms) while a zoomed-in pan drowns in it. If another "only sometimes" lag turns up,
 check whether the work grows as the view narrows.
-
-### v375 (28 Aug) — THE OVERLAY BUTTON NAMES THE MODE YOU'RE IN, like the tile button always has.
-
-Peter, on the desktop map: *"the map type button and the route line type button work
-differently. The map type button shows you what is currently displayed, but the route type
-shows the one you will get if you press it next."* Right, and the cause was this file's
-favourite shape — **three authorities for one label**, disagreeing:
-
-- `updateOverlayButtons` had the correct current-mode map (`off:'DAY', surf:'SURF',
-  grade:'GRAD'`) — but nothing called it until the first press.
-- The desktop column's **static HTML hard-coded `SURF`**, so from page load the button
-  always advertised the NEXT mode while the line wore day/night.
-- `mapCtrlHTML` (the stops-map builder) had its own two-way ternary
-  (`grade?'GRAD':'SURF'`) — also SURF while off, and being rebuilt on every render it
-  would even UNDO updateOverlayButtons' correction.
-
-**Fix, one authority:** the labels map is hoisted to `OVERLAY_BTN_LABELS` (~4246) and all
-three sites read it. `_renderDesktopMapInner` now calls `updateOverlayButtons()` right
-beside its existing tile-label repaint — the exact same treatment the tile button has
-always had, which is why THAT one was correct. Static HTML default reads `DAY` (the 'off'
-default) for the pre-render first paint. Convention settled: **the button shows the
-CURRENT mode, green when an overlay is active** — matching the tile button; the cycle
-order stays in the tooltip.
-
-**Same version, same disease, the TILE button:** Peter's next screenshot — *"cycle doesn't
-fit in the button."* `TILE_LABELS` (the authority, ~13434) already said **CYC**, and the
-mapCtrlHTML template used it — but THREE repaint sites carried their own stale copy
-`['off','OSM','SAT','Cycle','Topo']`: the `[data-tilemap]` click handler, and the
-desktop/pace tile-button syncs. So the button was born fitting and overflowed the 38px
-square the moment you cycled to mode 3. All three now read `TILE_LABELS`, which also
-unifies the off label ('off' → 'OFF'). CYC not "CYC." — no other label in the set carries
-a dot.
-
-**Also v375 — PLACES NOW SAY HOW HIGH THEY ARE.** Peter: *"there is an overall lack of how
-high each stop or each town is… it says how much climbing you've got to go, but it doesn't
-really say how high each place is."* Two surfaces, his two named examples:
-
-- **The hover tooltip** (map + elevation strip, both via `_hoverTipHTML`) — the height joins
-  the position line: `📍 Grenfell · 245.3 km · 620 m asl`. Deliberately on the FIRST line
-  with the km (position facts together), not the ETA line.
-- **The Mission tiles** — the height rides each node's km line (`38.0 km · 1352 m asl`).
-  Peter mentioned it beside the pop badge; the km line won because mono figures belong with
-  mono figures. **His screenshot then caught the first cut giving both figures the same
-  18px — equal rank, and it wrapped on narrow tiles.** Now the height is a 13px span (the
-  pop badge's size) at 0.8 opacity with `white-space:nowrap`, so the km stays the hero and
-  "1009 m asl" can never break mid-phrase.
-
-One authority: `eleAtStr(r,d)` (TIME CALC, beside `smEleAt`). Two rules baked in:
-**smoothed, not raw** (v276's rule — the number must match the height the profile line
-draws at that spot, or the strip's own tooltip contradicts its own graph), and **empty on
-a route with no elevation data** — a flat-zero decode (pre-v8 shared route) says nothing
-rather than "0 m asl" at every town. The has-data flag caches as `r._hasEle` in the same
-family as `_smEle`: cleared by `clearRouteCaches`, stripped by `packRoute`. Accepted blind
-spot: a route entirely at/below sea level reads as no-data.
-
-**And the stop tiles, at Peter's yes:** all three `si-meta` stop-tile copies (the main
-stops list, the Ride tab's stop list, and its desktop twin) carry the height after the km
-figure — `38.0 km · 1352 m asl · food · 07:30–19:00` — in the meta line's own muted mono,
-so the accent km stays the loud one. The two pace-SEGMENT rows that also wear `si-meta`
-were left alone: a from–to range has no single height. Note the Ride tab's km is
-distance-TO-GO while the height is the STOP's own — correct, a place's height doesn't
-change as you approach it.
-
-Verified: `node verify.js` all green; helpers truth-tested in the live page (smoothed value
-exact at a synthetic 5 km point, flat route → empty, empty route safe) and the Alpine Ultra
-demo's Mission tab rendered with all 9 nodes carrying sane heights (937→1352→372 m asl
-tracking the profile). Also this version: overlay button off→DAY / surf→SURF / grade→GRAD
-verified live; tile button clicked through the full real cycle OSM→SAT→CYC→TOPO→OFF→OSM,
-ending on its starting mode. NOT pushed.
-
-### v374 (28 Aug) — THE PLAN RUNS ON THE ROUTE'S CLOCK, NOT THE BROWSER'S.
-
-Peter: *"the tour divide route I have active shows daylight when it should be night. It seems
-the timezone has not been taken care of."* Right — and it was not the sun. v371's `sunAt` is
-correct for any true instant; the bug was one step upstream, in the instants it was being fed.
-
-**`startDT` parsed `"2026-06-12T07:00:00"` in the BROWSER's timezone** (`new Date(str)` with no
-zone suffix does that), while the string means route-local. Planning the Divide from Sydney —
-16 h from Mountain Daylight Time — a 07:00 Banff start became 07:00 Sydney = 3 pm the *previous
-day* in Banff, and every ETA inherited the skew. Plan hour H landed at route-local hour H+8, so
-the plan's night hours (≈21:00–05:00) fell in Banff's 05:00–13:00: daylight painted exactly
-where night belonged. v371's own validation never caught it because it checked the day/night
-*proportions*, which survive any constant offset; only the *phase* — which stretches of the
-route read as day — was wrong. And the bug is invisible on every Australian route, where the
-two clocks agree, same reason v371's cache bug hid for a year.
-
-**The fix is one offset per route plus two conversions**, all in the TIME CALC section:
-
-- `r.tzOffsetMin` — the route START point's civil UTC offset, taken from Open-Meteo's
-  `utc_offset_seconds` (the weather fetch already asked `timezone=auto`; we simply stopped
-  throwing the answer away — `_adoptRouteTz` copies it onto the route and persists it).
-  Fallback when no weather has ever been fetched: a solar estimate from the start longitude,
-  **but only when it differs from the device's clock by ≥3 h** — within 3 h the device wins,
-  because a rider standing on the route has the exact civil time in their pocket and an
-  estimate would make it worse (the v371 "still outstanding" note warned precisely this).
-  ⚠ 3 h, not 2: DST puts civil clocks up to ~2 h east of solar at a zone's western edge —
-  Banff is solar −7.7 but civil −6, and a 2 h threshold handed a Denver rider the estimate.
-- `routeWallToInstant(dateStr,timeStr,r)` — plan strings → true instant. Used by `startDT`,
-  `planStartInFuture`, and the Route-tab start label.
-- `toRouteClock(d,r)` — instant → a Date whose local getters read as the route's wall clock.
-  Display and wall-clock arithmetic only. `fmtT`/`fmtDT`/`fmtDTY`/`dayOff` now pass through it,
-  so ~30 ETA display sites fixed themselves; `fmtTDev`/`fmtDTYDev` keep the device clock for
-  RECORDING timestamps, which must not be re-labelled by whichever route is active when viewed.
-
-**What else the offset reached, because "the plan's clock" is more than ETAs:**
-
-- `sleepHoursFor` — a fixed `departTime` of "06:00" is a route-local 06:00. Arrive 21:00, wake
-  06:00 was computed as 9 h only when the browser shared the route's zone.
-- The five `setHours(24,0,0,0)` loops counting nights / numbering days — browser-local
-  midnights landed mid-afternoon on a US route. Now `routeNightsBetween`/`routeDayNum`.
-- Opening hours (`shopSt`) — a shop's "08:00–17:00" is route-local.
-- The fatigue model's circadian dip — the rider's body clock is the route's clock.
-- **Weather pairing, and this one is subtle:** Open-Meteo's hourly times are tz-naive strings in
-  the POINT's local time, and `weatherAtEta` parsed them browser-locally — which *worked*,
-  because the ETA carried the same browser-tz error and the two cancelled. Fixing `startDT`
-  alone would have broken weather matching by the full 16 h. So `fetchWeather` now stores
-  `utcOffsetSec` per cache entry and `weatherAtEta`/`_wxFromNow` parse with it (legacy parse
-  kept for pre-v374 cache entries).
-- The weather pill's sunrise/sunset row — the v371 "still outstanding" item — now shows the
-  route's clock. On the ride the offsets agree and it is byte-identical to before.
-
-**The pill's "4 am sunrise, 4 pm sunset", diagnosed while in there:** that was the OLD
-(pre-v371) sun path's `_sunApprox` fallback, which assumed 06:00–18:00 **UTC** whenever the
-rate-limited sunrise API failed — and a 30-day Divide plan fired ~30 parallel requests at it,
-so it failed constantly. 06:00/18:00 UTC formatted in Sydney is **exactly 4:00 pm / 4:00 am**,
-every day, which is the "consistently" Peter noticed. v371 already deleted that path; v374
-fixes the remaining browser-tz formatting of the row. If the 4/4 reading survives on his
-device, it is the service worker serving a pre-v371 cache — reload twice / check the version
-line at the foot of the Stops tab reads v374.
-
-Verified: `test-route-tz.js` (new, same vm-extraction harness as `test-sun-daynight.js`) — 11
-assertions green under TZ=Sydney, 9 under TZ=Denver (the tz-dependent cases guard themselves);
-`test-sun-daynight.js` still gives 54% day / 8% twilight / 38% night; and live in the app from
-a Sydney browser: 07:00 MDT start → `2026-06-12T13:00:00Z`, displayed back as "Fri 12/06/26
-07:00", 22:00 route-local at Banff renders the after-sunset navy, wake-time sleep 9.0 h.
-
-Behavioural note for existing plans: the Divide's ETAs will shift ~2 h once (solar estimate)
-and then snap exact on the first weather fetch (`_adoptRouteTz` → −360). Australian plans are
-untouched — every conversion is the identity when browser and route share a zone.
 
 <!-- VERSION-LOG-END -->

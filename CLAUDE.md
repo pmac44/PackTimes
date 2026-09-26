@@ -398,11 +398,24 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v386 (26 Sep) — Offline route download now Mapbox-only, with a picker; rider's own token in Settings
+- **Changed:** `TILE_URLS` gains 5=Mapbox Outdoors, 6=Mapbox Satellite (`satellite-streets-v12`, 256@2x); new `MAPBOX_MODES`, `TILE_MODE_NAMES`, `tileModeAvailable`, `tileUrl()` (all tile URLs go through it). `downloadRouteTiles` split → `_routeTileKeys`; refuses non-Mapbox modes. `startTileDownload(ridx,modes)`; new `openOfflinePicker` (route-row download button). Settings → Offline Maps: token box (`UI.mapboxToken`, in uiPrefs), checked against a real tile before saving. Tile button cycles OUTD/MSAT only with a token. `MAP_CREDITS` +2. `sw.js`: caches `api.mapbox.com/styles/v1/…/tiles/…` cache-first.
+- **Why:** OSM/CyclOSM/Topo/Esri forbid prefetch; Mapbox allows a single-device offline cache. Token not in code: URL restriction needs a paid Mapbox account.
+- **Watch out:** the cache key includes the token — a NEW token misses every saved tile (re-download). sw.js changed → flight-mode test before relying on it.
+- **Verified:** `node verify.js` + `node --check sw.js`; preview: sk./bogus/real token messages, OUTD paints (0% blank), picker counts 1,745 tiles/style for 370 km, 15 km real download 110/110 saved then 110 from cache, CyclOSM refused. Backups `backup/index-v385-pre-v386.html`, `backup/sw-v385-pre-v386.js`. NOT pushed. Flight-mode test NOT yet done.
+
+### v385 (26 Sep) — Overzoom fallback + map credit line
+- **Changed:** `drawTiles` placeholder branch — walks up to 5 zoom levels up for a loaded ancestor and draws its matching sub-rectangle. New `MAP_CREDITS` + `_drawMapCredit` (end of `drawMap`, outside the rotation): per-basemap credit bottom-right of every map.
+- **Why:** offline downloads stop at z14; the Ride map zoomed closer showed grey.
+- **Watch out:** ancestors are only REQUESTED (via `getTile`) when the tile is `'error'`; while merely `'loading'` it only reuses ones already in `_tileCache`. Don't request on `'loading'` — that doubles tile traffic online.
+- **Verified:** preview, stops map zoomed ×8 with the tile URL broken: 0% of the canvas blank (drawn from z7); control with ancestors removed: 95% blank. Backup `backup/index-v384-pre-v385.html`. NOT pushed.
+- **Open:** all three free tile servers (OSM, CyclOSM/OSM-France, OpenTopoMap) and Esri PROHIBIT prefetch/offline download — the "Offline map" button breaches their policies. Research 26 Sep: only Mapbox (free 200k tiles/mo; terms allow offline cache on a single end user's device, filled by that device's own API requests), Thunderforest from $255/mo, or self-hosted PMTiles/OSM data permit it. Peter to choose before any basemap-picker work.
+
 ### v384 (26 Sep) — Stops list follows the map legend; category stripe on stop tiles
 - **Changed:** new `stopHiddenByLegend(s)` (STOPS) — the rule lifted out of `drawMap`, now used by `drawMap` AND `clusteredStopRows`. List shows "N stops hidden by the map legend · Show all" (`#btn-legend-showall`, content-wrap delegator). Desktop legend click re-renders the list on the Stops tab. `stopRow` gets a 4px `border-left` in `var(--cat-<type>)`.
 - **Why:** long routes put hundreds of stops in the list; Peter wanted to sort through them. Full-colour tiles rejected (23 hues, border already means open/closed/sleep).
 - **Watch out:** starred stops stay visible while "Mission" is on, sleep stops while "All sleep" is on — same as the map. The stripe is declared AFTER `tileBg` so status colour keeps the other three sides.
-- **Verified:** `node verify.js`; preview: mobile legend Water/Toilets and desktop legend Food hide the right tiles, starred food kept, Show all restores; 375 px width fits. Backup `backup/index-v383-pre-v384.html`. NOT pushed.
+- **Verified:** `node verify.js`; preview: mobile legend Water/Toilets and desktop legend Food hide the right tiles, starred food kept, Show all restores; 375 px width fits. Backup `backup/index-v383-pre-v384.html`. Pushed 26 Sep; Peter happy with filter + stripe ("a small amount of colour") over full-colour tiles.
 
 ### v383 (26 Sep) — Search finds all drinkable water, vending machines, train stations, outdoor shops
 - **Changed:** new `_poiParts` / `_poiClassify` / `_stopInfo` beside `_bikeStandTag` (OVERPASS), called from BOTH `fetchOverpass` and `fetchTownSearch`. New types `vending` 🥤 and `train` 🚆 (tokens, `.d-/.t-`, icon maps, `dc`, live strip, legend); new boxes `outdoor` (type `shop`), `vending`, `trains`. Stops carry `info` (tile line under the tag; also in share/plan export).
@@ -455,116 +468,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** the queued Dropbox-folder plan was impossible (see Settled) and the coach needs per-ride files that Strava walls off.
 - **Watch out:** the API key is a secret — keep it out of uiPrefs and plan.json. A hash-duplicate upload returns 200 with no activity id, so `icuActivityUrl` can be null on a sent ride; `icuSyncName` treats that as nothing-to-rename. Backoff reuses `STRAVA_BACKOFF_MS` on purpose. Strava upload is untouched.
 - **Verified:** `node verify.js` green; in the served app with `fetch` stubbed: queue → POST `/athlete/0/activities?name&external_id&device_name` with a 716-byte FIT → uploaded/url set; rename → PUT `/activity/{id}`; 401 → attempt logged, stays queued; 200-duplicate → marked sent, url null. Real API: bogus key → the rejection message. Settings panel rendered both states on the phone viewport. NOT pushed; no real ride sent — Peter's key never touched.
-
-### v376 (28 Aug) — THE KM MARKERS WERE v372's DISEASE WITH TWO SURVIVORS. Peter's read was exact.
-
-Peter, after the v372 wins: *"the kilometre markers seem to have a very large effect on screen
-lag. They should really just be labels, so there's something that we're not doing very
-efficiently there."* Right — the labels were never the cost. Two O(points) shapes hid in the
-km-marker path, and one of them is the single worst loop v372 never found:
-
-- **`cidx` was a full `forEach` scan of every route point** — and the km-marker block calls it
-  once per marker CANDIDATE, per redraw, with the cull running only *after* the lookup. The
-  candidate count grows as you zoom IN (spacing tightens to keep labels ~90 px apart), so
-  zoomed into the Divide the spacing hits 1 km → **4,300 candidates × 150,000 points = 645
-  million iterations per frame. Measured live: 2,010 ms of cidx per redraw** — during a pan,
-  per input frame. That is the lag, and it is worst exactly where a rider actually looks.
-  `points[].dist` is cumulative and monotonic by construction, so `cidx` is now a binary
-  search, same shape as v372's `_nearestPt`. **This heals ~25 other call sites for free** —
-  drawMap's per-turn markers, the GPS-follow centre, stop fallbacks, the hover path.
-  · ⚠ The tie-break is deliberate, twice: `<=` keeps the old scan's earlier-index-wins on an
-    exact midpoint, and a duplicate-dist walk-back returns the FIRST of a zero-length-segment
-    run — the truth-table (30,275 cases incl. dupes, ties, out-of-range, empty) caught both
-    before they shipped. New `cidx` is **byte-identical to the old scan on every case.**
-- **The "true pxPerKm" loop re-summed the whole polyline's screen length every redraw** —
-  150,000 px()/py() calls to derive ONE number. But px/py are linear in `scale` and the
-  heading-up rotation lives in the canvas transform (which preserves length), so screen
-  length = scale × a per-route constant. Cached as **`r._kmLen`** ({n, kx, v} — kx in the
-  stamp because it follows the bbox mid-latitude), same family as `_smEle`: cleared by
-  `clearRouteCaches`, stripped by `packRoute`.
-
-Measured on the live page, 150k-point synthetic Divide (the v372 harness route):
-zoomed-in marker cost **2,010 ms → <1 ms** per redraw; fitted-view cost ~10 ms → ~0.
-Markers ON vs OFF now differ by nothing outside noise at every zoom tried.
-
-Verified: `node verify.js` all green (3 blocks parse, ends `</html>`); 30,275/30,275
-truth-table of the extracted-from-file cidx against the old implementation as oracle;
-live in the served app — markers render (pill-fill pixels counted on the canvas, ~21 pills
-at 200 km spacing as expected), `_kmLen` caches {n:150001, v≈4301} which is sane for a
-4,300 km route. NOT pushed, NOT phone-tested.
-
-**The pattern, for the next hunt:** v372 fixed the O(stops×points) shapes it profiled and
-this one hid because its cost SCALES WITH ZOOM — a whole-route benchmark barely sees it
-(~10 ms) while a zoomed-in pan drowns in it. If another "only sometimes" lag turns up,
-check whether the work grows as the view narrows.
-
-### v375 (28 Aug) — THE OVERLAY BUTTON NAMES THE MODE YOU'RE IN, like the tile button always has.
-
-Peter, on the desktop map: *"the map type button and the route line type button work
-differently. The map type button shows you what is currently displayed, but the route type
-shows the one you will get if you press it next."* Right, and the cause was this file's
-favourite shape — **three authorities for one label**, disagreeing:
-
-- `updateOverlayButtons` had the correct current-mode map (`off:'DAY', surf:'SURF',
-  grade:'GRAD'`) — but nothing called it until the first press.
-- The desktop column's **static HTML hard-coded `SURF`**, so from page load the button
-  always advertised the NEXT mode while the line wore day/night.
-- `mapCtrlHTML` (the stops-map builder) had its own two-way ternary
-  (`grade?'GRAD':'SURF'`) — also SURF while off, and being rebuilt on every render it
-  would even UNDO updateOverlayButtons' correction.
-
-**Fix, one authority:** the labels map is hoisted to `OVERLAY_BTN_LABELS` (~4246) and all
-three sites read it. `_renderDesktopMapInner` now calls `updateOverlayButtons()` right
-beside its existing tile-label repaint — the exact same treatment the tile button has
-always had, which is why THAT one was correct. Static HTML default reads `DAY` (the 'off'
-default) for the pre-render first paint. Convention settled: **the button shows the
-CURRENT mode, green when an overlay is active** — matching the tile button; the cycle
-order stays in the tooltip.
-
-**Same version, same disease, the TILE button:** Peter's next screenshot — *"cycle doesn't
-fit in the button."* `TILE_LABELS` (the authority, ~13434) already said **CYC**, and the
-mapCtrlHTML template used it — but THREE repaint sites carried their own stale copy
-`['off','OSM','SAT','Cycle','Topo']`: the `[data-tilemap]` click handler, and the
-desktop/pace tile-button syncs. So the button was born fitting and overflowed the 38px
-square the moment you cycled to mode 3. All three now read `TILE_LABELS`, which also
-unifies the off label ('off' → 'OFF'). CYC not "CYC." — no other label in the set carries
-a dot.
-
-**Also v375 — PLACES NOW SAY HOW HIGH THEY ARE.** Peter: *"there is an overall lack of how
-high each stop or each town is… it says how much climbing you've got to go, but it doesn't
-really say how high each place is."* Two surfaces, his two named examples:
-
-- **The hover tooltip** (map + elevation strip, both via `_hoverTipHTML`) — the height joins
-  the position line: `📍 Grenfell · 245.3 km · 620 m asl`. Deliberately on the FIRST line
-  with the km (position facts together), not the ETA line.
-- **The Mission tiles** — the height rides each node's km line (`38.0 km · 1352 m asl`).
-  Peter mentioned it beside the pop badge; the km line won because mono figures belong with
-  mono figures. **His screenshot then caught the first cut giving both figures the same
-  18px — equal rank, and it wrapped on narrow tiles.** Now the height is a 13px span (the
-  pop badge's size) at 0.8 opacity with `white-space:nowrap`, so the km stays the hero and
-  "1009 m asl" can never break mid-phrase.
-
-One authority: `eleAtStr(r,d)` (TIME CALC, beside `smEleAt`). Two rules baked in:
-**smoothed, not raw** (v276's rule — the number must match the height the profile line
-draws at that spot, or the strip's own tooltip contradicts its own graph), and **empty on
-a route with no elevation data** — a flat-zero decode (pre-v8 shared route) says nothing
-rather than "0 m asl" at every town. The has-data flag caches as `r._hasEle` in the same
-family as `_smEle`: cleared by `clearRouteCaches`, stripped by `packRoute`. Accepted blind
-spot: a route entirely at/below sea level reads as no-data.
-
-**And the stop tiles, at Peter's yes:** all three `si-meta` stop-tile copies (the main
-stops list, the Ride tab's stop list, and its desktop twin) carry the height after the km
-figure — `38.0 km · 1352 m asl · food · 07:30–19:00` — in the meta line's own muted mono,
-so the accent km stays the loud one. The two pace-SEGMENT rows that also wear `si-meta`
-were left alone: a from–to range has no single height. Note the Ride tab's km is
-distance-TO-GO while the height is the STOP's own — correct, a place's height doesn't
-change as you approach it.
-
-Verified: `node verify.js` all green; helpers truth-tested in the live page (smoothed value
-exact at a synthetic 5 km point, flat route → empty, empty route safe) and the Alpine Ultra
-demo's Mission tab rendered with all 9 nodes carrying sane heights (937→1352→372 m asl
-tracking the profile). Also this version: overlay button off→DAY / surf→SURF / grade→GRAD
-verified live; tile button clicked through the full real cycle OSM→SAT→CYC→TOPO→OFF→OSM,
-ending on its starting mode. NOT pushed.
 
 <!-- VERSION-LOG-END -->

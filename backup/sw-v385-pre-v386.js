@@ -136,10 +136,7 @@ self.addEventListener('fetch',e=>{
   }
   // Tile requests — cache-first for offline map use
   const TILE_HOSTS=['tile.openstreetmap.org','server.arcgisonline.com','tile-cyclosm.openstreetmap.fr','a.tile-cyclosm.openstreetmap.fr','tile.opentopomap.org'];
-  // v386 — Mapbox raster tiles (the offline-download basemaps). Only the /styles/…/tiles/ path:
-  // api.mapbox.com serves other APIs too, which must not be cached forever.
-  const isMapboxTile=url.hostname==='api.mapbox.com'&&url.pathname.startsWith('/styles/v1/')&&url.pathname.includes('/tiles/');
-  if(isMapboxTile||TILE_HOSTS.some(h=>url.hostname.includes(h))){
+  if(TILE_HOSTS.some(h=>url.hostname.includes(h))){
     e.respondWith(
       caches.open(TILE_CACHE).then(c=>
         c.match(e.request).then(cached=>{

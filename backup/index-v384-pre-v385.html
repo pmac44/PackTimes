@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v386';
+window.APP_VERSION='v384';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1922,7 +1922,7 @@ async function saveAll(){
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
   // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
   await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -1972,7 +1972,6 @@ async function loadAll(){
       if(Array.isArray(prefs.hiddenMapTypes))UI.hiddenMapTypes=new Set(prefs.hiddenMapTypes);
       if(prefs.osmOpts)UI.osmOpts=prefs.osmOpts;
       if(prefs.geoapifyKey)UI.geoapifyKey=prefs.geoapifyKey;
-      if(prefs.mapboxToken)UI.mapboxToken=prefs.mapboxToken;   // v386
       if(Array.isArray(prefs.liveStatSlots)&&prefs.liveStatSlots.length===5)UI.liveStatSlots=prefs.liveStatSlots;
       if(prefs.sensorType)UI.sensorType=prefs.sensorType;
       if(prefs.tab)UI.tab=prefs.tab;
@@ -12183,22 +12182,8 @@ function _liveFollowReset(){
 }
 
 // Tile overlay mode (shared across all maps)
-let _tileMode=1; // 0=off 1=OSM 2=SAT 3=CyclOSM 4=Topo 5=Mapbox Outdoors 6=Mapbox Satellite
-const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}','https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png','https://tile.opentopomap.org/{z}/{x}/{y}.png',
-  'https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/256/{z}/{x}/{y}@2x?access_token={t}',
-  'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token={t}'];
-// v386 — MAPBOX. The ONLY basemaps PackTimes pre-downloads for offline. OSM, CyclOSM, OpenTopoMap
-// and Esri all forbid prefetch/offline in their tile policies (checked 26 Sep 2026); Mapbox's terms
-// allow an offline cache on a single end user's device, filled by that device's own requests —
-// which is exactly the route download. The token is the RIDER'S OWN, pasted in Settings → Offline
-// Maps and kept on the device: it is never in this (public) file, because URL-restricting a Mapbox
-// token needs a paid account and an open token would bill whoever owns it.
-const MAPBOX_MODES=[5,6];
-const TILE_MODE_NAMES=['Off','OSM','Satellite','CyclOSM','Topo','Mapbox Outdoors','Mapbox Satellite'];
-function tileModeAvailable(m){return !MAPBOX_MODES.includes(m)||!!UI.mapboxToken;}
-function tileUrl(mode,z,x,y){
-  return (TILE_URLS[mode]||TILE_URLS[1]).replace('{z}',z).replace('{x}',x).replace('{y}',y).replace('{t}',encodeURIComponent(UI.mapboxToken||''));
-}
+let _tileMode=1; // 0=off 1=OSM 2=SAT 3=CyclOSM 4=Topo
+const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}','https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png','https://tile.opentopomap.org/{z}/{x}/{y}.png'];
 // Tile cache: key = 'mode/z/x/y'
 const _tileCache={};
 let _mapDragging=false;
@@ -12247,7 +12232,8 @@ function getTile(z,x,y,redrawId){
       setTimeout(()=>{if(_tileCache[key]==='error')delete _tileCache[key];},60000);
     }
   };
-  img.src=tileUrl(_tileMode,z,x,y);
+  const tileUrl=TILE_URLS[_tileMode]||OSM_URL;
+  img.src=tileUrl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
   return 'loading';
 }
 // When connectivity returns, flush all tile errors so they retry on next draw
@@ -12257,10 +12243,14 @@ window.addEventListener('online',()=>{
 
 // Pre-download map tiles along a route for offline use
 let _tileDownloadAbort=null;
-// The tiles a route download covers — split out (v386) so the download picker can say how many
-// tiles a style will cost BEFORE anything is fetched.
-function _routeTileKeys(r){
+async function downloadRouteTiles(r,mode,onProgress){
+  if(!r||!r.points.length)return{ok:false,msg:'No route loaded'};
+  if(_tileDownloadAbort){_tileDownloadAbort.abort=true;_tileDownloadAbort=null;return{ok:false,msg:'Cancelled'};}
+  const ctrl={abort:false};
+  _tileDownloadAbort=ctrl;
   const pts=r.points;
+  const tileUrl=TILE_URLS[mode]||OSM_URL;
+  if(!tileUrl)return{ok:false,msg:'Select a tile mode first (OSM, SAT, etc.)'};
   // Collect unique tiles at zoom levels 10-14 along the route
   const ZOOMS=[10,11,12,13,14];
   const tileSet=new Set();
@@ -12283,17 +12273,8 @@ function _routeTileKeys(r){
   // Also sample last point
   const last=pts[pts.length-1];
   for(const z of ZOOMS){const t=lonLatToTile(last.lon,last.lat,z);tileSet.add(z+'/'+t.x+'/'+t.y);}
-  return[...tileSet];
-}
-async function downloadRouteTiles(r,mode,onProgress){
-  if(!r||!r.points.length)return{ok:false,msg:'No route loaded'};
-  // v386 — Mapbox only. Every other basemap's terms forbid pre-downloading (see MAPBOX_MODES).
-  if(!MAPBOX_MODES.includes(mode))return{ok:false,msg:'Offline download is only available for Mapbox maps'};
-  if(!UI.mapboxToken)return{ok:false,msg:'Add your Mapbox token in Settings → Offline Maps'};
-  if(_tileDownloadAbort){_tileDownloadAbort.abort=true;_tileDownloadAbort=null;return{ok:false,msg:'Cancelled'};}
-  const ctrl={abort:false};
-  _tileDownloadAbort=ctrl;
-  const tiles=_routeTileKeys(r);
+
+  const tiles=[...tileSet];
   let done=0,cached=0,failed=0;
   const total=tiles.length;
   const BATCH=6; // concurrent fetches
@@ -12307,7 +12288,7 @@ async function downloadRouteTiles(r,mode,onProgress){
     const batch=tiles.slice(i,i+BATCH);
     const promises=batch.map(async key=>{
       const [z,x,y]=key.split('/');
-      const url=tileUrl(mode,z,x,y);
+      const url=tileUrl.replace('{z}',z).replace('{x}',x).replace('{y}',y);
       try{
         // Skip if already in cache
         if(tileC){const hit=await tileC.match(url);if(hit){cached++;return true;}}
@@ -12327,95 +12308,36 @@ async function downloadRouteTiles(r,mode,onProgress){
   return{ok:true,total,cached,failed};
 }
 
-async function startTileDownload(ridx,modes){
+async function startTileDownload(ridx){
   const r=typeof ridx==='number'?ROUTES[ridx]:cur();
   if(!r||!r.points.length)return;
   if(_tileDownloadAbort){_tileDownloadAbort.abort=true;_tileDownloadAbort=null;UI.tileDownloadStatus='idle';UI.tileDownloadIdx=null;render();return;}
-  modes=(modes||[]).filter(m=>MAPBOX_MODES.includes(m));
-  if(!modes.length)return;
+  if(_tileMode===0){UI.tileDownloadStatus='error';UI.tileDownloadMsg='Select a tile mode first (OSM, SAT, etc.)';UI.tileDownloadIdx=typeof ridx==='number'?ridx:CUR;render();return;}
   UI.tileDownloadStatus='loading';UI.tileDownloadMsg='';UI.tileDownloadIdx=typeof ridx==='number'?ridx:CUR;render();
   // Show progress bar after render
   setTimeout(()=>{
     const prog=document.getElementById('tile-dl-progress');
     if(prog)prog.style.display='';
   },50);
-  // v386 — one pass per chosen style, one after the other, then a single combined record.
-  let result={ok:true,total:0,cached:0,failed:0};
-  for(let k=0;k<modes.length;k++){
-    const label=TILE_MODE_NAMES[modes[k]]+(modes.length>1?' ('+(k+1)+'/'+modes.length+')':'');
-    const one=await downloadRouteTiles(r,modes[k],(done,total,cached)=>{
-      const bar=document.getElementById('tile-dl-bar');
-      const msg=document.getElementById('tile-dl-msg');
-      const pct=Math.round(done/total*100);
-      if(bar)bar.style.width=pct+'%';
-      if(msg)msg.textContent=label+': '+done+' / '+total+' tiles';
-    });
-    if(!one.ok){result=one;break;}
-    result.total+=one.total;result.cached+=one.cached;result.failed+=one.failed;
-  }
+  const result=await downloadRouteTiles(r,_tileMode,(done,total,cached)=>{
+    const bar=document.getElementById('tile-dl-bar');
+    const msg=document.getElementById('tile-dl-msg');
+    const pct=Math.round(done/total*100);
+    if(bar)bar.style.width=pct+'%';
+    if(msg)msg.textContent=done+' / '+total+' tiles ('+cached+' cached)';
+  });
   if(result.ok){
     UI.tileDownloadStatus='done';
-    UI.tileDownloadMsg=result.cached+' of '+result.total+' tiles saved'+(result.failed?' ('+result.failed+' failed)':'');
+    UI.tileDownloadMsg=result.cached+' of '+result.total+' tiles cached'+(result.failed?' ('+result.failed+' failed)':'');
     // Persist download info on the route object
-    r.offlineTiles={mode:modes.map(m=>TILE_MODE_NAMES[m]).join(' + '),count:result.total,cached:result.cached,failed:result.failed||0,at:new Date().toISOString()};
+    const modeNames=['Off','OSM','SAT','Cycle','Topo'];
+    r.offlineTiles={mode:modeNames[_tileMode]||'?',count:result.total,cached:result.cached,failed:result.failed||0,at:new Date().toISOString()};
     saveAll();
   } else {
     UI.tileDownloadStatus=result.msg==='Cancelled'?'idle':'error';
     UI.tileDownloadMsg=result.msg||'Download failed';
   }
   render();
-}
-
-// v386 — OFFLINE MAP PICKER. The route row's download button opens this instead of silently
-// downloading whatever basemap happened to be on screen. Mapbox styles only (see MAPBOX_MODES);
-// the tile count is worked out before anything is fetched so the rider sees the cost.
-function openOfflinePicker(ridx){
-  const r=ROUTES[ridx];if(!r||!r.points.length)return;
-  document.getElementById('offline-pick-ov')?.remove();
-  const n=UI.mapboxToken?_routeTileKeys(r).length:0;
-  const pick=UI.offlinePick||{5:true,6:false};
-  const ov=document.createElement('div');
-  ov.id='offline-pick-ov';
-  ov.style.cssText='position:fixed;inset:0;z-index:998;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;';
-  const row=(m,desc)=>`<label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r-ctrl);padding:10px 12px;margin-bottom:8px;">
-      <input type="checkbox" class="op-mode" data-mode="${m}" ${pick[m]?'checked':''} style="margin-top:3px;">
-      <span><span style="font-weight:600;color:var(--text);">${TILE_MODE_NAMES[m]}</span><br><span style="font-size:var(--fs-sm);color:var(--text3);">${desc}</span></span></label>`;
-  ov.innerHTML=`<div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px calc(20px + env(safe-area-inset-bottom,0px));width:100%;max-width:520px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <span style="font-size:19px;font-weight:600;color:var(--text);">Download map for offline</span>
-      <button class="btn btn-sm" id="op-x" aria-label="Close">✕</button>
-    </div>
-    ${UI.mapboxToken?`
-      <p style="font-size:var(--fs-sm);color:var(--text2);line-height:1.5;margin-bottom:12px;">Saves the map along <b>${r.label||r.name}</b> (about 2 km either side, zoomed out to zoomed in) so it shows without signal.</p>
-      ${row(5,'Tracks, trails and contours — the cycling one')}
-      ${row(6,'Aerial photo with roads and names')}
-      <p id="op-cost" style="font-size:var(--fs-sm);color:var(--text3);line-height:1.5;margin:4px 0 12px;"></p>
-      <button class="btn btn-p btn-full" id="op-go">Download</button>`
-    :`
-      <p style="font-size:var(--fs-sm);color:var(--text2);line-height:1.5;margin-bottom:12px;">Offline maps come from <b>Mapbox</b>. The free map servers PackTimes shows online (OSM, CyclOSM, Topo, Satellite) don't allow downloading ahead.</p>
-      <p style="font-size:var(--fs-sm);color:var(--text3);line-height:1.5;margin-bottom:12px;">Add your own free Mapbox token once, in Settings → Offline Maps.</p>
-      <button class="btn btn-p btn-full" id="op-settings">Open Settings</button>`}
-  </div>`;
-  document.body.appendChild(ov);
-  const close=()=>ov.remove();
-  const chosen=()=>[...ov.querySelectorAll('.op-mode')].filter(c=>c.checked).map(c=>+c.dataset.mode);
-  const cost=()=>{
-    const el=ov.querySelector('#op-cost'),go=ov.querySelector('#op-go');if(!el)return;
-    const k=chosen().length;
-    el.textContent=k?`About ${(n*k).toLocaleString()} tiles${k>1?' ('+n.toLocaleString()+' per style)':''}. Mapbox gives you 200,000 free a month; tiles you've already saved aren't fetched again.`:'Tick at least one map.';
-    go.disabled=!k;
-  };
-  cost();
-  ov.addEventListener('click',e=>{
-    if(e.target===ov||e.target.closest('#op-x')){close();return;}
-    if(e.target.closest('#op-settings')){close();UI.tab='settings';UI.settingsExp.offlineMaps=true;render();return;}
-    if(e.target.closest('#op-go')){
-      const modes=chosen();if(!modes.length)return;
-      UI.offlinePick=Object.fromEntries(MAPBOX_MODES.map(m=>[m,modes.includes(m)]));
-      close();startTileDownload(ridx,modes);return;
-    }
-  });
-  ov.addEventListener('change',e=>{if(e.target.classList.contains('op-mode'))cost();});
 }
 
 // Draw OSM tiles onto canvas ctx, given current projection functions
@@ -12470,21 +12392,6 @@ function drawTiles(ctx,W,H,cLon,cLat,scale,kx,ky,anchor,cvsId){
         // Placeholder (theme backdrop while a tile loads)
         ctx.fillStyle=_mapCanvasBg;
         ctx.fillRect(sx,sy,tw,th);
-        // v385 — OVERZOOM FALLBACK. Zoomed in past what's cached (offline, or no signal), the
-        // map used to go blank. Stretch the matching corner of a coarser tile over the gap —
-        // blurry, but a map. Ancestors are only REQUESTED once this tile has actually failed,
-        // so a normal online load doesn't fetch a second set of tiles.
-        for(let k=1;k<=5&&tileZ-k>=1;k++){
-          const az=tileZ-k,ax=wtx>>k,ay=ty>>k;
-          const anc=tile==='error'?getTile(az,ax,ay,cvsId):_tileCache[_tileMode+'/'+az+'/'+ax+'/'+ay];
-          if(anc&&anc!=='loading'&&anc!=='error'){
-            const f=1<<k,sw=anc.width/f,sh=anc.height/f;
-            ctx.globalAlpha=0.85;
-            ctx.drawImage(anc,(wtx-(ax<<k))*sw,(ty-(ay<<k))*sh,sw,sh,sx,sy,tw,th);
-            ctx.globalAlpha=1;
-            break;
-          }
-        }
       }
     }
   }
@@ -13192,21 +13099,6 @@ function drawMap(cvs,r,opts){
     ctx.font=`bold ${mapFontXs}px sans-serif`;ctx.fillStyle='rgba(255,255,255,0.9)';ctx.textAlign='center';ctx.textBaseline='middle';
     ctx.fillText('N',ax,ay-ar-7);
   }
-  _drawMapCredit(ctx,W,H);
-}
-// v385 — MAP CREDIT. The stops, surfaces and towns are OpenStreetMap data, and each basemap asks
-// to be credited, so every map says where it comes from. Drawn last, outside the heading-up
-// rotation (it must stay level), bottom-right like every web map.
-const MAP_CREDITS=['© OpenStreetMap contributors','© OpenStreetMap contributors','Imagery © Esri · © OpenStreetMap contributors','© OpenStreetMap contributors · CyclOSM','© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC-BY-SA)',
-  '© Mapbox © OpenStreetMap contributors','© Mapbox © OpenStreetMap contributors © Maxar'];
-function _drawMapCredit(ctx,W,H){
-  const txt=MAP_CREDITS[_tileMode]||MAP_CREDITS[0];
-  ctx.save();
-  ctx.font='10px sans-serif';ctx.textAlign='right';ctx.textBaseline='bottom';
-  const w=Math.min(ctx.measureText(txt).width,W-8)+8;
-  ctx.fillStyle='rgba(255,255,255,0.7)';ctx.fillRect(W-w,H-14,w,14);
-  ctx.fillStyle='#333';ctx.fillText(txt,W-4,H-2,W-12);
-  ctx.restore();
 }
 
 // ── ONE ZOOM STEP, stated once (v353) ───────────────────────────────────────────────────────
@@ -13983,7 +13875,7 @@ let _pendingOffRoute=null;
 // font and the existing OSM/SAT were already asking for. Widest is TOPO at 31px, so it
 // clears a 38px button with 3.5px each side and a 52px one easily.
 // ⚠ Keep every label under ~34px of DM Mono 13px or the desktop button clips again.
-const TILE_LABELS=["OFF","OSM","SAT","CYC","TOPO","OUTD","MSAT"];   // v386 — OUTD/MSAT = Mapbox Outdoors / Satellite
+const TILE_LABELS=["OFF","OSM","SAT","CYC","TOPO"];
 function mapCtrlHTML(mapId,showGPS){
   const isStopsMobile=mapId==='stops-map'&&!IS_DESKTOP();
   const isLiveMobile=mapId==='live-map'&&!IS_DESKTOP();
@@ -14221,7 +14113,7 @@ document.addEventListener('click',e=>{
   }
   const tm=e.target.closest('[data-tilemap]');
   if(tm){
-    do{_tileMode=(_tileMode+1)%TILE_URLS.length;}while(!tileModeAvailable(_tileMode));   // v386 — Mapbox styles only once a token is saved
+    _tileMode=(_tileMode+1)%5;
     // Update all tile toggle button styles on the page
     document.querySelectorAll('[data-tilemap]').forEach(btn=>{
       // v375: TILE_LABELS is the ONE authority — this and the two setTimeout syncs below had
@@ -19903,18 +19795,7 @@ function tSettings(r){
     <div style="font-size:13px;color:var(--text3);margin-top:12px;line-height:1.5;"><strong>Sending a whole ride to someone else?</strong> Use the share button on a route's tile — it bundles the route and plan into one file they can open cold. They open it with "Open a shared ride file" on the Route tab.</div>`;
 
   const offlineMapsBody=`
-    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">PackTimes keeps every map tile you view, so anything you've looked at still shows without signal. Panning along your route before you leave works for any map.</p>
-    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">To <strong>download a whole route</strong> ahead of time (the download button on each route), PackTimes uses <strong>Mapbox</strong> — the free map servers don't allow downloading ahead. Make a free account at <a href="https://account.mapbox.com/auth/signup/" target="_blank" style="color:var(--accent);">mapbox.com</a>, copy your <strong>public token</strong> (starts with <code>pk.</code>) and paste it here. It stays on this device. The free tier is 200,000 tiles a month.</p>
-    <div class="field">
-      <label class="lbl">Mapbox token</label>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input type="text" id="mapbox-token-input" placeholder="pk.eyJ1Ijoi..." value="${UI.mapboxToken||''}" style="flex:1;font-size:14px;letter-spacing:0.5px;" autocomplete="off" spellcheck="false">
-        <button class="btn btn-sm btn-p" id="btn-mapbox-save">Save</button>
-        ${UI.mapboxToken?'<button class="btn btn-sm btn-r" id="btn-mapbox-clear">Clear</button>':''}
-      </div>
-    </div>
-    <div id="mapbox-status" style="font-size:13px;font-family:var(--font);margin:4px 0 10px;color:${UI.mapboxToken?'var(--accent)':'var(--text3)'};">${UI.mapboxToken?'✓ Token saved — the map button now includes OUTD (Outdoors) and MSAT (Satellite).':'No token set.'}</div>
-    <p style="font-size:13px;color:var(--text3);line-height:1.5;margin-bottom:10px;">Mapbox maps: © Mapbox © OpenStreetMap · <a href="https://www.mapbox.com/map-feedback/" target="_blank" style="color:var(--accent);">Improve this map</a></p>
+    <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">PackTimes caches map tiles as you view them. Before heading into remote areas <strong>without internet</strong>, open the map on the Route or Stops tab and pan/zoom along your route — tiles you've viewed will be available offline.</p>
     <p style="font-size:17px;color:var(--text2);line-height:1.6;margin-bottom:8px;">For full offline maps of a region, we recommend <strong>Organic Maps</strong> (free) as a companion app.</p>
     <a href="https://organicmaps.app" target="_blank" class="btn btn-sm btn-full" style="text-align:center;text-decoration:none;margin-top:4px;">🌍 Get Organic Maps</a>`;
 
@@ -22878,7 +22759,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   // Download tiles for route
   const dlBtn=e.target.closest('.dl-tiles-btn');
-  if(dlBtn){const i=+dlBtn.dataset.ridx;if(_tileDownloadAbort)startTileDownload(i);else openOfflinePicker(i);return;}   // v386 — a tap while downloading still cancels
+  if(dlBtn){const i=+dlBtn.dataset.ridx;startTileDownload(i);return;}
   // Reload/update route
   const shBtn=e.target.closest('.share-route');
   if(shBtn){const i=+shBtn.dataset.ridx;shareRideFile(ROUTES[i]);return;}
@@ -23628,28 +23509,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     render();return;
   }
   if(e.target.closest('#btn-geoapify-clear')){UI.geoapifyKey=null;saveAll();render();return;}
-  // v386 — Mapbox token. Checked with one real tile request before it's kept, so a mistyped or
-  // secret (sk.) token is caught here rather than as a blank map on the road.
-  if(e.target.closest('#btn-mapbox-save')){
-    const val=(document.getElementById('mapbox-token-input')?.value||'').trim();
-    const st=document.getElementById('mapbox-status');
-    const say=(t,ok)=>{if(st){st.textContent=t;st.style.color=ok?'var(--accent)':'var(--red)';}};
-    if(!val){UI.mapboxToken=null;saveAll();render();return;}
-    if(!/^pk\./.test(val)){say(val.startsWith('sk.')?'That is a SECRET token (sk.) — keep it private. Paste the public one that starts with pk.':'A Mapbox public token starts with pk.',false);return;}
-    say('Checking…',true);
-    fetch('https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/256/0/0/0?access_token='+encodeURIComponent(val))
-      .then(res=>{
-        if(res.ok){UI.mapboxToken=val;saveAll();render();}
-        else say(res.status===401?'Mapbox rejected that token — check it was copied in full.':'Mapbox answered '+res.status+' — try again.',false);
-      })
-      .catch(()=>say('Could not reach Mapbox — check your connection.',false));
-    return;
-  }
-  if(e.target.closest('#btn-mapbox-clear')){
-    UI.mapboxToken=null;
-    if(MAPBOX_MODES.includes(_tileMode))_tileMode=3;   // don't leave the map on a style that can no longer load
-    saveAll();render();return;
-  }
   if(e.target.closest('#btn-switch-route')){_routePickerOpen=true;render();return;}
   if(e.target.closest('#btn-close-route-picker')){_routePickerOpen=false;render();return;}
   if(e.target.id==='route-picker-overlay'){_routePickerOpen=false;render();return;}
