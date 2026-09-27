@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v395';
+window.APP_VERSION='v394';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4082,29 +4082,16 @@ function fmtDistKm(v){ const d=v.toFixed(1); return +d>=1000 ? v.toFixed(0) : d;
 // wall clock (see toRouteClock). Identity when browser and route share a zone. The
 // *Dev variants keep the device's clock for RECORDING timestamps — a saved ride's
 // stamp must not be re-labelled by whichever route happens to be active when viewed.
-// v395 — ONE formatter each, built once and reused. toLocale*String(locale, options) builds a
-// fresh ICU DateTimeFormat on EVERY call: ~30 KB of native memory the JS heap never sees, freed
-// only at a full GC. updateLive formats a time for every stop on the route every GPS tick —
-// 1,156 calls per tick on NSW Divide (1,146 stops) ≈ 35 MB/s of hidden garbage. Chrome kept up;
-// the Android app view didn't, and Android killed PackTimes 3 min into Peter's 28 Sep walk
-// (renderer over memory.high 3 GB). Same output, ~40x faster. Never go back to
-// toLocale*String(…, {options}) in anything that runs per stop or per tick.
-const _FMT_HM=new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit'});
-const _FMT_WD=new Intl.DateTimeFormat('en-GB',{weekday:'short'});
-const _FMT_DM=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit'});
-const _FMT_DMY=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});
-// Intl.format throws on an invalid date where toLocale*String returned 'Invalid Date' — keep that.
-function _fmtWith(f,d){const t=+d;return isNaN(t)?'Invalid Date':f.format(t);}
-function _fmtTRaw(d){return _fmtWith(_FMT_HM,d);}
+function _fmtTRaw(d){return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
 function fmtT(d){if(!d)return'—';return _fmtTRaw(toRouteClock(d,cur()));}
 function fmtTDev(d){if(!d)return'—';return _fmtTRaw(d);}
 // v334 — 12-hour clock for the weather panel (Peter: "change the time format to 1pm 2pm").
 // hh is 0–23; with mm omitted you get the bare hour ("2pm"), with mm you get "7:03am".
 // Lowercase am/pm, no space — compact enough for the hourly chips.
 function fmt12h(hh,mm){const h=(hh%12)||12,ap=hh<12?'am':'pm';return mm==null?h+ap:h+':'+String(mm).padStart(2,'0')+ap;}
-function fmtDT(d){if(!d)return'—';d=toRouteClock(d,cur());const day=_fmtWith(_FMT_WD,d);const date=_fmtWith(_FMT_DM,d);const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
-function fmtDTY(d){if(!d)return'—';d=toRouteClock(d,cur());const day=_fmtWith(_FMT_WD,d);const date=_fmtWith(_FMT_DMY,d);const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
-function fmtDTYDev(d){if(!d)return'—';const day=_fmtWith(_FMT_WD,d);const date=_fmtWith(_FMT_DMY,d);const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
+function fmtDT(d){if(!d)return'—';d=toRouteClock(d,cur());const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit'});const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
+function fmtDTY(d){if(!d)return'—';d=toRouteClock(d,cur());const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
+function fmtDTYDev(d){if(!d)return'—';const day=d.toLocaleDateString('en-GB',{weekday:'short'});const date=d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});const time=_fmtTRaw(d);return`${day} ${date} ${time}`;}
 // ── v337 — THE CARRY. "2h 60m" (Peter's screenshot, Day 1 · Leg 3). Every h/m formatter
 // in the file did floor(hours) + round(fraction*60) SEPARATELY, so 2.9958 h formatted as
 // hours=2, minutes=60 — nobody carried the rounded 60 back into the hours. Fires whenever
@@ -12766,20 +12753,6 @@ function cidx(r,d){
 }
 
 // Draw map onto canvas. anchor=0.5 centres normally; 0.75 puts GPS dot 3/4 down.
-// v395 — size a canvas's bitmap and hand back a FULLY RESET 2D context, without reallocating
-// the bitmap when the size hasn't changed. Setting canvas.width/height — even to the same value —
-// throws the bitmap away and allocates a new one. drawMap did that on every GPS tick; in the
-// Android app the old bitmaps (7 MB each for the Ride map) were freed far slower than they were
-// made, so the page's renderer grew ~35 MB/s and Android killed PackTimes 3 min into Peter's
-// 28 Sep walk (memory.high 3 GB). ctx.reset() gives the same clean slate (state, transform, clip,
-// pixels) as a width assignment. bw/bh are the caller's integer bitmap sizes.
-function _canvasFit(cvs,bw,bh){
-  const ctx=cvs.getContext('2d');
-  if(cvs.width!==bw||cvs.height!==bh){cvs.width=bw;cvs.height=bh;}
-  else if(ctx.reset)ctx.reset();
-  else cvs.width=bw;   // no reset() (old browser): the only other way to clear state
-  return ctx;
-}
 function drawMap(cvs,r,opts){
   opts=opts||{};
   if(!r)return;
@@ -12800,7 +12773,8 @@ function drawMap(cvs,r,opts){
   const _hideRoute=(cvs.id==='live-map'||(cvs.id==='desktop-map'&&UI.tab==='live'))&&_freeRiding();
   if(!hasRoute&&!hasStops&&!r.center)return;
   const dpr=devicePixelRatio||1,W=cvs.offsetWidth,H=cvs._forcedH||cvs.offsetHeight||220;
-  const ctx=_canvasFit(cvs,Math.floor(W*dpr),Math.floor(H*dpr));ctx.scale(dpr,dpr);   // v395
+  cvs.width=W*dpr;cvs.height=H*dpr;
+  const ctx=cvs.getContext('2d');ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,W,H);
   const pts=r.points;
   const id=cvs.id,state=ms(id);
@@ -14521,7 +14495,8 @@ function drawElev(cvs,r){
 function _drawElevInner(cvs,r){
   if(!r||!r.points.length)return;
   const dpr=devicePixelRatio||1,pts=r.points;
-  const ctx=_canvasFit(cvs,Math.floor(cvs.offsetWidth*dpr),Math.floor(56*dpr));ctx.scale(dpr,dpr);   // v395
+  cvs.width=cvs.offsetWidth*dpr;cvs.height=56*dpr;
+  const ctx=cvs.getContext('2d');ctx.scale(dpr,dpr);
   const W=cvs.offsetWidth,H=56;
   const eles=pts.map(p=>p.ele),mn=eles.reduce((a,b)=>a<b?a:b,Infinity),mx=eles.reduce((a,b)=>a>b?a:b,-Infinity),rng=mx-mn||1;
   const x=i=>(pts[i].dist/r.totalDist)*W,y=i=>H-5-((pts[i].ele-mn)/rng)*(H-10);
@@ -15827,8 +15802,9 @@ function _renderDesktopMapInner(){
     const dpr=devicePixelRatio||1;
     const W=ew.offsetWidth||pane.offsetWidth-32;
     const H=80;
-    const ctx=_canvasFit(ec,Math.round(W*dpr),Math.round(H*dpr));   // v395
+    ec.width=Math.round(W*dpr);ec.height=Math.round(H*dpr);
     ec.style.width=W+'px';ec.style.height=H+'px';
+    const ctx=ec.getContext('2d');
     ctx.scale(dpr,dpr);
     ctx.clearRect(0,0,W,H);
     // Zoom the profile to match the map: show first-visible km → last-visible km.
@@ -17261,9 +17237,10 @@ function drawElevProfile(r,liveDist){
   const W=rect.width||cvs.parentElement?.offsetWidth||window.innerWidth;
   if(W<10)return; // not laid out yet
   const H=90;
-  const ctx=_canvasFit(cvs,Math.floor(W*dpr),Math.floor(H*dpr));   // v395
+  cvs.width=W*dpr;cvs.height=H*dpr;
   cvs.style.width=W+'px';
   cvs.style.height=H+'px';
+  const ctx=cvs.getContext('2d');
   ctx.scale(dpr,dpr);
 
   // Get elevation range for visible portion
@@ -22900,10 +22877,7 @@ function updateLive(){
     }
   }
 
-  // v395 — only when some eta-<id> element is actually on screen (e.g. the desktop stops pane).
-  // On the phone's Ride tab there are none, and this was 1,146 etaAt calls — 30-60 ms of CPU —
-  // every GPS tick for nothing.
-  if(document.querySelector('[id^="eta-"]'))r.stops.forEach(s=>{
+  r.stops.forEach(s=>{
     const eta=etaAt(s.dist,r),day=sdt?dayOff(eta,sdt):'';
     setText('eta-'+s.id,(day?day.trim()+' ':'')+fmtT(eta));
   });
