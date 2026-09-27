@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v389';
+window.APP_VERSION='v388';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5488,37 +5488,6 @@ function _nativePlugin(name){
 }
 const _nativeGeo = _nativePlugin('BackgroundGeolocation');
 const _nativeNotif = _nativePlugin('LocalNotifications');
-// v389 (Phase 1b step 3): screen-off alerts. Web beeps and navigator.vibrate don't survive the
-// screen going off, and the app view has no speechSynthesis — so in the app, turns and the
-// off-route alarm are SPOKEN (TextToSpeech), buzzes go through Haptics, keep-awake through
-// KeepAwake. All three fall back to the web path when missing.
-const _nativeTTS = _nativePlugin('TextToSpeech');
-const _nativeHaptics = _nativePlugin('Haptics');
-const _nativeKeepAwake = _nativePlugin('KeepAwake');
-// urgent=true drops anything still being said (a "turn now" must not queue behind a heads-up).
-function speak(text, urgent){
-  if(!_nativeTTS || !text) return false;
-  _nativeTTS.speak({text, lang:'en-AU', rate:1.0, volume:1.0, queueStrategy:urgent?0:1}).catch(()=>{});
-  return true;
-}
-// Screen wake (our own plugin in the shell, ScreenWakePlugin.java). While ride GPS runs, the
-// Ride screen may show over the lock screen; wakeScreen() lights the screen at a turn or
-// off-route alarm if it's off, and it then times out normally. Proven on the Pixel (Android 17)
-// with no extra permission grant — if a phone refuses, the spoken cue still plays.
-const _nativeScreen = _nativePlugin('ScreenWake');
-function _nativeLockScreen(on){ if(_nativeScreen) _nativeScreen.showWhenLocked({on}).catch(()=>{}); }
-function wakeScreen(){
-  if(_nativeScreen && document.visibilityState==='hidden') _nativeScreen.wake({seconds:30}).catch(()=>{});
-}
-// Vibration pattern in the navigator.vibrate shape [on, off, on, …] ms.
-function buzz(pattern){
-  if(!_nativeHaptics){ if(navigator.vibrate) navigator.vibrate(pattern); return; }
-  let at=0;
-  pattern.forEach((ms,i)=>{
-    if(i%2===0) setTimeout(()=>_nativeHaptics.vibrate({duration:ms}).catch(()=>{}), at);
-    at+=ms;
-  });
-}
 const _nativeWatches = new Map();   // our token → Promise<plugin watcher id>
 let _nativeWatchSeq = 0;
 let _nativeNotifAsk = null;         // Promise — asked once per app run
@@ -5537,7 +5506,6 @@ function gpsWatch(onFix, onErr){
   // Android 13+ hides the tracking notification without this permission. Ask first, then
   // start the watcher, so the two system prompts don't collide.
   if(!_nativeNotifAsk) _nativeNotifAsk = _nativeNotif ? _nativeNotif.requestPermissions().catch(()=>{}) : Promise.resolve();
-  _nativeLockScreen(true);   // v389 — ride GPS on: Ride screen may show over the lock screen
   const token = 'n' + (++_nativeWatchSeq);
   _nativeWatches.set(token, _nativeNotifAsk.then(()=>_nativeGeo.addWatcher({
     backgroundTitle: 'PackTimes is tracking your ride',
@@ -5619,7 +5587,6 @@ function _resetGpsIdleTimer(){
     if(_rec && _rec.status==='active') return;
     // Auto-stop GPS and release wake lock — show banner
     gpsClearWatch(UI.gpsWatchId);
-    _nativeLockScreen(false);
     UI.gpsWatchId=null;
     UI.gpsActive=false;
     _offRouteStart=null;_offRouteAlerted=false;
@@ -5829,7 +5796,6 @@ function _showRideAvgResetPrompt(){
 function stopGPS(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
   gpsClearWatch(UI.gpsWatchId);
-  _nativeLockScreen(false);
   // Accumulate this GPS session into ride average totals (using cumulative distance)
   if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null){
     const sessionKm=Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm);
@@ -8559,7 +8525,6 @@ async function _recControlTap(){
     return;
   }
   if(_rec.status === 'paused'){
-    if(!UI.gpsActive) startGPS();   // v389 — resuming must never leave the ride without GPS
     resumeRecording();
     await DB.putRecording(_rec).catch(()=>{});
     // If user was looking at the stop-confirm strip, hide it
@@ -11794,47 +11759,22 @@ function playCueTone(freq,dur,vol){
   }catch(e){}
 }
 
-// v389 — in the app, the cue is SPOKEN with the direction and road ("Left in 50 metres, onto
-// Smith Street" / "Turn left"), which is what the v239 note promised for going native. The
-// beeps stay for the browser. turn is optional (the Settings test calls it without one).
-const TURN_WORDS={straight:'Continue straight',slightLeft:'Slight left',left:'Left',sharpLeft:'Sharp left',
-                  slightRight:'Slight right',right:'Right',sharpRight:'Sharp right',uturn:'U-turn'};
-function _turnSpeech(stage,turn,remM){
-  if(!turn) return stage==='now' ? 'Turn left' : 'Left in 50 metres';   // Settings test sample
-  const k=turnGlyphKey(turn.type,turn.notes), w=TURN_WORDS[k]||'Turn';
-  if(stage==='now') return k==='straight'?'Straight on':(k==='uturn'?'Make a U-turn':(/^(Left|Right)$/.test(w)?'Turn '+w.toLowerCase():w));
-  const d=fmtTurnDist(remM).replace(/ m$/,' metres').replace(/ km$/,' kilometres');
-  // Notes are often the whole instruction ("Slight right onto Hume Hwy"): keep the road after
-  // "onto"/"on"; a note that is only a direction ("Sharp right") adds nothing to the words.
-  let road=(turn.notes||turn.name||'').trim();
-  const onto=road.match(/\b(?:onto|on to|on)\s+(.+)$/i);
-  if(onto) road=onto[1].trim();
-  else if(/^(turn|slight|sharp|keep|bear|continue|u-?turn|left|right|straight)\b/i.test(road)) road='';
-  return w+' in '+d+(road?', onto '+road:'');
-}
-function playTurnCue(stage,turn,remM){
-  if(stage==='headsup' && turn) wakeScreen();   // light the screen even if turn audio is off
+function playTurnCue(stage){
   if(!UI.turnAudio)return;
-  if(speak(_turnSpeech(stage,turn,remM), stage==='now')){
-    buzz(stage==='now'?[120,60,120]:[100,60,100]);
-    return;
-  }
   // Two clear, distinct signals — audible but not the old harsh repeating melody.
   if(stage==='now'){          // at the turn: one longer, higher "turn now" beep
     playCueTone(900,0.28,0.5);
-    buzz([120,60,120]);
+    if(navigator.vibrate)navigator.vibrate([120,60,120]);
   } else {                    // heads-up: two quick mid beeps ("turn coming")
     playCueTone(680,0.11,0.42);
     setTimeout(()=>playCueTone(680,0.11,0.42),150);
-    buzz([100,60,100]);
+    if(navigator.vibrate)navigator.vibrate([100,60,100]);
   }
 }
 
 // ─── Wake Lock ───
-let _nativeAwake=false;
 async function requestWakeLock(){
   if(!UI.keepScreenOn)return;
-  if(_nativeKeepAwake){ _nativeAwake=true; _nativeKeepAwake.keepAwake().catch(()=>{}); return; }
   try{
     if('wakeLock' in navigator){
       _wakeLock=await navigator.wakeLock.request('screen');
@@ -11843,7 +11783,6 @@ async function requestWakeLock(){
   }catch(e){console.log('WakeLock unavailable:',e);}
 }
 function releaseWakeLock(){
-  if(_nativeAwake){ _nativeAwake=false; _nativeKeepAwake.allowSleep().catch(()=>{}); }
   if(_wakeLock){_wakeLock.release();_wakeLock=null;}
 }
 // Perform the actual idle auto-pause: clear the watch, release the wake lock,
@@ -11851,7 +11790,6 @@ function releaseWakeLock(){
 function _doGpsAutoPause(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
   gpsClearWatch(UI.gpsWatchId);
-  _nativeLockScreen(false);
   UI.gpsWatchId=null;
   UI.gpsActive=false;
   _offRouteStart=null;_offRouteAlerted=false;
@@ -11988,7 +11926,7 @@ function checkAlerts(){
   // confirm close to the turn (matches Garmin/Wahoo). Distances are to the ACTUAL CORNER
   // (marker + offset), same as the visual — so the "now" beep sounds AT the turn, not ~30 m
   // early at the marker. Each stage fires once per turn — no repeating beeps.
-  if((UI.turnAudio||_nativeScreen)&&r.turns&&r.turns.length){   // v389: the app wakes the screen even with turn audio off
+  if(UI.turnAudio&&r.turns&&r.turns.length){
     const mult=UI.simRunning?20:1; // sim plays fast — widen the windows to match
     const offKm=_markerOffKm(r);
     const headsM=(UI.turnAlertM||50)*mult;
@@ -11997,8 +11935,8 @@ function checkAlerts(){
     if(nextTurn){
       const remM=((nextTurn.dist+offKm)-UI.gpsDistKm)*1000;   // distance to the corner
       const key=nextTurn.dist;
-      if(remM<=headsM&&!_turnCuesFired.has(key+':h')){_turnCuesFired.add(key+':h');playTurnCue('headsup',nextTurn,remM/mult);}
-      if(remM<=nowM&&!_turnCuesFired.has(key+':n')){_turnCuesFired.add(key+':n');playTurnCue('now',nextTurn,remM/mult);}
+      if(remM<=headsM&&!_turnCuesFired.has(key+':h')){_turnCuesFired.add(key+':h');playTurnCue('headsup');}
+      if(remM<=nowM&&!_turnCuesFired.has(key+':n')){_turnCuesFired.add(key+':n');playTurnCue('now');}
     }
   }
   // Off-route detection
@@ -12114,11 +12052,8 @@ function showOffRouteAlert(distM){
   }
   // Loud repeating audio — urgent alarm pattern
   playOffRouteAudio();
-  // v389 — in the app the alarm is also spoken, so it's heard with the screen off.
-  speak('Off route. '+distM+' metres from the route.', true);
-  wakeScreen();
   // Long aggressive vibration
-  buzz([500,150,500,150,500,150,800]);
+  if(navigator.vibrate)navigator.vibrate([500,150,500,150,500,150,800]);
 }
 
 let _offRouteAudioTimer=null;
@@ -12158,7 +12093,7 @@ function triggerStopAlert(s,r){
   if(UI.tab==='live')peekLiveStop(s,r);
   // 3. Play initial chime + vibrate
   playStopChime();
-  buzz([200,100,200]);
+  if(navigator.vibrate)navigator.vibrate([200,100,200]);
   // 4. Schedule repeat chimes at 50% and 75% of approach (max 2 repeats)
   scheduleStopChimes(s);
 }
@@ -12229,7 +12164,7 @@ function scheduleStopChimes(s){
     if(rem<=0||rem>UI.alertKm)return; // passed it or moved away
     _stopAlertChimeCount++;
     playStopChime();
-    buzz([150,80,150]);
+    if(navigator.vibrate)navigator.vibrate([150,80,150]);
     // Re-pulse the strip card
     pulseStripCard(s.id);
     // Schedule next repeat
@@ -25161,11 +25096,6 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
   if(eventActive())packStart();
   // Crash recovery: prompt for any unfinished recordings found during loadAll
   _recRecoveryShow();
-  // v389 — a fresh mid-ride reload restores the ride silently (_recRehydrate), but GPS was reset
-  // just above, so the ride sat "recording" with NO GPS — and pause/resume didn't restart it.
-  // Found on the native app 27 Sep: Android can kill and relaunch the app mid-ride, so this now
-  // happens for real. Same rule as v333: an active recording owns the GPS.
-  if(_rec && _rec.status==='active') startGPS();
   // Auto-load from Dropbox if connected and cloud is newer
   if(UI.dbxToken)dbxAutoLoad();
 });
