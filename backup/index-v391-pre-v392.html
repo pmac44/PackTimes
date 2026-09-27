@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v392';
+window.APP_VERSION='v391';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -16043,11 +16043,7 @@ async function dbxHandleRedirect(){
       await saveAll();
       dbxSetStatus('✓ Connected to Dropbox');
       render();
-      // v392 — an EMPTY device connecting must LOAD, not save. 27 Sep: the new Android app
-      // connected with no routes and this line uploaded its empty plan over Peter's real one
-      // (plan.json → 90 bytes, 0 routes; restored from Dropbox version history). A device
-      // that already has routes keeps the old behaviour and becomes the cloud copy.
-      if(ROUTES.length) dbxSave(true); else dbxLoad(true);
+      dbxSave(true);
     } else {
       dbxSetStatus('Auth failed: '+(data.error_description||data.error||JSON.stringify(data)),'err');
     }
@@ -16129,12 +16125,6 @@ function dbxScheduleSave(){
 
 async function dbxSave(auto){
   if(!UI.dbxToken)return;
-  // v392 — never let an empty device wipe the cloud copy by itself (see the connect handler).
-  // Auto-sync skips; a deliberate "Save now" has to be confirmed.
-  if(!ROUTES.length){
-    if(auto) return;
-    if(!confirm('This device has no routes. Saving now will REPLACE your Dropbox copy with an empty plan.\n\nTo bring your routes here instead, use "Force load". Replace the Dropbox copy anyway?')) return;
-  }
   if(!auto)dbxSetStatus('Saving…');
   try{
     const now=Date.now();
