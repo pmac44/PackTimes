@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v390';
+window.APP_VERSION='v389';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -24890,88 +24890,13 @@ function bleUnsupportedMsg(what){
       + 'or Edge. Firefox and Safari don\'t support sensor pairing on any device.';
 }
 
-// ─── Native Bluetooth (v390, Phase 1b step 4) ──────────────────────────────────
-// The Android app view has NO navigator.bluetooth. Rather than fork the power/HR/crank code,
-// this is a stand-in for the slice of Web Bluetooth that code uses — requestDevice, device.name,
-// gattserverdisconnected, gatt.connect/disconnect/connected, getPrimaryService,
-// getCharacteristic, readValue, writeValue(WithResponse), startNotifications and
-// characteristicvaluechanged with e.target.value as a DataView — built on the BluetoothLe
-// plugin. _bt() prefers the real thing, so the browser path is untouched.
-// ⚠ Android does ONE GATT operation at a time: every read/write/connect goes through _bleCall's
-// queue. Plugin values travel as hex strings.
-const _nativeBle = _nativePlugin('BluetoothLe');
-let _bleQ = Promise.resolve(), _bleReady = null;
-function _bleCall(fn){ const p=_bleQ.then(fn); _bleQ=p.catch(()=>{}); return p; }
-function _bleUUID(u){ return typeof u==='number' ? '0000'+u.toString(16).padStart(4,'0')+'-0000-1000-8000-00805f9b34fb' : String(u).toLowerCase(); }
-function _bleHexToDV(h){ const b=[]; String(h||'').replace(/[^0-9a-f]/gi,'').replace(/../g,x=>{b.push(parseInt(x,16));return '';}); return new DataView(Uint8Array.from(b).buffer); }
-function _bleDVToHex(v){
-  const u = v instanceof ArrayBuffer ? new Uint8Array(v) : new Uint8Array(v.buffer, v.byteOffset||0, v.byteLength);
-  return Array.from(u, n=>n.toString(16).padStart(2,'0')).join('');
-}
-function _bleChar(deviceId, service, uuid){
-  const ch = { uuid, value:null, _l:[],
-    addEventListener(t,cb){ if(t==='characteristicvaluechanged') ch._l.push(cb); },
-    removeEventListener(t,cb){ ch._l=ch._l.filter(x=>x!==cb); },
-    async readValue(){
-      const r=await _bleCall(()=>_nativeBle.read({deviceId,service,characteristic:uuid}));
-      return ch.value=_bleHexToDV(r&&r.value);
-    },
-    async writeValue(bytes){ await _bleCall(()=>_nativeBle.write({deviceId,service,characteristic:uuid,value:_bleDVToHex(bytes)})); },
-    async startNotifications(){
-      await _nativeBle.addListener('notification|'+deviceId+'|'+service+'|'+uuid, ev=>{
-        ch.value=_bleHexToDV(ev&&ev.value);
-        const e={target:ch};
-        ch._l.forEach(cb=>{ try{ cb(e); }catch(err){ console.warn('BLE', err); } });
-      });
-      await _bleCall(()=>_nativeBle.startNotifications({deviceId,service,characteristic:uuid}));
-      return ch;
-    }
-  };
-  ch.writeValueWithResponse = ch.writeValue;   // the plugin's write IS with-response
-  return ch;
-}
-function _bleDevice(id, name){
-  const dev = { id, name:name||'', _l:[],
-    addEventListener(t,cb){ if(t==='gattserverdisconnected') dev._l.push(cb); },
-    gatt:{ connected:false,
-      async connect(){
-        await _nativeBle.addListener('disconnected|'+id, ()=>{
-          dev.gatt.connected=false;
-          dev._l.forEach(cb=>{ try{ cb({target:dev}); }catch(e){} });
-        });
-        await _bleCall(()=>_nativeBle.connect({deviceId:id}));
-        dev.gatt.connected=true;
-        return { getPrimaryService: async s=>{ const su=_bleUUID(s); return { getCharacteristic: async c=>_bleChar(id, su, _bleUUID(c)) }; } };
-      },
-      disconnect(){ dev.gatt.connected=false; _bleCall(()=>_nativeBle.disconnect({deviceId:id})).catch(()=>{}); }
-    }
-  };
-  return dev;
-}
-const _nativeBluetooth = _nativeBle && {
-  async requestDevice(opts){
-    if(!_bleReady) _bleReady=_nativeBle.initialize({}).catch(e=>{ _bleReady=null; throw e; });   // asks for Nearby devices permission
-    await _bleReady;
-    const services=[].concat(...(opts.filters||[]).map(f=>f.services||[])).map(_bleUUID);
-    try{
-      const d=await _nativeBle.requestDevice({services, optionalServices:(opts.optionalServices||[]).map(_bleUUID)});
-      return _bleDevice(d.deviceId, d.name);
-    }catch(e){
-      // Closing the picker is not an error — the callers stay quiet on NotFoundError, as in Chrome.
-      if(/cancel/i.test(String(e&&e.message))){ const n=new Error('cancelled'); n.name='NotFoundError'; throw n; }
-      throw e;
-    }
-  }
-};
-function _bt(){ return navigator.bluetooth || _nativeBluetooth || null; }
-
 async function connectPowerMeter(){
-  if(!_bt()){
+  if(!navigator.bluetooth){
     alert(bleUnsupportedMsg('Power meter'));
     return;
   }
   try{
-    _powerDevice=await _bt().requestDevice({
+    _powerDevice=await navigator.bluetooth.requestDevice({
       filters:[{services:[CYCLING_POWER_SERVICE]}],
       optionalServices:[CYCLING_POWER_SERVICE]
     });
@@ -25116,9 +25041,9 @@ const HR_MEASUREMENT= 0x2A37;
 let _hrDevice=null,_hrChar=null;
 
 async function connectHRMonitor(){
-  if(!_bt()){alert(bleUnsupportedMsg('Heart rate strap'));return;}
+  if(!navigator.bluetooth){alert(bleUnsupportedMsg('Heart rate strap'));return;}
   try{
-    _hrDevice=await _bt().requestDevice({
+    _hrDevice=await navigator.bluetooth.requestDevice({
       filters:[{services:[HR_SERVICE]}],
       optionalServices:[HR_SERVICE]
     });

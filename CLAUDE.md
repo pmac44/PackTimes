@@ -408,12 +408,18 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v390 (27 Sep) — Bluetooth sensors work in the app (Web Bluetooth stand-in over the BluetoothLe plugin)
+- **Changed:** POWER METER section, before `connectPowerMeter`: `_nativeBle`, `_bleCall` (one-at-a-time GATT queue), `_bleUUID`, `_bleHexToDV/_bleDVToHex`, `_bleChar`, `_bleDevice`, `_nativeBluetooth.requestDevice`, `_bt()`. `connectPowerMeter`/`connectHRMonitor` use `_bt()` instead of `navigator.bluetooth`. The power/HR/crank code itself is untouched.
+- **Why:** Phase 1b step 4 — the Android app view has no `navigator.bluetooth`.
+- **Watch out:** `_bt()` prefers the real `navigator.bluetooth`, so desktop/Chrome never touch the stand-in. Native picker cancel is mapped to `NotFoundError` so no alert. Plugin values are hex strings. Any NEW Web Bluetooth call (e.g. `getDescriptor`, `writeValueWithoutResponse`) must be added to the stand-in first.
+- **Verified:** `node verify.js`; browser: `_bt()===navigator.bluetooth`, crank write bytes `045901` for 172.5, read-back `2005015901` → 172.5. Pixel dev build with Peter's Assiomas: paired, watts + cadence live, crank length read 175 (write+indicate path). HR strap NOT tested (Peter has none). Write of a new crank length not tried. Backup `backup/index-v389-pre-v390.html`. NOT pushed.
+
 ### v389 (27 Sep) — App speaks turns + off-route, WAKES THE SCREEN at turns; mid-ride reload keeps GPS
 - **Also changed (same version):** `wakeScreen()` / `_nativeLockScreen(on)` over the shell's own `ScreenWakePlugin.java` (`C:\dev\packtimes-native`): ride GPS on → Ride screen may show over the lock screen; turn heads-up and off-route alarm light the screen if it's off (30 s wake lock, then normal timeout). `checkAlerts` turn block now runs when `_nativeScreen` even with turn audio off. **Bug fix (web too):** INIT now `startGPS()` when `_recRehydrate` restored an ACTIVE ride (GPS was reset and nothing restarted it), and `_recControlTap` resume starts GPS if off. Verified on the Pixel: force-stop mid-ride → relaunch → GPS back in 4 s; screen off → heads-up → `mWakefulness` Dozing→Awake, focus `MainActivity` over keyguard. No "Turn screen on" grant was needed on Android 17.
 - **Changed:** GPS native block: `_nativeTTS/_nativeHaptics/_nativeKeepAwake`, `speak(text,urgent)`, `buzz(pattern)` (every `navigator.vibrate` now goes through it). Audio section: `TURN_WORDS`, `_turnSpeech(stage,turn,remM)`, `playTurnCue(stage,turn,remM)` — in the app it SPEAKS instead of beeping; `checkAlerts` passes the turn + real distance (`remM/mult`). `requestWakeLock/releaseWakeLock` use KeepAwake in the app. `showOffRouteAlert` also speaks.
 - **Why:** Phase 1b step 3. Web audio/vibrate die with the screen off; the app view has no `speechSynthesis`.
 - **Watch out:** turn notes are often the whole instruction — `_turnSpeech` keeps only the road after "onto"/"on" and drops direction-only notes. Speech only fires while a ride's GPS service keeps the app alive; without a ride Android freezes the page (first desk test was silent for that reason).
-- **Verified:** `node verify.js`; phrases asserted in the browser (5 note shapes); on the Pixel with a ride recording and the screen LOCKED: heads-up, "Turn left", off-route speech and buzzes all heard/felt by Peter, fixes still 1 s apart. Backup `backup/index-v388-pre-v389.html`. NOT pushed.
+- **Verified:** `node verify.js`; phrases asserted in the browser (5 note shapes); on the Pixel with a ride recording and the screen LOCKED: heads-up, "Turn left", off-route speech and buzzes all heard/felt by Peter, fixes still 1 s apart. Backup `backup/index-v388-pre-v389.html`. Pushed 27 Sep; live app build confirmed loading it.
 
 ### v388 (27 Sep) — Native shell: background GPS via plugin; file pickers work in the app
 - **Changed:** GPS section top: `IS_NATIVE`, `_nativePlugin(name)` (reads `Capacitor.Plugins` — the shell loads a URL, so there is NO `registerPlugin`), `gpsWatch`/`gpsClearWatch` replace every `watchPosition`/`clearWatch` (native = `BackgroundGeolocation.addWatcher`, foreground service + notification; asks notification permission first). Capture-phase click listener strips `accept` from file inputs in the app only.
@@ -462,16 +468,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Changed:** route picker rows — buttons now sit in `.rli-acts` (equal-width `flex:1 1 0`, 4px side padding). "Offline map" is icon-only (title kept; spinner only while downloading). Delete ✕ no longer `margin-left:auto`.
 - **Why:** a turn count ("166") plus the two-line "Offline map" label pushed ✕ off-screen on Peter's phone.
 - **Verified:** 390px and 360px viewports, 166 turns — six buttons 52px / 47px each, no overflow. Backup `backup/index-v380-pre-v381.html`. NOT pushed.
-
-### v380 (25 Sep) — "Near a place" no longer drops results >5 km off the route
-- **Changed:** `fetchTownSearch` — removed `snap.off>5.0` (Peter's call). `fetchOverpass` corridor search untouched.
-- **Why:** the search exists for off-route places; the v379 radius now bounds the area instead.
-- **Verified:** live search "Meiringen" on the demo route: 0 → 45 stops, each carrying `offRouteM` (~9 km). Test stops removed. NOT pushed.
-
-### v379 (25 Sep) — "Near a place" gets its own radius
-- **Changed:** `fetchTownSearch` queries `around:R,lat,lon` (a circle at the place's centre) instead of Nominatim's bounding box; new `UI.placeRadiusKm` (default 2, slider 0.5–20 km, saved in uiPrefs) with `#place-radius-sl` in the sheet. Sheet body padded clear of the overlay scrollbar.
-- **Why:** the bounding box for "Sydney" is all of Greater Sydney; a small town's box can miss its own edges.
-- **Watch out:** results more than 5 km from the route are still dropped (`snap.off>5.0`), so a big place radius only helps near the route. Search button is pinned outside the scrolling body — keep it there.
-- **Verified:** live Overpass: Braidwood/Meiringen query well-formed (Meiringen 36 hits, all >5 km off the demo line so 0 added); Bingen at 5 km → 36 stops added. 375×560: button stays on screen, body scrolls. NOT pushed.
 
 <!-- VERSION-LOG-END -->
