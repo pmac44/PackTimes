@@ -9,6 +9,12 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v381 (26 Sep) — Route-list button row fits a phone
+- **Changed:** route picker rows — buttons now sit in `.rli-acts` (equal-width `flex:1 1 0`, 4px side padding). "Offline map" is icon-only (title kept; spinner only while downloading). Delete ✕ no longer `margin-left:auto`.
+- **Why:** a turn count ("166") plus the two-line "Offline map" label pushed ✕ off-screen on Peter's phone.
+- **Verified:** 390px and 360px viewports, 166 turns — six buttons 52px / 47px each, no overflow. Backup `backup/index-v380-pre-v381.html`. NOT pushed.
+
+
 ### v380 (25 Sep) — "Near a place" no longer drops results >5 km off the route
 - **Changed:** `fetchTownSearch` — removed `snap.off>5.0` (Peter's call). `fetchOverpass` corridor search untouched.
 - **Why:** the search exists for off-route places; the v379 radius now bounds the area instead.

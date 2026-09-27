@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v393';
+window.APP_VERSION='v392';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -22092,15 +22092,6 @@ function printMission(){
   <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
 
-  // v393 — the Android app view can't window.open() a page to print. There the finished HTML
-  // goes to the shell's own Printer plugin (PrintPlugin.java): Android's print screen, with
-  // network printers and Save as PDF. The browser path below is unchanged.
-  const printer=_nativePlugin('Printer');
-  if(printer){
-    printer.printHtml({html, name:'PackTimes Mission — '+(r.label||r.name)})
-      .catch(e=>alert('Could not print: '+(e&&e.message||e)));
-    return;
-  }
   const w=window.open('','_blank');
   if(w){w.document.write(html);w.document.close();}
 }

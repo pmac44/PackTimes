@@ -408,6 +408,18 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v393 (27 Sep) — Mission brief prints in the app (Android print screen / Save as PDF)
+- **Changed:** `printMission` end: if `_nativePlugin('Printer')`, hand the finished HTML to it instead of `window.open`. Shell: new `PrintPlugin.java` (off-screen WebView, JS off, `PrintManager.print`, A4), registered in `MainActivity`.
+- **Why:** the app view can't `window.open` + `print()`.
+- **Watch out:** the page is laid out with JavaScript OFF — anything the brief needs must be plain HTML/CSS (its own `window.print()` onload script is inert there, on purpose).
+- **Verified:** `node verify.js`; Pixel dev build: `printMission()` → `printspooler PrintActivity`, preview shows the brief, Save as PDF offered. Backup `backup/index-v392-pre-v393.html`. NOT pushed.
+
+### v392 (27 Sep) — An empty device can no longer wipe the Dropbox plan
+- **Changed:** Dropbox `?code=` handler: after connecting, `ROUTES.length ? dbxSave(true) : dbxLoad(true)` (was always `dbxSave(true)`). `dbxSave`: with no routes, auto-sync returns; manual "Save now" needs a confirm.
+- **Why:** 27 Sep the fresh Android app (its own empty storage) connected Dropbox and uploaded 0 routes over Peter's plan.json (90 bytes, 14:25). Recovered from Dropbox version history.
+- **Watch out:** deleting your LAST route no longer auto-syncs (accepted). Every new device/app install starts empty — anything that writes to a shared store on first run must load first.
+- **Verified:** `node verify.js`; browser with stubbed fetch: empty+auto → 0 uploads, empty+manual declined → 0, with routes → 1. Backup `backup/index-v391-pre-v392.html`. Pushed 27 Sep. plan.json restored from version history (40 routes, 20 calib rides, savedAt 12:25) and force-loaded into the app — nothing lost.
+
 ### v391 (27 Sep) — File exports work in the app (share sheet)
 - **Changed:** GPS native block: `_nativeFS`, `_nativeShare`, `_nativeSaveShare(href,name)`; in the app `HTMLAnchorElement.prototype.click` is patched so any `<a download href="blob:/data:">` click writes the file to the app cache (Filesystem) and opens Android's share sheet (Share). Covers `_recDownload` (FIT/GPX), plan export, `shareRideFile`, route backup — no caller changed.
 - **Why:** Phase 1b step 5 — the app view silently ignores downloads.
@@ -469,10 +481,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** that touchend nulled `_drag` but never reset `_mapDragging`, so after one touch every tile load skipped its redraw.
 - **Watch out:** every gesture end must call `_mapDragDone()`, never set `_mapDragging=false` directly.
 - **Verified:** `node verify.js`; in the browser, simulated touch tap then switch to CYC: 0 → 30 tiles loaded and drawn with no pan, flag false. Held-tile path queued its redraw (pane stopped painting frames, so the final paint wasn't seen). Backup `backup/index-v381-pre-v382.html`. NOT pushed.
-
-### v381 (26 Sep) — Route-list button row fits a phone
-- **Changed:** route picker rows — buttons now sit in `.rli-acts` (equal-width `flex:1 1 0`, 4px side padding). "Offline map" is icon-only (title kept; spinner only while downloading). Delete ✕ no longer `margin-left:auto`.
-- **Why:** a turn count ("166") plus the two-line "Offline map" label pushed ✕ off-screen on Peter's phone.
-- **Verified:** 390px and 360px viewports, 166 turns — six buttons 52px / 47px each, no overflow. Backup `backup/index-v380-pre-v381.html`. NOT pushed.
 
 <!-- VERSION-LOG-END -->

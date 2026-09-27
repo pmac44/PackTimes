@@ -408,11 +408,17 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v393 (27 Sep) — Mission brief prints in the app (Android print screen / Save as PDF)
+- **Changed:** `printMission` end: if `_nativePlugin('Printer')`, hand the finished HTML to it instead of `window.open`. Shell: new `PrintPlugin.java` (off-screen WebView, JS off, `PrintManager.print`, A4), registered in `MainActivity`.
+- **Why:** the app view can't `window.open` + `print()`.
+- **Watch out:** the page is laid out with JavaScript OFF — anything the brief needs must be plain HTML/CSS (its own `window.print()` onload script is inert there, on purpose).
+- **Verified:** `node verify.js`; Pixel dev build: `printMission()` → `printspooler PrintActivity`, preview shows the brief, Save as PDF offered. Backup `backup/index-v392-pre-v393.html`. NOT pushed.
+
 ### v392 (27 Sep) — An empty device can no longer wipe the Dropbox plan
 - **Changed:** Dropbox `?code=` handler: after connecting, `ROUTES.length ? dbxSave(true) : dbxLoad(true)` (was always `dbxSave(true)`). `dbxSave`: with no routes, auto-sync returns; manual "Save now" needs a confirm.
 - **Why:** 27 Sep the fresh Android app (its own empty storage) connected Dropbox and uploaded 0 routes over Peter's plan.json (90 bytes, 14:25). Recovered from Dropbox version history.
 - **Watch out:** deleting your LAST route no longer auto-syncs (accepted). Every new device/app install starts empty — anything that writes to a shared store on first run must load first.
-- **Verified:** `node verify.js`; browser with stubbed fetch: empty+auto → 0 uploads, empty+manual declined → 0, with routes → 1. Backup `backup/index-v391-pre-v392.html`. NOT pushed.
+- **Verified:** `node verify.js`; browser with stubbed fetch: empty+auto → 0 uploads, empty+manual declined → 0, with routes → 1. Backup `backup/index-v391-pre-v392.html`. Pushed 27 Sep. plan.json restored from version history (40 routes, 20 calib rides, savedAt 12:25) and force-loaded into the app — nothing lost.
 
 ### v391 (27 Sep) — File exports work in the app (share sheet)
 - **Changed:** GPS native block: `_nativeFS`, `_nativeShare`, `_nativeSaveShare(href,name)`; in the app `HTMLAnchorElement.prototype.click` is patched so any `<a download href="blob:/data:">` click writes the file to the app cache (Filesystem) and opens Android's share sheet (Share). Covers `_recDownload` (FIT/GPX), plan export, `shareRideFile`, route backup — no caller changed.
@@ -463,17 +469,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** long routes put hundreds of stops in the list; Peter wanted to sort through them. Full-colour tiles rejected (23 hues, border already means open/closed/sleep).
 - **Watch out:** starred stops stay visible while "Mission" is on, sleep stops while "All sleep" is on — same as the map. The stripe is declared AFTER `tileBg` so status colour keeps the other three sides.
 - **Verified:** `node verify.js`; preview: mobile legend Water/Toilets and desktop legend Food hide the right tiles, starred food kept, Show all restores; 375 px width fits. Backup `backup/index-v383-pre-v384.html`. Pushed 26 Sep; Peter happy with filter + stripe ("a small amount of colour") over full-colour tiles.
-
-### v383 (26 Sep) — Search finds all drinkable water, vending machines, train stations, outdoor shops
-- **Changed:** new `_poiParts` / `_poiClassify` / `_stopInfo` beside `_bikeStandTag` (OVERPASS), called from BOTH `fetchOverpass` and `fetchTownSearch`. New types `vending` 🥤 and `train` 🚆 (tokens, `.d-/.t-`, icon maps, `dc`, live strip, legend); new boxes `outdoor` (type `shop`), `vending`, `trains`. Stops carry `info` (tile line under the tag; also in share/plan export).
-- **Why:** Peter: one box per job. Water now = bubbler, tap, RV fill point, drinking fountain, spring marked drinkable; unmarked springs go to Waterways; kiosks with Food; non-bike shops doing repairs with Bike shop. Showers never become stops: `_attachShowers` (after the element loop) adds a separate shower point to the nearest toilet (≤100 m) or camp/caravan (≤250 m) stop's `info`; lone ones (mostly coastal beach showers, ~300 of 984 in NSW/VIC) are dropped.
-- **Watch out:** `_poiClassify` runs BEFORE the old type chain (it ends in an unnamed-drop). Showers are queried when Toilets, Camp or Caravan is ticked. Fixed on the way: toilets tagged `drinking_water=no` used to read SHOP.
-- **Verified:** `node verify.js`; classifier run on live Overpass (Melbourne, Bright, Engelberg). Live corridor search on the demo route: 43 water, 8 vending, 5 train, 6 bike, 1 outdoor, 29 wc. Tiles, legend and sheet boxes checked in the preview. Funicular stations and bubbler-tagged springs fixed after that run. Shower attach checked on real Muttaburra QLD data: the hot shower lands on the toilet block, the camp's own shower=yes tag shows on its tile, and a beach shower with nothing nearby is dropped. Demo stops restored. Backup `backup/index-v382-pre-v383.html`. Pushed 26 Sep.
-
-### v382 (26 Sep) — Basemap switch no longer shows black on phone until you pan
-- **Changed:** `attachMap` tappable-map `touchend` now clears the drag flag; new `_mapDragDone()` + `_tilesHeld` beside `_mapDragging` (tile section); `getTile` onload holds mid-gesture arrivals instead of dropping them.
-- **Why:** that touchend nulled `_drag` but never reset `_mapDragging`, so after one touch every tile load skipped its redraw.
-- **Watch out:** every gesture end must call `_mapDragDone()`, never set `_mapDragging=false` directly.
-- **Verified:** `node verify.js`; in the browser, simulated touch tap then switch to CYC: 0 → 30 tiles loaded and drawn with no pan, flag false. Held-tile path queued its redraw (pane stopped painting frames, so the final paint wasn't seen). Backup `backup/index-v381-pre-v382.html`. NOT pushed.
 
 <!-- VERSION-LOG-END -->
