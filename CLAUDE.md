@@ -408,6 +408,13 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v394 (28 Sep) — App status/nav bar strips follow the theme (were white)
+- **Changed:** `applyTheme` — after setting `meta[name=theme-color]`, also calls the shell's `Bars.setColor({color:_THEME_STATUS[t]})`. Shell: new `BarsPlugin.java` (window background + decor colour, bar colours below Android 15, light/dark icons by luminance); `MainActivity` registers it and paints `#0d1a0d` from the first frame.
+- **Why:** Peter: the app's top and bottom strips were white; Chrome's matched the app. The app view ignores theme-color.
+- **Watch out:** Paper theme → light strips (#f2efe9), Graphite → #0a0f0a, same as the meta tag. If Peter wants them always dark, change the colour passed here, not the plugin.
+- **Shell gotchas (found on the phone):** `BarsPlugin.apply` in `MainActivity.onCreate` is overwritten by the theme afterwards, so the first-frame colour comes from `styles.xml` (`windowBackground` `@color/packtimes_dark`, light-icon flags off) and Capacitor's own SystemBars would force DARK icons from the phone's light mode unless `capacitor.config.json` sets `plugins.SystemBars.style = "DARK"`. The page's later `Bars.setColor` does stick.
+- **Verified:** `node verify.js`; browser unchanged (`_nativePlugin('Bars')` null, no errors). Pixel, live build: strips `#0d1a0d` with light icons at launch; `Bars.setColor` red → red, Paper `#f2efe9` → light strip + dark icons, held after leaving and reopening the app. Page side NOT pushed. Backup `backup/index-v393-pre-v394.html`.
+
 ### v393 (27 Sep) — Mission brief prints in the app (Android print screen / Save as PDF)
 - **Changed:** `printMission` end: if `_nativePlugin('Printer')`, hand the finished HTML to it instead of `window.open`. Shell: new `PrintPlugin.java` (off-screen WebView, JS off, `PrintManager.print`, A4), registered in `MainActivity`.
 - **Why:** the app view can't `window.open` + `print()`.

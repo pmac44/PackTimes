@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v394';
+window.APP_VERSION='v393';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -21188,9 +21188,6 @@ function applyTheme(repaint){
   _neutralGrey=cssVar('--stop-card-bg',t==='paper'?'#383631':'#141d14');   // v344 fallbacks match the restored tokens
   try{localStorage.setItem('pt_theme_resolved',t);}catch(e){}
   try{const mc=document.querySelector('meta[name="theme-color"]'); if(mc)mc.setAttribute('content',_THEME_STATUS[t]||'#0d1a0d');}catch(e){}
-  // v394 — the Android app view ignores theme-color, so its status/nav bar strips stayed white.
-  // Tell the shell's Bars plugin the same colour Chrome would use.
-  try{const bars=_nativePlugin('Bars'); if(bars)bars.setColor({color:_THEME_STATUS[t]||'#0d1a0d'}).catch(()=>{});}catch(e){}
   // Repaint canvas-drawn chrome (CSS updates on its own; canvas does not).
   // v343 TRIAL — a palette flip within Paper changes the canvas colours too, so it
   // repaints on the same rule as a theme flip.
