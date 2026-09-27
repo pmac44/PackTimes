@@ -408,11 +408,17 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v391 (27 Sep) — File exports work in the app (share sheet)
+- **Changed:** GPS native block: `_nativeFS`, `_nativeShare`, `_nativeSaveShare(href,name)`; in the app `HTMLAnchorElement.prototype.click` is patched so any `<a download href="blob:/data:">` click writes the file to the app cache (Filesystem) and opens Android's share sheet (Share). Covers `_recDownload` (FIT/GPX), plan export, `shareRideFile`, route backup — no caller changed.
+- **Why:** Phase 1b step 5 — the app view silently ignores downloads.
+- **Watch out:** patched on the prototype because two callers click anchors never added to the page. New export code must keep using a blob/data `<a download>` (or call `_nativeSaveShare`). Mission-brief PRINT (`window.open('')` + `print()`) is NOT fixed — untested in the app, probably does nothing.
+- **Verified:** `node verify.js`; browser prototype unpatched. Pixel dev build: `shareRideFile` → share sheet → Peter saved to Google Drive, right name. Same session: Dropbox and Strava sign-ins both return into the app on the LIVE build with no code change. intervals.icu (pasted key) not tried. Backup `backup/index-v390-pre-v391.html`. NOT pushed.
+
 ### v390 (27 Sep) — Bluetooth sensors work in the app (Web Bluetooth stand-in over the BluetoothLe plugin)
 - **Changed:** POWER METER section, before `connectPowerMeter`: `_nativeBle`, `_bleCall` (one-at-a-time GATT queue), `_bleUUID`, `_bleHexToDV/_bleDVToHex`, `_bleChar`, `_bleDevice`, `_nativeBluetooth.requestDevice`, `_bt()`. `connectPowerMeter`/`connectHRMonitor` use `_bt()` instead of `navigator.bluetooth`. The power/HR/crank code itself is untouched.
 - **Why:** Phase 1b step 4 — the Android app view has no `navigator.bluetooth`.
 - **Watch out:** `_bt()` prefers the real `navigator.bluetooth`, so desktop/Chrome never touch the stand-in. Native picker cancel is mapped to `NotFoundError` so no alert. Plugin values are hex strings. Any NEW Web Bluetooth call (e.g. `getDescriptor`, `writeValueWithoutResponse`) must be added to the stand-in first.
-- **Verified:** `node verify.js`; browser: `_bt()===navigator.bluetooth`, crank write bytes `045901` for 172.5, read-back `2005015901` → 172.5. Pixel dev build with Peter's Assiomas: paired, watts + cadence live, crank length read 175 (write+indicate path). HR strap NOT tested (Peter has none). Write of a new crank length not tried. Backup `backup/index-v389-pre-v390.html`. NOT pushed.
+- **Verified:** `node verify.js`; browser: `_bt()===navigator.bluetooth`, crank write bytes `045901` for 172.5, read-back `2005015901` → 172.5. Pixel dev build with Peter's Assiomas: paired, watts + cadence live, crank length read 175 (write+indicate path). HR strap NOT tested (Peter has none). Write of a new crank length not tried. Backup `backup/index-v389-pre-v390.html`. Pushed 27 Sep; live app build confirmed loading it.
 
 ### v389 (27 Sep) — App speaks turns + off-route, WAKES THE SCREEN at turns; mid-ride reload keeps GPS
 - **Also changed (same version):** `wakeScreen()` / `_nativeLockScreen(on)` over the shell's own `ScreenWakePlugin.java` (`C:\dev\packtimes-native`): ride GPS on → Ride screen may show over the lock screen; turn heads-up and off-route alarm light the screen if it's off (30 s wake lock, then normal timeout). `checkAlerts` turn block now runs when `_nativeScreen` even with turn audio off. **Bug fix (web too):** INIT now `startGPS()` when `_recRehydrate` restored an ACTIVE ride (GPS was reset and nothing restarted it), and `_recControlTap` resume starts GPS if off. Verified on the Pixel: force-stop mid-ride → relaunch → GPS back in 4 s; screen off → heads-up → `mWakefulness` Dozing→Awake, focus `MainActivity` over keyguard. No "Turn screen on" grant was needed on Android 17.
@@ -463,10 +469,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** that touchend nulled `_drag` but never reset `_mapDragging`, so after one touch every tile load skipped its redraw.
 - **Watch out:** every gesture end must call `_mapDragDone()`, never set `_mapDragging=false` directly.
 - **Verified:** `node verify.js`; in the browser, simulated touch tap then switch to CYC: 0 → 30 tiles loaded and drawn with no pan, flag false. Held-tile path queued its redraw (pane stopped painting frames, so the final paint wasn't seen). Backup `backup/index-v381-pre-v382.html`. NOT pushed.
-
-### v381 (26 Sep) — Route-list button row fits a phone
-- **Changed:** route picker rows — buttons now sit in `.rli-acts` (equal-width `flex:1 1 0`, 4px side padding). "Offline map" is icon-only (title kept; spinner only while downloading). Delete ✕ no longer `margin-left:auto`.
-- **Why:** a turn count ("166") plus the two-line "Offline map" label pushed ✕ off-screen on Peter's phone.
-- **Verified:** 390px and 360px viewports, 166 turns — six buttons 52px / 47px each, no overflow. Backup `backup/index-v380-pre-v381.html`. NOT pushed.
 
 <!-- VERSION-LOG-END -->

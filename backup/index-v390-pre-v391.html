@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v391';
+window.APP_VERSION='v390';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5531,35 +5531,6 @@ if(IS_NATIVE) document.addEventListener('click', e=>{
   const t=e.target;
   if(t && t.tagName==='INPUT' && t.type==='file' && t.hasAttribute('accept')) t.removeAttribute('accept');
 }, true);
-
-// Downloads (v391): <a download href="blob:…">.click() does nothing in the app view, so FIT/GPX
-// export, plan export, ride-share and route backup all silently failed. In the app every such
-// click becomes a real file: written to the app's cache, then handed to Android's share sheet
-// (save to Files/Drive, or send it to Strava, Garmin Connect, email…). Patched on the PROTOTYPE,
-// not a document listener, because two callers click anchors never added to the page.
-const _nativeFS = _nativePlugin('Filesystem');
-const _nativeShare = _nativePlugin('Share');
-if(_nativeFS && _nativeShare){
-  const _anchorClick = HTMLAnchorElement.prototype.click;
-  HTMLAnchorElement.prototype.click = function(){
-    if(this.hasAttribute('download') && /^(blob|data):/.test(this.href)){
-      _nativeSaveShare(this.href, this.getAttribute('download')||'packtimes-file');
-      return;
-    }
-    return _anchorClick.call(this);
-  };
-}
-async function _nativeSaveShare(href, name){
-  try{
-    const blob = await (await fetch(href)).blob();   // before the caller revokes the URL (1 s)
-    const b64 = await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(String(fr.result).split(',')[1]||''); fr.onerror=rej; fr.readAsDataURL(blob); });
-    const safe = name.replace(/[\\/:*?"<>|]+/g,'-');
-    const w = await _nativeFS.writeFile({path:safe, data:b64, directory:'CACHE'});   // no encoding = base64
-    await _nativeShare.share({title:safe, files:[w.uri], dialogTitle:'Save or send '+safe});
-  }catch(e){
-    if(!/cancel/i.test(String(e&&e.message))) alert('Could not save the file: '+(e&&e.message||e));
-  }
-}
 
 function gpsWatch(onFix, onErr){
   if(!_nativeGeo) return navigator.geolocation.watchPosition(onFix, onErr, {enableHighAccuracy:true, maximumAge:5000, timeout:15000});

@@ -9,6 +9,18 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v380 (25 Sep) — "Near a place" no longer drops results >5 km off the route
+- **Changed:** `fetchTownSearch` — removed `snap.off>5.0` (Peter's call). `fetchOverpass` corridor search untouched.
+- **Why:** the search exists for off-route places; the v379 radius now bounds the area instead.
+- **Verified:** live search "Meiringen" on the demo route: 0 → 45 stops, each carrying `offRouteM` (~9 km). Test stops removed. NOT pushed.
+
+### v379 (25 Sep) — "Near a place" gets its own radius
+- **Changed:** `fetchTownSearch` queries `around:R,lat,lon` (a circle at the place's centre) instead of Nominatim's bounding box; new `UI.placeRadiusKm` (default 2, slider 0.5–20 km, saved in uiPrefs) with `#place-radius-sl` in the sheet. Sheet body padded clear of the overlay scrollbar.
+- **Why:** the bounding box for "Sydney" is all of Greater Sydney; a small town's box can miss its own edges.
+- **Watch out:** results more than 5 km from the route are still dropped (`snap.off>5.0`), so a big place radius only helps near the route. Search button is pinned outside the scrolling body — keep it there.
+- **Verified:** live Overpass: Braidwood/Meiringen query well-formed (Meiringen 36 hits, all >5 km off the demo line so 0 added); Bingen at 5 km → 36 stops added. 375×560: button stays on screen, body scrolls. NOT pushed.
+
+
 ### v378 (25 Sep) — Stops search moves from an expanding card to a full-screen sheet
 - **Changed:** new `SEARCH SHEET` banner after `tStopsShell`: `openSearchSheet(mode)`, `_searchStatusHTML()`, `OSM_OPT_DEFS`. The Search card is now one button (`#btn-open-search`) plus status banners. "Clear auto (n)" moved to the All Stops header. Geoapify search renamed **Advanced accommodation** (sheet tab + Settings panel title). `UI.osmExpanded/tsExpanded` → `UI.searchMode`.
 - **Why:** three searches, a slider and 20 tick boxes inside an expanding panel was a scroll inside a scroll on the phone, and it hid the map.
