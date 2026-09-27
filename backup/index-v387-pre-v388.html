@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v388';
+window.APP_VERSION='v387';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5469,69 +5469,6 @@ function snapTo(r,lat,lon,lastIdx,liveFix){
 // ═══════════════════════════════════════════
 //  GPS
 // ═══════════════════════════════════════════
-// ── Native GPS (v388, Phase 1b — see _planning/PackTimes-Native-Shell_Plan_v1.md) ──
-// In the Android app (Capacitor shell) the ride watch runs in the background-geolocation
-// plugin: a foreground service with a "tracking your ride" notification, so fixes keep
-// arriving with the screen off. In a browser — or an installed app that predates the
-// plugin — gpsWatch/gpsClearWatch are plain navigator.geolocation, exactly as before.
-// Rule for every future push: never assume a plugin the installed app might not have.
-// One-shot getCurrentPosition calls stay on navigator.geolocation (the app view has it).
-const IS_NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-// The shell loads this page from a URL, so there is no @capacitor/core bundle and no
-// registerPlugin — the native bridge exposes installed plugins on Capacitor.Plugins.
-// Must never throw: an error here is top-level and would stop the whole app loading.
-function _nativePlugin(name){
-  try{
-    const C=window.Capacitor;
-    return (IS_NATIVE && C.isPluginAvailable(name) && C.Plugins && C.Plugins[name]) || null;
-  }catch(e){ return null; }
-}
-const _nativeGeo = _nativePlugin('BackgroundGeolocation');
-const _nativeNotif = _nativePlugin('LocalNotifications');
-const _nativeWatches = new Map();   // our token → Promise<plugin watcher id>
-let _nativeWatchSeq = 0;
-let _nativeNotifAsk = null;         // Promise — asked once per app run
-
-// File pickers: Chrome maps accept=".gpx,.fit" to files; the Android app view passes those
-// strings to Android as if they were MIME types, so every file is greyed out. In the app,
-// drop the filter just before any file input opens (inputs are opened with .click(), which
-// still passes through this capture listener). The parsers check the extension themselves.
-if(IS_NATIVE) document.addEventListener('click', e=>{
-  const t=e.target;
-  if(t && t.tagName==='INPUT' && t.type==='file' && t.hasAttribute('accept')) t.removeAttribute('accept');
-}, true);
-
-function gpsWatch(onFix, onErr){
-  if(!_nativeGeo) return navigator.geolocation.watchPosition(onFix, onErr, {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
-  // Android 13+ hides the tracking notification without this permission. Ask first, then
-  // start the watcher, so the two system prompts don't collide.
-  if(!_nativeNotifAsk) _nativeNotifAsk = _nativeNotif ? _nativeNotif.requestPermissions().catch(()=>{}) : Promise.resolve();
-  const token = 'n' + (++_nativeWatchSeq);
-  _nativeWatches.set(token, _nativeNotifAsk.then(()=>_nativeGeo.addWatcher({
-    backgroundTitle: 'PackTimes is tracking your ride',
-    backgroundMessage: 'GPS stays on with the screen off until you stop the ride.',
-    requestPermissions: true, stale: false, distanceFilter: 0
-  }, (loc, err) => {
-    if(err){
-      if(err.code==='NOT_AUTHORIZED' && confirm('PackTimes needs location permission to track your ride. Open settings?')) _nativeGeo.openSettings();
-      if(onErr) onErr(err);
-      return;
-    }
-    if(!loc) return;
-    onFix({coords:{latitude:loc.latitude, longitude:loc.longitude, accuracy:loc.accuracy,
-                   altitude:loc.altitude, altitudeAccuracy:loc.altitudeAccuracy,
-                   heading:(loc.bearing==null?null:loc.bearing), speed:(loc.speed==null?null:loc.speed)},
-           timestamp: loc.time || Date.now()});
-  })));
-  return token;
-}
-function gpsClearWatch(id){
-  if(id===null || id===undefined) return;
-  const p=_nativeWatches.get(id);
-  if(p){ _nativeWatches.delete(id); p.then(wid=>_nativeGeo.removeWatcher({id:wid})).catch(()=>{}); return; }
-  try{ navigator.geolocation.clearWatch(id); }catch(e){}
-}
-
 function toggleGPS(){UI.gpsActive?stopGPS():startGPS();}
 
 // Auto-stop GPS after no movement for 5 minutes
@@ -5555,8 +5492,12 @@ const GPS_WATCHDOG_MS = 30000;
 function _gpsRestartWatch(){
   if(!UI.gpsActive || !_gpsOnFix) return;
   if(UI.simRunning || UI.simPaused) return;   // simulator drives fixes itself
-  gpsClearWatch(UI.gpsWatchId);
-  UI.gpsWatchId = gpsWatch(_gpsOnFix, err=>console.warn('GPS', err));
+  try{ if(UI.gpsWatchId!==null) navigator.geolocation.clearWatch(UI.gpsWatchId); }catch(e){}
+  UI.gpsWatchId = navigator.geolocation.watchPosition(
+    _gpsOnFix,
+    err=>console.warn('GPS', err),
+    {enableHighAccuracy:true, maximumAge:5000, timeout:15000}
+  );
   _gpsLastFixMs = Date.now();   // fresh watch gets a full watchdog window
 }
 
@@ -5586,7 +5527,7 @@ function _resetGpsIdleTimer(){
     // handler restarts GPS first (see the #btn-gpstoggle delegator).
     if(_rec && _rec.status==='active') return;
     // Auto-stop GPS and release wake lock — show banner
-    gpsClearWatch(UI.gpsWatchId);
+    if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
     UI.gpsWatchId=null;
     UI.gpsActive=false;
     _offRouteStart=null;_offRouteAlerted=false;
@@ -5651,7 +5592,7 @@ function _doStartGPS(){
   UI._rideAvgSessionKm=null;
   UI._rideAvgSessionTs=null;
 
-  UI.gpsWatchId=gpsWatch(_gpsOnFix=pos=>{
+  UI.gpsWatchId=navigator.geolocation.watchPosition(_gpsOnFix=pos=>{
     // A fix after a >2 min silence usually means signal is back — good moment
     // to retry any queued Strava uploads (cheap no-op when queue is empty)
     if(_gpsLastFixMs&&Date.now()-_gpsLastFixMs>120000)setTimeout(()=>{stravaProcessQueue(true);icuProcessQueue(true);},0);
@@ -5767,7 +5708,7 @@ function _doStartGPS(){
     if(UI.tab==='live')updateLive();
     else if(UI.tab==='settings')patchGPSInfo();
     else updateGPSPill();
-  },err=>console.warn('GPS',err));
+  },err=>console.warn('GPS',err),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
   _gpsLastFixMs=Date.now();// fresh watch gets a full watchdog window before any restart
   _resetGpsIdleTimer();
   updateGPSPill();if(UI.tab==='live'||UI.tab==='settings')render();
@@ -5795,7 +5736,7 @@ function _showRideAvgResetPrompt(){
 }
 function stopGPS(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
-  gpsClearWatch(UI.gpsWatchId);
+  if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
   // Accumulate this GPS session into ride average totals (using cumulative distance)
   if(UI._rideAvgSessionKm!==null&&UI._rideAvgSessionTs!==null){
     const sessionKm=Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm);
@@ -11789,7 +11730,7 @@ function releaseWakeLock(){
 // bank the ride-average session, and flip into the auto-paused state.
 function _doGpsAutoPause(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
-  gpsClearWatch(UI.gpsWatchId);
+  if(UI.gpsWatchId!==null)navigator.geolocation.clearWatch(UI.gpsWatchId);
   UI.gpsWatchId=null;
   UI.gpsActive=false;
   _offRouteStart=null;_offRouteAlerted=false;

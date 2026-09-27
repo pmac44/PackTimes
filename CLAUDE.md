@@ -300,6 +300,16 @@ These aren't urgent — just things to clarify when relevant:
 
 ## Settled — do not re-chase these
 
+### DECIDED (27 Sep 2026) — Going native: Android shell app first. Don't reopen "native or never".
+
+Peter: *"I can keep on perfecting the app forever, so we have to move to an app that works with
+the screen off."* The old "wait for soak-test rides" gate is dropped. Shape: a thin Capacitor app
+that loads `index.html` live from GitHub Pages, so `push.bat` stays the everyday deploy and a
+store build is only needed when native plugins change. Every native feature sits behind an
+`IS_NATIVE` check so the PWA keeps working. Android first; iOS only after Android is proven.
+Full plan and step order: `_planning/PackTimes-Native-Shell_Plan_v1.md`. The shell is built
+OUTSIDE Dropbox (`C:\dev\packtimes-native`) — never put the Android project in this folder.
+
 ### DEAD END (4 Aug 2026) — "PackTimes" CANNOT be made to appear as the device on Strava. Don't re-research this.
 
 Peter, with a Wahoo activity page in front of him: *"When you upload a ride to Strava, it will
@@ -398,6 +408,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v388 (27 Sep) — Native shell: background GPS via plugin; file pickers work in the app
+- **Changed:** GPS section top: `IS_NATIVE`, `_nativePlugin(name)` (reads `Capacitor.Plugins` — the shell loads a URL, so there is NO `registerPlugin`), `gpsWatch`/`gpsClearWatch` replace every `watchPosition`/`clearWatch` (native = `BackgroundGeolocation.addWatcher`, foreground service + notification; asks notification permission first). Capture-phase click listener strips `accept` from file inputs in the app only.
+- **Why:** Phase 1b step 2 — screen-off recording. `_planning/PackTimes-Native-Shell_Plan_v1.md`.
+- **Watch out:** anything at top level in the native block must never throw — one `registerPlugin` call crashed the whole app at load. Native watch ids are strings (`'n4'`), browser ids numbers. `getCurrentPosition` stays on `navigator.geolocation`.
+- **Verified:** `node verify.js`; browser preview unchanged (`IS_NATIVE` false). Dev build on Peter's Pixel 10 (loads this PC over USB): 12-min walk, screen off 13:43–13:49, 1–2 s points throughout, every gap a stop/resume pair; FGS `types=0x8` (location) running. Backup `backup/index-v387-pre-v388.html`. NOT pushed.
+
 ### v387 (26 Sep) — Recording at 1 s (was 5 m); power/HR sampled 1 s independent of GPS
 - **Changed:** `_appendPoint` active branch writes a point every `REC_MIN_TICK_MS` regardless of distance; stop detection moved to new `_recAnchor` (moves only on a ≥minMove step — old `_recStored` semantics). New `_recSensorFields` (shared by `_recPt`) and `_recSensorSample` → `rec.sensors[]`, fed from the power/HR BLE notifications + sim tick. `UI.powerWattsRaw` recorded instead of 3 s smoothed `powerWatts`. `encodeActivityFit` merges `rec.sensors` into seconds with no GPS point via `FIELDS_RECORD_SENSOR` (local 6).
 - **Why:** intervals.icu flagged rides as ~2 s smart recording; power bests were wrong.
@@ -450,23 +466,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** the bounding box for "Sydney" is all of Greater Sydney; a small town's box can miss its own edges.
 - **Watch out:** results more than 5 km from the route are still dropped (`snap.off>5.0`), so a big place radius only helps near the route. Search button is pinned outside the scrolling body — keep it there.
 - **Verified:** live Overpass: Braidwood/Meiringen query well-formed (Meiringen 36 hits, all >5 km off the demo line so 0 added); Bingen at 5 km → 36 stops added. 375×560: button stays on screen, body scrolls. NOT pushed.
-
-### v378 (25 Sep) — Stops search moves from an expanding card to a full-screen sheet
-- **Changed:** new `SEARCH SHEET` banner after `tStopsShell`: `openSearchSheet(mode)`, `_searchStatusHTML()`, `OSM_OPT_DEFS`. The Search card is now one button (`#btn-open-search`) plus status banners. "Clear auto (n)" moved to the All Stops header. Geoapify search renamed **Advanced accommodation** (sheet tab + Settings panel title). `UI.osmExpanded/tsExpanded` → `UI.searchMode`.
-- **Why:** three searches, a slider and 20 tick boxes inside an expanding panel was a scroll inside a scroll on the phone, and it hid the map.
-- **Watch out:** the sheet lives on `<body>`, so content-wrap's delegators never see it. Its handlers (radius, osm-opt, ALL/NONE, ts-input Enter) live inside `openSearchSheet`; the old content-wrap copies were deleted. Search closes the sheet *before* fetching, so results land on a visible map.
-- **Verified:** `node verify.js` green; preview at 375×812: all three modes, validation (empty place, nothing ticked), ALL/NONE, stubbed-fetch error banner on the Stops card, clear-auto confirm, Settings jump. No real OSM/Geoapify call made. NOT pushed.
-
-### (no version) 21 Sep — the keepalive was too slow; Supabase paused the project anyway
-- **Changed:** `.github/workflows/supabase-keepalive.yml` — cron every 3 days → **daily**, 3 pings per run, one or two failed pings no longer fail the job, and the failure message now names the failure mode (curl 6 = hostname gone = paused; 7 = platform/mid-restore; 28 = timeout; 0 = DB answered with something unexpected). CLAUDE.md external-services note rewritten.
-- **Why:** runs on 10, 13 and 16 Sep were all green and the project was paused anyway; the 19 Sep run failed with **curl exit 6, could not resolve host**, which is what a paused project looks like. Supabase's threshold is "a few user requests to the database **each day** over the previous week" (https://supabase.com/docs/guides/platform/free-project-pausing) — every 3 days met neither half of it. Peter resumed it from the dashboard on 21 Sep.
-- **Watch out:** don't slow the cadence back down to save Actions minutes — daily IS the fix, and the file says so in a banner comment. A green run only proves the DB answered; it does not prove the project won't be paused, so the real test is that no pause email arrives.
-- **Verified:** the run block extracted from the YAML and executed under `bash -e` against stubbed responses — 6/6 cases correct (all-good, first-ping-blip, only-last-ping-good → exit 0; all-DNS-fail, unexpected-body, all-timeout → exit 1 with the right message). Three real pings at the live project: 200 `{"error": "not_found"}` each, 944/39/33 ms. NOT pushed — no APP_VERSION bump, the app is untouched.
-
-### (no version) 10 Sep — Supabase keepalive workflow
-- **Changed:** new `.github/workflows/supabase-keepalive.yml`; CLAUDE.md external-services table and the stale "no backend" line.
-- **Why:** Supabase emailed that the project would be paused for 7 days' inactivity — sharing only calls the backend during a ride, and Peter was off the bike with a broken collarbone.
-- **Watch out:** GitHub disables scheduled workflows after 60 days with no commits; push anything to re-arm, or run it from the Actions tab. No APP_VERSION bump — the app is untouched.
-- **Verified:** the exact curl run live against the backend → HTTP 200 `{"error":"not_found"}`; pushed 10 Sep and run #1 (manual trigger, 8 s) green in the Actions tab. Schedule fires every 3rd day at 03:17 UTC.
 
 <!-- VERSION-LOG-END -->

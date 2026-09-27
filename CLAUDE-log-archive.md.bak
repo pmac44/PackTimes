@@ -9,6 +9,13 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v377 (8 Sep) — rides go straight to intervals.icu (the Bike Coach data path)
+- **Changed:** new `INTERVALS.ICU` section after Strava's retry triggers; hooks beside every `stravaQueue`/`stravaMarkRename` call (gap finish, end-of-ride flush, undo timer, both rename paths, GPS-return trigger); `rdm-icu` button + status line in the ride detail modal; `_recSyncBadgeHTML` now draws the Rides card pills for both services; Settings gains an **intervals.icu** panel (paste API key → verified against `/athlete/0` before saving, auto-send toggle, retry, **Send all saved rides** backfill, disconnect); STATE/PERSIST carry `icuKey/icuAthleteId/icuAthleteName/icuAutoUpload` in the `intervalsAuth` KV row.
+- **Why:** the queued Dropbox-folder plan was impossible (see Settled) and the coach needs per-ride files that Strava walls off.
+- **Watch out:** the API key is a secret — keep it out of uiPrefs and plan.json. A hash-duplicate upload returns 200 with no activity id, so `icuActivityUrl` can be null on a sent ride; `icuSyncName` treats that as nothing-to-rename. Backoff reuses `STRAVA_BACKOFF_MS` on purpose. Strava upload is untouched.
+- **Verified:** `node verify.js` green; in the served app with `fetch` stubbed: queue → POST `/athlete/0/activities?name&external_id&device_name` with a 716-byte FIT → uploaded/url set; rename → PUT `/activity/{id}`; 401 → attempt logged, stays queued; 200-duplicate → marked sent, url null. Real API: bogus key → the rejection message. Settings panel rendered both states on the phone viewport. NOT pushed; no real ride sent — Peter's key never touched.
+
+
 ### v376 (28 Aug) — THE KM MARKERS WERE v372's DISEASE WITH TWO SURVIVORS. Peter's read was exact.
 
 Peter, after the v372 wins: *"the kilometre markers seem to have a very large effect on screen
