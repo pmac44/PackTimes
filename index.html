@@ -8624,6 +8624,13 @@ function _recStopCancel(){
 
 // Tap "Delete" in the confirm strip → discard the in-progress ride (after a yes/no confirm),
 // without saving it. Mirrors finaliseRecording's cleanup but deletes instead of keeping.
+// v395 — "If you stop it, the ride actually stops" (v333) includes the GPS. Stopping or deleting a
+// ride left GPS running at full accuracy once a second — invisible in Chrome, but in the Android
+// app the "tracking your ride" notification stayed up and the battery kept paying for it (Peter,
+// 28 Sep). Since v260 GPS only runs for a ride or the sim, so ending the ride ends GPS; Undo
+// turns it back on. The sim drives its own fixes and is left alone.
+function _recEndGps(){ if(UI.gpsActive&&!UI.simRunning&&!UI.simPaused) stopGPS(); }
+
 async function _recStopDelete(){
   if(!_rec) return;
   if(!confirm("Delete this ride? This can't be undone.")) return;
@@ -8635,6 +8642,7 @@ async function _recStopDelete(){
   // Deleting the ride ends it just as surely as finishing it — per-ride off reverts.
   if(UI.shareOffThisRide){ UI.shareOffThisRide=false; _shareSaveAuth(); }
   rideNowClear();   // ditto (v257)
+  _recEndGps();     // v395
   await saveAll().catch(()=>{});
   render();
   _recToast('Ride deleted');
@@ -8674,6 +8682,7 @@ async function _recStopConfirm(){
   const finalised = await finaliseRecording();
   _recLastFinalised = finalised;
   _recGapArm(finalised, true);   // queue the gap prompt (shown after the undo window)
+  _recEndGps();                  // v395
   _recShowStopConfirm(false);
   // Force a render so the buttons go back to "idle" and the undo strip gets inserted
   render();
@@ -8716,6 +8725,7 @@ async function _recStopUndo(){
   _recStored = lp ? {lat: lp.lat, lon: lp.lon, t: lp.t} : null;
   _recAnchor = null;
   UI.recId = rec.id;
+  if(!UI.gpsActive) startGPS();   // v395 — stopping switched GPS off; the resumed ride needs it
   rideNowRestore();   // v257 — un-stopping puts the ride's clock back as it was
   await saveAll().catch(()=>{});
   _recLastFinalised = null;
