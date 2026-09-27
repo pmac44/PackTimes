@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PackTimes privacy policy</title>
+<meta name="description" content="What PackTimes does with your data, and where it goes.">
+<!-- Privacy policy for the PackTimes app and web app. Required by Google Play (step 7 of
+     _planning/PackTimes-Native-Shell_Plan_v1.md). Written from the code as of v393 —
+     if a new service, permission or upload is added, update this page and the date. -->
+<style>
+  :root{
+    --bg:#f6f7f4; --card:#ffffff; --text:#16201a; --muted:#56615a; --line:#dde3dc;
+    --accent:#1f8a4c; --head:#0d1a0d;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0d1a0d; --card:#132214; --text:#e6ede7; --muted:#9fb0a3; --line:#24382a;
+           --accent:#4ade80; --head:#e6ede7; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  main{max-width:720px;margin:0 auto;padding:32px 16px 64px;}
+  h1{font-size:28px;line-height:1.2;margin:0 0 4px;color:var(--head);}
+  .date{color:var(--muted);font-size:14px;margin:0 0 24px;}
+  h2{font-size:19px;margin:36px 0 8px;color:var(--head);}
+  h3{font-size:16px;margin:20px 0 4px;}
+  p,ul{margin:0 0 12px;}
+  ul{padding-left:22px;}
+  li{margin:4px 0;}
+  a{color:var(--accent);}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:16px 0;}
+  .card p:last-child,.card ul:last-child{margin-bottom:0;}
+  footer{margin-top:40px;color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:16px;}
+</style>
+</head>
+<body>
+<main>
+<h1>PackTimes privacy policy</h1>
+<p class="date">Last updated 27 September 2026</p>
+
+<p>PackTimes is a route planner and ride recorder for long-distance cycling and bikepacking, made by Peter McKay in Australia. It has no user accounts, no advertising and no analytics. Almost everything it does happens on your phone, and your data stays there unless you switch on something that sends it somewhere else. This page lists every place it can go.</p>
+
+<div class="card">
+<p><strong>The short version.</strong> Your routes and rides live on your phone. Nothing is sent to me unless you turn on location sharing. Strava, intervals.icu and Dropbox only get your data if you connect them. Map, weather and place searches go straight from your phone to the services listed below.</p>
+</div>
+
+<h2>What stays on your phone</h2>
+<ul>
+  <li>Routes and plans you load or create: the route line, stops, times, gear and food lists, and your settings.</li>
+  <li>Recorded rides: your GPS track (position, elevation, time and accuracy), plus power, cadence, pedal balance and heart rate if you've paired sensors.</li>
+  <li>Your Strava, Dropbox and intervals.icu sign-ins, and any keys you enter for Geoapify or Mapbox.</li>
+</ul>
+<p>These are kept in the app's own storage on your phone. You can delete any ride or route in the app at any time, and uninstalling the app deletes all of it. When you export or share a file (a FIT or GPX file, a plan, a printed mission brief), it goes wherever you choose to send it.</p>
+
+<h2>Location</h2>
+<p>PackTimes uses your precise location while you're tracking or recording a ride. It uses it to show where you are on the route, work out your arrival times, give turn and off-route alerts, and record the ride.</p>
+<p>While a ride is recording, location keeps working with the screen off. Android shows a "PackTimes is tracking your ride" notification for the whole time. When you stop the ride, location stops. PackTimes doesn't use your location at any other time, and it doesn't send it anywhere unless you turn on location sharing.</p>
+
+<h2>Things that only happen if you switch them on</h2>
+
+<h3>Location sharing and group rides</h3>
+<p>If you set up location sharing, or join a group ride (PackRide), your phone sends these to PackTimes' server while you ride:</p>
+<ul>
+  <li>your position, speed, elevation and distance along the route, with the time of each reading, at the interval you choose or the group ride's organiser sets</li>
+  <li>the route you're following (its line, elevation and planned stops)</li>
+  <li>the display name you give yourself</li>
+</ul>
+<p>The server is run on Supabase, in Sydney. Only people who have one of your links can see your ride. A normal link only ever shows your current ride. An older ride can only be seen through a replay link you make for that ride. You can revoke any link.</p>
+<p>In a group ride, everyone in the ride sees each member's display name and position for that ride.</p>
+<p>Shared rides stay on the server until you delete them. You can delete one ride, or everything, at any time in Settings &rarr; Location Sharing. Nothing is deleted automatically. That's deliberate: if a rider goes missing, their last known position is the most useful thing there is.</p>
+
+<h3>Strava</h3>
+<p>If you connect Strava, each finished ride is uploaded to your Strava account as a FIT file with its name, and a renamed ride's new name is sent too. From then on, Strava's own privacy policy covers it.</p>
+
+<h3>intervals.icu</h3>
+<p>If you add your intervals.icu API key, finished rides are uploaded to your intervals.icu account as FIT files.</p>
+
+<h3>Dropbox</h3>
+<p>If you connect Dropbox, your routes and plans are saved to the <code>Apps/PackTimes</code> folder in your own Dropbox, so they sync between devices. PackTimes can only see that one folder, not the rest of your Dropbox.</p>
+
+<h3>Bluetooth sensors</h3>
+<p>With the Nearby devices permission, PackTimes connects only to the power meters and heart rate straps you pick. Their readings are shown on screen and saved in the ride. If you change the crank length setting, the new length is written to your power meter.</p>
+
+<h2>Services the app talks to</h2>
+<p>To fetch maps, weather and places, your phone contacts these services directly. Like any website, they see your phone's internet address and the area being asked about, such as points along your route. None of them get your name or your rides.</p>
+<ul>
+  <li>Map tiles: OpenStreetMap, CyclOSM, OpenTopoMap and Esri (ArcGIS), and Mapbox if you add your own Mapbox token.</li>
+  <li>Weather: Open-Meteo, for points along your route.</li>
+  <li>Place and stop searches: OpenStreetMap's Overpass servers (overpass-api.de and overpass.kumi.systems) and Nominatim, and Geoapify if you add your own key.</li>
+  <li>The app itself loads from GitHub Pages, and the QR code maker loads from Cloudflare's cdnjs.</li>
+  <li>Weather radar and accommodation links open outside websites, but only if you tap them.</li>
+</ul>
+
+<h2>Android permissions</h2>
+<ul>
+  <li><strong>Location</strong>, for the reasons above.</li>
+  <li><strong>Notifications</strong>, for the "tracking your ride" notification.</li>
+  <li><strong>Nearby devices</strong>, to find and connect to Bluetooth sensors.</li>
+  <li><strong>Turn the screen on and show over the lock screen</strong>, so that during a ride an upcoming turn or an off-route alert lights up the screen on the Ride page. This only applies while a ride is running.</li>
+  <li><strong>Internet</strong>, for everything in the section above.</li>
+</ul>
+
+<h2>What PackTimes doesn't do</h2>
+<p>It doesn't sell or share your data with anyone, show ads, run analytics or tracking, collect crash reports, or ask you to make an account.</p>
+
+<h2>Children</h2>
+<p>PackTimes isn't aimed at children under 13.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, this page will be updated and the date at the top will change.</p>
+
+<h2>Contact</h2>
+<p>Questions, or a request to delete shared data you can't reach from the app: <a href="mailto:privacy@packtimes.app">privacy@packtimes.app</a>.</p>
+
+<footer>PackTimes &middot; made in Australia by Peter McKay</footer>
+</main>
+</body>
+</html>
