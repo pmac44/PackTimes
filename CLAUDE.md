@@ -408,11 +408,17 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v397 (28 Sep) — Strava/Dropbox sign-in waits for the app to finish loading
+- **Changed:** DROPBOX SYNC, the page-load `?code=` dispatcher now only sets `_oauthPending` (stravaHandleRedirect or dbxHandleRedirect); INIT calls it as its last step, after `loadAll`, recovery and `dbxAutoLoad`.
+- **Why:** 28 Sep, reconnecting Strava in the app toasted "Connected" but wasn't: the handler ran at script load, raced `loadAll` (seconds with 40 routes), and `loadAll` then restored the old disconnected `stravaAuth` over the new token. Its early `saveAll` could also write prefs before they'd loaded.
+- **Watch out:** anything else that must act on a redirect/query param and touches saved state belongs in INIT after `loadAll`, never at script top level.
+- **Verified:** `node verify.js`; preview: `?code=dummy&state=strava_…` handled after load (routes present, `_oauthPending` consumed, URL cleaned, Strava's "Bad Request" toast). Real reconnect on the phone after push. Backup `backup/index-v396-pre-v397.html`. NOT pushed.
+
 ### v396 (28 Sep) — Alert log in each ride; Strava "Only you" rides no longer lose their link
 - **Changed:** RECORDING: `_recCueLog(kind,extra)` → `rec.cues[]` ({t, kind 'turn'|'offroute', stage, km, glyph, remM, said, hidden, wasOn/isOn}); `checkAlerts` passes an entry to `playTurnCue(stage,turn,remM,log)`; `wakeScreen(log)` fills in the ScreenWake result; `showOffRouteAlert` logs too. STRAVA: `STRAVA_SCOPES` + `activity:read_all`; granted scope saved as `UI.stravaScope` (stravaAuth KV `scope`); rename 404 without read_all keeps the link + sets `stravaNameError`; `rec.stravaUploadedName` set on upload, and `stravaMarkRename` skips when the name is unchanged; a pending rename that rode along with the upload is cleared.
 - **Why:** 28 Sep soak ride: no way to tell which turns spoke/woke the screen; and the Strava link was dropped — the save prompt's unchanged name fired a PUT, Strava 404'd because Peter's rides are "Only you" and the grant lacked read_all.
 - **Watch out:** existing Strava connections keep the old grant until reconnected (Settings → disconnect → connect, and tick the private-activities box). `rec.cues` is not in FIT/GPX and sim rides aren't logged.
-- **Verified:** `node verify.js`; browser with stubbed fetch: cue entry written only while a ride is active; 404 w/o read_all → link kept + error; with read_all → cleared as before; unchanged name → 0 fetches; new name → PUT. Backup `backup/index-v395-pre-v396.html`. NOT pushed.
+- **Verified:** `node verify.js`; browser with stubbed fetch: cue entry written only while a ride is active; 404 w/o read_all → link kept + error; with read_all → cleared as before; unchanged name → 0 fetches; new name → PUT. Backup `backup/index-v395-pre-v396.html`. Pushed 28 Sep; Pixel app confirmed on v396 (Strava not yet reconnected — scope null).
 
 ### v395 (28 Sep) — Android killed the app mid-ride: per-call date formatters (35 MB/s native garbage)
 - **Changed:** TIME CALC: `_FMT_HM/_FMT_WD/_FMT_DM/_FMT_DMY` (Intl.DateTimeFormat, built once) + `_fmtWith`; `_fmtTRaw`, `fmtDT`, `fmtDTY`, `fmtDTYDev` use them. `updateLive`: the per-stop `eta-<id>` loop only runs if such an element exists. MAP ENGINE: `_canvasFit(cvs,bw,bh)` — resize only on change, else `ctx.reset()`; used by `drawMap`, `_drawElevInner`, desktop elev, `drawElevProfile`.

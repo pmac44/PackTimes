@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v397';
+window.APP_VERSION='v396';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -16359,15 +16359,11 @@ function _dbxAgoStr(ms){
   return Math.round(diffS/86400)+'d ago';
 }
 
-// Handle OAuth redirect on page load — the state param says which provider it's from.
-// v397 — DEFERRED until loadAll has finished (INIT calls _oauthPending). Run straight away, the
-// handler raced loadAll: with 40 routes loadAll takes seconds, the token exchange finished first,
-// then loadAll read the OLD (disconnected) stravaAuth row and overwrote the new token — Strava
-// said "Connected" and wasn't (28 Sep). Its early saveAll could also write not-yet-loaded prefs.
-let _oauthPending=null;
+// Handle OAuth redirect on page load — the state param says which provider it's from
 if(new URLSearchParams(window.location.search).get('code')){
   const _oauthState=new URLSearchParams(window.location.search).get('state')||'';
-  _oauthPending=_oauthState.startsWith('strava_')?stravaHandleRedirect:dbxHandleRedirect;
+  if(_oauthState.startsWith('strava_'))stravaHandleRedirect();
+  else dbxHandleRedirect();
 }
 
 
@@ -25376,8 +25372,6 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
   if(_rec && _rec.status==='active') startGPS();
   // Auto-load from Dropbox if connected and cloud is newer
   if(UI.dbxToken)dbxAutoLoad();
-  // v397 — finish a Strava/Dropbox sign-in only now, on top of the fully loaded state.
-  if(_oauthPending){const f=_oauthPending;_oauthPending=null;f();}
 });
 </script>
 <script>
