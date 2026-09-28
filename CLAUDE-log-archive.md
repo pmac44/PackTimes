@@ -9,6 +9,26 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v386 (26 Sep) — Offline route download now Mapbox-only, with a picker; rider's own token in Settings
+- **Changed:** `TILE_URLS` gains 5=Mapbox Outdoors, 6=Mapbox Satellite (`satellite-streets-v12`, 256@2x); new `MAPBOX_MODES`, `TILE_MODE_NAMES`, `tileModeAvailable`, `tileUrl()` (all tile URLs go through it). `downloadRouteTiles` split → `_routeTileKeys`; refuses non-Mapbox modes. `startTileDownload(ridx,modes)`; new `openOfflinePicker` (route-row download button). Settings → Offline Maps: token box (`UI.mapboxToken`, in uiPrefs), checked against a real tile before saving. Tile button cycles OUTD/MSAT only with a token. `MAP_CREDITS` +2. `sw.js`: caches `api.mapbox.com/styles/v1/…/tiles/…` cache-first.
+- **Why:** OSM/CyclOSM/Topo/Esri forbid prefetch; Mapbox allows a single-device offline cache. Token not in code: URL restriction needs a paid Mapbox account.
+- **Watch out:** the cache key includes the token — a NEW token misses every saved tile (re-download). sw.js changed → flight-mode test before relying on it.
+- **Verified:** `node verify.js` + `node --check sw.js`; preview: sk./bogus/real token messages, OUTD paints (0% blank), picker counts 1,745 tiles/style for 370 km, 15 km real download 110/110 saved then 110 from cache, CyclOSM refused. Backups `backup/index-v385-pre-v386.html`, `backup/sw-v385-pre-v386.js`. Pushed 26 Sep (with v385). Flight-mode test NOT yet reported.
+
+### v385 (26 Sep) — Overzoom fallback + map credit line
+- **Changed:** `drawTiles` placeholder branch — walks up to 5 zoom levels up for a loaded ancestor and draws its matching sub-rectangle. New `MAP_CREDITS` + `_drawMapCredit` (end of `drawMap`, outside the rotation): per-basemap credit bottom-right of every map.
+- **Why:** offline downloads stop at z14; the Ride map zoomed closer showed grey.
+- **Watch out:** ancestors are only REQUESTED (via `getTile`) when the tile is `'error'`; while merely `'loading'` it only reuses ones already in `_tileCache`. Don't request on `'loading'` — that doubles tile traffic online.
+- **Verified:** preview, stops map zoomed ×8 with the tile URL broken: 0% of the canvas blank (drawn from z7); control with ancestors removed: 95% blank. Backup `backup/index-v384-pre-v385.html`. Pushed 26 Sep with v386.
+- **Open:** all three free tile servers (OSM, CyclOSM/OSM-France, OpenTopoMap) and Esri PROHIBIT prefetch/offline download — the "Offline map" button breaches their policies. Research 26 Sep: only Mapbox (free 200k tiles/mo; terms allow offline cache on a single end user's device, filled by that device's own API requests), Thunderforest from $255/mo, or self-hosted PMTiles/OSM data permit it. Peter to choose before any basemap-picker work.
+
+### v384 (26 Sep) — Stops list follows the map legend; category stripe on stop tiles
+- **Changed:** new `stopHiddenByLegend(s)` (STOPS) — the rule lifted out of `drawMap`, now used by `drawMap` AND `clusteredStopRows`. List shows "N stops hidden by the map legend · Show all" (`#btn-legend-showall`, content-wrap delegator). Desktop legend click re-renders the list on the Stops tab. `stopRow` gets a 4px `border-left` in `var(--cat-<type>)`.
+- **Why:** long routes put hundreds of stops in the list; Peter wanted to sort through them. Full-colour tiles rejected (23 hues, border already means open/closed/sleep).
+- **Watch out:** starred stops stay visible while "Mission" is on, sleep stops while "All sleep" is on — same as the map. The stripe is declared AFTER `tileBg` so status colour keeps the other three sides.
+- **Verified:** `node verify.js`; preview: mobile legend Water/Toilets and desktop legend Food hide the right tiles, starred food kept, Show all restores; 375 px width fits. Backup `backup/index-v383-pre-v384.html`. Pushed 26 Sep; Peter happy with filter + stripe ("a small amount of colour") over full-colour tiles.
+
+
 ### v383 (26 Sep) — Search finds all drinkable water, vending machines, train stations, outdoor shops
 - **Changed:** new `_poiParts` / `_poiClassify` / `_stopInfo` beside `_bikeStandTag` (OVERPASS), called from BOTH `fetchOverpass` and `fetchTownSearch`. New types `vending` 🥤 and `train` 🚆 (tokens, `.d-/.t-`, icon maps, `dc`, live strip, legend); new boxes `outdoor` (type `shop`), `vending`, `trains`. Stops carry `info` (tile line under the tag; also in share/plan export).
 - **Why:** Peter: one box per job. Water now = bubbler, tap, RV fill point, drinking fountain, spring marked drinkable; unmarked springs go to Waterways; kiosks with Food; non-bike shops doing repairs with Bike shop. Showers never become stops: `_attachShowers` (after the element loop) adds a separate shower point to the nearest toilet (≤100 m) or camp/caravan (≤250 m) stop's `info`; lone ones (mostly coastal beach showers, ~300 of 984 in NSW/VIC) are dropped.

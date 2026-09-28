@@ -9,6 +9,19 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v383 (26 Sep) — Search finds all drinkable water, vending machines, train stations, outdoor shops
+- **Changed:** new `_poiParts` / `_poiClassify` / `_stopInfo` beside `_bikeStandTag` (OVERPASS), called from BOTH `fetchOverpass` and `fetchTownSearch`. New types `vending` 🥤 and `train` 🚆 (tokens, `.d-/.t-`, icon maps, `dc`, live strip, legend); new boxes `outdoor` (type `shop`), `vending`, `trains`. Stops carry `info` (tile line under the tag; also in share/plan export).
+- **Why:** Peter: one box per job. Water now = bubbler, tap, RV fill point, drinking fountain, spring marked drinkable; unmarked springs go to Waterways; kiosks with Food; non-bike shops doing repairs with Bike shop. Showers never become stops: `_attachShowers` (after the element loop) adds a separate shower point to the nearest toilet (≤100 m) or camp/caravan (≤250 m) stop's `info`; lone ones (mostly coastal beach showers, ~300 of 984 in NSW/VIC) are dropped.
+- **Watch out:** `_poiClassify` runs BEFORE the old type chain (it ends in an unnamed-drop). Showers are queried when Toilets, Camp or Caravan is ticked. Fixed on the way: toilets tagged `drinking_water=no` used to read SHOP.
+- **Verified:** `node verify.js`; classifier run on live Overpass (Melbourne, Bright, Engelberg). Live corridor search on the demo route: 43 water, 8 vending, 5 train, 6 bike, 1 outdoor, 29 wc. Tiles, legend and sheet boxes checked in the preview. Funicular stations and bubbler-tagged springs fixed after that run. Shower attach checked on real Muttaburra QLD data: the hot shower lands on the toilet block, the camp's own shower=yes tag shows on its tile, and a beach shower with nothing nearby is dropped. Demo stops restored. Backup `backup/index-v382-pre-v383.html`. Pushed 26 Sep.
+
+### v382 (26 Sep) — Basemap switch no longer shows black on phone until you pan
+- **Changed:** `attachMap` tappable-map `touchend` now clears the drag flag; new `_mapDragDone()` + `_tilesHeld` beside `_mapDragging` (tile section); `getTile` onload holds mid-gesture arrivals instead of dropping them.
+- **Why:** that touchend nulled `_drag` but never reset `_mapDragging`, so after one touch every tile load skipped its redraw.
+- **Watch out:** every gesture end must call `_mapDragDone()`, never set `_mapDragging=false` directly.
+- **Verified:** `node verify.js`; in the browser, simulated touch tap then switch to CYC: 0 → 30 tiles loaded and drawn with no pan, flag false. Held-tile path queued its redraw (pane stopped painting frames, so the final paint wasn't seen). Backup `backup/index-v381-pre-v382.html`. NOT pushed.
+
+
 ### v381 (26 Sep) — Route-list button row fits a phone
 - **Changed:** route picker rows — buttons now sit in `.rli-acts` (equal-width `flex:1 1 0`, 4px side padding). "Offline map" is icon-only (title kept; spinner only while downloading). Delete ✕ no longer `margin-left:auto`.
 - **Why:** a turn count ("166") plus the two-line "Offline map" label pushed ✕ off-screen on Peter's phone.

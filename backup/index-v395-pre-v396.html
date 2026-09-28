@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v396';
+window.APP_VERSION='v395';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1919,7 +1919,7 @@ async function saveAll(){
   await DB.setKV('dbxRefreshToken',UI.dbxRefreshToken||null).catch(()=>{});
   await DB.setKV('dbxExpiresAt',UI.dbxExpiresAt||null).catch(()=>{});
   await DB.setKV('dbxSavedAt',UI.dbxSavedAt||null).catch(()=>{});
-  await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false,scope:UI.stravaScope||null}).catch(()=>{});
+  await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false}).catch(()=>{});
   // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
   await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
   await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
@@ -1940,7 +1940,7 @@ async function loadAll(){
     UI.dbxExpiresAt=await DB.getKV('dbxExpiresAt')||null;
     UI.dbxSavedAt=await DB.getKV('dbxSavedAt')||null;
     const sa=await DB.getKV('stravaAuth').catch(()=>null);
-    if(sa){UI.stravaToken=sa.token||null;UI.stravaRefreshToken=sa.refresh||null;UI.stravaExpiresAt=sa.expiresAt||null;UI.stravaAthlete=sa.athlete||null;UI.stravaAutoUpload=sa.autoUpload!==false;UI.stravaScope=sa.scope||null;}
+    if(sa){UI.stravaToken=sa.token||null;UI.stravaRefreshToken=sa.refresh||null;UI.stravaExpiresAt=sa.expiresAt||null;UI.stravaAthlete=sa.athlete||null;UI.stravaAutoUpload=sa.autoUpload!==false;}
     const ia=await DB.getKV('intervalsAuth').catch(()=>null);
     if(ia){UI.icuKey=ia.key||null;UI.icuAthleteId=ia.athleteId||null;UI.icuAthleteName=ia.athleteName||null;UI.icuAutoUpload=ia.autoUpload!==false;}
     // Location sharing — own KV row, deliberately outside uiPrefs (the write token
@@ -5520,9 +5520,8 @@ function speak(text, urgent){
 // with no extra permission grant — if a phone refuses, the spoken cue still plays.
 const _nativeScreen = _nativePlugin('ScreenWake');
 function _nativeLockScreen(on){ if(_nativeScreen) _nativeScreen.showWhenLocked({on}).catch(()=>{}); }
-function wakeScreen(log){   // log: an _recCueLog entry to note the result on (v396), optional
-  if(_nativeScreen && document.visibilityState==='hidden')
-    _nativeScreen.wake({seconds:30}).then(r=>{ if(log&&r){ log.wasOn=!!r.wasOn; log.isOn=!!r.isOn; } }).catch(()=>{});
+function wakeScreen(){
+  if(_nativeScreen && document.visibilityState==='hidden') _nativeScreen.wake({seconds:30}).catch(()=>{});
 }
 // Vibration pattern in the navigator.vibrate shape [on, off, on, …] ms.
 function buzz(pattern){
@@ -7857,11 +7856,7 @@ function exportRecordingAsGPX(rec){
 const STRAVA_CLIENT_ID     = '230638';
 const STRAVA_CLIENT_SECRET = '7d905392e1f69afe73548ca10ed250744026d376';
 const STRAVA_REDIRECT      = 'https://pmac44.github.io/PackTimes/';
-// v396 — + activity:read_all. Without it Strava hides "Only you" activities from PackTimes, so a
-// rename PUT on Peter's (private) rides came back 404 and the app took that as "deleted on
-// Strava" and dropped the link (28 Sep soak ride). Existing connections keep their old grant
-// until the rider reconnects; UI.stravaScope records what was actually granted.
-const STRAVA_SCOPES        = 'activity:write,activity:read_all,read';
+const STRAVA_SCOPES        = 'activity:write,read';
 // Backoff between retries per queued ride: 30s, 5min, 30min, 2h, 8h, then daily
 const STRAVA_BACKOFF_MS = [30e3, 5*60e3, 30*60e3, 2*3600e3, 8*3600e3, 24*3600e3];
 
@@ -7885,7 +7880,6 @@ async function stravaHandleRedirect(){
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
   const state = params.get('state');
-  const granted = params.get('scope');   // v396 — what the rider actually ticked on Strava's page
   history.replaceState(null, '', window.location.pathname);
   if(!code) return;
   if(state !== sessionStorage.getItem('strava_state')){ _recToast('Strava sign-in didn’t match — try again'); return; }
@@ -7903,7 +7897,6 @@ async function stravaHandleRedirect(){
       UI.stravaRefreshToken = data.refresh_token || null;
       UI.stravaExpiresAt = (data.expires_at || 0) * 1000;
       UI.stravaAthlete = data.athlete ? ((data.athlete.firstname||'') + ' ' + (data.athlete.lastname||'')).trim() : null;
-      UI.stravaScope = granted || null;
       if(UI.stravaAutoUpload == null) UI.stravaAutoUpload = true;   // default ON at first connect
       const returnTab = sessionStorage.getItem('strava_return_tab');
       if(returnTab) UI.tab = returnTab;
@@ -8002,18 +7995,6 @@ async function stravaSyncName(rec, announce){
     // Deliberately does NOT re-upload: deleting it there was a deliberate act, and
     // silently resurrecting it would be the app overruling the rider. It just stops
     // claiming, so the ride reads as not-uploaded and CAN be sent again by hand.
-    // v396 — …but only if PackTimes could have SEEN it. Without activity:read_all, Strava answers
-    // 404 for any "Only you" activity even though it's right there (28 Sep: the soak ride was on
-    // Strava, the link got dropped). Then keep the link, stop retrying, and say what to do.
-    if(res.status === 404 && !/activity:read_all/.test(UI.stravaScope||'')){
-      rec.stravaNamePending = false;
-      rec.stravaNameError   = 'Strava hides "Only you" rides from PackTimes — reconnect Strava in Settings to allow renames';
-      await DB.putRecording(rec).catch(()=>{});
-      const j = RECS.findIndex(x => x.id === rec.id);
-      if(j >= 0) RECS[j] = rec;
-      if(announce) _recToast('Couldn’t rename on Strava — reconnect Strava in Settings');
-      return;
-    }
     if(res.status === 404){
       rec.stravaNamePending  = false;
       rec.stravaNameError    = null;
@@ -8065,9 +8046,6 @@ async function stravaSyncName(rec, announce){
 function stravaMarkRename(rec){
   if(!rec || !UI.stravaToken) return;
   if(!rec.stravaUploadedAt && rec.stravaUploadStatus !== 'queued') return; // not going to Strava
-  // v396 — Strava already has this exact name (the upload carries rec.name): nothing to send.
-  // Pressing Done on the save prompt without changing the name used to fire a pointless PUT.
-  if(rec.stravaUploadedAt && rec.stravaUploadedName != null && rec.name === rec.stravaUploadedName) return;
   rec.stravaNamePending = true;
   DB.putRecording(rec).catch(()=>{});
   if(rec.stravaUploadedAt){
@@ -8137,15 +8115,10 @@ async function stravaProcessQueue(force){
         if(Date.now() - last < delay) continue;
       }
       try{
-        const sentName = rec.name;   // v396 — the name this upload carries to Strava
         const actId = await stravaUpload(rec);
         rec.stravaUploadedAt = Date.now();
         rec.stravaActivityUrl = 'https://www.strava.com/activities/' + actId;
         rec.stravaUploadStatus = null;
-        // v396 — a rename made while the upload was queued rode along with it; only a name
-        // changed DURING the upload still needs the separate rename.
-        rec.stravaUploadedName = sentName;
-        if(rec.stravaNamePending && rec.name === sentName) rec.stravaNamePending = false;
         (rec.stravaUploadAttempts = rec.stravaUploadAttempts || []).push({at: Date.now(), ok: true});
         _recToast('Ride uploaded to Strava ✓');
       }catch(e){
@@ -8657,18 +8630,6 @@ function _recStopCancel(){
 // 28 Sep). Since v260 GPS only runs for a ride or the sim, so ending the ride ends GPS; Undo
 // turns it back on. The sim drives its own fixes and is left alone.
 function _recEndGps(){ if(UI.gpsActive&&!UI.simRunning&&!UI.simPaused) stopGPS(); }
-
-// v396 — every alert a ride fires, kept IN the recording (rec.cues) so a ride can be checked
-// afterwards. After the 28 Sep soak ride nobody could say which turns spoke or woke the screen.
-// {t, kind:'turn'|'offroute', stage, km, glyph, remM, said, hidden (screen off/app hidden),
-//  wasOn/isOn (from ScreenWake, filled in when it answers)}. Persisted with the next
-// putRecording. Not in the FIT or GPX. Sim rides are not logged.
-function _recCueLog(kind, extra){
-  if(!_rec || _rec.status!=='active' || UI.simRunning || UI.simPaused) return null;
-  const e = Object.assign({t:Date.now(), kind, hidden:document.visibilityState==='hidden'}, extra||{});
-  (_rec.cues = _rec.cues || []).push(e);
-  return e;
-}
 
 async function _recStopDelete(){
   if(!_rec) return;
@@ -11903,12 +11864,10 @@ function _turnSpeech(stage,turn,remM){
   else if(/^(turn|slight|sharp|keep|bear|continue|u-?turn|left|right|straight)\b/i.test(road)) road='';
   return w+' in '+d+(road?', onto '+road:'');
 }
-function playTurnCue(stage,turn,remM,log){
-  if(stage==='headsup' && turn) wakeScreen(log);   // light the screen even if turn audio is off
-  if(!UI.turnAudio){ if(log) log.said='(turn audio off)'; return; }
-  const words=_turnSpeech(stage,turn,remM);
-  if(log) log.said=_nativeTTS?words:'(beep)';
-  if(speak(words, stage==='now')){
+function playTurnCue(stage,turn,remM){
+  if(stage==='headsup' && turn) wakeScreen();   // light the screen even if turn audio is off
+  if(!UI.turnAudio)return;
+  if(speak(_turnSpeech(stage,turn,remM), stage==='now')){
     buzz(stage==='now'?[120,60,120]:[100,60,100]);
     return;
   }
@@ -12090,9 +12049,8 @@ function checkAlerts(){
     if(nextTurn){
       const remM=((nextTurn.dist+offKm)-UI.gpsDistKm)*1000;   // distance to the corner
       const key=nextTurn.dist;
-      const cueInfo=()=>({km:+(nextTurn.dist+offKm).toFixed(3),glyph:turnGlyphKey(nextTurn.type,nextTurn.notes),remM:Math.round(remM/mult)});   // v396
-      if(remM<=headsM&&!_turnCuesFired.has(key+':h')){_turnCuesFired.add(key+':h');playTurnCue('headsup',nextTurn,remM/mult,_recCueLog('turn',Object.assign({stage:'headsup'},cueInfo())));}
-      if(remM<=nowM&&!_turnCuesFired.has(key+':n')){_turnCuesFired.add(key+':n');playTurnCue('now',nextTurn,remM/mult,_recCueLog('turn',Object.assign({stage:'now'},cueInfo())));}
+      if(remM<=headsM&&!_turnCuesFired.has(key+':h')){_turnCuesFired.add(key+':h');playTurnCue('headsup',nextTurn,remM/mult);}
+      if(remM<=nowM&&!_turnCuesFired.has(key+':n')){_turnCuesFired.add(key+':n');playTurnCue('now',nextTurn,remM/mult);}
     }
   }
   // Off-route detection
@@ -12210,7 +12168,7 @@ function showOffRouteAlert(distM){
   playOffRouteAudio();
   // v389 — in the app the alarm is also spoken, so it's heard with the screen off.
   speak('Off route. '+distM+' metres from the route.', true);
-  wakeScreen(_recCueLog('offroute',{m:distM,km:UI.gpsDistKm!=null?+UI.gpsDistKm.toFixed(3):null}));
+  wakeScreen();
   // Long aggressive vibration
   buzz([500,150,500,150,500,150,800]);
 }
