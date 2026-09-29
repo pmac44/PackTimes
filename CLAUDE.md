@@ -408,11 +408,17 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v398 (29 Sep) — True 1 s recording; power meter / HR strap reconnect by themselves
+- **Changed:** RECORDING: `_recSec(t)=Math.round(t/1000)` (same rounding as `fitTime`); `_appendPoint` and `_recSensorSample` keep a sample when it lands in a NEW FIT second instead of `>= REC_MIN_TICK_MS` since the last. POWER METER: `connectPowerMeter` = pick + `_powerAttach(dev)`; `_powerOnDisconnect` / `_powerScheduleRetry` (`BLE_RETRY_MS` 3/5/10 then 15 s, forever while `_powerWant`); listeners bound once per characteristic (`_ptBound`); NP kept across a dropout, reset only by `disconnectPowerMeter`. HR: the same (`_hrWant`, `_hrAttach`, `_hrScheduleRetry`). BLE stand-in: one native disconnect listener per device, characteristics cached per service|uuid, native notification listener added once per characteristic.
+- **Why:** Peter, 29 Sep: Assiomas dropped on a 5-min descent and needed re-pairing; intervals.icu flagged ~2 s "smart recording" — readings arriving at 980 ms were discarded (28 Sep: 1,516 of 2,795 point gaps were 2 s; 2,747 power samples in 4,380 s).
+- **Watch out:** `_recSec` must stay identical to `fitTime`'s rounding or the FIT writer's per-second de-dupe and the sampler disagree. Auto-reconnect retries forever until a deliberate disconnect — on purpose (a head unit behaves the same).
+- **Verified:** `node verify.js`; preview with a fake Web Bluetooth power meter: connect (crank 175) → drop (NP kept, retrying) → failed retry → reconnect (crank re-read) → 1 handler call per reading → manual disconnect stops retries and resets NP; arrivals at 0/980/1990/2970/4010 ms all kept. BLE stand-in changes NOT yet tried on the phone. Backup `backup/index-v397-pre-v398.html`. NOT pushed.
+
 ### v397 (28 Sep) — Strava/Dropbox sign-in waits for the app to finish loading
 - **Changed:** DROPBOX SYNC, the page-load `?code=` dispatcher now only sets `_oauthPending` (stravaHandleRedirect or dbxHandleRedirect); INIT calls it as its last step, after `loadAll`, recovery and `dbxAutoLoad`.
 - **Why:** 28 Sep, reconnecting Strava in the app toasted "Connected" but wasn't: the handler ran at script load, raced `loadAll` (seconds with 40 routes), and `loadAll` then restored the old disconnected `stravaAuth` over the new token. Its early `saveAll` could also write prefs before they'd loaded.
 - **Watch out:** anything else that must act on a redirect/query param and touches saved state belongs in INIT after `loadAll`, never at script top level.
-- **Verified:** `node verify.js`; preview: `?code=dummy&state=strava_…` handled after load (routes present, `_oauthPending` consumed, URL cleaned, Strava's "Bad Request" toast). Real reconnect on the phone after push. Backup `backup/index-v396-pre-v397.html`. NOT pushed.
+- **Verified:** `node verify.js`; preview: `?code=dummy&state=strava_…` handled after load (routes present, `_oauthPending` consumed, URL cleaned, Strava's "Bad Request" toast). Pushed 28 Sep; real reconnect on the Pixel stuck: token saved, scope `activity:write,activity:read_all,read`, 40 routes intact. Backup `backup/index-v396-pre-v397.html`.
 
 ### v396 (28 Sep) — Alert log in each ride; Strava "Only you" rides no longer lose their link
 - **Changed:** RECORDING: `_recCueLog(kind,extra)` → `rec.cues[]` ({t, kind 'turn'|'offroute', stage, km, glyph, remM, said, hidden, wasOn/isOn}); `checkAlerts` passes an entry to `playTurnCue(stage,turn,remM,log)`; `wakeScreen(log)` fills in the ScreenWake result; `showOffRouteAlert` logs too. STRAVA: `STRAVA_SCOPES` + `activity:read_all`; granted scope saved as `UI.stravaScope` (stravaAuth KV `scope`); rename 404 without read_all keeps the link + sets `stravaNameError`; `rec.stravaUploadedName` set on upload, and `stravaMarkRename` skips when the name is unchanged; a pending rename that rode along with the upload is cleared.
@@ -464,17 +470,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** Phase 1b step 3. Web audio/vibrate die with the screen off; the app view has no `speechSynthesis`.
 - **Watch out:** turn notes are often the whole instruction — `_turnSpeech` keeps only the road after "onto"/"on" and drops direction-only notes. Speech only fires while a ride's GPS service keeps the app alive; without a ride Android freezes the page (first desk test was silent for that reason).
 - **Verified:** `node verify.js`; phrases asserted in the browser (5 note shapes); on the Pixel with a ride recording and the screen LOCKED: heads-up, "Turn left", off-route speech and buzzes all heard/felt by Peter, fixes still 1 s apart. Backup `backup/index-v388-pre-v389.html`. Pushed 27 Sep; live app build confirmed loading it.
-
-### v388 (27 Sep) — Native shell: background GPS via plugin; file pickers work in the app
-- **Changed:** GPS section top: `IS_NATIVE`, `_nativePlugin(name)` (reads `Capacitor.Plugins` — the shell loads a URL, so there is NO `registerPlugin`), `gpsWatch`/`gpsClearWatch` replace every `watchPosition`/`clearWatch` (native = `BackgroundGeolocation.addWatcher`, foreground service + notification; asks notification permission first). Capture-phase click listener strips `accept` from file inputs in the app only.
-- **Why:** Phase 1b step 2 — screen-off recording. `_planning/PackTimes-Native-Shell_Plan_v1.md`.
-- **Watch out:** anything at top level in the native block must never throw — one `registerPlugin` call crashed the whole app at load. Native watch ids are strings (`'n4'`), browser ids numbers. `getCurrentPosition` stays on `navigator.geolocation`.
-- **Verified:** `node verify.js`; browser preview unchanged (`IS_NATIVE` false). Dev build on Peter's Pixel 10 (loads this PC over USB): 12-min walk, screen off 13:43–13:49, 1–2 s points throughout, every gap a stop/resume pair; FGS `types=0x8` (location) running. Backup `backup/index-v387-pre-v388.html`. Pushed 27 Sep with v387; live app build confirmed loading it.
-
-### v387 (26 Sep) — Recording at 1 s (was 5 m); power/HR sampled 1 s independent of GPS
-- **Changed:** `_appendPoint` active branch writes a point every `REC_MIN_TICK_MS` regardless of distance; stop detection moved to new `_recAnchor` (moves only on a ≥minMove step — old `_recStored` semantics). New `_recSensorFields` (shared by `_recPt`) and `_recSensorSample` → `rec.sensors[]`, fed from the power/HR BLE notifications + sim tick. `UI.powerWattsRaw` recorded instead of 3 s smoothed `powerWatts`. `encodeActivityFit` merges `rec.sensors` into seconds with no GPS point via `FIELDS_RECORD_SENSOR` (local 6).
-- **Why:** intervals.icu flagged rides as ~2 s smart recording; power bests were wrong.
-- **Watch out:** any new `_recStored` reset must null `_recAnchor` too. `rec.sensors` is FIT-only (GPX, map, stats ignore it). Sensor-only FIT records must never get position/alt fields — invalid alt decodes as 12,607 m.
-- **Verified:** `node verify.js`; `_planning/fit-spike/_tmp_1s.mjs` replays a ride through the shipped functions + Garmin SDK decode: 1 s points on a 9 km/h climb, stop/resume still detected, 118/118 s with power across GPS dropouts, 0 SDK errors. Preview loads clean. Backup `backup/index-v386-pre-v387.html`. NOT pushed.
 
 <!-- VERSION-LOG-END -->

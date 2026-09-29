@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v398';
+window.APP_VERSION='v397';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -6054,12 +6054,6 @@ const REC_MIN_MOVE_M_DEFAULT     = 5;     // metres: store new point at this dis
 const REC_STATIONARY_M           = 10;    // metres: within = "not meaningfully moving"
 const REC_STOP_DETECT_MS_DEFAULT = 5000;  // ms: must stay stationary this long before "stopped"
 const REC_MIN_TICK_MS            = 1000;  // ms: don't store more than once per second
-// v398 — "once per second" means once per FIT SECOND (the same Math.round the FIT writer uses),
-// not ">= 1000 ms since the last one". GPS and the Assiomas both deliver about every 1000 ms with
-// jitter, so a reading 980 ms after the last was thrown away and the next kept ~2 s later —
-// half of all points and a third of the power samples were lost, and intervals.icu flagged the
-// ride as ~2 s "smart recording" (28-29 Sep rides).
-const _recSec = t => Math.round(t / 1000);
 
 // Gap detection & fill (Phase 1a Step 5b)
 const GAP_THRESHOLD_MS = 15000;    // no fix for this long while recording = a gap
@@ -6313,7 +6307,7 @@ let _recSensorLastT = 0, _recSensorSavedT = 0;
 function _recSensorSample(now){
   if(!_rec || _rec.status !== 'active' || _recMode !== 'active' || !_recStored) return;
   if(UI.simRunning || UI.simPaused) return;   // sim fixes use replayed timestamps, not now
-  if(_recSec(now) <= _recSec(_recSensorLastT)) return;   // v398 — one per FIT second
+  if(now - _recSensorLastT < REC_MIN_TICK_MS) return;
   const s = {t: now};
   if(!_recSensorFields(s)) return;
   _recSensorLastT = now;
@@ -6403,7 +6397,7 @@ function _appendPoint(lat, lon, ele, t, accuracy){
     // v387 — write a point every second while moving, whatever the distance. 1 s is what
     // intervals.icu / Garmin's "every second" mode expect; sensor readings ride on each
     // point, so fewer points meant fewer power samples.
-    if(_recSec(t) > _recSec(_recStored.t)){   // v398 — one per FIT second, see _recSec
+    if((t - _recStored.t) >= REC_MIN_TICK_MS){
       _rec.points.push(_recPt(lat, lon, ele, t, accuracy));
       _rec.totalDist += distFromStored / 1000;  // store in km, _recDist returns metres
       _recStored = fix;
@@ -25057,16 +25051,11 @@ function _bleChar(deviceId, service, uuid){
     },
     async writeValue(bytes){ await _bleCall(()=>_nativeBle.write({deviceId,service,characteristic:uuid,value:_bleDVToHex(bytes)})); },
     async startNotifications(){
-      // v398 — the native listener is added ONCE per characteristic; a reconnect only re-arms
-      // notifications on the pedal. Adding it again each time doubled every reading.
-      if(!ch._nlBound){
-        ch._nlBound=true;
-        await _nativeBle.addListener('notification|'+deviceId+'|'+service+'|'+uuid, ev=>{
-          ch.value=_bleHexToDV(ev&&ev.value);
-          const e={target:ch};
-          ch._l.forEach(cb=>{ try{ cb(e); }catch(err){ console.warn('BLE', err); } });
-        });
-      }
+      await _nativeBle.addListener('notification|'+deviceId+'|'+service+'|'+uuid, ev=>{
+        ch.value=_bleHexToDV(ev&&ev.value);
+        const e={target:ch};
+        ch._l.forEach(cb=>{ try{ cb(e); }catch(err){ console.warn('BLE', err); } });
+      });
       await _bleCall(()=>_nativeBle.startNotifications({deviceId,service,characteristic:uuid}));
       return ch;
     }
@@ -25075,28 +25064,17 @@ function _bleChar(deviceId, service, uuid){
   return ch;
 }
 function _bleDevice(id, name){
-  // v398 — reconnect-safe: one disconnect listener per device, and characteristics are cached per
-  // service+uuid so a reconnect hands back the SAME objects (their listeners stay attached once).
-  const chars = new Map();
-  let discBound = false;
   const dev = { id, name:name||'', _l:[],
     addEventListener(t,cb){ if(t==='gattserverdisconnected') dev._l.push(cb); },
     gatt:{ connected:false,
       async connect(){
-        if(!discBound){
-          discBound = true;
-          await _nativeBle.addListener('disconnected|'+id, ()=>{
-            dev.gatt.connected=false;
-            dev._l.forEach(cb=>{ try{ cb({target:dev}); }catch(e){} });
-          });
-        }
+        await _nativeBle.addListener('disconnected|'+id, ()=>{
+          dev.gatt.connected=false;
+          dev._l.forEach(cb=>{ try{ cb({target:dev}); }catch(e){} });
+        });
         await _bleCall(()=>_nativeBle.connect({deviceId:id}));
         dev.gatt.connected=true;
-        return { getPrimaryService: async s=>{ const su=_bleUUID(s); return { getCharacteristic: async c=>{
-          const cu=_bleUUID(c), k=su+'|'+cu;
-          if(!chars.has(k)) chars.set(k, _bleChar(id, su, cu));
-          return chars.get(k);
-        } }; } };
+        return { getPrimaryService: async s=>{ const su=_bleUUID(s); return { getCharacteristic: async c=>_bleChar(id, su, _bleUUID(c)) }; } };
       },
       disconnect(){ dev.gatt.connected=false; _bleCall(()=>_nativeBle.disconnect({deviceId:id})).catch(()=>{}); }
     }
@@ -25120,61 +25098,28 @@ const _nativeBluetooth = _nativeBle && {
 };
 function _bt(){ return navigator.bluetooth || _nativeBluetooth || null; }
 
-// ── v398 — AUTO-RECONNECT. Peter, 29 Sep: "on the descent… the power meter had lost its connection.
-// I had to go and repair it again." Assiomas stop talking when you stop pedalling; a head unit just
-// reconnects when you start again. Pairing (picking the pedals) is now separate from ATTACHING
-// (connect + subscribe): a drop schedules re-attach attempts on the same pedals until the rider
-// disconnects them on purpose (_powerWant=false). Weighted power survives a dropout; only a
-// deliberate disconnect resets it. Listeners are bound once per characteristic object.
-let _powerWant=false,_powerRetryTimer=null,_powerRetryN=0;
-const BLE_RETRY_MS=[3000,5000,10000,15000];   // then every 15 s for as long as it takes
-
 async function connectPowerMeter(){
   if(!_bt()){
     alert(bleUnsupportedMsg('Power meter'));
     return;
   }
   try{
-    const dev=await _bt().requestDevice({
+    _powerDevice=await _bt().requestDevice({
       filters:[{services:[CYCLING_POWER_SERVICE]}],
       optionalServices:[CYCLING_POWER_SERVICE]
     });
-    if(_powerRetryTimer){clearTimeout(_powerRetryTimer);_powerRetryTimer=null;}
-    _powerDevice=dev;_powerWant=true;_powerRetryN=0;
-    dev.addEventListener('gattserverdisconnected',()=>{ if(dev===_powerDevice)_powerOnDisconnect(); });
-    await _powerAttach(dev);
-  }catch(e){
-    if(e.name!=='NotFoundError')alert('Could not connect: '+e.message);
-  }
-}
-
-function _powerOnDisconnect(){
-  UI.powerConnected=false;UI.powerWatts=null;UI.powerWattsRaw=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
-  _powerChar=null;_powerWindow.length=0;
-  if(!_powerWant){_npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;}   // v398 — keep across a dropout
-  // v274 — the crank length belongs to the PEDAL, so it goes when the pedal goes. Showing
-  // a remembered value next to "not connected" would be claiming to know something we
-  // can no longer see. (Re-read from the pedals on reconnect.)
-  _powerCP=null;_powerCPWaiters.forEach(w=>clearTimeout(w.timer));_powerCPWaiters=[];
-  UI.crankLengthMm=null;UI.powerCrankAdjust=false;UI.crankStatus='';
-  if(UI.tab==='live')renderKeepScroll();
-  if(_powerWant)_powerScheduleRetry();
-}
-
-function _powerScheduleRetry(){
-  if(_powerRetryTimer||!_powerWant||!_powerDevice)return;
-  const ms=BLE_RETRY_MS[Math.min(_powerRetryN++,BLE_RETRY_MS.length-1)];
-  _powerRetryTimer=setTimeout(async()=>{
-    _powerRetryTimer=null;
-    if(!_powerWant||UI.powerConnected)return;
-    try{ await _powerAttach(_powerDevice); _recToast('Power meter reconnected'); }
-    catch(e){ _powerScheduleRetry(); }
-  },ms);
-}
-
-// Connect + subscribe to an already-picked power meter. Throws if the pedals don't answer.
-async function _powerAttach(dev){
-    const server=await dev.gatt.connect();
+    _powerDevice.addEventListener('gattserverdisconnected',()=>{
+      UI.powerConnected=false;UI.powerWatts=null;UI.powerWattsRaw=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
+      _powerChar=null;_powerWindow.length=0;
+      _npRawBuffer.length=0;_npSum4=0;_npCount=0;_npLastSampleTs=0;
+      // v274 — the crank length belongs to the PEDAL, so it goes when the pedal goes. Showing
+      // a remembered value next to "not connected" would be claiming to know something we
+      // can no longer see.
+      _powerCP=null;_powerCPWaiters.forEach(w=>clearTimeout(w.timer));_powerCPWaiters=[];
+      UI.crankLengthMm=null;UI.powerCrankAdjust=false;UI.crankStatus='';
+      if(UI.tab==='live')renderKeepScroll();
+    });
+    const server=await _powerDevice.gatt.connect();
     const service=await server.getPrimaryService(CYCLING_POWER_SERVICE);
     _powerChar=await service.getCharacteristic(CYCLING_POWER_MEASUREMENT);
     // v274 — crank length, in its OWN try/catch and awaited BEFORE nothing.
@@ -25193,12 +25138,11 @@ async function _powerAttach(dev){
       // MUST subscribe before writing — the spec has the sensor answer by indication, and
       // an unsubscribed client gets CCCD Improperly Configured rather than a response.
       await _powerCP.startNotifications();
-      if(!_powerCP._ptBound){_powerCP._ptBound=true;_powerCP.addEventListener('characteristicvaluechanged',_cpOnIndication);}
+      _powerCP.addEventListener('characteristicvaluechanged',_cpOnIndication);
       UI.crankLengthMm=await powerReadCrankLength();
     }catch(e){ _powerCP=null; UI.crankLengthMm=null; }
     _powerChar._lastCrankRevs=undefined;_powerChar._lastCrankTime=undefined;
     await _powerChar.startNotifications();
-    if(!_powerChar._ptBound){_powerChar._ptBound=true;   // v398 — once per characteristic object
     _powerChar.addEventListener('characteristicvaluechanged',e=>{
       const{watts,cadence,balance,maxForceN,minForceN,maxTorqueNm,flags}=_parsePowerMeasurement(e.target.value.buffer);
       const now=Date.now();
@@ -25281,16 +25225,16 @@ async function _powerAttach(dev){
       if(cadEl&&UI.powerCadence!==null)cadEl.textContent=UI.powerCadence;
       const balEl=document.getElementById('live-cad-bal');
       if(balEl)balEl.textContent=_powerBalTxt();   // v267 — one authority, see _powerBalTxt
-    });}
+    });
     UI.powerConnected=true;
-    UI.powerDeviceName=dev.name||'Power meter';
-    _powerRetryN=0;
+    UI.powerDeviceName=_powerDevice.name||'Power meter';
     if(UI.tab==='live')renderKeepScroll();
+  }catch(e){
+    if(e.name!=='NotFoundError')alert('Could not connect: '+e.message);
+  }
 }
 
 function disconnectPowerMeter(){
-  _powerWant=false;   // v398 — deliberate: stop auto-reconnecting
-  if(_powerRetryTimer){clearTimeout(_powerRetryTimer);_powerRetryTimer=null;}
   if(_powerDevice&&_powerDevice.gatt.connected)_powerDevice.gatt.disconnect();
   UI.powerConnected=false;UI.powerWatts=null;UI.powerWattsRaw=null;UI.powerCadence=null;UI.powerBalance=null;UI.powerDeviceName=null;UI.powerMaxForceN=null;UI.powerMaxTorqueNm=null;UI.powerHasPeak=false;
   _powerChar=null;_powerWindow.length=0;
@@ -25304,43 +25248,22 @@ const HR_SERVICE    = 0x180D;
 const HR_MEASUREMENT= 0x2A37;
 let _hrDevice=null,_hrChar=null;
 
-// v398 — same auto-reconnect as the power meter (see _powerWant). Average HR survives a dropout.
-let _hrWant=false,_hrRetryTimer=null,_hrRetryN=0;
 async function connectHRMonitor(){
   if(!_bt()){alert(bleUnsupportedMsg('Heart rate strap'));return;}
   try{
-    const dev=await _bt().requestDevice({
+    _hrDevice=await _bt().requestDevice({
       filters:[{services:[HR_SERVICE]}],
       optionalServices:[HR_SERVICE]
     });
-    if(_hrRetryTimer){clearTimeout(_hrRetryTimer);_hrRetryTimer=null;}
-    _hrDevice=dev;_hrWant=true;_hrRetryN=0;
-    dev.addEventListener('gattserverdisconnected',()=>{
-      if(dev!==_hrDevice)return;
+    _hrDevice.addEventListener('gattserverdisconnected',()=>{
       UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
-      if(!_hrWant){UI._hrSum=0;UI._hrCount=0;}
+      UI._hrSum=0;UI._hrCount=0;
       if(UI.tab==='live')renderKeepScroll();
-      if(_hrWant)_hrScheduleRetry();
     });
-    await _hrAttach(dev);
-  }catch(e){if(e.name!=='NotFoundError')alert('Could not connect: '+e.message);}
-}
-function _hrScheduleRetry(){
-  if(_hrRetryTimer||!_hrWant||!_hrDevice)return;
-  const ms=BLE_RETRY_MS[Math.min(_hrRetryN++,BLE_RETRY_MS.length-1)];
-  _hrRetryTimer=setTimeout(async()=>{
-    _hrRetryTimer=null;
-    if(!_hrWant||UI.hrConnected)return;
-    try{ await _hrAttach(_hrDevice); _recToast('Heart rate strap reconnected'); }
-    catch(e){ _hrScheduleRetry(); }
-  },ms);
-}
-async function _hrAttach(dev){
-    const server=await dev.gatt.connect();
+    const server=await _hrDevice.gatt.connect();
     const service=await server.getPrimaryService(HR_SERVICE);
     _hrChar=await service.getCharacteristic(HR_MEASUREMENT);
     await _hrChar.startNotifications();
-    if(!_hrChar._ptBound){_hrChar._ptBound=true;
     _hrChar.addEventListener('characteristicvaluechanged',e=>{
       const d=e.target.value;
       const flags=d.getUint8(0);
@@ -25382,15 +25305,13 @@ async function _hrAttach(dev){
           const l=document.getElementById('live-hr-avglbl'); if(l)l.style.color=c;
         }
       }
-    });}
-    UI.hrConnected=true;UI.hrDeviceName=dev.name||'HR monitor';
-    _hrRetryN=0;
+    });
+    UI.hrConnected=true;UI.hrDeviceName=_hrDevice.name||'HR monitor';
     if(UI.tab==='live')renderKeepScroll();
+  }catch(e){if(e.name!=='NotFoundError')alert('Could not connect: '+e.message);}
 }
 
 function disconnectHRMonitor(){
-  _hrWant=false;   // v398 — deliberate: stop auto-reconnecting
-  if(_hrRetryTimer){clearTimeout(_hrRetryTimer);_hrRetryTimer=null;}
   if(_hrDevice&&_hrDevice.gatt.connected)_hrDevice.gatt.disconnect();
   UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
   UI._hrSum=0;UI._hrCount=0;
