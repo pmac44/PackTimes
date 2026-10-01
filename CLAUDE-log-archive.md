@@ -9,6 +9,14 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v389 (27 Sep) — App speaks turns + off-route, WAKES THE SCREEN at turns; mid-ride reload keeps GPS
+- **Also changed (same version):** `wakeScreen()` / `_nativeLockScreen(on)` over the shell's own `ScreenWakePlugin.java` (`C:\dev\packtimes-native`): ride GPS on → Ride screen may show over the lock screen; turn heads-up and off-route alarm light the screen if it's off (30 s wake lock, then normal timeout). `checkAlerts` turn block now runs when `_nativeScreen` even with turn audio off. **Bug fix (web too):** INIT now `startGPS()` when `_recRehydrate` restored an ACTIVE ride (GPS was reset and nothing restarted it), and `_recControlTap` resume starts GPS if off. Verified on the Pixel: force-stop mid-ride → relaunch → GPS back in 4 s; screen off → heads-up → `mWakefulness` Dozing→Awake, focus `MainActivity` over keyguard. No "Turn screen on" grant was needed on Android 17.
+- **Changed:** GPS native block: `_nativeTTS/_nativeHaptics/_nativeKeepAwake`, `speak(text,urgent)`, `buzz(pattern)` (every `navigator.vibrate` now goes through it). Audio section: `TURN_WORDS`, `_turnSpeech(stage,turn,remM)`, `playTurnCue(stage,turn,remM)` — in the app it SPEAKS instead of beeping; `checkAlerts` passes the turn + real distance (`remM/mult`). `requestWakeLock/releaseWakeLock` use KeepAwake in the app. `showOffRouteAlert` also speaks.
+- **Why:** Phase 1b step 3. Web audio/vibrate die with the screen off; the app view has no `speechSynthesis`.
+- **Watch out:** turn notes are often the whole instruction — `_turnSpeech` keeps only the road after "onto"/"on" and drops direction-only notes. Speech only fires while a ride's GPS service keeps the app alive; without a ride Android freezes the page (first desk test was silent for that reason).
+- **Verified:** `node verify.js`; phrases asserted in the browser (5 note shapes); on the Pixel with a ride recording and the screen LOCKED: heads-up, "Turn left", off-route speech and buzzes all heard/felt by Peter, fixes still 1 s apart. Backup `backup/index-v388-pre-v389.html`. Pushed 27 Sep; live app build confirmed loading it.
+
+
 ### v388 (27 Sep) — Native shell: background GPS via plugin; file pickers work in the app
 - **Changed:** GPS section top: `IS_NATIVE`, `_nativePlugin(name)` (reads `Capacitor.Plugins` — the shell loads a URL, so there is NO `registerPlugin`), `gpsWatch`/`gpsClearWatch` replace every `watchPosition`/`clearWatch` (native = `BackgroundGeolocation.addWatcher`, foreground service + notification; asks notification permission first). Capture-phase click listener strips `accept` from file inputs in the app only.
 - **Why:** Phase 1b step 2 — screen-off recording. `_planning/PackTimes-Native-Shell_Plan_v1.md`.

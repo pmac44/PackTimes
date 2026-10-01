@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v399';
+window.APP_VERSION='v398';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1862,32 +1862,13 @@ function clearRouteCaches(r){ if(!r)return r; delete r._gradeSegs; delete r._smE
 function packRoute(r){const{_moffM,_moffDiag,_gradeSegs,_smEle,_climbs,_hasEle,_kmLen,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session; _gradeSegs/_smEle/_climbs are derived from points and MUST NOT be persisted (v350)
   points:r.points.map(p=>[
     Math.round(p.lat*1e5)/1e5,Math.round(p.lon*1e5)/1e5,
-    Math.round(p.ele),Math.round(p.dist*1000)/1000,p.time?p.time.getTime():0]),   // v399 — to the metre (was *10/10 = 100 m steps)
+    Math.round(p.ele),Math.round(p.dist*10)/10,p.time?p.time.getTime():0]),
   cumRiding:r.cumRiding?r.cumRiding.map(h=>Math.round(h*10000)/10000):null};}
 function makeStopId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 
-// v399 — rebuild every point's along-route distance from the geometry. packRoute used to store
-// dist rounded to 0.1 km, so a route that had been saved and reloaded had its distance in 100 m
-// STEPS (0, 100, 100, 100, 200, 200 m… — points in between shared one value). The live position
-// along the route then froze for up to 100 m and jumped: turn alerts said "in 0 metres", the
-// 20 m "turn now" window was skipped, and some turns were missed outright (Peter's 30 Sep ride,
-// Majura Pkwy: 5 of 21 turns silent). Cumulative great-circle distance — the same sum the parsers
-// use, so turn markers land within 1 m of where they were. Where the stored length disagrees by
-// more than 0.5% (a file that supplied its own distances; 2 of Peter's 39 routes, up to 4%), the
-// geometry is scaled to it so stops and turns keep their places. Self-heals every saved route.
-function _rebuildPointDist(r){
-  const P=r.points;if(!P||P.length<2)return;
-  const g=new Float64Array(P.length);let d=0;
-  for(let i=1;i<P.length;i++){d+=hav(P[i-1],P[i]);g[i]=d;}
-  const stored=P[P.length-1].dist;
-  const k=(stored>0&&d>0&&Math.abs(stored/d-1)>0.005)?stored/d:1;
-  for(let i=0;i<P.length;i++)P[i].dist=g[i]*k;
-  r.totalDist=P[P.length-1].dist;   // the saved total was rounded to 0.1 km too
-}
 function unpackRoute(r){
   const out={...r,points:(r.points||[]).map(a=>
     Array.isArray(a)?{lat:a[0],lon:a[1],ele:a[2],dist:a[3],time:a[4]?new Date(a[4]):null}:a)};
-  _rebuildPointDist(out);   // v399
   clearRouteCaches(out);   // v350 — plans saved before v350 carry stale _gradeSegs/_smEle/_climbs; bin them on load so the offset self-heals
   // Rebuild cumRiding if missing (old saved routes)
   if(!out.paceSegs)out.paceSegs=[];

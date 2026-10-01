@@ -9,6 +9,19 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v388 (27 Sep) — Native shell: background GPS via plugin; file pickers work in the app
+- **Changed:** GPS section top: `IS_NATIVE`, `_nativePlugin(name)` (reads `Capacitor.Plugins` — the shell loads a URL, so there is NO `registerPlugin`), `gpsWatch`/`gpsClearWatch` replace every `watchPosition`/`clearWatch` (native = `BackgroundGeolocation.addWatcher`, foreground service + notification; asks notification permission first). Capture-phase click listener strips `accept` from file inputs in the app only.
+- **Why:** Phase 1b step 2 — screen-off recording. `_planning/PackTimes-Native-Shell_Plan_v1.md`.
+- **Watch out:** anything at top level in the native block must never throw — one `registerPlugin` call crashed the whole app at load. Native watch ids are strings (`'n4'`), browser ids numbers. `getCurrentPosition` stays on `navigator.geolocation`.
+- **Verified:** `node verify.js`; browser preview unchanged (`IS_NATIVE` false). Dev build on Peter's Pixel 10 (loads this PC over USB): 12-min walk, screen off 13:43–13:49, 1–2 s points throughout, every gap a stop/resume pair; FGS `types=0x8` (location) running. Backup `backup/index-v387-pre-v388.html`. Pushed 27 Sep with v387; live app build confirmed loading it.
+
+### v387 (26 Sep) — Recording at 1 s (was 5 m); power/HR sampled 1 s independent of GPS
+- **Changed:** `_appendPoint` active branch writes a point every `REC_MIN_TICK_MS` regardless of distance; stop detection moved to new `_recAnchor` (moves only on a ≥minMove step — old `_recStored` semantics). New `_recSensorFields` (shared by `_recPt`) and `_recSensorSample` → `rec.sensors[]`, fed from the power/HR BLE notifications + sim tick. `UI.powerWattsRaw` recorded instead of 3 s smoothed `powerWatts`. `encodeActivityFit` merges `rec.sensors` into seconds with no GPS point via `FIELDS_RECORD_SENSOR` (local 6).
+- **Why:** intervals.icu flagged rides as ~2 s smart recording; power bests were wrong.
+- **Watch out:** any new `_recStored` reset must null `_recAnchor` too. `rec.sensors` is FIT-only (GPX, map, stats ignore it). Sensor-only FIT records must never get position/alt fields — invalid alt decodes as 12,607 m.
+- **Verified:** `node verify.js`; `_planning/fit-spike/_tmp_1s.mjs` replays a ride through the shipped functions + Garmin SDK decode: 1 s points on a 9 km/h climb, stop/resume still detected, 118/118 s with power across GPS dropouts, 0 SDK errors. Preview loads clean. Backup `backup/index-v386-pre-v387.html`. NOT pushed.
+
+
 ### v386 (26 Sep) — Offline route download now Mapbox-only, with a picker; rider's own token in Settings
 - **Changed:** `TILE_URLS` gains 5=Mapbox Outdoors, 6=Mapbox Satellite (`satellite-streets-v12`, 256@2x); new `MAPBOX_MODES`, `TILE_MODE_NAMES`, `tileModeAvailable`, `tileUrl()` (all tile URLs go through it). `downloadRouteTiles` split → `_routeTileKeys`; refuses non-Mapbox modes. `startTileDownload(ridx,modes)`; new `openOfflinePicker` (route-row download button). Settings → Offline Maps: token box (`UI.mapboxToken`, in uiPrefs), checked against a real tile before saving. Tile button cycles OUTD/MSAT only with a token. `MAP_CREDITS` +2. `sw.js`: caches `api.mapbox.com/styles/v1/…/tiles/…` cache-first.
 - **Why:** OSM/CyclOSM/Topo/Esri forbid prefetch; Mapbox allows a single-device offline cache. Token not in code: URL restriction needs a paid Mapbox account.
