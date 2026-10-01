@@ -1759,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v400';
+window.APP_VERSION='v399';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7900,7 +7900,7 @@ function stravaAuthURL(){
     client_id: STRAVA_CLIENT_ID,
     redirect_uri: STRAVA_REDIRECT,
     response_type: 'code',
-    approval_prompt: 'force',   // always show the boxes, so the rider can see private activities is ticked (1 Oct)
+    approval_prompt: 'auto',
     scope: STRAVA_SCOPES,
     state,
   });

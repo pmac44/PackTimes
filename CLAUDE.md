@@ -408,6 +408,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v400 (1 Oct) — Strava connect always shows its permission page
+- **Changed:** `stravaAuthURL`: `approval_prompt` 'auto' → 'force'.
+- **Why:** reconnecting on the Play install skipped Strava's page (prior approval reused), so Peter couldn't see whether "private activities" (activity:read_all, needed since v396) was ticked.
+- **Watch out:** Google sign-in on Strava/Dropbox pages leaves the app's WebView and dead-ends in Chrome — see the plan note's MUST FIX; sign in with email + password until the Custom Tab fix ships.
+- **Verified:** `node verify.js`. Backup `backup/index-v399-pre-v400.html`. NOT pushed.
+
 ### v399 (30 Sep) — Saved routes lost their distance precision (100 m steps); now rebuilt on load
 - **Changed:** PERSIST: `packRoute` stores point dist to the metre (was `Math.round(dist*10)/10` = 0.1 km). New `_rebuildPointDist(r)` called first thing in `unpackRoute`: cumulative `hav` over the points; kept as-is when within 0.5% of the stored length, else scaled to it; sets `r.totalDist` from it.
 - **Why:** 30 Sep ride (v398, Majura Pkwy): alert log showed "Left in 0 metres", missing "turn now" calls and 5 of 21 turns never alerted. Every saved/reloaded route had point distances in 100 m steps, so the live along-route position froze and jumped (replay: 1,400 of 2,381 fixes frozen → 2 after the fix). Affected Chrome too, since packing began.
@@ -463,11 +469,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** Phase 1b step 5 — the app view silently ignores downloads.
 - **Watch out:** patched on the prototype because two callers click anchors never added to the page. New export code must keep using a blob/data `<a download>` (or call `_nativeSaveShare`). Mission-brief PRINT (`window.open('')` + `print()`) is NOT fixed — untested in the app, probably does nothing.
 - **Verified:** `node verify.js`; browser prototype unpatched. Pixel dev build: `shareRideFile` → share sheet → Peter saved to Google Drive, right name. Same session: Dropbox and Strava sign-ins both return into the app on the LIVE build with no code change. intervals.icu (pasted key) not tried. Backup `backup/index-v390-pre-v391.html`. NOT pushed.
-
-### v390 (27 Sep) — Bluetooth sensors work in the app (Web Bluetooth stand-in over the BluetoothLe plugin)
-- **Changed:** POWER METER section, before `connectPowerMeter`: `_nativeBle`, `_bleCall` (one-at-a-time GATT queue), `_bleUUID`, `_bleHexToDV/_bleDVToHex`, `_bleChar`, `_bleDevice`, `_nativeBluetooth.requestDevice`, `_bt()`. `connectPowerMeter`/`connectHRMonitor` use `_bt()` instead of `navigator.bluetooth`. The power/HR/crank code itself is untouched.
-- **Why:** Phase 1b step 4 — the Android app view has no `navigator.bluetooth`.
-- **Watch out:** `_bt()` prefers the real `navigator.bluetooth`, so desktop/Chrome never touch the stand-in. Native picker cancel is mapped to `NotFoundError` so no alert. Plugin values are hex strings. Any NEW Web Bluetooth call (e.g. `getDescriptor`, `writeValueWithoutResponse`) must be added to the stand-in first.
-- **Verified:** `node verify.js`; browser: `_bt()===navigator.bluetooth`, crank write bytes `045901` for 172.5, read-back `2005015901` → 172.5. Pixel dev build with Peter's Assiomas: paired, watts + cadence live, crank length read 175 (write+indicate path). HR strap NOT tested (Peter has none). Write of a new crank length not tried. Backup `backup/index-v389-pre-v390.html`. Pushed 27 Sep; live app build confirmed loading it.
 
 <!-- VERSION-LOG-END -->
