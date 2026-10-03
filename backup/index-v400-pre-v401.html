@@ -69,24 +69,6 @@
 @font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/space-grotesk-latin-700-normal.woff2') format('woff2');}
 </style>
 <script>
-/* v401 — app sign-in return. The Android app opens Strava/Dropbox sign-in in a Chrome Custom Tab
-   (Google refuses sign-in inside an app's own web view), with "~<app id>" on the end of the OAuth
-   state. Both services send the tab back HERE; this hands the code to the app through its own
-   URL scheme (<app id>://oauth?...) and stops PackTimes booting in Chrome. The button is the
-   fallback for when Chrome won't open an app without a tap. */
-(function(){try{
-  if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform())return;
-  var q=new URLSearchParams(location.search), st=q.get('state')||'', m=st.match(/~([a-z][a-z0-9.]*)$/);
-  if(!m||(!q.get('code')&&!q.get('error')))return;
-  window.__ptOAuthBounce=true;
-  var to=m[1]+'://oauth'+location.search;
-  document.write('<!DOCTYPE html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:#0d1a0d;color:#e6ede7;font:17px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center"><div><p>Signed in. Returning to PackTimes&hellip;</p><p><a id="go" style="display:inline-block;margin-top:12px;padding:14px 22px;border-radius:10px;background:#4ade80;color:#0d1a0d;font-weight:700;text-decoration:none">Return to PackTimes</a></p></div></body>');
-  document.close();
-  document.getElementById('go').href=to;
-  location.replace(to);
-}catch(e){}})();
-</script>
-<script>
 /* Restyle: set the colour theme BEFORE first paint so there's no flash.
    'pt_theme_resolved' is a lightweight localStorage mirror the app writes whenever
    the resolved theme changes (the real setting — paper/graphite/auto — lives in
@@ -1777,7 +1759,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v401';
+window.APP_VERSION='v400';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5537,18 +5519,6 @@ function _nativePlugin(name){
   }catch(e){ return null; }
 }
 const _nativeGeo = _nativePlugin('BackgroundGeolocation');
-// v401 — OAuth bits kept in localStorage (sessionStorage dies if Android kills the app while the
-// sign-in tab is open). Falls back to sessionStorage where localStorage throws.
-const _oaStore=(()=>{try{localStorage.setItem('_oa','1');localStorage.removeItem('_oa');return localStorage;}catch(e){return sessionStorage;}})();
-// v401 — in the app, sign-ins run in a Chrome Custom Tab (Browser plugin) and come back through
-// the app's URL scheme (App plugin, appUrlOpen). Both needed; an older shell without them keeps
-// the old in-app-view sign-in. _oauthAppId is the scheme ("com.packtimes.app", ".dev" on USB builds).
-const _nativeBrowser = _nativePlugin('Browser');
-const _nativeApp = _nativePlugin('App');
-let _oauthAppId = null;
-if(_nativeBrowser && _nativeApp){
-  try{ _nativeApp.getInfo().then(i=>{ _oauthAppId=(i&&i.id)||null; }).catch(()=>{}); }catch(e){}
-}
 const _nativeNotif = _nativePlugin('LocalNotifications');
 // v389 (Phase 1b step 3): screen-off alerts. Web beeps and navigator.vibrate don't survive the
 // screen going off, and the app view has no speechSynthesis — so in the app, turns and the
@@ -7924,8 +7894,8 @@ let _stravaBusy = false;
 let _stravaLastForce = 0;
 
 function stravaAuthURL(){
-  const state = 'strava_' + Math.random().toString(36).slice(2) + _oauthStateTail();
-  _oaStore.setItem('strava_state', state);
+  const state = 'strava_' + Math.random().toString(36).slice(2);
+  sessionStorage.setItem('strava_state', state);
   return 'https://www.strava.com/oauth/authorize?' + new URLSearchParams({
     client_id: STRAVA_CLIENT_ID,
     redirect_uri: STRAVA_REDIRECT,
@@ -7943,8 +7913,8 @@ async function stravaHandleRedirect(){
   const granted = params.get('scope');   // v396 — what the rider actually ticked on Strava's page
   history.replaceState(null, '', window.location.pathname);
   if(!code) return;
-  if(state !== _oaStore.getItem('strava_state')){ _recToast('Strava sign-in didn’t match — try again'); return; }
-  _oaStore.removeItem('strava_state');
+  if(state !== sessionStorage.getItem('strava_state')){ _recToast('Strava sign-in didn’t match — try again'); return; }
+  sessionStorage.removeItem('strava_state');
   try{
     const res = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
@@ -7960,9 +7930,9 @@ async function stravaHandleRedirect(){
       UI.stravaAthlete = data.athlete ? ((data.athlete.firstname||'') + ' ' + (data.athlete.lastname||'')).trim() : null;
       UI.stravaScope = granted || null;
       if(UI.stravaAutoUpload == null) UI.stravaAutoUpload = true;   // default ON at first connect
-      const returnTab = _oaStore.getItem('strava_return_tab');
+      const returnTab = sessionStorage.getItem('strava_return_tab');
       if(returnTab) UI.tab = returnTab;
-      _oaStore.removeItem('strava_return_tab');
+      sessionStorage.removeItem('strava_return_tab');
       await saveAll();
       render();
       _recToast('Connected to Strava — auto-upload is on (change in Settings)');
@@ -16133,9 +16103,9 @@ let _dbxRefreshInflight=null;  // de-dupes concurrent refreshes (save + focus-ch
 
 function dbxAuthURL(){
   const verifier=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b=>b.toString(16).padStart(2,'0')).join('');
-  _oaStore.setItem('dbx_verifier',verifier);
-  const state=Math.random().toString(36).slice(2)+_oauthStateTail();
-  _oaStore.setItem('dbx_state',state);
+  sessionStorage.setItem('dbx_verifier',verifier);
+  const state=Math.random().toString(36).slice(2);
+  sessionStorage.setItem('dbx_state',state);
   return'https://www.dropbox.com/oauth2/authorize?'+new URLSearchParams({
     client_id:DBX_APP_KEY,
     redirect_uri:DBX_REDIRECT,
@@ -16153,9 +16123,9 @@ async function dbxHandleRedirect(){
   const state=params.get('state');
   if(!code)return;
   history.replaceState(null,'',window.location.pathname);
-  if(state!==_oaStore.getItem('dbx_state')){dbxSetStatus('Auth state mismatch','err');return;}
-  const verifier=_oaStore.getItem('dbx_verifier');
-  _oaStore.removeItem('dbx_state');_oaStore.removeItem('dbx_verifier');
+  if(state!==sessionStorage.getItem('dbx_state')){dbxSetStatus('Auth state mismatch','err');return;}
+  const verifier=sessionStorage.getItem('dbx_verifier');
+  sessionStorage.removeItem('dbx_state');sessionStorage.removeItem('dbx_verifier');
   try{
     const res=await fetch('https://api.dropboxapi.com/oauth2/token',{
       method:'POST',
@@ -16168,9 +16138,9 @@ async function dbxHandleRedirect(){
       if(data.refresh_token)UI.dbxRefreshToken=data.refresh_token;
       UI.dbxExpiresAt=Date.now()+((data.expires_in||DBX_TOKEN_TTL_S)*1000);
       // Restore the tab the user was on before the auth redirect
-      const returnTab=_oaStore.getItem('dbx_return_tab');
+      const returnTab=sessionStorage.getItem('dbx_return_tab');
       if(returnTab)UI.tab=returnTab;
-      _oaStore.removeItem('dbx_return_tab');
+      sessionStorage.removeItem('dbx_return_tab');
       await saveAll();
       dbxSetStatus('✓ Connected to Dropbox');
       render();
@@ -16420,35 +16390,7 @@ function _dbxAgoStr(ms){
 // then loadAll read the OLD (disconnected) stravaAuth row and overwrote the new token — Strava
 // said "Connected" and wasn't (28 Sep). Its early saveAll could also write not-yet-loaded prefs.
 let _oauthPending=null;
-let _initDone=false;
-// v401 — "~<app id>" on the state = sign-in from the app via the Custom Tab (see the head script).
-function _oauthStateTail(){ return (_nativeBrowser && _nativeApp && _oauthAppId) ? '~'+_oauthAppId : ''; }
-function _oauthGo(makeURL){
-  const url=makeURL();
-  if(_oauthStateTail()){ _nativeBrowser.open({url}).catch(()=>{ window.location.href=url; }); return; }
-  window.location.href=url;
-}
-// The app was handed <app id>://oauth?code=…&state=… — close the tab and finish the sign-in here,
-// through the same handlers a web redirect uses (they read location.search).
-function _oauthFromAppUrl(u){
-  try{
-    const q=(String(u||'').split('?')[1]||'');
-    if(!/^[a-z][a-z0-9.]*:\/\/oauth/.test(String(u||''))) return;
-    try{ _nativeBrowser.close().catch(()=>{}); }catch(e){}
-    const p=new URLSearchParams(q);
-    if(!p.get('code')){ _recToast(p.get('error')==='access_denied'?'Sign-in cancelled':'Sign-in didn’t finish — try again'); return; }
-    history.replaceState(null,'',window.location.pathname+'?'+q);
-    const f=(p.get('state')||'').startsWith('strava_')?stravaHandleRedirect:dbxHandleRedirect;
-    if(_initDone) f(); else _oauthPending=f;
-  }catch(e){}
-}
-if(_nativeApp){
-  try{
-    _nativeApp.addListener('appUrlOpen', e=>_oauthFromAppUrl(e&&e.url));
-    _nativeApp.getLaunchUrl().then(r=>{ if(r&&r.url) _oauthFromAppUrl(r.url); }).catch(()=>{});
-  }catch(e){}
-}
-if(!window.__ptOAuthBounce && new URLSearchParams(window.location.search).get('code')){
+if(new URLSearchParams(window.location.search).get('code')){
   const _oauthState=new URLSearchParams(window.location.search).get('state')||'';
   _oauthPending=_oauthState.startsWith('strava_')?stravaHandleRedirect:dbxHandleRedirect;
 }
@@ -24023,7 +23965,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
       .catch(()=>_recToast('Couldn\'t revoke — check your connection'));
     return;
   }
-  if(e.target.closest('#btn-strava-connect')){_oaStore.setItem('strava_return_tab',UI.tab);_oauthGo(stravaAuthURL);return;}
+  if(e.target.closest('#btn-strava-connect')){sessionStorage.setItem('strava_return_tab',UI.tab);window.location.href=stravaAuthURL();return;}
   if(e.target.closest('#btn-strava-retry')){_recToast('Retrying Strava uploads…');_stravaLastForce=0;stravaProcessQueue(true);return;}
   if(e.target.closest('#btn-strava-disconnect')){stravaDisconnect();return;}
   if(e.target.id==='strava-auto-toggle'){UI.stravaAutoUpload=e.target.checked;saveAll();return;}
@@ -24047,7 +23989,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-icu-send-all')){const n=icuQueueAll();_recToast(n?'Sending '+n+' ride'+(n!==1?'s':'')+' to intervals.icu…':'Nothing to send');render();return;}
   if(e.target.closest('#btn-icu-disconnect')){icuDisconnect();return;}
   if(e.target.id==='icu-auto-toggle'){UI.icuAutoUpload=e.target.checked;saveAll();return;}
-  if(e.target.closest('#btn-dbx-connect')){_oaStore.setItem('dbx_return_tab',UI.tab);_oauthGo(dbxAuthURL);return;}
+  if(e.target.closest('#btn-dbx-connect')){sessionStorage.setItem('dbx_return_tab',UI.tab);window.location.href=dbxAuthURL();return;}
   if(e.target.closest('#btn-dbx-save')){dbxSave(false);return;}
   if(e.target.closest('#btn-dbx-load')){dbxLoad(true);return;}
   if(e.target.closest('#btn-dbx-disconnect')){UI.dbxToken=null;UI.dbxRefreshToken=null;UI.dbxExpiresAt=null;UI.dbxSavedAt=null;saveAll();render();return;}
@@ -25533,7 +25475,6 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
   // Auto-load from Dropbox if connected and cloud is newer
   if(UI.dbxToken)dbxAutoLoad();
   // v397 — finish a Strava/Dropbox sign-in only now, on top of the fully loaded state.
-  _initDone=true;
   if(_oauthPending){const f=_oauthPending;_oauthPending=null;f();}
 });
 </script>

@@ -412,7 +412,7 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Changed:** `stravaAuthURL`: `approval_prompt` 'auto' → 'force'.
 - **Why:** reconnecting on the Play install skipped Strava's page (prior approval reused), so Peter couldn't see whether "private activities" (activity:read_all, needed since v396) was ticked.
 - **Watch out:** Google sign-in on Strava/Dropbox pages leaves the app's WebView and dead-ends in Chrome — see the plan note's MUST FIX; sign in with email + password until the Custom Tab fix ships.
-- **Verified:** `node verify.js`. Backup `backup/index-v399-pre-v400.html`. NOT pushed.
+- **Verified:** `node verify.js`; preview: auth URL has approval_prompt=force + read_all. Pushed 1 Oct; on the Play install Peter reconnected and saw the page, private activities ticked. Backup `backup/index-v399-pre-v400.html`.
 
 ### v399 (30 Sep) — Saved routes lost their distance precision (100 m steps); now rebuilt on load
 - **Changed:** PERSIST: `packRoute` stores point dist to the metre (was `Math.round(dist*10)/10` = 0.1 km). New `_rebuildPointDist(r)` called first thing in `unpackRoute`: cumulative `hav` over the points; kept as-is when within 0.5% of the stored length, else scaled to it; sets `r.totalDist` from it.
