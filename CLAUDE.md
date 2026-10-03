@@ -408,6 +408,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v401–v402 (3 Oct) — App sign-ins run in a Chrome Custom Tab, so Google sign-in works
+- **Changed:** head script (first `<script>`): bounce page — no Capacitor + OAuth `state` ending `~<app id>` → `document.write` a "Return to PackTimes" page and `location.replace('<app id>://oauth?…')`. Near `_nativeGeo`: `_oaStore` (localStorage), `_nativeBrowser`/`_nativeApp`, `_oauthAppId` (App.getInfo). Near `_oauthPending`: `_oauthStateTail`, `_oauthGo`, `_oauthFromAppUrl` (appUrlOpen + getLaunchUrl), `_initDone`. OAuth state/verifier/return-tab moved sessionStorage → `_oaStore`. v402: return-page wording only.
+- **Why:** Google sign-in (Dropbox/Strava pages) dead-ended in external Chrome from the app's web view (1 Oct).
+- **Watch out:** needs shell 1.0.1+ (Browser + App plugins, intent-filter scheme `${applicationId}`, host `oauth`); older shells keep the in-view flow because `_oauthStateTail()` is ''. Redirect URIs unchanged (no Dropbox/Strava console changes). Chrome sometimes won't auto-open the app (Dropbox via Google needed the button; Strava returned by itself).
+- **Verified:** `node verify.js`; phone, PackTimes dev (1.0.1 debug): Dropbox via Google → button → connected with refresh token; Strava → returned automatically, scope incl. activity:read_all. Pushed v401; v402 NOT pushed. Backups `backup/index-v400-pre-v401.html`, `index-v401-pre-v402.html`.
+
 ### v400 (1 Oct) — Strava connect always shows its permission page
 - **Changed:** `stravaAuthURL`: `approval_prompt` 'auto' → 'force'.
 - **Why:** reconnecting on the Play install skipped Strava's page (prior approval reused), so Peter couldn't see whether "private activities" (activity:read_all, needed since v396) was ticked.
@@ -463,11 +469,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** 27 Sep the fresh Android app (its own empty storage) connected Dropbox and uploaded 0 routes over Peter's plan.json (90 bytes, 14:25). Recovered from Dropbox version history.
 - **Watch out:** deleting your LAST route no longer auto-syncs (accepted). Every new device/app install starts empty — anything that writes to a shared store on first run must load first.
 - **Verified:** `node verify.js`; browser with stubbed fetch: empty+auto → 0 uploads, empty+manual declined → 0, with routes → 1. Backup `backup/index-v391-pre-v392.html`. Pushed 27 Sep. plan.json restored from version history (40 routes, 20 calib rides, savedAt 12:25) and force-loaded into the app — nothing lost.
-
-### v391 (27 Sep) — File exports work in the app (share sheet)
-- **Changed:** GPS native block: `_nativeFS`, `_nativeShare`, `_nativeSaveShare(href,name)`; in the app `HTMLAnchorElement.prototype.click` is patched so any `<a download href="blob:/data:">` click writes the file to the app cache (Filesystem) and opens Android's share sheet (Share). Covers `_recDownload` (FIT/GPX), plan export, `shareRideFile`, route backup — no caller changed.
-- **Why:** Phase 1b step 5 — the app view silently ignores downloads.
-- **Watch out:** patched on the prototype because two callers click anchors never added to the page. New export code must keep using a blob/data `<a download>` (or call `_nativeSaveShare`). Mission-brief PRINT (`window.open('')` + `print()`) is NOT fixed — untested in the app, probably does nothing.
-- **Verified:** `node verify.js`; browser prototype unpatched. Pixel dev build: `shareRideFile` → share sheet → Peter saved to Google Drive, right name. Same session: Dropbox and Strava sign-ins both return into the app on the LIVE build with no code change. intervals.icu (pasted key) not tried. Backup `backup/index-v390-pre-v391.html`. NOT pushed.
 
 <!-- VERSION-LOG-END -->

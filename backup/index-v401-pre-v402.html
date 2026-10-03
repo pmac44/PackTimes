@@ -80,7 +80,7 @@
   if(!m||(!q.get('code')&&!q.get('error')))return;
   window.__ptOAuthBounce=true;
   var to=m[1]+'://oauth'+location.search;
-  document.write('<!DOCTYPE html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:#0d1a0d;color:#e6ede7;font:17px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center"><div><p>Signed in.</p><p style="color:#9fb0a3;font-size:15px">If PackTimes doesn&rsquo;t open by itself, tap:</p><p><a id="go" style="display:inline-block;margin-top:12px;padding:14px 22px;border-radius:10px;background:#4ade80;color:#0d1a0d;font-weight:700;text-decoration:none">Return to PackTimes</a></p></div></body>');
+  document.write('<!DOCTYPE html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:#0d1a0d;color:#e6ede7;font:17px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center"><div><p>Signed in. Returning to PackTimes&hellip;</p><p><a id="go" style="display:inline-block;margin-top:12px;padding:14px 22px;border-radius:10px;background:#4ade80;color:#0d1a0d;font-weight:700;text-decoration:none">Return to PackTimes</a></p></div></body>');
   document.close();
   document.getElementById('go').href=to;
   location.replace(to);
@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v402';
+window.APP_VERSION='v401';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
