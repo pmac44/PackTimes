@@ -7,3 +7,9 @@ _planning/
 
 # Claude Code local config — machine-specific, never pushed to GitHub Pages.
 .claude/
+
+# Project notes for Claude — local only, not published to GitHub Pages (removed 6 Oct 2026).
+CLAUDE.md
+CLAUDE.md.bak
+CLAUDE-log-archive.md
+CLAUDE-log-archive.md.bak

@@ -1,7 +1,7 @@
 // v376 verification — cidx binary search vs the old linear scan, + the _kmLen cache maths.
 // Extracts the REAL cidx from index.html (no hand-port to drift).
 const fs=require('fs');
-const src=fs.readFileSync('F:/Dropbox/Claude/Work Areas/Apps/PackTimes-project/index.html','utf8');
+const src=fs.readFileSync('F:/Claude Cowork/Code/PackTimes/index.html','utf8');
 
 // Extract the new cidx by anchor
 const m=src.match(/function cidx\(r,d\)\{[\s\S]*?\n\}/);
