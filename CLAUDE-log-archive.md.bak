@@ -9,6 +9,13 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v393 (27 Sep) — Mission brief prints in the app (Android print screen / Save as PDF)
+- **Changed:** `printMission` end: if `_nativePlugin('Printer')`, hand the finished HTML to it instead of `window.open`. Shell: new `PrintPlugin.java` (off-screen WebView, JS off, `PrintManager.print`, A4), registered in `MainActivity`.
+- **Why:** the app view can't `window.open` + `print()`.
+- **Watch out:** the page is laid out with JavaScript OFF — anything the brief needs must be plain HTML/CSS (its own `window.print()` onload script is inert there, on purpose).
+- **Verified:** `node verify.js`; Pixel dev build: `printMission()` → `printspooler PrintActivity`, preview shows the brief, Save as PDF offered. Backup `backup/index-v392-pre-v393.html`. NOT pushed.
+
+
 ### v392 (27 Sep) — An empty device can no longer wipe the Dropbox plan
 - **Changed:** Dropbox `?code=` handler: after connecting, `ROUTES.length ? dbxSave(true) : dbxLoad(true)` (was always `dbxSave(true)`). `dbxSave`: with no routes, auto-sync returns; manual "Save now" needs a confirm.
 - **Why:** 27 Sep the fresh Android app (its own empty storage) connected Dropbox and uploaded 0 routes over Peter's plan.json (90 bytes, 14:25). Recovered from Dropbox version history.

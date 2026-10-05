@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v405';
+window.APP_VERSION='v404';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -6389,151 +6389,28 @@ function _recSensorSample(now){
 // every REC_BATT_MS, and a last one at Stop. Rides on the GPS fix path, not a timer: fixes
 // keep arriving with the screen off (the app's foreground service), hidden-page timers may not.
 // Not in FIT/GPX. No Battery Status API (iOS Safari, Firefox) → silently nothing.
-// v405 — every 10 min (was 30) so the Ride screen's own-ride rate settles within the first
-// hour, and each reading carries off:true when the phone had no network (aeroplane mode or no
-// signal) — that is how rides get sorted into the two drain rates below.
-const REC_BATT_MS = 10 * 60 * 1000;
-let _recBattMgr = null, _recBattBusy = null, _battAsk = null;
+const REC_BATT_MS = 30 * 60 * 1000;
+let _recBattMgr = null, _recBattBusy = null;
 function _recBatteryMaybe(force){
   if(!_rec || !navigator.getBattery) return Promise.resolve();
   if(_recBattBusy) return _recBattBusy;
   const rec = _rec, log = rec.battery || [];
   if(!force && log.length && Date.now() - log[log.length-1].t < REC_BATT_MS) return Promise.resolve();
   _recBattBusy = (_recBattMgr ? Promise.resolve(_recBattMgr) : navigator.getBattery())
-    .then(b => { _recBattMgr = b; (rec.battery = rec.battery || []).push({t: Date.now(), pct: Math.round(b.level * 100), chg: !!b.charging, off: navigator.onLine === false}); })
+    .then(b => { _recBattMgr = b; (rec.battery = rec.battery || []).push({t: Date.now(), pct: Math.round(b.level * 100), chg: !!b.charging}); })
     .catch(()=>{})
     .finally(() => { _recBattBusy = null; });
   return _recBattBusy;
-}
-// Live battery manager for the Ride screen (level/charging are live properties). null until
-// the first getBattery() answers, or forever where the API doesn't exist.
-function _battNow(){
-  if(_recBattMgr) return _recBattMgr;
-  if(navigator.getBattery && !_battAsk) _battAsk = navigator.getBattery().then(b => { _recBattMgr = b; }).catch(()=>{});
-  return null;
 }
 // "Battery 90% → 34% · 4.9%/h" for the ride detail; '' with fewer than two readings.
 function _recBatteryHTML(rec){
   const b = rec.battery || [];
   if(b.length < 2) return '';
-  const a = b[0], z = b[b.length-1];
-  const k = _battRideRate(rec, 0.25);
+  const a = b[0], z = b[b.length-1], h = (z.t - a.t) / 3600000;
   const charged = b.some(x => x.chg);
   return 'Battery ' + a.pct + '% → ' + z.pct + '%' +
-    (k ? ' · ' + k.ph.toFixed(1) + '%/h' + (k.air ? ' (aeroplane mode)' : '') : '') +
+    (h > 0.25 && !charged ? ' · ' + ((a.pct - z.pct) / h).toFixed(1) + '%/h' : '') +
     (charged ? ' · charged during ride' : '') + '<br>';
-}
-
-// ── v405 — BATTERY FORECAST, LEARNED FROM THE RIDER'S OWN RIDES ──
-// Peter: "if we default to being honest… giving a rough estimate of if you will run out", and
-// "it would be good if the app can learn about battery drain during use". So: a starting guess
-// that SAYS it's a guess, replaced by the median of the rider's last 5 logged rides as soon as
-// one exists — separately for normal and aeroplane-mode rides. Only falling, non-charging
-// stretches between readings count (a plug-in or a 2 h+ hole in the log is skipped).
-//
-// The starting guesses, and where they come from — keep them honest if they're ever changed:
-//  · BATT_GUESS_PH 5 %/h — Peter's own 4 Oct 230 km ride (Pixel, GPS every 1 s, Bluetooth power
-//    meter, screen mostly off, mobile data on): 90% → 34% over 11.3 h, read from Android's own
-//    battery history. ONE phone, one ride; a rough start, not a typical figure.
-//  · BATT_AIR_FACTOR 0.7 — "about 30% less in aeroplane mode" is a GUESS, not a measurement.
-//    How much the mobile radio costs depends heavily on signal (it works hardest out of town).
-//    Shown as a guess until the rider logs an aeroplane-mode ride of their own.
-const BATT_GUESS_PH = 5;
-const BATT_AIR_FACTOR = 0.7;
-// {ph, h, air} for one ride's log — null if under minH hours of usable (falling, unplugged) data.
-function _battRideRate(rec, minH){
-  const b = (rec && rec.battery) || [];
-  let drop = 0, h = 0;
-  for(let i = 1; i < b.length; i++){
-    const a = b[i-1], z = b[i], dh = (z.t - a.t) / 3600000;
-    if(a.chg || z.chg || z.pct > a.pct || dh <= 0 || dh > 2) continue;
-    drop += a.pct - z.pct; h += dh;
-  }
-  if(h < (minH == null ? 1 : minH) || h <= 0) return null;
-  return {ph: drop / h, h, air: b.filter(x => x.off).length >= b.length * 0.8};
-}
-// {on:{ph,n}, air:{ph,n}} — n = how many of the rider's rides it's learned from (0 = guess).
-// Median of the last 5, upper-middle for an even count: errs towards running out sooner.
-function _battModel(){
-  const rides = (typeof RECS !== 'undefined' ? RECS : [])
-    .filter(x => x.battery && x.battery.length > 1).sort((a, b) => b.startTS - a.startTS);
-  const pick = air => {
-    const xs = [];
-    for(const x of rides){ const k = _battRideRate(x, 1); if(k && k.air === air) xs.push(k.ph); if(xs.length >= 5) break; }
-    if(!xs.length) return null;
-    xs.sort((a, b) => a - b);
-    return {ph: xs[Math.floor(xs.length / 2)], n: xs.length};
-  };
-  const on = pick(false), air = pick(true);
-  const onPh = on ? on.ph : BATT_GUESS_PH;
-  return {on: on || {ph: onPh, n: 0}, air: air || {ph: onPh * BATT_AIR_FACTOR, n: 0}};
-}
-// Route km reached at time `when` (inverse of etaAt, by bisection). null without times.
-function _kmAtTime(r, when){
-  if(!etaAt(r.totalDist, r)) return null;
-  let lo = 0, hi = r.totalDist;
-  for(let i = 0; i < 30; i++){ const mid = (lo + hi) / 2, e = etaAt(mid, r); if(e && e < when) lo = mid; else hi = mid; }
-  return lo;
-}
-// The Plan tab's "Phone battery" card. Assumes the phone starts full and isn't charged before
-// the first bivi (or the finish), and keeps draining at the ride rate through café stops —
-// the GPS stays on while you eat.
-function _battPlanHTML(r){
-  const sdt = startDT(r), fin = etaAt(r.totalDist, r);
-  if(!sdt || !fin || !r.totalDist) return '';
-  const M = _battModel();
-  const sleep = r.stops.filter(s => s.type === 'sleep' || s.sleepAt || (s.type === 'stop' && (s.sleepAt || s.sleepH)))
-    .sort((a, b) => a.dist - b.dist)[0];
-  const legEta = sleep ? etaAt(sleep.dist, r) : fin;
-  const legName = sleep ? (sleep.name || 'your first bivi') + ' (first bivi)' : 'the finish';
-  const legH = legEta ? (legEta - sdt) / 3600000 : 0;
-  if(!(legH > 0)) return '';
-  const outcome = ph => {
-    const end = 100 - ph * legH;
-    if(end > 0) return {ok: end >= 20, txt: 'reach ' + legName + ' at about <b>' + Math.round(end) + '%</b>'};
-    const flatT = new Date(sdt.getTime() + (100 / ph) * 3600000);
-    const km = _kmAtTime(r, flatT);
-    return {ok: false, txt: 'go flat around <b>' + (km != null ? 'km ' + Math.round(km) + ', ' : '') + fmtT(flatT) + dayOff(flatT, sdt) + '</b>, before ' + legName};
-  };
-  const on = outcome(M.on.ph), air = outcome(M.air.ph);
-  const src = M.on.n ? 'learned from your last ' + (M.on.n === 1 ? 'ride' : M.on.n + ' rides')
-                     : 'a rough guess until you record a ride (from one phone, one ride)';
-  const airSrc = M.air.n ? 'learned from ' + (M.air.n === 1 ? 'one aeroplane-mode ride' : M.air.n + ' aeroplane-mode rides')
-                         : 'a guess, about 30% less — record a ride in aeroplane mode and PackTimes will learn your real figure';
-  const warn = !on.ok;
-  const P = 'font-size:15px;color:var(--text2);line-height:1.55;margin-top:6px;';
-  const T = 'font-size:14px;color:var(--text3);line-height:1.5;';
-  return '<div class="card"' + (warn ? ' style="border-color:rgba(249,115,22,0.6);"' : '') + '>'
-    + '<div class="ctitle">' + (warn ? '🔋 Phone battery — may run short' : '🔋 Phone battery') + '</div>'
-    + '<div style="' + P + '">Starting full, at about ' + M.on.ph.toFixed(1) + '%/h you’d ' + on.txt + '.</div>'
-    + '<div style="' + P + '">In aeroplane mode (about ' + M.air.ph.toFixed(1) + '%/h) you’d ' + air.txt + '.</div>'
-    + (warn ? '<div style="' + P + 'color:#f97316;">Bring a power bank, or plan to charge at a café or town stop.</div>' : '')
-    + '<div style="' + T + 'margin-top:8px;">Rate: ' + src + '. Aeroplane mode: ' + airSrc + '.'
-    + (sleep ? ' Assumes you charge overnight.' : '') + '</div>'
-    + '<details style="margin-top:8px;"><summary style="' + T + 'cursor:pointer;color:var(--accent);">Ways to make it last</summary>'
-    + '<div style="' + T + 'margin-top:6px;">'
-    + '• <b>Screen off</b> between glances — the screen is usually the biggest single drain.<br>'
-    + '• <b>Aeroplane mode</b> stops the phone hunting for signal, which costs most out of town. GPS still works. Live tracking, weather and calls stop, and Strava uploads wait until you switch it back. Turn it off to call for help.<br>'
-    + '• <b>Bluetooth</b> costs little. Leave it on if you use a power meter or heart-rate strap — PackTimes can’t record them without it.<br>'
-    + '• <b>Cold</b> drains batteries faster — keep the phone in a pocket on cold nights.<br>'
-    + '• A <b>power bank</b> and a cable, or a charge at café stops.'
-    + '</div></details>'
-    + '</div>';
-}
-// Ride-screen pill values: {pct, left, lbl}. This ride's own rate once it has 20 min of
-// readings, otherwise the learned/guessed one for the phone's current network state.
-function _battPillVals(){
-  const b = _battNow();
-  if(!b) return {pct: '—', left: '—', lbl: 'no reading'};
-  const pct = Math.round(b.level * 100);
-  if(b.charging) return {pct: pct + '%', left: '⚡', lbl: 'charging'};
-  const own = _rec ? _battRideRate(_rec, 0.33) : null;
-  const M = _battModel();
-  const ph = own ? own.ph : (navigator.onLine === false ? M.air.ph : M.on.ph);
-  if(!(ph > 0.1)) return {pct: pct + '%', left: '—', lbl: 'left'};
-  const h = pct / ph;
-  return {pct: pct + '%', left: (h < 10 ? h.toFixed(1) : String(Math.round(h))) + 'h',
-          lbl: 'left · ' + ph.toFixed(1) + '%/h' + (own ? '' : ' est.')};
 }
 
 // _appendPoint — the heart of movement-based sampling.
@@ -17877,8 +17754,7 @@ function sortedLayers(r){
 // average, and a cycle should put like next to like.
 // v276 — 'grade' sits with the other no-hardware metrics (speed/mspeed/stop), before the
 // paired sensors, because it's the road rider's metric and needs nothing plugged in.
-// v405 — 'batt' (phone battery % + hours left) goes last: it's about the phone, not the ride.
-const PILL_CYCLE=['speed','pace','mspeed','stop','grade','power','cad','force','hr','batt','off'];
+const PILL_CYCLE=['speed','pace','mspeed','stop','grade','power','cad','force','hr','off'];
 // ── PEDAL FORCE (v360) ───────────────────────────────────────────────────────
 // Peter's use for it: "grinding too big a gear or busting your knees, and as a trigger to
 // increase cadence if you want more power."
@@ -19234,19 +19110,6 @@ function tLiveShell(r){
                Without it this read "km/h moving", which parses as your moving SPEED, and the
                figure right above it is the actual current speed. -->
           <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;">moving avg.</div>
-        </div>
-      </div>`;
-    }
-    if(type==='batt'){   // v405 — phone battery: % now, hours left at this ride's (or the learned) rate
-      const v=_battPillVals();
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-batt">
-        <div style="padding:5px 8px 3px;">
-          <div style="line-height:1.0;"><span style="font-size:34px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-batt-cur">${v.pct}</span></div>
-          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">battery</div>
-        </div>
-        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-batt-left">${v.left}</span></div>
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-batt-lbl">${v.lbl}</div>
         </div>
       </div>`;
     }
@@ -22099,7 +21962,6 @@ function tPlan(r){
     })():'')
     +'</div>'
     +'</div>'
-    +_battPlanHTML(r)   // v405
     +(r.stops.some(s=>s.meals&&s.meals.length)?'<div class="card" style="cursor:pointer;border-color:rgba(251,191,36,0.4);" id="btn-go-food"><div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-flex;align-items:center;color:#fbbf24;font-size:20px;">'+ICON_FOOD+'</span><div><div style="font-size:15px;font-weight:600;color:#fbbf24;">Food plan</div><div style="font-size:13px;color:var(--text3);">'+r.stops.filter(s=>s.meals&&s.meals.length).length+' stops with food assigned — tap to view</div></div></div></div>':'');
 }
 
@@ -22920,15 +22782,6 @@ function updateLive(){
     const mvH=L?(L.movingMs/3600000):0;
     const mv=(L&&L.movingMs>60000&&mvH>0&&L.distKm>0)?(L.distKm/mvH).toFixed(1):'—';
     if(mAvgEl.textContent!==mv)mAvgEl.textContent=mv;
-  }
-  // ── v405 — the BATTERY pill, patched live.
-  const bCurEl=document.getElementById('live-batt-cur');
-  if(bCurEl){
-    const v=_battPillVals();
-    if(bCurEl.textContent!==v.pct)bCurEl.textContent=v.pct;
-    const bl=document.getElementById('live-batt-left'),bb=document.getElementById('live-batt-lbl');
-    if(bl&&bl.textContent!==v.left)bl.textContent=v.left;
-    if(bb&&bb.textContent!==v.lbl)bb.textContent=v.lbl;
   }
   // ── v276 — the GRADE pill, patched live: grade text, its zone colour, and distance-to-top.
   // Same-fn note as the strip: the colour under the profile dot IS this number by construction.

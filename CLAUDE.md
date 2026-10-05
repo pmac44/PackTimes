@@ -408,6 +408,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v405 (5 Oct) — Battery forecast that learns from your rides: Plan card + Ride-screen pill
+- **Changed:** RECORDING (after `_recBatteryMaybe`): `REC_BATT_MS` 30→10 min, readings get `off` (`navigator.onLine===false`); `_battNow`, `BATT_GUESS_PH` 5, `BATT_AIR_FACTOR` 0.7, `_battRideRate(rec,minH)`, `_battModel()` (median of the last 5 logged rides, normal and aeroplane kept apart), `_kmAtTime` (inverse `etaAt`), `_battPlanHTML(r)` (card after the mission card in `tPlan`), `_battPillVals`. Pills: `'batt'` in `PILL_CYCLE`, a renderer in `_renderFloatingPill`, a live patch in `updateLive`.
+- **Why:** Peter wants an honest "will I run out" forecast, aeroplane-mode advice, and a model that learns from his rides.
+- **Watch out:** the two guesses are labelled as guesses in the UI and their sources are in the code comment. Never present them as measured. A ride counts as aeroplane mode when ≥80% of its readings were offline (no signal looks the same).
+- **Verified:** `node verify.js`; preview: rate maths (charging skipped, short logs ignored, upper-median); cards for 230 km / 600 km+bivi / 120 km routes; pill shows "62% · 12h left · 5.0%/h est." on the guess and switches to the ride's own rate. Backup `backup/index-v404-pre-v405.html`. Pushed 5 Oct.
+
 ### v404 (5 Oct) — Rides log battery %; "Leave as a gap" renamed "Leave unfilled"
 - **Changed:** RECORDING: `REC_BATT_MS` (30 min), `_recBatteryMaybe(force)` → `rec.battery[] {t,pct,chg}` (called at the top of `_appendPoint`, and awaited in `_recStopConfirm` before `finaliseRecording`), `_recBatteryHTML(rec)` in the `_recDetailOpen` stats ("Battery 90% → 34% · 4.9%/h", or "charged during ride"). Gap modal: button `rgm-none` reads "Leave unfilled", and the intro says Strava draws a straight line; ride detail says "unfilled" instead of "left open".
 - **Why:** Peter couldn't remember his end-of-ride battery on 4 Oct. "Leave as a gap" promised a gap Strava never shows.
@@ -462,12 +468,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Watch out:** never call `toLocale*String(locale,{options})` or `new Intl.*` in anything per-stop or per-tick — reuse a module-level formatter. `performance.memory` and the heap profiler did NOT show this; the proof was renderer RSS (`adb shell ps -o RSS`) with the function swapped live over CDP. The canvas change is hygiene (it was a suspect, not the cause).
 - **Also in v395 — ending a ride ends GPS:** new `_recEndGps()` (RECORDING, before `_recStopDelete`), called by `_recStopConfirm` and `_recStopDelete`; `_recStopUndo` calls `startGPS()` if off. Stopping a ride used to leave GPS on at full accuracy (invisible in Chrome; in the app the tracking notification stayed and the battery paid). Sim excluded.
 - **Verified:** `node verify.js`; browser: 2,000 dates identical old vs new (incl. Invalid Date), maps + elevation redraw correctly; stubbed-GPS run: start → stop (GPS off, watch cleared) → undo (GPS on) → delete (GPS off). Pixel, live v394 app, ride running, `_fmtTRaw` swapped at runtime: renderer 2.3–2.6 GB churning → flat 697 MB for 36 s; `stopGPS()` → plugin service leaves the foreground, notification gone. Backup `backup/index-v394-pre-v395.html`. Pushed 28 Sep; Pixel app confirmed on v395 with 40 routes.
-
-### v394 (28 Sep) — App status/nav bar strips follow the theme (were white)
-- **Changed:** `applyTheme` — after setting `meta[name=theme-color]`, also calls the shell's `Bars.setColor({color:_THEME_STATUS[t]})`. Shell: new `BarsPlugin.java` (window background + decor colour, bar colours below Android 15, light/dark icons by luminance); `MainActivity` registers it and paints `#0d1a0d` from the first frame.
-- **Why:** Peter: the app's top and bottom strips were white; Chrome's matched the app. The app view ignores theme-color.
-- **Watch out:** Paper theme → light strips (#f2efe9), Graphite → #0a0f0a, same as the meta tag. If Peter wants them always dark, change the colour passed here, not the plugin.
-- **Shell gotchas (found on the phone):** `BarsPlugin.apply` in `MainActivity.onCreate` is overwritten by the theme afterwards, so the first-frame colour comes from `styles.xml` (`windowBackground` `@color/packtimes_dark`, light-icon flags off) and Capacitor's own SystemBars would force DARK icons from the phone's light mode unless `capacitor.config.json` sets `plugins.SystemBars.style = "DARK"`. The page's later `Bars.setColor` does stick.
-- **Verified:** `node verify.js`; browser unchanged (`_nativePlugin('Bars')` null, no errors). Pixel, live build: strips `#0d1a0d` with light icons at launch; `Bars.setColor` red → red, Paper `#f2efe9` → light strip + dark icons, held after leaving and reopening the app. Page side NOT pushed. Backup `backup/index-v393-pre-v394.html`.
 
 <!-- VERSION-LOG-END -->

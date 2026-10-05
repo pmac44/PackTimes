@@ -408,11 +408,17 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v405 (5 Oct) — Battery forecast that learns from your rides: Plan card + Ride-screen pill
+- **Changed:** RECORDING (after `_recBatteryMaybe`): `REC_BATT_MS` 30→10 min, readings get `off` (`navigator.onLine===false`); `_battNow`, `BATT_GUESS_PH` 5, `BATT_AIR_FACTOR` 0.7, `_battRideRate(rec,minH)`, `_battModel()` (median of the last 5 logged rides, normal and aeroplane kept apart), `_kmAtTime` (inverse `etaAt`), `_battPlanHTML(r)` (card after the mission card in `tPlan`), `_battPillVals`. Pills: `'batt'` in `PILL_CYCLE`, a renderer in `_renderFloatingPill`, a live patch in `updateLive`.
+- **Why:** Peter wants an honest "will I run out" forecast, aeroplane-mode advice, and a model that learns from his rides.
+- **Watch out:** the two guesses are labelled as guesses in the UI and their sources are in the code comment. Never present them as measured. A ride counts as aeroplane mode when ≥80% of its readings were offline (no signal looks the same).
+- **Verified:** `node verify.js`; preview: rate maths (charging skipped, short logs ignored, upper-median); cards for 230 km / 600 km+bivi / 120 km routes; pill shows "62% · 12h left · 5.0%/h est." on the guess and switches to the ride's own rate. Backup `backup/index-v404-pre-v405.html`. NOT pushed.
+
 ### v404 (5 Oct) — Rides log battery %; "Leave as a gap" renamed "Leave unfilled"
 - **Changed:** RECORDING: `REC_BATT_MS` (30 min), `_recBatteryMaybe(force)` → `rec.battery[] {t,pct,chg}` (called at the top of `_appendPoint`, and awaited in `_recStopConfirm` before `finaliseRecording`), `_recBatteryHTML(rec)` in the `_recDetailOpen` stats ("Battery 90% → 34% · 4.9%/h", or "charged during ride"). Gap modal: button `rgm-none` reads "Leave unfilled", and the intro says Strava draws a straight line; ride detail says "unfilled" instead of "left open".
 - **Why:** Peter couldn't remember his end-of-ride battery on 4 Oct. "Leave as a gap" promised a gap Strava never shows.
 - **Watch out:** sampling rides on the fix path ON PURPOSE (hidden-page timers may stall); sim rides are skipped. Not in FIT/GPX.
-- **Verified:** `node verify.js`; preview with stubbed `getBattery` + `Date.now`, fixes every 15 min: readings at 0/30/60 min + forced end, HTML for the drain and charged cases, no console errors. The phone's web view returned the same level as `dumpsys battery`. Backup `backup/index-v403-pre-v404.html`. NOT pushed.
+- **Verified:** `node verify.js`; preview with stubbed `getBattery` + `Date.now`, fixes every 15 min: readings at 0/30/60 min + forced end, HTML for the drain and charged cases, no console errors. The phone's web view returned the same level as `dumpsys battery`. Backup `backup/index-v403-pre-v404.html`. Pushed 5 Oct.
 
 ### v403 (5 Oct) — App GPS no longer dies when the camera (or anything) flashes PackTimes on screen
 - **Changed:** GPS: `_gpsRestartWatch(why)` — on `'wake'` in the app it returns if a fix arrived within `GPS_WATCHDOG_MS`; any rebuild now adds the new watch first and removes the old only after (`_nativeWatches.get(new).finally(clear old)`). The visibilitychange handler passes `'wake'`.
@@ -469,11 +475,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Watch out:** Paper theme → light strips (#f2efe9), Graphite → #0a0f0a, same as the meta tag. If Peter wants them always dark, change the colour passed here, not the plugin.
 - **Shell gotchas (found on the phone):** `BarsPlugin.apply` in `MainActivity.onCreate` is overwritten by the theme afterwards, so the first-frame colour comes from `styles.xml` (`windowBackground` `@color/packtimes_dark`, light-icon flags off) and Capacitor's own SystemBars would force DARK icons from the phone's light mode unless `capacitor.config.json` sets `plugins.SystemBars.style = "DARK"`. The page's later `Bars.setColor` does stick.
 - **Verified:** `node verify.js`; browser unchanged (`_nativePlugin('Bars')` null, no errors). Pixel, live build: strips `#0d1a0d` with light icons at launch; `Bars.setColor` red → red, Paper `#f2efe9` → light strip + dark icons, held after leaving and reopening the app. Page side NOT pushed. Backup `backup/index-v393-pre-v394.html`.
-
-### v393 (27 Sep) — Mission brief prints in the app (Android print screen / Save as PDF)
-- **Changed:** `printMission` end: if `_nativePlugin('Printer')`, hand the finished HTML to it instead of `window.open`. Shell: new `PrintPlugin.java` (off-screen WebView, JS off, `PrintManager.print`, A4), registered in `MainActivity`.
-- **Why:** the app view can't `window.open` + `print()`.
-- **Watch out:** the page is laid out with JavaScript OFF — anything the brief needs must be plain HTML/CSS (its own `window.print()` onload script is inert there, on purpose).
-- **Verified:** `node verify.js`; Pixel dev build: `printMission()` → `printspooler PrintActivity`, preview shows the brief, Save as PDF offered. Backup `backup/index-v392-pre-v393.html`. NOT pushed.
 
 <!-- VERSION-LOG-END -->
