@@ -412,7 +412,7 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Changed:** `LIVE_SNAP_PX` + `_liveSnapInit()` (just above the Combined Route tab section), called from `initLiveMap` after `attachMap`.
 - **Why:** scrolling back down from the stop list often stopped a few px short. Likely cause: once the map slides back under the finger, its pan gesture takes the touch and native scroll ends early.
 - **Watch out:** the snap waits for the finger to lift (touchstart/touchend) and for scroll to settle (140 ms debounce). `#live-scroller` is rebuilt every render, so the `_snapWired` flag sits on the element, not a global.
-- **Verified:** `node verify.js`; preview with `scrollTo` stubbed: 45 px snaps to 0, 120 px stays, 20 px held stays, then snaps on release. Real touch not tested; the preview pane didn't fire scroll events. Backup `backup/index-v405-pre-v406.html`. Not pushed.
+- **Verified:** `node verify.js`; preview with `scrollTo` stubbed: 45 px snaps to 0, 120 px stays, 20 px held stays, then snaps on release. Real touch not tested; the preview pane didn't fire scroll events. Backup `backup/index-v405-pre-v406.html`. Pushed 5 Oct.
 
 ### v405 (5 Oct) — Battery forecast that learns from your rides: Plan card + Ride-screen pill
 - **Changed:** RECORDING (after `_recBatteryMaybe`): `REC_BATT_MS` 30→10 min, readings get `off` (`navigator.onLine===false`); `_battNow`, `BATT_GUESS_PH` 5, `BATT_AIR_FACTOR` 0.7, `_battRideRate(rec,minH)`, `_battModel()` (median of the last 5 logged rides, normal and aeroplane kept apart), `_kmAtTime` (inverse `etaAt`), `_battPlanHTML(r)` (card after the mission card in `tPlan`), `_battPillVals`. Pills: `'batt'` in `PILL_CYCLE`, a renderer in `_renderFloatingPill`, a live patch in `updateLive`.
