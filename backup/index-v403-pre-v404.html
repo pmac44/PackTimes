@@ -1471,7 +1471,7 @@ select option{background:var(--bg3);}
   <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;max-height:88dvh;display:flex;flex-direction:column;">
     <div style="margin-bottom:13px;flex-shrink:0;">
       <span style="font-size:19px;font-weight:600;color:var(--text);" id="rgm-title">Missing GPS section</span>
-      <p style="font-size:14px;color:var(--text3);margin-top:4px;line-height:1.5;">GPS cut out during this ride. Choose how to fill each missing section — filled parts are marked so nothing is pretending. Strava always joins the two ends, so an unfilled section shows there as a straight line.</p>
+      <p style="font-size:14px;color:var(--text3);margin-top:4px;line-height:1.5;">GPS cut out during this ride (usually the screen turning off). Choose how to fill each missing section — filled parts are marked so nothing is pretending.</p>
     </div>
     <div style="overflow-y:auto;flex:1;min-height:0;">
     <div id="rgm-details" style="font-family:var(--font);font-size:15px;color:var(--text2);line-height:1.7;margin-bottom:14px;"></div>
@@ -1480,7 +1480,7 @@ select option{background:var(--bg3);}
       <button class="btn btn-p btn-full" id="rgm-naismith">Fill along route — realistic pace</button>
       <button class="btn btn-full" id="rgm-constant">Fill along route — steady pace</button>
       <button class="btn btn-full" id="rgm-line">Straight line</button>
-      <button class="btn btn-full" id="rgm-none">Leave unfilled</button>
+      <button class="btn btn-full" id="rgm-none">Leave as a gap</button>
     </div>
   </div>
 </div>
@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v404';
+window.APP_VERSION='v403';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -6384,40 +6384,10 @@ function _recSensorSample(now){
   if(now - _recSensorSavedT >= 30000){ _recSensorSavedT = now; DB.putRecording(_rec).catch(()=>{}); }
 }
 
-// v404 — BATTERY LOG. Peter's 4 Oct 230 km ride: "should have noted where the battery was at,
-// but I was a bit tired". rec.battery = [{t, pct, chg}] — one reading at the first fix, then
-// every REC_BATT_MS, and a last one at Stop. Rides on the GPS fix path, not a timer: fixes
-// keep arriving with the screen off (the app's foreground service), hidden-page timers may not.
-// Not in FIT/GPX. No Battery Status API (iOS Safari, Firefox) → silently nothing.
-const REC_BATT_MS = 30 * 60 * 1000;
-let _recBattMgr = null, _recBattBusy = null;
-function _recBatteryMaybe(force){
-  if(!_rec || !navigator.getBattery) return Promise.resolve();
-  if(_recBattBusy) return _recBattBusy;
-  const rec = _rec, log = rec.battery || [];
-  if(!force && log.length && Date.now() - log[log.length-1].t < REC_BATT_MS) return Promise.resolve();
-  _recBattBusy = (_recBattMgr ? Promise.resolve(_recBattMgr) : navigator.getBattery())
-    .then(b => { _recBattMgr = b; (rec.battery = rec.battery || []).push({t: Date.now(), pct: Math.round(b.level * 100), chg: !!b.charging}); })
-    .catch(()=>{})
-    .finally(() => { _recBattBusy = null; });
-  return _recBattBusy;
-}
-// "Battery 90% → 34% · 4.9%/h" for the ride detail; '' with fewer than two readings.
-function _recBatteryHTML(rec){
-  const b = rec.battery || [];
-  if(b.length < 2) return '';
-  const a = b[0], z = b[b.length-1], h = (z.t - a.t) / 3600000;
-  const charged = b.some(x => x.chg);
-  return 'Battery ' + a.pct + '% → ' + z.pct + '%' +
-    (h > 0.25 && !charged ? ' · ' + ((a.pct - z.pct) / h).toFixed(1) + '%/h' : '') +
-    (charged ? ' · charged during ride' : '') + '<br>';
-}
-
 // _appendPoint — the heart of movement-based sampling.
 // Returns true if the point was stored, false if filtered out.
 function _appendPoint(lat, lon, ele, t, accuracy){
   if(!_rec || _rec.status !== 'active') return false;
-  if(!(UI.simRunning || UI.simPaused)) _recBatteryMaybe(false);   // v404 — every 30 min, persisted with the next point write
   // Location sharing rides on the same fix (architecture-plan.md §4, "one capture,
   // two destinations"). It is throttled to its own interval inside, and it can
   // never fire when the rider hasn't opted in. Local recording is never affected
@@ -6993,8 +6963,7 @@ function _recDetailOpen(recId){
     (rec.totalDist || 0).toFixed(1) + ' km · ' + fmtHM(durH) + '<br>' +
     (rt ? 'Route: ' + (rt.label || rt.name) : 'No linked route') + '<br>' +
     (rec.points ? rec.points.length : 0) + ' points' + (stopsN ? ' · ' + stopsN + ' stop' + (stopsN !== 1 ? 's' : '') : '') + '<br>' +
-    (gapsAll.length ? gapsAll.length + ' GPS gap' + (gapsAll.length !== 1 ? 's' : '') + (gapsFilled ? ' · ' + gapsFilled + ' filled <span style="color:#f97316;">(dashed on map)</span>' : '') + (gapsOpen ? ' · ' + gapsOpen + ' unfilled' : '') + '<br>' : '') +
-    _recBatteryHTML(rec) +
+    (gapsAll.length ? gapsAll.length + ' GPS gap' + (gapsAll.length !== 1 ? 's' : '') + (gapsFilled ? ' · ' + gapsFilled + ' filled <span style="color:#f97316;">(dashed on map)</span>' : '') + (gapsOpen ? ' · ' + gapsOpen + ' left open' : '') + '<br>' : '') +
     (rec.stravaUploadedAt
       ? '<a href="' + rec.stravaActivityUrl + '" target="_blank" rel="noopener" style="color:var(--accent);">On Strava ✓ — view activity</a>'
       : rec.stravaUploadStatus === 'queued'
@@ -8816,7 +8785,6 @@ function _recFlushEndOfRide(){
 // Tap "Stop & save" in the confirm strip → finalise the recording, show the undo strip.
 async function _recStopConfirm(){
   if(!_rec) return;
-  if(!(UI.simRunning || UI.simPaused)) await _recBatteryMaybe(true);   // v404 — the end reading, before the final save
   const finalised = await finaliseRecording();
   _recLastFinalised = finalised;
   _recGapArm(finalised, true);   // queue the gap prompt (shown after the undo window)

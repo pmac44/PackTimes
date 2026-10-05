@@ -408,11 +408,17 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v404 (5 Oct) — Rides log battery %; "Leave as a gap" renamed "Leave unfilled"
+- **Changed:** RECORDING: `REC_BATT_MS` (30 min), `_recBatteryMaybe(force)` → `rec.battery[] {t,pct,chg}` (called at the top of `_appendPoint`, and awaited in `_recStopConfirm` before `finaliseRecording`), `_recBatteryHTML(rec)` in the `_recDetailOpen` stats ("Battery 90% → 34% · 4.9%/h", or "charged during ride"). Gap modal: button `rgm-none` reads "Leave unfilled", and the intro says Strava draws a straight line; ride detail says "unfilled" instead of "left open".
+- **Why:** Peter couldn't remember his end-of-ride battery on 4 Oct. "Leave as a gap" promised a gap Strava never shows.
+- **Watch out:** sampling rides on the fix path ON PURPOSE (hidden-page timers may stall); sim rides are skipped. Not in FIT/GPX.
+- **Verified:** `node verify.js`; preview with stubbed `getBattery` + `Date.now`, fixes every 15 min: readings at 0/30/60 min + forced end, HTML for the drain and charged cases, no console errors. The phone's web view returned the same level as `dumpsys battery`. Backup `backup/index-v403-pre-v404.html`. NOT pushed.
+
 ### v403 (5 Oct) — App GPS no longer dies when the camera (or anything) flashes PackTimes on screen
 - **Changed:** GPS: `_gpsRestartWatch(why)` — on `'wake'` in the app it returns if a fix arrived within `GPS_WATCHDOG_MS`; any rebuild now adds the new watch first and removes the old only after (`_nativeWatches.get(new).finally(clear old)`). The visibilitychange handler passes `'wake'`.
 - **Why:** 4 Oct 230 km ride: 5 gaps (17.8 min). Lock-screen camera closes → PackTimes visible ~0.1 s → wake rebuild → `removeWatcher` emptied the plugin's list → its foreground service stopped → `addWatcher` arrived after the app was hidden → Android refused the restart (`BFGS denied`) → no GPS or power until the next screen-on. Full write-up: `_planning/Ride-Gaps-Oct4_Notes_v1.md`.
 - **Watch out:** in the app, NEVER let the plugin's watcher list go empty mid-ride. Its foreground service can only be (re)started while PackTimes is on screen.
-- **Verified:** `node verify.js`; PackTimes dev (-Dev build, v403, recording active): reran the ride's sequence (screen off → wake → double-press power for the camera → screen off). v402: GPS off within 0.4 s and stayed off. v403: service still foreground, fixes still arriving after 2.5 min. Backup `backup/index-v402-pre-v403.html`. NOT pushed (v402 also not pushed).
+- **Verified:** `node verify.js`; PackTimes dev (-Dev build, v403, recording active): reran the ride's sequence (screen off → wake → double-press power for the camera → screen off). v402: GPS off within 0.4 s and stayed off. v403: service still foreground, fixes still arriving after 2.5 min. Backup `backup/index-v402-pre-v403.html`. Pushed 5 Oct (with v402).
 
 ### v401–v402 (3 Oct) — App sign-ins run in a Chrome Custom Tab, so Google sign-in works
 - **Changed:** head script (first `<script>`): bounce page — no Capacitor + OAuth `state` ending `~<app id>` → `document.write` a "Return to PackTimes" page and `location.replace('<app id>://oauth?…')`. Near `_nativeGeo`: `_oaStore` (localStorage), `_nativeBrowser`/`_nativeApp`, `_oauthAppId` (App.getInfo). Near `_oauthPending`: `_oauthStateTail`, `_oauthGo`, `_oauthFromAppUrl` (appUrlOpen + getLaunchUrl), `_initDone`. OAuth state/verifier/return-tab moved sessionStorage → `_oaStore`. v402: return-page wording only.
@@ -469,11 +475,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** the app view can't `window.open` + `print()`.
 - **Watch out:** the page is laid out with JavaScript OFF — anything the brief needs must be plain HTML/CSS (its own `window.print()` onload script is inert there, on purpose).
 - **Verified:** `node verify.js`; Pixel dev build: `printMission()` → `printspooler PrintActivity`, preview shows the brief, Save as PDF offered. Backup `backup/index-v392-pre-v393.html`. NOT pushed.
-
-### v392 (27 Sep) — An empty device can no longer wipe the Dropbox plan
-- **Changed:** Dropbox `?code=` handler: after connecting, `ROUTES.length ? dbxSave(true) : dbxLoad(true)` (was always `dbxSave(true)`). `dbxSave`: with no routes, auto-sync returns; manual "Save now" needs a confirm.
-- **Why:** 27 Sep the fresh Android app (its own empty storage) connected Dropbox and uploaded 0 routes over Peter's plan.json (90 bytes, 14:25). Recovered from Dropbox version history.
-- **Watch out:** deleting your LAST route no longer auto-syncs (accepted). Every new device/app install starts empty — anything that writes to a shared store on first run must load first.
-- **Verified:** `node verify.js`; browser with stubbed fetch: empty+auto → 0 uploads, empty+manual declined → 0, with routes → 1. Backup `backup/index-v391-pre-v392.html`. Pushed 27 Sep. plan.json restored from version history (40 routes, 20 calib rides, savedAt 12:25) and force-loaded into the app — nothing lost.
 
 <!-- VERSION-LOG-END -->
