@@ -9,6 +9,13 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v391 (27 Sep) — File exports work in the app (share sheet)
+- **Changed:** GPS native block: `_nativeFS`, `_nativeShare`, `_nativeSaveShare(href,name)`; in the app `HTMLAnchorElement.prototype.click` is patched so any `<a download href="blob:/data:">` click writes the file to the app cache (Filesystem) and opens Android's share sheet (Share). Covers `_recDownload` (FIT/GPX), plan export, `shareRideFile`, route backup — no caller changed.
+- **Why:** Phase 1b step 5 — the app view silently ignores downloads.
+- **Watch out:** patched on the prototype because two callers click anchors never added to the page. New export code must keep using a blob/data `<a download>` (or call `_nativeSaveShare`). Mission-brief PRINT (`window.open('')` + `print()`) is NOT fixed — untested in the app, probably does nothing.
+- **Verified:** `node verify.js`; browser prototype unpatched. Pixel dev build: `shareRideFile` → share sheet → Peter saved to Google Drive, right name. Same session: Dropbox and Strava sign-ins both return into the app on the LIVE build with no code change. intervals.icu (pasted key) not tried. Backup `backup/index-v390-pre-v391.html`. NOT pushed.
+
+
 ### v390 (27 Sep) — Bluetooth sensors work in the app (Web Bluetooth stand-in over the BluetoothLe plugin)
 - **Changed:** POWER METER section, before `connectPowerMeter`: `_nativeBle`, `_bleCall` (one-at-a-time GATT queue), `_bleUUID`, `_bleHexToDV/_bleDVToHex`, `_bleChar`, `_bleDevice`, `_nativeBluetooth.requestDevice`, `_bt()`. `connectPowerMeter`/`connectHRMonitor` use `_bt()` instead of `navigator.bluetooth`. The power/HR/crank code itself is untouched.
 - **Why:** Phase 1b step 4 — the Android app view has no `navigator.bluetooth`.

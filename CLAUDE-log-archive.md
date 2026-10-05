@@ -9,6 +9,13 @@ Split out of `CLAUDE.md` on 2 September 2026. Nothing edited, order preserved (n
 
 <!-- ARCHIVE-INSERT-POINT — trim_log.py inserts newly-retired entries directly below this line -->
 
+### v392 (27 Sep) — An empty device can no longer wipe the Dropbox plan
+- **Changed:** Dropbox `?code=` handler: after connecting, `ROUTES.length ? dbxSave(true) : dbxLoad(true)` (was always `dbxSave(true)`). `dbxSave`: with no routes, auto-sync returns; manual "Save now" needs a confirm.
+- **Why:** 27 Sep the fresh Android app (its own empty storage) connected Dropbox and uploaded 0 routes over Peter's plan.json (90 bytes, 14:25). Recovered from Dropbox version history.
+- **Watch out:** deleting your LAST route no longer auto-syncs (accepted). Every new device/app install starts empty — anything that writes to a shared store on first run must load first.
+- **Verified:** `node verify.js`; browser with stubbed fetch: empty+auto → 0 uploads, empty+manual declined → 0, with routes → 1. Backup `backup/index-v391-pre-v392.html`. Pushed 27 Sep. plan.json restored from version history (40 routes, 20 calib rides, savedAt 12:25) and force-loaded into the app — nothing lost.
+
+
 ### v391 (27 Sep) — File exports work in the app (share sheet)
 - **Changed:** GPS native block: `_nativeFS`, `_nativeShare`, `_nativeSaveShare(href,name)`; in the app `HTMLAnchorElement.prototype.click` is patched so any `<a download href="blob:/data:">` click writes the file to the app cache (Filesystem) and opens Android's share sheet (Share). Covers `_recDownload` (FIT/GPX), plan export, `shareRideFile`, route backup — no caller changed.
 - **Why:** Phase 1b step 5 — the app view silently ignores downloads.

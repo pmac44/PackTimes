@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v403';
+window.APP_VERSION='v402';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5676,23 +5676,11 @@ let _gpsOnFix = null;         // the watchPosition success callback, captured in
 let _gpsLastFixMs = 0;        // last time any real fix arrived (or watch was created)
 const GPS_WATCHDOG_MS = 30000;
 
-// v403 — IN THE APP, A REBUILD MUST NEVER LEAVE A MOMENT WITH NO WATCH. Peter's 4 Oct 230 km
-// ride lost GPS five times (17.8 min). Camera opened over the lock screen → screen off → camera
-// closes → PackTimes is visible for ~0.1 s → this ran on 'wake' → removeWatcher emptied the
-// plugin's watcher list, which stops its foreground service → the app was already hidden again
-// when addWatcher asked Android to restart it → refused ("BFGS denied") → no GPS and no power
-// samples until the next screen-on. Reproduced on the dev app 5 Oct (adb batterystats + logcat).
-// Two rules: (1) the app's native watch survives screen-off, so a wake only rebuilds it if fixes
-// have actually stopped; (2) any rebuild adds the new watch BEFORE removing the old one, so the
-// service never drops out of the foreground.
-function _gpsRestartWatch(why){
+function _gpsRestartWatch(){
   if(!UI.gpsActive || !_gpsOnFix) return;
   if(UI.simRunning || UI.simPaused) return;   // simulator drives fixes itself
-  if(why === 'wake' && _nativeGeo && _gpsLastFixMs && Date.now()-_gpsLastFixMs < GPS_WATCHDOG_MS) return;
-  const old = UI.gpsWatchId;
+  gpsClearWatch(UI.gpsWatchId);
   UI.gpsWatchId = gpsWatch(_gpsOnFix, err=>console.warn('GPS', err));
-  const added = _nativeWatches.get(UI.gpsWatchId);
-  if(added) added.finally(()=>gpsClearWatch(old)); else gpsClearWatch(old);
   _gpsLastFixMs = Date.now();   // fresh watch gets a full watchdog window
 }
 
@@ -12039,10 +12027,9 @@ const WAKE_MOVE_KM=0.05; // 50 m
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'){
     if(UI.gpsActive&&UI.keepScreenOn)requestWakeLock();
-    // The suspension may have silently killed the geolocation watch — rebuild it on
-    // wake so fixes actually resume (guards inside the helper; v403: in the app, only
-    // if fixes have stopped).
-    _gpsRestartWatch('wake');
+    // The suspension may have silently killed the geolocation watch — always
+    // rebuild it on wake so fixes actually resume (guards inside the helper).
+    _gpsRestartWatch();
     // Check if Dropbox has a newer copy — lightweight metadata check only
     dbxCheckOnFocus();
 
