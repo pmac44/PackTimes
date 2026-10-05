@@ -408,6 +408,12 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 
 *Older versions: `CLAUDE-log-archive.md`. Do not read it unless you need a version that is not below.*
 
+### v406 (5 Oct) — Ride screen snaps back to the top when scrolled to within 60 px of it
+- **Changed:** `LIVE_SNAP_PX` + `_liveSnapInit()` (just above the Combined Route tab section), called from `initLiveMap` after `attachMap`.
+- **Why:** scrolling back down from the stop list often stopped a few px short. Likely cause: once the map slides back under the finger, its pan gesture takes the touch and native scroll ends early.
+- **Watch out:** the snap waits for the finger to lift (touchstart/touchend) and for scroll to settle (140 ms debounce). `#live-scroller` is rebuilt every render, so the `_snapWired` flag sits on the element, not a global.
+- **Verified:** `node verify.js`; preview with `scrollTo` stubbed: 45 px snaps to 0, 120 px stays, 20 px held stays, then snaps on release. Real touch not tested; the preview pane didn't fire scroll events. Backup `backup/index-v405-pre-v406.html`. Not pushed.
+
 ### v405 (5 Oct) — Battery forecast that learns from your rides: Plan card + Ride-screen pill
 - **Changed:** RECORDING (after `_recBatteryMaybe`): `REC_BATT_MS` 30→10 min, readings get `off` (`navigator.onLine===false`); `_battNow`, `BATT_GUESS_PH` 5, `BATT_AIR_FACTOR` 0.7, `_battRideRate(rec,minH)`, `_battModel()` (median of the last 5 logged rides, normal and aeroplane kept apart), `_kmAtTime` (inverse `etaAt`), `_battPlanHTML(r)` (card after the mission card in `tPlan`), `_battPillVals`. Pills: `'batt'` in `PILL_CYCLE`, a renderer in `_renderFloatingPill`, a live patch in `updateLive`.
 - **Why:** Peter wants an honest "will I run out" forecast, aeroplane-mode advice, and a model that learns from his rides.
@@ -461,12 +467,5 @@ does for v367–v373. Dead ends go in "Settled — do not re-chase these", not t
 - **Why:** 28 Sep soak ride: no way to tell which turns spoke/woke the screen; and the Strava link was dropped — the save prompt's unchanged name fired a PUT, Strava 404'd because Peter's rides are "Only you" and the grant lacked read_all.
 - **Watch out:** existing Strava connections keep the old grant until reconnected (Settings → disconnect → connect, and tick the private-activities box). `rec.cues` is not in FIT/GPX and sim rides aren't logged.
 - **Verified:** `node verify.js`; browser with stubbed fetch: cue entry written only while a ride is active; 404 w/o read_all → link kept + error; with read_all → cleared as before; unchanged name → 0 fetches; new name → PUT. Backup `backup/index-v395-pre-v396.html`. Pushed 28 Sep; Pixel app confirmed on v396 (Strava not yet reconnected — scope null).
-
-### v395 (28 Sep) — Android killed the app mid-ride: per-call date formatters (35 MB/s native garbage)
-- **Changed:** TIME CALC: `_FMT_HM/_FMT_WD/_FMT_DM/_FMT_DMY` (Intl.DateTimeFormat, built once) + `_fmtWith`; `_fmtTRaw`, `fmtDT`, `fmtDTY`, `fmtDTYDev` use them. `updateLive`: the per-stop `eta-<id>` loop only runs if such an element exists. MAP ENGINE: `_canvasFit(cvs,bw,bh)` — resize only on change, else `ctx.reset()`; used by `drawMap`, `_drawElevInner`, desktop elev, `drawElevProfile`.
-- **Why:** Peter's 28 Sep soak walk on NSW Divide (1,146 stops): the renderer hit Android's memory.high (3 GB) at 8:07:02 — points stop that second — and the app was killed at 8:07:43. `toLocaleTimeString('en-GB',{…})` builds a new ICU formatter per call (~30 KB native, invisible to the JS heap and the heap profiler); updateLive made 1,156 per tick.
-- **Watch out:** never call `toLocale*String(locale,{options})` or `new Intl.*` in anything per-stop or per-tick — reuse a module-level formatter. `performance.memory` and the heap profiler did NOT show this; the proof was renderer RSS (`adb shell ps -o RSS`) with the function swapped live over CDP. The canvas change is hygiene (it was a suspect, not the cause).
-- **Also in v395 — ending a ride ends GPS:** new `_recEndGps()` (RECORDING, before `_recStopDelete`), called by `_recStopConfirm` and `_recStopDelete`; `_recStopUndo` calls `startGPS()` if off. Stopping a ride used to leave GPS on at full accuracy (invisible in Chrome; in the app the tracking notification stayed and the battery paid). Sim excluded.
-- **Verified:** `node verify.js`; browser: 2,000 dates identical old vs new (incl. Invalid Date), maps + elevation redraw correctly; stubbed-GPS run: start → stop (GPS off, watch cleared) → undo (GPS on) → delete (GPS off). Pixel, live v394 app, ride running, `_fmtTRaw` swapped at runtime: renderer 2.3–2.6 GB churning → flat 697 MB for 36 s; `stopGPS()` → plugin service leaves the foreground, notification gone. Backup `backup/index-v394-pre-v395.html`. Pushed 28 Sep; Pixel app confirmed on v395 with 40 routes.
 
 <!-- VERSION-LOG-END -->

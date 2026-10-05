@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v406';
+window.APP_VERSION='v405';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -19856,33 +19856,10 @@ function initLiveMap(r){
     window.addEventListener('resize',debouncedSize);
   }
   attachMap(cvs,null); // no add-stop on ride tab — stops added via stops tab only
-  _liveSnapInit();
   // Draw elevation profile after layout settles (needs map dimensions)
   if(UI.elevExpanded){
     setTimeout(()=>drawElevProfile(r,UI.gpsDistKm||0),300);
   }
-}
-
-// v406 — snap the Ride screen back to the top. Scrolling down from the stop list often
-// stops a few px short: once the map slides back under the finger, the map's own pan
-// gesture takes the touch and the native scroll ends early. When the scroll settles
-// within LIVE_SNAP_PX of the top (and no finger is down), finish the job.
-const LIVE_SNAP_PX=60;
-function _liveSnapInit(){
-  const sc=document.getElementById('live-scroller');
-  if(!sc||sc._snapWired)return;   // the element is rebuilt on every render, so this re-wires each time
-  sc._snapWired=true;
-  let touching=false,t=null;
-  const check=()=>{
-    if(touching)return;
-    const top=sc.scrollTop;
-    if(top>0&&top<=LIVE_SNAP_PX)sc.scrollTo({top:0,behavior:'smooth'});
-  };
-  const settle=()=>{clearTimeout(t);t=setTimeout(check,140);};
-  sc.addEventListener('touchstart',()=>{touching=true;clearTimeout(t);},{passive:true});
-  sc.addEventListener('touchend',()=>{touching=false;settle();},{passive:true});
-  sc.addEventListener('touchcancel',()=>{touching=false;settle();},{passive:true});
-  sc.addEventListener('scroll',settle,{passive:true});
 }
 
 // ─── Combined Route tab (routes list + route detail) ───
