@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v406';
+window.APP_VERSION='v407';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -18857,7 +18857,9 @@ function tLiveShell(r){
           hasSt&&s.ohRules?(st==='open'?'border-color:rgba(74,222,128,0.85);':st==='closed'?'border-color:rgba(248,113,113,0.85);':''):'';
         const stEl=hasSt?(st==='open'?'<span class="s-op">✓ Open</span>':st==='closed'?'<span class="s-cl">✗ Closed</span>':'<span class="s-uk">? Hours unknown</span>'):'';
         const ohHint=s.ohRaw?' · <span style="color:var(--text3);font-size:16px;">'+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
-        html+=`<div class="si live-stop" data-sid="${s.id}" style="${tileBg}">
+        // v407 — same category stripe as the Stops tab (v384); overrides only the left border.
+        const stripe=`border-left:4px solid var(--cat-${s.type},var(--text3));`;
+        html+=`<div class="si live-stop" data-sid="${s.id}" style="${tileBg}${stripe}">
           <div class="sdot d-${s.type}"></div>
           <div class="si-inf">
             <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}</div>
@@ -23231,7 +23233,8 @@ function updateLive(){
           const ohHint=s.ohRaw?'<span style="color:var(--text3);font-size:14px;"> · '+(s.ohRules?fmtOHSummary(s.ohRules,s.ohRaw):s.ohRaw)+'</span>':'';
           const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
           const sleepEl=hasSleep?`<span style="font-size:14px;color:#b39ddb;">😴 ${s.sleepH||10}h bivi</span>`:'';
-          return`<div class="si live-stop" data-sid="${s.id}" style="${tileBg}">
+          const stripe=`border-left:4px solid var(--cat-${s.type},var(--text3));`; // v407
+          return`<div class="si live-stop" data-sid="${s.id}" style="${tileBg}${stripe}">
             <div class="sdot d-${s.type}"></div>
             <div class="si-inf">
               <div class="si-name">${s.name}${popBadge(s,'inline')}${orBadge}</div>
