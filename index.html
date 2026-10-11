@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v409';
+window.APP_VERSION='v410';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -18187,7 +18187,7 @@ const PILL_INFO={
   speed:['Speed','Now · average'],
   pace:['Pace','min/km · average'],
   mspeed:['Moving speed','Now · moving average'],
-  stop:['Stoppage','Time stopped · % of ride'],
+  stop:['Elapsed time','Ride clock · % stopped'],
   grade:['Grade','Gradient · to top of climb'],
   vam:['VAM','Climbing m/h · metres climbed'],
   power:['Power','3 sec · weighted'],
