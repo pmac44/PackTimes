@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v410';
+window.APP_VERSION='v412';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1962,7 +1962,7 @@ async function saveAll(){
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false,scope:UI.stravaScope||null}).catch(()=>{});
   // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
   await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,riderKg:UI.riderKg||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -2009,6 +2009,7 @@ async function loadAll(){
       if(prefs.crankLastAt)UI.crankLastAt=prefs.crankLastAt;
       if(prefs.crankLastDev)UI.crankLastDev=prefs.crankLastDev;
       if(prefs.maxHr)UI.maxHr=prefs.maxHr;
+      if(prefs.riderKg)UI.riderKg=prefs.riderKg;   // v411
       if(Array.isArray(prefs.hiddenMapTypes))UI.hiddenMapTypes=new Set(prefs.hiddenMapTypes);
       if(prefs.osmOpts)UI.osmOpts=prefs.osmOpts;
       if(prefs.geoapifyKey)UI.geoapifyKey=prefs.geoapifyKey;
@@ -13034,7 +13035,7 @@ function openOfflinePicker(ridx){
   cost();
   ov.addEventListener('click',e=>{
     if(e.target===ov||e.target.closest('#op-x')){close();return;}
-    if(e.target.closest('#op-settings')){close();UI.tab='settings';UI.settingsExp.offlineMaps=true;render();return;}
+    if(e.target.closest('#op-settings')){close();UI.tab='settings';UI.settingsExp.offlineMaps=true;UI.settingsPage='maps';render();return;}
     if(e.target.closest('#op-go')){
       const modes=chosen();if(!modes.length)return;
       UI.offlinePick=Object.fromEntries(MAPBOX_MODES.map(m=>[m,modes.includes(m)]));
@@ -18033,7 +18034,7 @@ function sortedLayers(r){
 // v405 — 'batt' (phone battery % + hours left) goes last: it's about the phone, not the ride.
 // v409 — 'vam' after 'grade' (both climbing, no sensor). Since v409 this is the PICK LIST's
 // order, not a tap cycle — see _fpillPick.
-const PILL_CYCLE=['speed','pace','mspeed','stop','grade','vam','power','cad','force','hr','batt','off'];
+const PILL_CYCLE=['speed','pace','mspeed','stop','grade','vam','power','wkg','cad','force','hr','batt','off'];   // v411 + 'wkg'
 // ── PEDAL FORCE (v360) ───────────────────────────────────────────────────────
 // Peter's use for it: "grinding too big a gear or busting your knees, and as a trigger to
 // increase cadence if you want more power."
@@ -18180,45 +18181,54 @@ function _fpillsSync(){
 }
 
 // ── v409 — TAP A PILL, PICK FROM A LIST. Peter, 12 Oct: "we have so many now that it's pretty
-// painful to cycle through." Twelve choices meant up to eleven taps to reach one. A tap now
-// opens every choice at once; one tap sets the cell and closes. Hold-to-pair on an unpaired
-// power/HR cell is unchanged (the long-press handler suppresses the click that follows it).
+// painful to cycle through." A tap opens every choice at once; one tap sets the cell and
+// closes. Hold-to-pair on an unpaired power/HR cell is unchanged (the long-press handler
+// suppresses the click that follows it).
+// v411 — FULL SCREEN, BIG TYPE, COLOURED BY GROUP. Peter: "I need glasses to read all that…
+// we need some different colours… it helps differentiate." The group colour is the left
+// stripe plus a light tint of the tile; it identifies the KIND of number (speed & time,
+// climbing, power meter, heart rate, phone), and appears only here — the pills themselves
+// stay monochrome (the v260 rule: on the Ride screen colour means zone).
+// [name, what it shows, group]
 const PILL_INFO={
-  speed:['Speed','Now · average'],
-  pace:['Pace','min/km · average'],
-  mspeed:['Moving speed','Now · moving average'],
-  stop:['Elapsed time','Ride clock · % stopped'],
-  grade:['Grade','Gradient · to top of climb'],
-  vam:['VAM','Climbing m/h · metres climbed'],
-  power:['Power','3 sec · weighted'],
-  cad:['Cadence','rpm · left/right'],
-  force:['Pedal force','Newtons per stroke'],
-  hr:['Heart rate','Now · average'],
-  batt:['Battery','Phone % · hours left'],
-  off:['Empty','Shows the map'],
+  speed:['Speed','Now · average','spd'],
+  pace:['Pace','min/km','spd'],
+  mspeed:['Moving speed','Leaves out stops','spd'],
+  stop:['Elapsed time','Time · % stopped','spd'],
+  grade:['Grade','% · to the top','clb'],
+  vam:['VAM','Climbing m/h','clb'],
+  power:['Power','3 sec · weighted','pwr'],
+  wkg:['Watts / kg','3 sec · weighted','pwr'],
+  cad:['Cadence','rpm · left/right','pwr'],
+  force:['Pedal force','Newtons','pwr'],
+  hr:['Heart rate','bpm · average','hr'],
+  batt:['Battery','% · hours left','oth'],
+  off:['Empty','Shows the map','oth'],
 };
+const PILL_GROUP_COL={spd:'var(--cat-water)',clb:'var(--cat-fuel)',pwr:'var(--cat-vending)',hr:'var(--cat-fire)',oth:'var(--cat-peak)'};
 function _fpillPick(slot){
   const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
   const cur=(UI.livePills||FPILL_DEFAULT)[slot]||'off';
-  const needs=k=>(k==='power'||k==='cad'||k==='force')?(UI.powerConnected?'':'power meter'):k==='hr'?(UI.hrConnected?'':'heart rate strap'):'';
+  const needs=k=>(k==='power'||k==='wkg'||k==='cad'||k==='force')?(UI.powerConnected?'':'not paired')
+    :k==='hr'?(UI.hrConnected?'':'not paired'):'';
   const btn=k=>{
-    const[n,d]=PILL_INFO[k]||[k,''], on=k===cur, nd=needs(k);
-    return`<button type="button" data-pick="${k}" style="text-align:left;padding:var(--sp-3);min-height:64px;border-radius:var(--r-ctrl);border:${on?'2px solid var(--accent)':'1px solid var(--border2)'};background:${on?'color-mix(in srgb,var(--accent) 16%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
-      <div style="font-size:var(--fs-base);font-weight:600;line-height:1.2;">${n}</div>
-      <div style="font-size:var(--fs-xs);color:var(--text3);margin-top:2px;line-height:1.3;">${d}${nd?`<br>Needs a ${nd}`:''}</div></button>`;
+    const[n,d,g]=PILL_INFO[k]||[k,'','oth'], on=k===cur, nd=needs(k)||(k==='wkg'&&!(UI.riderKg>0)?'set weight':''), col=PILL_GROUP_COL[g];
+    return`<button type="button" data-pick="${k}" style="min-width:0;text-align:left;padding:9px 10px 9px 12px;border-radius:var(--r-ctrl);border:${on?'3px solid var(--text)':'1px solid var(--border2)'};border-left:8px solid ${col};background:color-mix(in srgb,${col} ${on?28:12}%,var(--card2));color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
+      <div style="font-size:20px;font-weight:700;line-height:1.15;white-space:nowrap;">${n}</div>
+      <div style="font-size:15px;color:var(--text2);margin-top:3px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nd?`<span style="color:var(--text3);">${nd}</span>`:d}</div></button>`;
   };
   const ov=document.createElement('div');
   ov.id='fpill-pick-ov';
-  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
-  ov.innerHTML=`<div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px calc(16px + env(safe-area-inset-bottom,0px));width:100%;max-width:520px;max-height:88dvh;box-sizing:border-box;display:flex;flex-direction:column;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;">
-      <span style="font-size:18px;font-weight:600;color:var(--text);">Show in this cell</span>
-      <button class="btn btn-sm" data-pick-x>✕</button>
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--card);display:flex;flex-direction:column;-webkit-tap-highlight-color:transparent;';
+  ov.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 10px;flex-shrink:0;border-bottom:1px solid var(--border2);">
+      <span style="font-size:22px;font-weight:700;color:var(--text);">Show in this cell</span>
+      <button class="btn" data-pick-x style="min-width:48px;min-height:48px;font-size:22px;padding:0;">✕</button>
     </div>
-    <div style="overflow-y:auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2);">${PILL_CYCLE.map(btn).join('')}</div>
-  </div>`;
+    <div style="overflow-y:auto;min-height:0;flex:1;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));">
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:640px;margin:0 auto;">${PILL_CYCLE.map(btn).join('')}</div>
+    </div>`;
   ov.addEventListener('click',e=>{
-    if(e.target===ov||e.target.closest('[data-pick-x]')){ov.remove();return;}
+    if(e.target.closest('[data-pick-x]')){ov.remove();return;}
     const b=e.target.closest('[data-pick]');if(!b)return;
     const pills=(UI.livePills||FPILL_DEFAULT).slice();
     pills[slot]=b.dataset.pick;
@@ -18497,7 +18507,7 @@ function openSearchSheet(mode){
     const seg=e.target.closest('.ss-seg button');
     if(seg){if(!seg.disabled){m=seg.dataset.mode;paint();if(m==='place')ov.querySelector('#ts-input')?.focus();}return;}
     if(e.target.closest('#ss-go')){run();return;}
-    if(e.target.closest('#ss-settings')){close();UI.tab='settings';UI.settingsExp.geoapify=true;
+    if(e.target.closest('#ss-settings')){close();UI.tab='settings';UI.settingsExp.geoapify=true;UI.settingsPage='accom';
       _render();document.getElementById('settings-hdr-geoapify')?.scrollIntoView({block:'start'});return;}   // sync render so there's a panel to scroll to
     if(e.target.closest('#osm-all-toggle')){
       if(!UI.osmOpts)UI.osmOpts={};
@@ -19575,6 +19585,32 @@ function tLiveShell(r){
         </div>
       </div>`;
     }
+    if(type==='wkg'){
+      // v411 — WATTS PER KILO. Peter rode with someone quoting it all ride. 3 s power over body
+      // weight on top, weighted power over weight below. Monochrome: the power pill already
+      // wears the zone colours, and two pills claiming the same zone would be noise.
+      if(!UI.powerConnected)
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};text-align:center;" id="live-fpill-wkg">
+          <div style="padding:5px 8px 3px;">
+            <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:22px;font-weight:600;color:var(--text);font-family:var(--sans);">W/kg</span></div>
+            <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">3 sec</div>
+          </div>
+          <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">${_pairHint('power')}</span>
+          </div>
+        </div>`;
+      const v=_wkgVals();
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-wkg">
+        <div style="padding:5px 8px 3px;">
+          <div style="line-height:1.0;"><span style="font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-wkg-cur">${v.cur}</span></div>
+          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">W/kg · 3 sec</div>
+        </div>
+        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-wkg-np">${v.np}</span></div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-wkg-lbl">${v.lbl}</div>
+        </div>
+      </div>`;
+    }
     if(type==='power'){
       // v260d — THE UNPAIRED PILL IS FULL SIZE, and is the paired pill with dashes.
       // Peter: "the power, heart rate and cadence pills should be their full size at all
@@ -20441,22 +20477,11 @@ function tRoutes(r){
 // ─── Settings tab ───
 function tSettings(r){
   const se=UI.settingsExp;
-  // Helper: renders a collapsible card section header + optional body
+  // v412 — section() now COLLECTS each panel into SEC; the menu/page view below lays them out.
+  const SEC={};
   const section=(key,title,bodyHtml,alwaysShow=true)=>{
-    if(!alwaysShow)return'';
-    const open=se[key];
-    // v340 — padding/margins moved from inline styles into .set-panel/.set-panel-hdr CSS
-    // (same values) so the Paper theme can restyle open panels; body wrapped so Paper can
-    // give it its own surface. .is-open is the state class Paper keys off.
-    return`<div class="card set-panel${open?' is-open':''}">
-      <div id="settings-hdr-${key}" class="set-panel-hdr">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:16px;color:var(--text3);">${open?'▼':'▶'}</span>
-          <span class="ctitle" style="margin-bottom:0;">${title}</span>
-        </div>
-      </div>
-      ${open?`<div class="set-panel-body">${bodyHtml}</div>`:''}
-    </div>`;
+    if(alwaysShow)SEC[key]={title,body:bodyHtml};
+    return'';
   };
 
   // ── intervals.icu (v377) — the Bike Coach data path. API key, not OAuth. ──
@@ -20814,6 +20839,13 @@ function tSettings(r){
     +(UI.ftp?'<button class="btn btn-sm btn-r" id="ftp-clear">Clear</button>':'')
     +'</div></div>'
     +ftpZoneRows
+    // v411 — body weight, for the W/kg pill
+    +'<div class="field" style="margin-top:16px;"><label class="lbl">⚖️ Body weight &mdash; <span id="kg-val" class="unit">'+(UI.riderKg?UI.riderKg+' kg':'Not set')+'</span></label>'
+    +'<p style="font-size:14px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Your weight without the bike, for the watts-per-kilo pill.</p>'
+    +'<div style="display:flex;gap:8px;align-items:center;">'
+    +'<input type="number" id="kg-input" min="30" max="200" step="0.1" inputmode="decimal" value="'+(UI.riderKg||'')+'" placeholder="e.g. 72" style="width:100px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font);font-size:18px;padding:8px 10px;">'
+    +'<span style="font-size:16px;color:var(--text3);">kg</span>'
+    +'</div></div>'
     // Max HR
     +'<div class="field" style="margin-top:16px;"><label class="lbl">❤️ Max Heart Rate &mdash; <span id="maxhr-val" class="unit">'+(UI.maxHr?UI.maxHr+' bpm':'Not set')+'</span></label>'
     +'<p style="font-size:14px;color:var(--text3);margin-bottom:8px;line-height:1.5;">A rough guide: 220 minus your age. You can refine this from your highest recorded HR during hard efforts.</p>'
@@ -20901,12 +20933,12 @@ function tSettings(r){
     ${palRow}
     <p style="font-size:13px;color:var(--text3);margin-top:10px;line-height:1.5;">Now showing: <strong>${(UI._theme||'graphite')==='paper'?'Paper (light)':'Graphite (dark)'}</strong>.</p>`;
 
-  return`
+  const _shell=`
   <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
     <span style="color:var(--wordmark);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;">PackTimes</span>
     <span style="flex:1;"></span>
     <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
-  </div>
+  </div><!--SETBODY-->
   ${section('appearance','🎨 Appearance',appearanceBody)}
   ${section('sharing','📍 Location Sharing',sharingBody)}
   ${section('packride','👥 Group Rides (PackRide)',packrideBody)}
@@ -20963,7 +20995,66 @@ function tSettings(r){
   <button class="btn btn-full" onclick="openHelpModal()">How PackTimes works</button>
   <div style="text-align:center;padding:10px 0 4px;font-size:12px;color:var(--text3);font-family:var(--font);">PackTimes ${APP_VERSION}</div>
   `;
+  return _setLayout(_shell,SEC,r);
 }
+// ── v412 — SETTINGS IS A MENU OF PAGES, NOT ONE LONG LIST OF FOLDING PANELS. Peter, 12 Oct:
+// "There are so many expandable menus that it's just really hard to find anything… When I go
+// to change my crank length… I'm scrolling and dragging, and I've got to collapse menus
+// because the last one I opened is still expanded." The 17 panels are grouped into SET_PAGES
+// — few enough that the menu fits one phone screen — and tapping one shows that page alone,
+// every panel open, with a big Back at the top. Nothing to collapse, nothing left open.
+// tSettings still builds every panel through section(); this only arranges them. A panel that
+// isn't shown (alerts/zoom/weather need a route) simply isn't in SEC. UI.settingsPage = the
+// open page key, or null for the menu; the Settings tab button resets it to the menu.
+const SET_PAGES=[
+  {k:'sensors',t:'Sensors & zones',d:'Power, heart rate, crank length, weight',s:['ftp'],c:'var(--cat-vending)'},
+  {k:'ride',t:'Ride screen',d:'Averages, alerts, map zoom, weather',s:['averages','alerts','zoom','weather'],c:'var(--cat-water)'},
+  {k:'uploads',t:'Uploads & sync',d:'Strava, intervals.icu, Dropbox',s:['strava','intervals','dropbox'],c:'var(--cat-fuel)'},
+  {k:'sharing',t:'Sharing & group rides',d:'Live location, PackRide',s:['sharing','packride'],c:'var(--cat-school)'},
+  {k:'maps',t:'Offline maps',d:'Map downloads, storage',s:['offlineMaps','offline'],c:'var(--cat-camp)'},
+  {k:'appearance',t:'Appearance',d:'Light, dark or automatic',s:['appearance'],c:'var(--cat-church)'},
+  {k:'accom',t:'Accommodation search',d:'Geoapify key',s:['geoapify'],c:'var(--cat-accom)'},
+  {k:'danger',t:'Danger zone',d:'Delete data',s:['danger'],c:'var(--cat-fire)'},
+];
+// Panel titles carried emoji in the folding list; on a page the page's own colour does that job.
+function _setStripEmoji(t){ return String(t).replace(/^[^A-Za-z0-9]+/,''); }
+function _setLayout(shell,SEC,r){
+  const [logo,foot]=shell.split('<!--SETBODY-->');
+  const pg=SET_PAGES.find(p=>p.k===UI.settingsPage&&p.s.some(k=>SEC[k]));
+  if(!pg){
+    const rows=SET_PAGES.filter(p=>p.s.some(k=>SEC[k])).map(p=>
+      `<button type="button" data-setpage="${p.k}" style="display:flex;align-items:center;gap:12px;width:100%;min-height:64px;margin:0 0 8px;padding:10px 14px;text-align:left;border-radius:var(--r-card);border:1px solid var(--border2);border-left:8px solid ${p.c};background:color-mix(in srgb,${p.c} 10%,var(--card));color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
+        <span style="flex:1;min-width:0;">
+          <span style="display:block;font-size:19px;font-weight:700;line-height:1.2;">${p.t}</span>
+          <span style="display:block;font-size:15px;color:var(--text2);line-height:1.3;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.d}</span>
+        </span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text3);"><polyline points="9 6 15 12 9 18"/></svg>
+      </button>`).join('');
+    return logo+`<div style="padding:8px 0 0;">${rows}</div>`+foot;
+  }
+  const keys=pg.s.filter(k=>SEC[k]);
+  const body=keys.map(k=>`<div class="card set-panel is-open" style="border-left:6px solid ${pg.c};">
+      ${keys.length>1?`<div class="set-panel-hdr" style="cursor:default;"><span class="ctitle" style="margin-bottom:0;font-size:18px;">${_setStripEmoji(SEC[k].title)}</span></div>`:''}
+      <div class="set-panel-body">${SEC[k].body}</div>
+    </div>`).join('');
+  return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0 10px;">
+      <button type="button" id="set-back" class="btn" style="min-height:48px;padding:0 14px 0 8px;font-size:17px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>Settings</button>
+      <span style="font-size:22px;font-weight:700;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pg.t}</span>
+    </div>`+body;
+}
+function _setGo(k){
+  UI.settingsPage=k;
+  // Opening sharing / group rides: pull the current lists from the server (was on panel open).
+  if(k==='sharing'&&shareIsSetUp()){
+    Promise.all([shareLinksLoad(),shareRidesLoad()]).then(()=>renderKeepScroll()).catch(()=>{});
+    eventListLoad().then(()=>renderKeepScroll()).catch(()=>{});
+  }
+  render();
+  setTimeout(()=>{window.scrollTo(0,0);const cw=document.getElementById('content-wrap');if(cw)cw.scrollTop=0;
+    document.querySelectorAll('.content,.tab-content').forEach(el=>{el.scrollTop=0;});},60);
+}
+
 
 
 // Render stops list grouped by cluster for the Stops tab
@@ -23166,6 +23257,7 @@ function updateLive(){
     if(bl&&bl.textContent!==v.left)bl.textContent=v.left;
     if(bb&&bb.textContent!==v.lbl)bb.textContent=v.lbl;
   }
+  _wkgPatch();   // v411
   // ── v409 — the VAM pill, patched live.
   const vCurEl=document.getElementById('live-vam-cur');
   if(vCurEl){
@@ -23614,6 +23706,7 @@ document.getElementById('tabs').addEventListener('click',e=>{
       const sc=document.querySelector('.stops-scroll');
       if(sc)UI._stopsScrollSaved=sc.scrollTop;
     }
+    if(b.dataset.tab==='settings')UI.settingsPage=null;   // v412 — the Settings tab always opens on its menu
     UI.tab=b.dataset.tab;render();
     // Auto-scroll mission list to current GPS position when opening plan tab
     if(b.dataset.tab==='plan'&&UI.gpsDistKm!==null){
@@ -24525,6 +24618,10 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#hello-hdr')){UI.helloExpanded=!(UI.helloExpanded!==null?UI.helloExpanded:!cur());setTimeout(()=>renderKeepScroll(),50);return;}
   const helloTgl=e.target.closest('.hello-more-toggle');
   if(helloTgl){_toggleHelloDetail(helloTgl);return;}
+  // v412 — Settings menu rows and the page's Back button (see SET_PAGES)
+  const setPg=e.target.closest('[data-setpage]');
+  if(setPg&&UI.tab==='settings'){_setGo(setPg.dataset.setpage);return;}
+  if(e.target.closest('#set-back')&&UI.tab==='settings'){_setGo(null);return;}
   const settingsHdr=e.target.closest('[id^="settings-hdr-"]');
   if(settingsHdr){
     const key=settingsHdr.id.replace('settings-hdr-','');
@@ -24868,6 +24965,14 @@ document.getElementById('content-wrap').addEventListener('change',e=>{
     if(lbl)lbl.textContent=UI.ftp?UI.ftp+'W':'Not set';
     saveAll();
     if(UI.tab==='settings')render();
+    return;
+  }
+  if(e.target.id==='kg-input'){   // v411
+    const v=Math.round(parseFloat(e.target.value)*10)/10;
+    UI.riderKg=(v>=30&&v<=200)?v:null;
+    const lbl=document.getElementById('kg-val');
+    if(lbl)lbl.textContent=UI.riderKg?UI.riderKg+' kg':'Not set';
+    saveAll();
     return;
   }
   if(e.target.id==='maxhr-input'){
@@ -25789,6 +25894,7 @@ async function _powerAttach(dev){
       if(cadEl&&UI.powerCadence!==null)cadEl.textContent=UI.powerCadence;
       const balEl=document.getElementById('live-cad-bal');
       if(balEl)balEl.textContent=_powerBalTxt();   // v267 — one authority, see _powerBalTxt
+      _wkgPatch();   // v411
     });}
     UI.powerConnected=true;
     UI.powerDeviceName=dev.name||'Power meter';
@@ -25997,6 +26103,22 @@ function _bleRestoreStop(){
     _hrDevice=null;changed=true;
   }
   if(changed&&UI.tab==='live')_fpillsSync();
+}
+// ── v411 — W/kg pill values and its live patch (called from the BLE handler AND updateLive,
+// same as the power pill: power can arrive with no GPS ticking). No weight set → the figures
+// dash and the label says where to set it, rather than dividing by a guess.
+function _wkgVals(){
+  const kg=UI.riderKg;
+  if(!(kg>0))return{cur:'—',np:'—',lbl:'set weight in Settings'};
+  const np=_npCount>0?Math.pow(_npSum4/_npCount,0.25):null;
+  return{cur:UI.powerWatts!=null?(UI.powerWatts/kg).toFixed(1):'—',np:np!=null?(np/kg).toFixed(1):'—',lbl:'weighted'};
+}
+function _wkgPatch(){
+  const c=document.getElementById('live-wkg-cur');if(!c)return;
+  const v=_wkgVals();
+  if(c.textContent!==v.cur)c.textContent=v.cur;
+  const n=document.getElementById('live-wkg-np');if(n&&n.textContent!==v.np)n.textContent=v.np;
+  const l=document.getElementById('live-wkg-lbl');if(l&&l.textContent!==v.lbl)l.textContent=v.lbl;
 }
 // The unpaired cell's hint: while a sensor is being looked for (restored at ride start, or
 // dropped mid-ride and retrying) it says so, instead of asking for a pairing that isn't needed.
