@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v408';
+window.APP_VERSION='v409';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -5761,6 +5761,7 @@ function startGPS(){
 
 function _doStartGPS(){
   UI.gpsActive=true;
+  setTimeout(()=>_bleAutoRestore().catch(()=>{}),0);   // v409 — look for the remembered power meter / HR strap
   UI._gpsAutoPaused=false;
   UI._lastMovedTs=Date.now();
   _snapDir=0;_snapDirAccum=0; // reset direction detection on GPS start
@@ -5829,6 +5830,7 @@ function _doStartGPS(){
     // Phase 1a Step 3: feed every real GPS fix into the recording sampler.
     // _appendPoint guards on _rec internally — safe to call when no recording is active.
     _appendPoint(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude, pos.timestamp, pos.coords.accuracy);
+    _vamSample(pos.coords.altitude);   // v409 — every fix, so the VAM pill is ready when picked
     // Only capture "actual" times when we're actually riding this plan — i.e. its
     // start date is today or past. A future-dated plan means we're testing/planning
     // near the route, so a stray GPS fix must not stamp (and permanently anchor) it.
@@ -5940,6 +5942,7 @@ function _showRideAvgResetPrompt(){
 }
 function stopGPS(){
   if(_gpsIdleTimer){clearTimeout(_gpsIdleTimer);_gpsIdleTimer=null;}
+  _bleRestoreStop();   // v409 — stop looking for a remembered sensor that never answered
   gpsClearWatch(UI.gpsWatchId);
   _nativeLockScreen(false);
   // Accumulate this GPS session into ride average totals (using cumulative distance)
@@ -12026,6 +12029,7 @@ function simStart(){
     // Phase 1a Step 3: feed simulated fixes into the recording sampler too,
     // so the simulator is a real test bed for the recording engine.
     _appendPoint(p.lat, p.lon, p.ele==null?null:p.ele, Date.now(), 5);
+    _vamSample(p.ele==null?null:p.ele);   // v409
     // Initialise ride-avg session on first sim fix (mirrors real GPS path)
     if(UI._rideAvgSessionKm===null){
       UI._rideAvgSessionKm=UI.gpsTravelledKm;
@@ -17443,6 +17447,67 @@ function _gradeBottom(r,d,gLive){
   return{num:ag==null?'—':_fmtGradePct(ag),unit:'',label:'avg grade'};
 }
 
+// ── v409 — VAM: metres climbed per hour. Peter, 12 Oct: a climbing-speed number riders use.
+// No sensor needed. Height comes from the ROUTE's smoothed profile at the snapped position
+// while following (the same height the grade pill and profile use), else the phone's GPS
+// altitude, which is noisier — hence a long window. A change of source (or sim/real clock)
+// empties the window rather than reading a jump between two height sources as a climb.
+// TOP = climbing rate, the least-squares slope of height over time, never negative (a descent
+// reads 0). Peter: 3 min was far too slow — "if you're going to use that as a guide… you need
+// to be pretty instantaneous." The window is set by how noisy the height is, not by taste:
+//   · ROUTE profile: already smoothed, so VAM_ROUTE_MS (10 s) is effectively speed × grade —
+//     it moves as fast as the grade pill does.
+//   · GPS altitude: ±2–5 m of wobble. Over a 10 s window that alone swings the figure by
+//     ~1,000 m/h, so it needs VAM_GPS_MS (60 s, slope sd ~70 m/h at ±2.5 m). Honest, not instant.
+// Dashed until half its window has samples. BOTTOM = metres climbed this ride, counted with
+// VAM_HYST_M hysteresis so GPS wobble on the flat never adds up to a hill. Resets when a new
+// recording starts; a mid-ride reload starts it again from 0 (not stored).
+const VAM_ROUTE_MS=10000, VAM_GPS_MS=60000, VAM_WIN_MS=VAM_GPS_MS, VAM_HYST_M=4, VAM_GPS_AVG_MS=30000, VAM_GPS_HYST_M=6;
+const _vam={buf:[],src:null,rec:null,ref:null,asc:0,wall:0};
+function _vamSample(gpsAlt){
+  const r=cur(), sim=!!(UI.simRunning||UI.simPaused);
+  const onRoute=!!(r&&r.points&&r.points.length>1&&UI.gpsDistKm!=null&&!_freeRiding());
+  const e=onRoute?smEleAt(r,UI.gpsDistKm):(gpsAlt!=null&&isFinite(gpsAlt)?gpsAlt:null);
+  if(e==null)return;
+  const t=sim?_simElapsedMs:Date.now();   // any ride-time measurement asks the sim for the time
+  const src=(onRoute?'route':'gps')+(sim?'-sim':'');
+  const rk=_rec?_rec.id:null;
+  if(_vam.rec!==rk){_vam.rec=rk;_vam.asc=0;_vam.ref=null;_vam.buf=[];}
+  if(_vam.src!==src){_vam.src=src;_vam.ref=null;_vam.buf=[];}
+  const b=_vam.buf;
+  if(b.length&&t<b[b.length-1].t)b.length=0;          // clock went backwards (sim restarted)
+  if(b.length&&t-b[b.length-1].t<1000)return;          // ~1 a second is plenty
+  _vam.wall=Date.now();
+  b.push({t,e});
+  while(b.length>1&&t-b[0].t>VAM_WIN_MS)b.shift();
+  // Metres climbed. GPS altitude is first averaged over the last VAM_GPS_AVG_MS and needs a
+  // bigger step: tested with ±2.5 m of noise on a flat road, raw samples at a 4 m step "climbed"
+  // 1,223 m in 30 min. The route profile is already smoothed, so it is used as it is.
+  let es=e,hy=VAM_HYST_M;
+  if(!onRoute){let s=0,n=0;for(let i=b.length-1;i>=0&&t-b[i].t<=VAM_GPS_AVG_MS;i--){s+=b[i].e;n++;}es=s/n;hy=VAM_GPS_HYST_M;}
+  if(_vam.ref==null)_vam.ref=es;
+  else if(es-_vam.ref>=hy){_vam.asc+=es-_vam.ref;_vam.ref=es;}
+  else if(_vam.ref-es>=hy)_vam.ref=es;
+}
+function _vamVals(){
+  const b=_vam.buf,n=b.length,sim=!!(UI.simRunning||UI.simPaused);
+  const fresh=sim||(UI.gpsActive&&Date.now()-_vam.wall<15000);
+  let rate='—';
+  if(fresh&&n>1){
+    const win=String(_vam.src).startsWith('route')?VAM_ROUTE_MS:VAM_GPS_MS, tN=b[n-1].t;
+    let i0=n-1;while(i0>0&&tN-b[i0-1].t<=win)i0--;
+    if(i0===n-1)i0=n-2;                                   // sparse fixes: at least two points
+    if(tN-b[i0].t>=win/2){
+      let st=0,se=0,m=0;for(let i=i0;i<n;i++){st+=b[i].t;se+=b[i].e;m++;}
+      const tm=st/m,em=se/m;let num=0,den=0;
+      for(let i=i0;i<n;i++){const dt=b[i].t-tm;num+=dt*(b[i].e-em);den+=dt*dt;}
+      if(den>0)rate=String(Math.round(Math.max(0,num/den*3600000)/10)*10);   // m/ms → m/h
+    }
+  }
+  const asc=(_vam.ref==null&&!_vam.asc)?'—':String(Math.round(_vam.asc));
+  return{rate,asc};
+}
+
 // Compute grade segments (~50m) from route points — cached on route object.
 // v276 — the grade of each segment now comes from gradeAt (smoothed), so the map/desktop
 // grade overlays that read these segments match the ride profile too. The from/to/ele fields
@@ -17966,7 +18031,9 @@ function sortedLayers(r){
 // v276 — 'grade' sits with the other no-hardware metrics (speed/mspeed/stop), before the
 // paired sensors, because it's the road rider's metric and needs nothing plugged in.
 // v405 — 'batt' (phone battery % + hours left) goes last: it's about the phone, not the ride.
-const PILL_CYCLE=['speed','pace','mspeed','stop','grade','power','cad','force','hr','batt','off'];
+// v409 — 'vam' after 'grade' (both climbing, no sensor). Since v409 this is the PICK LIST's
+// order, not a tap cycle — see _fpillPick.
+const PILL_CYCLE=['speed','pace','mspeed','stop','grade','vam','power','cad','force','hr','batt','off'];
 // ── PEDAL FORCE (v360) ───────────────────────────────────────────────────────
 // Peter's use for it: "grinding too big a gear or busting your knees, and as a trigger to
 // increase cadence if you want more power."
@@ -18110,6 +18177,57 @@ function _fpillsSync(){
     const fresh=tmp.firstElementChild;
     if(fresh)el.replaceWith(fresh); else el.remove();
   }
+}
+
+// ── v409 — TAP A PILL, PICK FROM A LIST. Peter, 12 Oct: "we have so many now that it's pretty
+// painful to cycle through." Twelve choices meant up to eleven taps to reach one. A tap now
+// opens every choice at once; one tap sets the cell and closes. Hold-to-pair on an unpaired
+// power/HR cell is unchanged (the long-press handler suppresses the click that follows it).
+const PILL_INFO={
+  speed:['Speed','Now · average'],
+  pace:['Pace','min/km · average'],
+  mspeed:['Moving speed','Now · moving average'],
+  stop:['Stoppage','Time stopped · % of ride'],
+  grade:['Grade','Gradient · to top of climb'],
+  vam:['VAM','Climbing m/h · metres climbed'],
+  power:['Power','3 sec · weighted'],
+  cad:['Cadence','rpm · left/right'],
+  force:['Pedal force','Newtons per stroke'],
+  hr:['Heart rate','Now · average'],
+  batt:['Battery','Phone % · hours left'],
+  off:['Empty','Shows the map'],
+};
+function _fpillPick(slot){
+  const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
+  const cur=(UI.livePills||FPILL_DEFAULT)[slot]||'off';
+  const needs=k=>(k==='power'||k==='cad'||k==='force')?(UI.powerConnected?'':'power meter'):k==='hr'?(UI.hrConnected?'':'heart rate strap'):'';
+  const btn=k=>{
+    const[n,d]=PILL_INFO[k]||[k,''], on=k===cur, nd=needs(k);
+    return`<button type="button" data-pick="${k}" style="text-align:left;padding:var(--sp-3);min-height:64px;border-radius:var(--r-ctrl);border:${on?'2px solid var(--accent)':'1px solid var(--border2)'};background:${on?'color-mix(in srgb,var(--accent) 16%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
+      <div style="font-size:var(--fs-base);font-weight:600;line-height:1.2;">${n}</div>
+      <div style="font-size:var(--fs-xs);color:var(--text3);margin-top:2px;line-height:1.3;">${d}${nd?`<br>Needs a ${nd}`:''}</div></button>`;
+  };
+  const ov=document.createElement('div');
+  ov.id='fpill-pick-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.innerHTML=`<div style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px calc(16px + env(safe-area-inset-bottom,0px));width:100%;max-width:520px;max-height:88dvh;box-sizing:border-box;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;">
+      <span style="font-size:18px;font-weight:600;color:var(--text);">Show in this cell</span>
+      <button class="btn btn-sm" data-pick-x>✕</button>
+    </div>
+    <div style="overflow-y:auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2);">${PILL_CYCLE.map(btn).join('')}</div>
+  </div>`;
+  ov.addEventListener('click',e=>{
+    if(e.target===ov||e.target.closest('[data-pick-x]')){ov.remove();return;}
+    const b=e.target.closest('[data-pick]');if(!b)return;
+    const pills=(UI.livePills||FPILL_DEFAULT).slice();
+    pills[slot]=b.dataset.pick;
+    UI.livePills=pills;
+    saveAll();
+    ov.remove();
+    _fpillsSync();   // not renderKeepScroll — see the v259 note on _fpillsSync
+  });
+  document.body.appendChild(ov);
 }
 
 function _render(){
@@ -19330,6 +19448,19 @@ function tLiveShell(r){
         </div>
       </div>`;
     }
+    if(type==='vam'){   // v409 — climbing rate m/h (last 3 min) over metres climbed this ride; see _vamSample
+      const v=_vamVals();
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-vam">
+        <div style="padding:5px 8px 3px;">
+          <div style="line-height:1.0;"><span style="font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-vam-cur">${v.rate}</span></div>
+          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">VAM m/h</div>
+        </div>
+        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-vam-asc">${v.asc}</span></div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;">m climbed</div>
+        </div>
+      </div>`;
+    }
     if(type==='grade'){
       // ── v276 — THE GRADE PILL. Peter: "can we add another data cell - grade?… the grade
       // cell could change colour to match the grade zone." And the reason it earns a slot is
@@ -19500,7 +19631,7 @@ function tLiveShell(r){
             <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">W &middot; 3 sec</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">${_pairHint('power')}</span>
           </div>
         </div>`;
       }
@@ -19590,7 +19721,7 @@ function tLiveShell(r){
             <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">N</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">${_pairHint('power')}</span>
           </div>
         </div>`;
       }
@@ -19632,7 +19763,7 @@ function tLiveShell(r){
             <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">rpm</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">${_pairHint('power')}</span>
           </div>
         </div>`;
       }
@@ -19683,7 +19814,7 @@ function tLiveShell(r){
             <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">bpm</div>
           </div>
           <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
-            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">hold to pair</span>
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">${_pairHint('hr')}</span>
           </div>
         </div>`;
       }
@@ -23035,6 +23166,14 @@ function updateLive(){
     if(bl&&bl.textContent!==v.left)bl.textContent=v.left;
     if(bb&&bb.textContent!==v.lbl)bb.textContent=v.lbl;
   }
+  // ── v409 — the VAM pill, patched live.
+  const vCurEl=document.getElementById('live-vam-cur');
+  if(vCurEl){
+    const v=_vamVals();
+    if(vCurEl.textContent!==v.rate)vCurEl.textContent=v.rate;
+    const va=document.getElementById('live-vam-asc');
+    if(va&&va.textContent!==v.asc)va.textContent=v.asc;
+  }
   // ── v276 — the GRADE pill, patched live: grade text, its zone colour, and distance-to-top.
   // Same-fn note as the strip: the colour under the profile dot IS this number by construction.
   const gCurEl=document.getElementById('live-grade-cur');
@@ -24034,21 +24173,12 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     updateLive();
     return;
   }
-  // Floating pill tap → cycle through: speed → time → power → hr → off → speed...
+  // Floating pill tap → v409: open the pick list (was: cycle to the next type).
   // (Long-press on unpaired power/hr pill triggers BLE pairing — see _fpillLP handler below)
   const fpill=e.target.closest('.live-fpill');
   if(fpill&&UI.tab==='live'){
     if(_fpillLP.fired){_fpillLP.fired=false;return;} // suppress click after long-press
-    const slot=+fpill.dataset.slot;
-    const pills=UI.livePills||FPILL_DEFAULT.slice();
-    const cur=pills[slot]||'off';
-    const next=PILL_CYCLE[(PILL_CYCLE.indexOf(cur)+1)%PILL_CYCLE.length];
-    pills[slot]=next;
-    UI.livePills=pills;
-    saveAll();
-    // NOT renderKeepScroll(): on desktop mid-sim/ride that short-circuits to updateLive()
-    // and the pill never redraws (v259 — the bug Peter found). Rebuild it directly.
-    _fpillsSync();
+    _fpillPick(+fpill.dataset.slot);
     return;
   }
   if(e.target.closest('#live-weather-bar')&&UI.tab==='live'){
@@ -25519,6 +25649,7 @@ async function connectPowerMeter(){
     _powerDevice=dev;_powerWant=true;_powerRetryN=0;
     dev.addEventListener('gattserverdisconnected',()=>{ if(dev===_powerDevice)_powerOnDisconnect(); });
     await _powerAttach(dev);
+    _bleRemember('power',dev);   // v409 — found again by itself at the next ride start
   }catch(e){
     if(e.name!=='NotFoundError')alert('Could not connect: '+e.message);
   }
@@ -25543,7 +25674,8 @@ function _powerScheduleRetry(){
   _powerRetryTimer=setTimeout(async()=>{
     _powerRetryTimer=null;
     if(!_powerWant||UI.powerConnected)return;
-    try{ await _powerAttach(_powerDevice); _recToast('Power meter reconnected'); }
+    const first=!_powerDevice._everConnected;
+    try{ await _bleReattach(_powerDevice,CYCLING_POWER_SERVICE,_powerAttach); _recToast(first?'Power meter connected':'Power meter reconnected'); }
     catch(e){ _powerScheduleRetry(); }
   },ms);
 }
@@ -25660,6 +25792,7 @@ async function _powerAttach(dev){
     });}
     UI.powerConnected=true;
     UI.powerDeviceName=dev.name||'Power meter';
+    dev._everConnected=true;   // v409 — see _bleReattach
     _powerRetryN=0;
     if(UI.tab==='live')renderKeepScroll();
 }
@@ -25691,15 +25824,16 @@ async function connectHRMonitor(){
     });
     if(_hrRetryTimer){clearTimeout(_hrRetryTimer);_hrRetryTimer=null;}
     _hrDevice=dev;_hrWant=true;_hrRetryN=0;
-    dev.addEventListener('gattserverdisconnected',()=>{
-      if(dev!==_hrDevice)return;
-      UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
-      if(!_hrWant){UI._hrSum=0;UI._hrCount=0;}
-      if(UI.tab==='live')renderKeepScroll();
-      if(_hrWant)_hrScheduleRetry();
-    });
+    dev.addEventListener('gattserverdisconnected',()=>{ if(dev===_hrDevice)_hrOnDisconnect(); });
     await _hrAttach(dev);
+    _bleRemember('hr',dev);   // v409
   }catch(e){if(e.name!=='NotFoundError')alert('Could not connect: '+e.message);}
+}
+function _hrOnDisconnect(){
+  UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
+  if(!_hrWant){UI._hrSum=0;UI._hrCount=0;}
+  if(UI.tab==='live')renderKeepScroll();
+  if(_hrWant)_hrScheduleRetry();
 }
 function _hrScheduleRetry(){
   if(_hrRetryTimer||!_hrWant||!_hrDevice)return;
@@ -25707,7 +25841,8 @@ function _hrScheduleRetry(){
   _hrRetryTimer=setTimeout(async()=>{
     _hrRetryTimer=null;
     if(!_hrWant||UI.hrConnected)return;
-    try{ await _hrAttach(_hrDevice); _recToast('Heart rate strap reconnected'); }
+    const first=!_hrDevice._everConnected;
+    try{ await _bleReattach(_hrDevice,HR_SERVICE,_hrAttach); _recToast(first?'Heart rate strap connected':'Heart rate strap reconnected'); }
     catch(e){ _hrScheduleRetry(); }
   },ms);
 }
@@ -25760,6 +25895,7 @@ async function _hrAttach(dev){
       }
     });}
     UI.hrConnected=true;UI.hrDeviceName=dev.name||'HR monitor';
+    dev._everConnected=true;   // v409
     _hrRetryN=0;
     if(UI.tab==='live')renderKeepScroll();
 }
@@ -25771,6 +25907,101 @@ function disconnectHRMonitor(){
   UI.hrConnected=false;UI.hrBpm=null;UI.hrDeviceName=null;_hrChar=null;
   UI._hrSum=0;UI._hrCount=0;
   if(UI.tab==='live')renderKeepScroll();
+}
+
+// ── v409 — REMEMBERED SENSORS CONNECT BY THEMSELVES AT RIDE START. Peter, 12 Oct: "every time
+// I get it started, it looks like I have to pair the power meter again… I don't like having to
+// hold to pair all the time for every ride." The last power meter and HR strap paired are kept
+// in their own `bleSensors` KV row ({power:{id,name}, hr:{id,name}}) — not uiPrefs, because a
+// Bluetooth id belongs to THIS phone and must never sync to another device. Starting the ride
+// (_doStartGPS) hands each one to the v398 retry loop exactly as if it had just dropped out:
+// it keeps trying until the sensor wakes and answers (Assiomas sleep until pedalled). Pausing
+// or ending the ride (stopGPS) gives up on a sensor that never answered; one that did connect
+// stays connected, as before. Pairing a different sensor replaces the remembered one.
+const BLE_KV='bleSensors';
+async function _bleRemember(kind,dev){
+  try{
+    const m=await DB.getKV(BLE_KV).catch(()=>null)||{};
+    m[kind]={id:dev.id,name:dev.name||''};
+    await DB.setKV(BLE_KV,m);
+  }catch(e){}
+}
+// A device object for a remembered id, or null. App: the plugin connects by id directly.
+// Chrome: only devices this site was granted before, via getDevices (absent on some builds).
+async function _bleRestoreDev(saved){
+  if(!saved||!saved.id)return null;
+  if(navigator.bluetooth){
+    if(!navigator.bluetooth.getDevices)return null;
+    const list=await navigator.bluetooth.getDevices().catch(()=>[]);
+    return list.find(d=>d.id===saved.id)||null;
+  }
+  if(!_nativeBle)return null;
+  if(!_bleReady)_bleReady=_nativeBle.initialize({}).catch(e=>{_bleReady=null;throw e;});
+  await _bleReady;
+  return _bleDevice(saved.id,saved.name);
+}
+// Android may not know a remembered sensor's address type until it has heard it advertise
+// since Bluetooth last restarted, and a direct connect then fails at once. So the FIRST
+// connection to a restored sensor gets a fallback: listen up to 6 s for it, then try once more.
+// Once it has connected this session the stack knows it, so mid-ride drops never scan.
+async function _bleReattach(dev,service,attach){
+  try{ return await attach(dev); }
+  catch(e){
+    if(navigator.bluetooth||!_nativeBle||dev._everConnected)throw e;
+    if(!(await _bleSeen(dev.id,service,6000)))throw e;
+    return await attach(dev);
+  }
+}
+let _bleScanQ=Promise.resolve();   // one scan at a time: requestLEScan stops any scan already running
+function _bleSeen(id,service,ms){
+  const run=()=>new Promise(async res=>{
+    let done=false,h=null,t=null;
+    const fin=v=>{ if(done)return; done=true; clearTimeout(t); try{h&&h.remove();}catch(e){} _nativeBle.stopLEScan().catch(()=>{}); res(v); };
+    try{
+      h=await _nativeBle.addListener('onScanResult',r=>{ if(r&&r.device&&r.device.deviceId===id)fin(true); });
+      t=setTimeout(()=>fin(false),ms);
+      await _nativeBle.requestLEScan({services:[_bleUUID(service)]});
+    }catch(e){ fin(false); }
+  });
+  const p=_bleScanQ.then(run); _bleScanQ=p.catch(()=>{}); return p;
+}
+async function _bleAutoRestore(){
+  const m=await DB.getKV(BLE_KV).catch(()=>null);
+  if(!m||!UI.gpsActive)return;
+  if(m.power&&!_powerWant&&!UI.powerConnected){
+    const dev=await _bleRestoreDev(m.power).catch(()=>null);
+    if(dev&&!_powerWant&&!UI.powerConnected&&UI.gpsActive){   // re-check: a manual pair may have landed meanwhile
+      _powerDevice=dev;_powerWant=true;_powerRetryN=0;dev._restored=true;
+      dev.addEventListener('gattserverdisconnected',()=>{ if(dev===_powerDevice)_powerOnDisconnect(); });
+      _powerScheduleRetry();
+    }
+  }
+  if(m.hr&&!_hrWant&&!UI.hrConnected){
+    const dev=await _bleRestoreDev(m.hr).catch(()=>null);
+    if(dev&&!_hrWant&&!UI.hrConnected&&UI.gpsActive){
+      _hrDevice=dev;_hrWant=true;_hrRetryN=0;dev._restored=true;
+      dev.addEventListener('gattserverdisconnected',()=>{ if(dev===_hrDevice)_hrOnDisconnect(); });
+      _hrScheduleRetry();
+    }
+  }
+  if(UI.tab==='live')_fpillsSync();   // "hold to pair" → "searching…"
+}
+function _bleRestoreStop(){
+  let changed=false;
+  if(_powerDevice&&_powerDevice._restored&&!_powerDevice._everConnected){
+    _powerWant=false;if(_powerRetryTimer){clearTimeout(_powerRetryTimer);_powerRetryTimer=null;}
+    _powerDevice=null;changed=true;
+  }
+  if(_hrDevice&&_hrDevice._restored&&!_hrDevice._everConnected){
+    _hrWant=false;if(_hrRetryTimer){clearTimeout(_hrRetryTimer);_hrRetryTimer=null;}
+    _hrDevice=null;changed=true;
+  }
+  if(changed&&UI.tab==='live')_fpillsSync();
+}
+// The unpaired cell's hint: while a sensor is being looked for (restored at ride start, or
+// dropped mid-ride and retrying) it says so, instead of asking for a pairing that isn't needed.
+function _pairHint(kind){
+  return (kind==='hr'?_hrWant:_powerWant)?'searching…':'hold to pair';
 }
 // ═══════════════════════════════════════════
 async function geocodeStop(stop,lat,lon,r){
