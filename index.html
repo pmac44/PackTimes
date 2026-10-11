@@ -1777,7 +1777,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v407';
+window.APP_VERSION='v408';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1796,6 +1796,9 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   ftp:null,maxHr:null,turnReview:false,turnReviewIdx:0,routeTurnsOpen:null,liveStatSlots:['speed','rideavg'],hrConnected:false,hrBpm:null,hrDeviceName:null,sensorType:'power',
   // Ride average tracking
   _rideAvgKmAccum:0,_rideAvgMsAccum:0,   // accumulated from previous GPS sessions today
+  _rideAvgSleepMs:0,                      // v408 — sleeps (see _recSleep) inside that span; left out of every average
+  _rideAvgStopMs:0,                       // v408 — recorded stop time inside that span (moving avg = its time minus this)
+  avgIncStops:true,                       // v408 — Settings → Averages. true = averages count stops (the bikepacking default)
   _rideAvgSessionKm:null,                  // cumulative dist at start of current GPS session
   _rideAvgSessionTs:null,                  // timestamp at start of current GPS session
   _rideAvgStoppedTs:null,                  // when GPS last stopped (for gap detection)
@@ -1803,7 +1806,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   gpsTravelledKm:0,
   _lastSnapIdx:null,                       // route point index of last snap (for directional bias)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,turnAlertM:50,turnMarkerOffsetM:30,
-  settingsExp:{appearance:true,sharing:false,packride:false,strava:false,intervals:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
+  settingsExp:{averages:false,appearance:true,sharing:false,packride:false,strava:false,intervals:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,
   powerMaxForceN:null,powerMinForceN:null,powerMaxTorqueNm:null,powerHasPeak:false,powerCpsFlags:0,   // v360 — pedal force pill
@@ -1959,7 +1962,7 @@ async function saveAll(){
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false,scope:UI.stravaScope||null}).catch(()=>{});
   // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
   await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,liveStatSlots:UI.liveStatSlots,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -2035,6 +2038,7 @@ async function loadAll(){
       if(prefs.legStoppedMs)UI.legStoppedMs=prefs.legStoppedMs;
       if(prefs.recMinMoveM)UI.recMinMoveM=prefs.recMinMoveM;
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
+      if(prefs.avgIncStops!==undefined)UI.avgIncStops=prefs.avgIncStops!==false;
       if(Array.isArray(prefs.calibRides))UI.calibRides=prefs.calibRides;
       if(prefs.estModeAdv!==undefined)UI.estModeAdv=prefs.estModeAdv;
       if(prefs.fatigueMode)UI.fatigueMode=prefs.fatigueMode;
@@ -2064,6 +2068,8 @@ async function loadAll(){
         // Restore ride avg accumulators from persisted state
         if(lastGps.rideAvgKm!=null)UI._rideAvgKmAccum=lastGps.rideAvgKm;
         if(lastGps.rideAvgMs!=null)UI._rideAvgMsAccum=lastGps.rideAvgMs;
+        if(lastGps.rideAvgStopMs!=null)UI._rideAvgStopMs=lastGps.rideAvgStopMs;
+        if(lastGps.rideAvgSleepMs!=null)UI._rideAvgSleepMs=lastGps.rideAvgSleepMs;
         if(lastGps.stoppedTs!=null)UI._rideAvgStoppedTs=lastGps.stoppedTs;
         // Restore cumulative GPS distance and snap index
         if(lastGps.travelledKm!=null)UI.gpsTravelledKm=lastGps.travelledKm;
@@ -3886,9 +3892,11 @@ function _distBarSync(){
       // a CLOCK zero is true, so the time reads 0h00 — but an average of nothing is NONE, not
       // zero, and distance over a few seconds is a wild number that is briefly true and
       // useless. _legVals asks the sim for the time, so this needs no sim guard of its own.
-      const h=L?L.elapsedMs/3600000:0;
-      const v=(L&&L.elapsedMs>60000&&h>0&&_riddenKm()>0)?(_riddenKm()/h).toFixed(1):'—';
-      sp.innerHTML='<span class="v">'+v+'</span><span class="c">km/h avg</span>';
+      // v408 — follows Settings → Averages. With stops left out the figure no longer divides
+      // out of the ride time beside it, so the caption has to say which average it is.
+      const inc=avgIncStops(), ms=L?(inc?L.elapsedMs:L.movingMs):0, h=ms/3600000;
+      const v=(L&&ms>60000&&h>0&&_riddenKm()>0)?(_riddenKm()/h).toFixed(1):'—';
+      sp.innerHTML='<span class="v">'+v+'</span><span class="c">km/h '+_avgLbl(inc)+'</span>';
     }
     return;
   }
@@ -5888,7 +5896,7 @@ function _doStartGPS(){
       // This field is PLUMBING, not display. The plan writes it used to feed are gated at their
       // own sites (actualArrival above, _sleepStamp) — which is where they belonged anyway.
       UI._lastGpsState={dist:UI.gpsDistKm,pos:UI.gpsPos,routeId:r?r.id:null,arrivedAt,ts:Date.now(),
-        rideAvgKm:UI._rideAvgKmAccum||0,rideAvgMs:UI._rideAvgMsAccum||0,
+        rideAvgKm:UI._rideAvgKmAccum||0,rideAvgMs:UI._rideAvgMsAccum||0,rideAvgStopMs:UI._rideAvgStopMs||0,rideAvgSleepMs:UI._rideAvgSleepMs||0,
         sessKm:UI._rideAvgSessionKm,sessTs:UI._rideAvgSessionTs,stoppedTs:UI._rideAvgStoppedTs,
         travelledKm:UI.gpsTravelledKm,snapIdx:UI._lastSnapIdx,
         npSum4:_npSum4,npCount:_npCount,npBuffer:_npRawBuffer.slice(-NP_WINDOW_S)};
@@ -5922,7 +5930,7 @@ function _showRideAvgResetPrompt(){
     +'<button id="ride-avg-keep" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:6px 10px;font-size:14px;cursor:pointer;">Keep</button>';
   document.body.appendChild(el);
   document.getElementById('ride-avg-reset').addEventListener('click',()=>{
-    UI._rideAvgKmAccum=0;UI._rideAvgMsAccum=0;
+    UI._rideAvgKmAccum=0;UI._rideAvgMsAccum=0;UI._rideAvgStopMs=0;UI._rideAvgSleepMs=0;
     // Session start is current cumulative distance
     UI._rideAvgSessionKm=UI.gpsTravelledKm;UI._rideAvgSessionTs=Date.now();
     el.remove();
@@ -6188,6 +6196,46 @@ function _legVals(){
   return {elapsedMs, stoppedMs, movingMs, distKm,
           stopPct: elapsedMs > 0 ? (stoppedMs / elapsedMs) * 100 : 0};
 }
+
+// ── v408 — ONE SWITCH FOR BOTH AVERAGES (Settings → Averages, UI.avgIncStops). ──────────
+// Peter, 12 Oct: average power left stops out (no samples while stopped, so intervals.icu
+// averaged over riding time) while Ride Avg speed counted them. Same 185 km ride, 11 Oct:
+// PackTimes 181 W vs Wahoo 147 W, NP 232 vs 231. ON (default — on a bikepack the stops ARE
+// the ride): both count stops; the FIT carries 0 W through each stop (encodeActivityFit).
+// OFF: both use riding time — speed subtracts the recorded stops, the FIT keeps its gaps.
+function avgIncStops(){ return UI.avgIncStops !== false; }
+// The average shown on the speed/pace pills, the Ride Avg stat and updateLive — ONE authority
+// (it was four copies of the same sum). {kmh|null, incl}. Stops are only known while
+// recording (the sampler finds them), so with no recording the average necessarily includes
+// them and incl says so — the label must never claim "moving" for a figure that isn't.
+function _rideAvgKmh(){
+  const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
+  const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsTravelledKm!=null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
+  const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);   // v257: a PAUSED sim must keep sim time — falling back to wall clock made the average drop on every tap/render
+  const incl=avgIncStops()||!_rec;
+  let ms=accumMs+sessMs;
+  if(!incl) ms-=(UI._rideAvgStopMs||0)+(_legStopT!==null?Math.max(0,Date.now()-_legStopT):0);   // includes sleeps
+  else ms-=UI._rideAvgSleepMs||0;   // incl. stops still never includes a sleep
+  const h=ms/3600000, km=accumKm+sessKm;
+  return {kmh: h>0.01 ? km/h : null, incl};
+}
+// ── v408 — A SLEEP, ONE RULE FOR EVERYTHING (Peter, 12 Oct: "it should all act consistently").
+// A stop of LEG_SLEEP_MS+ on a fixed-wake plan already started a new leg (v259). Now the same
+// stop is also left out of both whole-ride averages, whatever the Averages setting: the speed
+// average subtracts it, and the FIT gets a timer pause there instead of 0 W (the _stop point
+// is flagged _sleep; encodeActivityFit reads that). Decided at ride time, from the plan the
+// rider had loaded, so the file says exactly what the Ride screen did. On a non-stop plan
+// there are no sleeps — a 4 h bivvy is stoppage, counted, as v259 intends.
+function _recSleep(stoppedFor, t){
+  _legReset(t, UI.gpsTravelledKm);
+  UI._rideAvgSleepMs = (UI._rideAvgSleepMs || 0) + stoppedFor;
+  const pts = _rec.points;
+  for(let i = pts.length - 1; i >= 0; i--) if(pts[i]._stop){ pts[i]._sleep = true; break; }
+}
+// Label for the average just computed. Peter's own wording from v272 — see the speed pill.
+function _avgLbl(incl){ return incl ? 'avg. incl. stops' : 'moving avg.'; }
+// The top-bar stat slot's capitalised label (was a bare "Ride Avg", which said neither).
+function _rideAvgLbl(){ return _rideAvgKmh().incl ? 'Avg incl. stops' : 'Moving avg'; }
 
 // Active-recording state (module-local, mirrors the IDB row)
 let _rec        = null;          // the active recording, or null
@@ -6570,6 +6618,17 @@ function _appendPoint(lat, lon, ele, t, accuracy){
       _recFillGap(_rec, gap, null);
     }
     // Longer gaps stay queued — prompted at end of ride, never mid-ride.
+    // v408 — a gap can END A STOP with no _resume marker (this path flips the mode below).
+    // The stop clock was left running: the leg's stoppage and the moving average kept
+    // counting "stopped" for the rest of the ride. Close it at the last fix seen still
+    // stopped, with the resume branch's own rule.
+    if(_legStopT !== null){
+      const stoppedFor = Math.max(0, _recLastFix.t - _legStopT);
+      UI._rideAvgStopMs = (UI._rideAvgStopMs || 0) + stoppedFor;
+      if(stoppedFor >= LEG_SLEEP_MS && legHasFixedWake(cur())) _recSleep(stoppedFor, t);   // v408 — was _legReset alone
+      else UI.legStoppedMs = (UI.legStoppedMs || 0) + stoppedFor;
+      _legStopT = null;
+    }
     // Either way: exit stationary mode so the arriving fix stores normally.
     _recMode = 'active';
     _recStop = null;
@@ -6640,7 +6699,8 @@ function _appendPoint(lat, lon, ele, t, accuracy){
     // fixed-wake sleep in the plan → one leg → the overall average.
     if(_legStopT !== null){
       const stoppedFor = Math.max(0, t - _legStopT);
-      if(stoppedFor >= LEG_SLEEP_MS && legHasFixedWake(cur())) _legReset(t, UI.gpsTravelledKm);
+      UI._rideAvgStopMs = (UI._rideAvgStopMs || 0) + stoppedFor;   // v408 — the moving average's stop time
+      if(stoppedFor >= LEG_SLEEP_MS && legHasFixedWake(cur())) _recSleep(stoppedFor, t);   // v408 — was _legReset alone
       else UI.legStoppedMs = (UI.legStoppedMs || 0) + stoppedFor;
       _legStopT = null;
     }
@@ -7656,6 +7716,7 @@ const FILE_TYPE_ACTIVITY = 4;
 const MANUFACTURER_DEVELOPMENT = 255;
 const EVENT_TIMER          = 0;
 const EVENT_TYPE_START     = 0;
+const EVENT_TYPE_STOP      = 1;   // v408 — timer pause over a sleep
 const EVENT_TYPE_STOP_ALL  = 4;
 const SPORT_CYCLING        = 2;
 const SUB_SPORT_GENERIC    = 0;
@@ -7854,8 +7915,28 @@ function encodeActivityFit(recording) {
   const pts = recording.points;
   const pointSecs = new Set(pts.map(p => fitTime(p.t)));
   const t0 = pts.length ? pts[0].t : 0, t1 = pts.length ? pts[pts.length-1].t : 0;
-  const sens = (recording.sensors || []).filter(s =>
+  let sens = (recording.sensors || []).filter(s =>
     s.t > t0 && s.t < t1 && !pointSecs.has(fitTime(s.t)));
+  // v408 — STOPS AS 0 W, when averages include stops (fillStops = avgIncStops() at export).
+  // The sampler writes nothing between a _stop marker and the next point, so intervals.icu
+  // averaged power over riding time only; a head unit keeps writing 0 W through a stop. Fill
+  // every second from each _stop to the NEXT point of any kind (a _resume, or the first
+  // gap-fill point when a GPS gap ended the stop) with position-less 0 W / 0 rpm records.
+  // Built here, NOT from BLE: a meter often sleeps when the cranks stop. HR is left empty
+  // (no reading isn't 0 bpm). Rides with no power data at all are unchanged, byte for byte.
+  // Sleeps (_sleep, v408) are skipped: they're timer pauses, so neither average counts them.
+  if (recording.fillStops && (pts.some(p => p.pw != null) || sens.some(s => s.pw != null))) {
+    const own = new Set(pointSecs);
+    for (const s of sens) own.add(fitTime(s.t));
+    const fill = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (!pts[i]._stop || pts[i]._sleep) continue;   // a sleep is a timer pause, never 0 W (see _recSleep)
+      const b = fitTime(pts[i+1].t);
+      for (let sec = fitTime(pts[i].t) + 1; sec < b; sec++)
+        if (!own.has(sec)) fill.push({t: (sec + FIT_EPOCH_OFFSET) * 1000, pw: 0, cad: 0});
+    }
+    if (fill.length) sens = sens.concat(fill).sort((a, b) => a.t - b.t);
+  }
   if (sens.length) writeMesgDefinition(data, LOCAL_RECORD_SENSOR, MESG_RECORD, FIELDS_RECORD_SENSOR);
   const writeSensor = s => writeMesgData(data, LOCAL_RECORD_SENSOR, FIELDS_RECORD_SENSOR, {
     253: fitTime(s.t),
@@ -7863,9 +7944,16 @@ function encodeActivityFit(recording) {
     4:   s.cad != null ? Math.round(s.cad) : null,
     7:   s.pw  != null ? Math.round(s.pw)  : null,
   });
-  let cumDist = 0, si = 0;
+  // v408 — SLEEPS ARE TIMER PAUSES: stop at the flagged _stop point, start at the next point,
+  // and the timer totals below leave the pause out. Elapsed time still spans the whole ride.
+  let cumDist = 0, si = 0, sleepMs = 0;
+  const timerEvt = (t, type) => writeMesgData(data, LOCAL_EVENT, FIELDS_EVENT, {253: fitTime(t), 0: EVENT_TIMER, 1: type});
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
+    if (i > 0 && pts[i-1]._sleep) {
+      timerEvt(p.t, EVENT_TYPE_START);
+      sleepMs += (fitTime(p.t) - fitTime(pts[i-1].t)) * 1000;
+    }
     while (si < sens.length && sens[si].t < p.t) writeSensor(sens[si++]);
     if (i > 0) {
       cumDist += haversineM(
@@ -7882,7 +7970,9 @@ function encodeActivityFit(recording) {
       4:   p.cad != null ? Math.round(p.cad) : null,   // cadence
       7:   p.pw  != null ? Math.round(p.pw)  : null,   // power
     });
+    if (p._sleep && i < pts.length - 1) timerEvt(p.t, EVENT_TYPE_STOP);
   }
+  const timerRaw = elapsedRaw - sleepMs;
 
   writeMesgData(data, LOCAL_EVENT, FIELDS_EVENT, {
     253: fitTime(recording.endTS),
@@ -7895,7 +7985,7 @@ function encodeActivityFit(recording) {
     253: fitTime(recording.endTS),
     2:   fitTime(recording.startTS),
     7:   elapsedRaw,
-    8:   elapsedRaw,
+    8:   timerRaw,
     9:   Math.round(totalDistM * 100),
     0:   9,
     1:   1,
@@ -7906,7 +7996,7 @@ function encodeActivityFit(recording) {
     253: fitTime(recording.endTS),
     2:   fitTime(recording.startTS),
     7:   elapsedRaw,
-    8:   elapsedRaw,
+    8:   timerRaw,
     9:   Math.round(totalDistM * 100),
     5:   SPORT_CYCLING,
     6:   SUB_SPORT_GENERIC,
@@ -7917,7 +8007,7 @@ function encodeActivityFit(recording) {
   writeMesgDefinition(data, LOCAL_ACTIVITY, MESG_ACTIVITY, FIELDS_ACTIVITY);
   writeMesgData(data, LOCAL_ACTIVITY, FIELDS_ACTIVITY, {
     253: fitTime(recording.endTS),
-    0:   elapsedRaw,
+    0:   timerRaw,
     1:   1,
     2:   0,
     3:   26,
@@ -8014,14 +8104,20 @@ function _recToast(msg){
   }, 2500);
 }
 
+// v408 — the ONE place a saved ride becomes encoder input; export, Strava and intervals.icu
+// all use it, so their FITs stay byte-identical (intervals.icu de-dupes by file hash).
+// sensors was never passed before v408: the three callers each built {startTS, endTS,
+// points} by hand, so v387's 1 s sensor-only seconds (power across GPS dropouts) never
+// reached any uploaded FIT — v387's test fed the encoder the live _rec, which has them.
+function _recFitInput(rec){
+  return {startTS: rec.startTS, endTS: rec.endTS || _recLastActivityTS(rec),
+          points: rec.points, sensors: rec.sensors, fillStops: avgIncStops()};
+}
+
 function exportRecordingAsFIT(rec){
   rec = rec || _recDetailRec;
   if(!rec || !rec.points || !rec.points.length) return;
-  const bytes = encodeActivityFit({
-    startTS: rec.startTS,
-    endTS:   rec.endTS || _recLastActivityTS(rec),
-    points:  rec.points,
-  });
+  const bytes = encodeActivityFit(_recFitInput(rec));
   const fname = _recExportName(rec) + '.fit';
   _recDownload(bytes, fname, 'application/octet-stream');
   _recToast('Exported ' + fname);
@@ -8302,11 +8398,7 @@ function stravaMarkRename(rec){
 async function stravaUpload(rec){
   const token = await stravaFreshToken();
   if(!token) throw new Error('not connected / token refresh failed');
-  const bytes = encodeActivityFit({
-    startTS: rec.startTS,
-    endTS: rec.endTS || _recLastActivityTS(rec),
-    points: rec.points,
-  });
+  const bytes = encodeActivityFit(_recFitInput(rec));
   const fd = new FormData();
   fd.append('file', new Blob([bytes], {type: 'application/octet-stream'}), _recExportName(rec) + '.fit');
   fd.append('data_type', 'fit');
@@ -8483,11 +8575,7 @@ function icuQueueAll(){
 // server-side hash de-dupe also protects a ride that gets queued twice.
 async function icuUpload(rec){
   if(!UI.icuKey) throw new Error('not connected — add your API key in Settings');
-  const bytes = encodeActivityFit({
-    startTS: rec.startTS,
-    endTS: rec.endTS || _recLastActivityTS(rec),
-    points: rec.points,
-  });
+  const bytes = encodeActivityFit(_recFitInput(rec));
   const fd = new FormData();
   fd.append('file', new Blob([bytes], {type: 'application/octet-stream'}), _recExportName(rec) + '.fit');
   const q = new URLSearchParams({
@@ -18914,13 +19002,9 @@ function tLiveShell(r){
     finish:  {label:'Finish',    val:()=>(finDay?finDay.trim()+' ':'')+fmtT(finEta),unit:''},
     speed:   {label:'Speed',     val:()=>{const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;return s!==null&&s>=0.3?s.toFixed(1):'—';},unit:'km/h'},
     '1hr':   {label:'1hr',       val:()=>{const win=UI._adaptiveWindow||[];if(win.length<2)return'—';const km=win[win.length-1].dist-win[0].dist,h=(win[win.length-1].ts-win[0].ts)/3600000;return h>0?(km/h).toFixed(1):'—';},unit:'km/h'},
-    rideavg: {label:'Ride Avg',  val:()=>{
-      const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
-      const sessKm=(UI._rideAvgSessionKm!==null&&UI.gpsDistKm!==null)?Math.max(0,UI.gpsDistKm-UI._rideAvgSessionKm):0;
-      const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);   // v257: a PAUSED sim must keep sim time — falling back to wall clock made the average drop on every tap/render
-      const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
-      return totalH>0.01?(totalKm/totalH).toFixed(1):'—';
-    },unit:'km/h'},
+    // v408 — _rideAvgKmh, like the pills. This copy subtracted the odometer baseline from the
+    // ALONG-ROUTE position (gpsDistKm), not from gpsTravelledKm as the pills do.
+    rideavg: {label:_rideAvgLbl(),  val:()=>{const a=_rideAvgKmh();return a.kmh!=null?a.kmh.toFixed(1):'—';},unit:'km/h'},
     done:    {label:'Done',      val:()=>liveDist.toFixed(1),unit:'km'},
     left:    {label:'To go',     val:()=>(r.totalDist-liveDist).toFixed(1),unit:'km'},
     recdist: {label:'Rec dist',  val:()=>_rec?_rec.totalDist.toFixed(1):'—',unit:'km'},
@@ -19101,11 +19185,8 @@ function tLiveShell(r){
     if(type==='speed'){
       const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
       const curSpd=s!==null&&s>=0.3?s.toFixed(1):'—';
-      const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
-      const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
-      const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);   // v257: a PAUSED sim must keep sim time — falling back to wall clock made the average drop on every tap/render
-      const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
-      const avgVal=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
+      const RA=_rideAvgKmh();   // v408 — incl. stops or moving, per Settings → Averages
+      const avgVal=RA.kmh!=null?RA.kmh.toFixed(1):'—';
       // v257: numbers on var(--font) = DM Mono (tabular digits — DM Sans digits are
       // proportional, which made the pill CHANGE WIDTH every update; the v244 rule
       // is numbers=DM Mono, no exceptions). Weight 500, not 800 — DM Mono only
@@ -19148,7 +19229,7 @@ function tLiveShell(r){
                "incl. stops" also needs no domain knowledge, which is the point: the rider who
                reaches for a moving average BECAUSE it flatters is exactly the one who won't
                decode jargon. -->
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;">avg. incl. stops</div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-speed-avg-lbl">${_avgLbl(RA.incl)}</div>
         </div>
       </div>`;
     }
@@ -19158,11 +19239,8 @@ function tLiveShell(r){
       // readings as speed, just inverted units: current pace on top, average-incl-stops below.
       // MM:SS right-justified in a 5-char box so the colon never moves between "4:03" and "12:30".
       const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;
-      const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
-      const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
-      const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
-      const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
-      const avgKmh=totalH>0.01?(totalKm/totalH):null;
+      const RA=_rideAvgKmh();   // v408
+      const avgKmh=RA.kmh;
       const curPace=fmtPaceMinKm(s), avgPace=fmtPaceMinKm(avgKmh);
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-pace">
         <div style="padding:5px 8px 3px;background:#2dd4bf;">
@@ -19171,7 +19249,7 @@ function tLiveShell(r){
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:flex;width:100%;justify-content:center;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-pace-avg">${_paceCells(avgPace)}</span></div>
-          <div style="font-size:10px;font-weight:600;color:#0d9488;font-family:var(--sans);line-height:1.1;">avg. incl. stops</div>
+          <div style="font-size:10px;font-weight:600;color:#0d9488;font-family:var(--sans);line-height:1.1;" id="live-pace-avg-lbl">${_avgLbl(RA.incl)}</div>
         </div>
       </div>`;
     }
@@ -20722,6 +20800,14 @@ function tSettings(r){
   ${section('dropbox','Dropbox Sync',dropboxBody)}
   ${section('alerts','Proximity Alerts',alertsBody,!!r)}
   ${section('ftp','⚡❤️ Sensors & Zones',ftpBody)}
+  ${section('averages','Averages',`
+    <label style="display:flex;align-items:center;gap:8px;font-size:15px;margin-bottom:10px;cursor:pointer;">
+      <input type="checkbox" id="avg-inc-stops-toggle" ${avgIncStops()?'checked':''}> Averages include stops
+    </label>
+    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:8px;">${avgIncStops()
+      ?'<strong>On:</strong> time spent stopped counts. Average speed is distance over the whole ride time, and the ride file carries 0 W through each stop, so Strava and intervals.icu show average power on the same basis. This is how a head unit records.'
+      :'<strong>Off:</strong> only riding time counts. Average speed leaves out the stops PackTimes detects while recording, and average power on Strava and intervals.icu covers riding time only.'}</p>
+    <p style="font-size:13px;color:var(--text3);line-height:1.5;">Every average on the Ride screen says which kind it is. The moving-average pill always leaves stops out. Normalised power barely moves either way. Applies to rides uploaded or exported from now on.</p>`)}
   ${section('zoom','GPS Map Zoom',zoomBody,!!r)}
   ${section('weather','Weather Map Spacing',weatherBody,!!r)}
   ${section('offline','Offline Storage',offlineBody)}
@@ -22884,14 +22970,12 @@ function updateLive(){
     if(spdEl.textContent!==v)spdEl.textContent=v;
   }
   const avgEl=document.getElementById('live-speed-avg');
+  const RA=_rideAvgKmh();   // v408 — one authority; the label flips to "avg. incl. stops" when a recording ends
   if(avgEl){
-    const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
-    const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
-    const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);   // v257: a PAUSED sim must keep sim time — falling back to wall clock made the average drop on every tap/render
-    const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
-    const av=totalH>0.01?(totalKm/totalH).toFixed(1):'—';
+    const av=RA.kmh!=null?RA.kmh.toFixed(1):'—';
     if(avgEl.textContent!==av)avgEl.textContent=av;
   }
+  for(const id of ['live-speed-avg-lbl','live-pace-avg-lbl']){const l=document.getElementById(id);if(l&&l.textContent!==_avgLbl(RA.incl))l.textContent=_avgLbl(RA.incl);}
   // v334 — the wind arrow is bike-relative, so it must turn WITH the bike between the
   // weather bar's 30 s rebuilds. Patch rotation + word in place every fix; the ids are part
   // of weatherBarHTML's template, so a _wxBarRender rebuild can never orphan this. Only
@@ -22918,11 +23002,7 @@ function updateLive(){
   }
   const paceAvgEl=document.getElementById('live-pace-avg');
   if(paceAvgEl){
-    const accumKm=UI._rideAvgKmAccum||0,accumMs=UI._rideAvgMsAccum||0;
-    const sessKm=(UI._rideAvgSessionKm!==null)?Math.max(0,UI.gpsTravelledKm-UI._rideAvgSessionKm):0;
-    const sessMs=(UI.simRunning||UI.simPaused)?_simElapsedMs:(UI._rideAvgSessionTs?Date.now()-UI._rideAvgSessionTs:0);
-    const totalKm=accumKm+sessKm,totalH=(accumMs+sessMs)/3600000;
-    const av=fmtPaceMinKm(totalH>0.01?(totalKm/totalH):null);
+    const av=fmtPaceMinKm(RA.kmh);
     if(paceAvgEl._v!==av){paceAvgEl._v=av;paceAvgEl.innerHTML=_paceCells(av);}
   }
   // ── v272 — the moving-speed pill's two figures. ──────────────────────────────────────
@@ -23948,7 +24028,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     const nextKey=STAT_ORDER[(STAT_ORDER.indexOf(cur)+1)%STAT_ORDER.length];
     UI.liveStatSlots=slots.map((k,i)=>i===slotIdx?nextKey:k);
     saveAll();
-    const LABEL_MAP={done:'Done',left:'To go',finish:'Finish',speed:'Speed','1hr':'1hr',rideavg:'Ride Avg',recdist:'Rec dist',rectime:'Rec time'};
+    const LABEL_MAP={done:'Done',left:'To go',finish:'Finish',speed:'Speed','1hr':'1hr',rideavg:_rideAvgLbl(),recdist:'Rec dist',rectime:'Rec time'};
     const lbl=document.getElementById('live-lbl-slot'+slotIdx);
     if(lbl)lbl.textContent=LABEL_MAP[nextKey]||nextKey;
     updateLive();
@@ -24245,6 +24325,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.closest('#btn-strava-retry')){_recToast('Retrying Strava uploads…');_stravaLastForce=0;stravaProcessQueue(true);return;}
   if(e.target.closest('#btn-strava-disconnect')){stravaDisconnect();return;}
   if(e.target.id==='strava-auto-toggle'){UI.stravaAutoUpload=e.target.checked;saveAll();return;}
+  if(e.target.id==='avg-inc-stops-toggle'){UI.avgIncStops=e.target.checked;saveAll();render();return;}   // v408
   if(e.target.closest('#btn-icu-save')){
     const val=(document.getElementById('icu-key-input')?.value||'').trim();
     const st=document.getElementById('icu-status');
