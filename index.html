@@ -162,6 +162,7 @@
 }
 
 [data-theme="paper"]{
+  --pick-spd:#0d9488;--pick-clb:#e3d63a;--pick-pwr:#1e88e5;--pick-hr:#bf360c;--pick-oth:#6b7684;   /* v416 pick-list groups */
   /* canonical */
   /* --surface set to the OSM default-map "land" colour (#f2efe9) so the chrome blends into the
      map (Peter). Tune this single value if you want it warmer (#eae5d5 was the original Paper
@@ -357,6 +358,7 @@
 }
 
 [data-theme="graphite"]{
+  --pick-spd:#2dd4bf;--pick-clb:#f2ef63;--pick-pwr:#42a5f5;--pick-hr:#e64a19;--pick-oth:#94a3b8;   /* v416 pick-list groups */
   /* canonical */
   /* v344 — THE OLD DARK RESTORED. Values are the ORIGINAL pre-restyle palette (git
      c4ecfb7, 27 Apr 2026 — the look Peter lived with through May–June and asked back):
@@ -465,6 +467,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   .tab-icon{font-size:16px;}
   .mobile-only-logo{display:none!important;}
   .modal-sheet-full{height:auto;max-height:90vh;border-radius:14px 14px 0 0;}
+  /* v416 — planning screens about 2 px smaller on a computer (Peter, after GravelRouter: their 12 px panels
+     'look fine' on a monitor). One zoom instead of re-sizing hundreds of inline px. NOT the Ride tab (read
+     at arm's length on the bike) and NOT the Stops map — only its list — so no map's pointer maths is zoomed. */
+  .desktop-sidebar .content.tab-routes,.desktop-sidebar .content.tab-food,.desktop-sidebar .content.tab-plan,
+  .desktop-sidebar .content.tab-gear,.desktop-sidebar .content.tab-settings,.desktop-sidebar .stops-scroll{zoom:.875;}
 }
 .header{display:none;}
 .hlogo{font-size:20px;}.htitle{font-size:20px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;}
@@ -1778,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v415';
+window.APP_VERSION='v418';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -13151,6 +13158,7 @@ function _canvasFit(cvs,bw,bh){
 }
 function drawMap(cvs,r,opts){
   opts=opts||{};
+  let _dlMarks=null;   // v417 daylight pills, collected with the day/night line
   if(!r)return;
   const hasRoute=r.points&&r.points.length>0;
   const hasStops=r.stops&&r.stops.some(s=>s.lat&&s.lon);
@@ -13328,12 +13336,17 @@ function drawMap(cvs,r,opts){
     const _dnW=(cvs&&cvs.offsetWidth)||880;
     const dnSampleKm=Math.max(0.25,r.totalDist/Math.max(400,_dnW*2));
     let nextSampleDist=0;
-    let curCol=getCol(etaAt(pts[0].dist,r),pts[0].lat,pts[0].lon);
+    const _dl=_dlTracker();   // v417 — dawn/sunrise/sunset/dusk pills, found on the same samples (no extra etaAt)
+    const _eta0=etaAt(pts[0].dist,r);
+    let curCol=getCol(_eta0,pts[0].lat,pts[0].lon);
+    _dl.step(_eta0,pts[0]);
     ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
     for(let i=1;i<pts.length;i++){
       let col=curCol;
       if(pts[i].dist>=nextSampleDist){
-        col=getCol(etaAt(pts[i].dist,r),pts[i].lat,pts[i].lon);
+        const _eta=etaAt(pts[i].dist,r);
+        col=getCol(_eta,pts[i].lat,pts[i].lon);
+        _dl.step(_eta,pts[i]);
         nextSampleDist=pts[i].dist+dnSampleKm;
       }
       if(col!==curCol){
@@ -13344,6 +13357,7 @@ function drawMap(cvs,r,opts){
       ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
     }
     ctx.strokeStyle=curCol;ctx.lineWidth=2.5;ctx.stroke();
+    _dlMarks=_dl.marks;   // drawn last, above stops and weather — see the end of drawMap
   } else {
   ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
   for(let i=1;i<pts.length;i++)ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
@@ -13815,6 +13829,7 @@ function drawMap(cvs,r,opts){
     ctx.restore();
   }
 
+  if(_dlMarks)_dlDraw(ctx,_dlMarks,px,py);   // v417 — on top of stop pins and weather
   // Restore rotation transform and draw north arrow
   if(heading!==null){
     ctx.restore();
@@ -17258,24 +17273,32 @@ function buildLiveStrip(r,liveDist,sdt){
 }
 
 // ─── Elevation profile for ride tab ───
-// Grade colour: uphill green 0-3.9%, yellow 4-7.9%, orange 8-11.9%, red 12-19.9%, brown 20%+; downhill grey
+// Grade colour — Wahoo's Summit bands exactly (green 0-3.9%, yellow 4-7.9%, orange 8-11.9%, maroon
+// 12-19.9%, dark red 20%+; support.wahoofitness.com article 4789016897042), so a Wahoo rider reads it
+// without learning anything. v418 (Peter, 12 Oct): the yellow is now the LEMON (#f2ef63, the sunny-
+// weather colour) — closer to Wahoo's own bright yellow than the old mustard #fbbf24, which made 4.5%
+// and 7.5% look oddly alike; 12-20% is Wahoo's maroon (was red), 20%+ Wahoo's dark red (was brown).
+// Flat/downhill is a MID GREY (was the near-black neutral ink), because on Graphite the descents
+// vanished into the black background and the stop list below.
+const GRADE_FLAT='#8a8f94', GRADE_COLS=['#4ade80','#f2ef63','#f97316','#9b1020','#5c0b0b'];
+const GRADE_LIGHT=new Set(['#4ade80','#f2ef63']);   // these take black text
 function gradeCol(g){
-  if(g<0.5)return _neutralGrey; // v304 — downhill/flat uses the ONE neutral slate (was #555), so the profile fill, map grade overlay and grade cell all match. Wahoo convention, our grey.
-  if(g<4)return'#4ade80';
-  if(g<8)return'#fbbf24';
-  if(g<12)return'#f97316';
-  if(g<20)return'#ef4444';
-  return'#92400e';
+  if(g<0.5)return GRADE_FLAT;
+  if(g<4)return GRADE_COLS[0];
+  if(g<8)return GRADE_COLS[1];
+  if(g<12)return GRADE_COLS[2];
+  if(g<20)return GRADE_COLS[3];
+  return GRADE_COLS[4];
 }
 // For the stats bar, show colour based on absolute grade (both up and down)
 function gradeColAbs(g){
   const a=Math.abs(g);
-  if(a<0.5)return'#888';
-  if(a<4)return'#4ade80';
-  if(a<8)return'#fbbf24';
-  if(a<12)return'#f97316';
-  if(a<20)return'#ef4444';
-  return'#92400e';
+  if(a<0.5)return GRADE_FLAT;
+  // v418 — this is TEXT on the dark elevation bar, where Wahoo's maroon/dark red would vanish, so
+  // the two steep bands use lighter reds that still read as 'steeper than orange'.
+  if(a>=20)return'#ff5c6c';
+  if(a>=12)return'#ff8a8a';
+  return gradeCol(a);
 }
 function gradeArrow(g){return g>0.5?'↗':g<-0.5?'↘':'→';}
 
@@ -18206,7 +18229,9 @@ const PILL_INFO={
   batt:['Battery','% · hours left','oth'],
   off:['Empty','Shows the map','oth'],
 };
-const PILL_GROUP_COL={spd:'var(--cat-water)',clb:'var(--cat-fuel)',pwr:'var(--cat-vending)',hr:'var(--cat-fire)',oth:'var(--cat-peak)'};
+// v416 — tied to what the pills wear in use (Peter): speed/time = the pace pill's teal, climbing = lemon
+// (sunny weather, v415), power = a power-zone blue, heart rate = the top HR-zone red. Per-theme tokens.
+const PILL_GROUP_COL={spd:'var(--pick-spd)',clb:'var(--pick-clb)',pwr:'var(--pick-pwr)',hr:'var(--pick-hr)',oth:'var(--pick-oth)'};
 function _fpillPick(slot){
   const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
   const cur=(UI.livePills||FPILL_DEFAULT)[slot]||'off';
@@ -19460,7 +19485,7 @@ function tLiveShell(r){
       const gLive=(gr&&gr.points&&gr.points.length>1&&UI.gpsDistKm!=null);
       const g=gLive?gradeAt(gr,UI.gpsDistKm):0;
       const gBg=gLive?gradeCol(g):_neutralGrey;   // v304 — not-live falls back to the same neutral slate
-      const gDark=(gBg==='#4ade80'||gBg==='#fbbf24');      // light zones -> black text
+      const gDark=GRADE_LIGHT.has(gBg);      // light zones -> black text (v418)
       // Signed grade, NO arrow: the sign gives up/down and the zone colour already says
       // climb-vs-flat. The % is FULL SIZE and part of the string, exactly like the stoppage
       // pill's "0.5%" (Peter: the small 16px % was "the wrong size"). Both halves use the
@@ -21888,6 +21913,57 @@ function dnTextCol(sky){
     : {text:'#f6f4ef',soft:'rgba(246,244,239,0.78)'};// dark sky  → light text
 }
 
+// ── v417 — DAWN / SUNRISE / SUNSET / DUSK PILLS ON THE PLANNING MAPS. Peter, from GravelRouter:
+// "a pill showing when it's sunrise, sunset, dawn and dusk might be good." The day/night line
+// already shows WHERE it gets dark; the pill adds WHEN, as a clock time at that spot.
+// Amber = the sun on the horizon (sunrise, sunset); indigo = the edge of dark (dawn, dusk =
+// nautical twilight, the same −12° the line uses). Found on the line's own ETA samples, so it
+// costs no extra etaAt calls. An event that falls inside a gap of more than DL_GAP_MS between
+// two samples happened while stopped (a sleep), so it gets no pill. Pills closer than
+// DL_MIN_PX to one already drawn are skipped, so a zoomed-out multi-day route doesn't pile up.
+// Planning maps only — the Ride map's line colour is spoken for (v243/v246 note above).
+const DL_GAP_MS=2*3600000, DL_MIN_PX=46;
+const DL_COL={sun:'#D08A1C',dark:'#3F4F9E'};
+function _dlTracker(){
+  const marks=[];let prev=null;
+  return{marks,step(eta,p){
+    if(!eta)return;
+    const t=eta.getTime(),sun=sunAt(p.lat,p.lon,eta);
+    if(prev&&t>prev.t&&t-prev.t<=DL_GAP_MS){
+      for(const S of [prev.sun,sun])for(const [k,kind] of [['dawn','dark'],['sunrise','sun'],['sunset','sun'],['dusk','dark']]){
+        const e=S[k].getTime();
+        if(e>prev.t&&e<=t&&!marks.some(m=>m.k===k&&Math.abs(m.e-e)<600000))
+          marks.push({k,kind,e,lat:p.lat,lon:p.lon});
+      }
+    }
+    prev={t,sun};
+  }};
+}
+function _dlDraw(ctx,marks,px,py){
+  if(!marks.length)return;
+  const drawn=[];
+  ctx.save();
+  ctx.font='700 12px "DM Mono",monospace';ctx.textBaseline='middle';ctx.textAlign='left';
+  for(const m of marks){
+    const x=px(m.lon),y=py(m.lat);
+    if(drawn.some(d=>Math.hypot(d[0]-x,d[1]-y)<DL_MIN_PX))continue;
+    drawn.push([x,y]);
+    const txt=fmtT(new Date(m.e)),tw=ctx.measureText(txt).width,w=tw+30,h=20,x0=x-w/2,y0=y-h/2;
+    ctx.beginPath();ctx.roundRect?ctx.roundRect(x0,y0,w,h,10):ctx.rect(x0,y0,w,h);
+    ctx.fillStyle=DL_COL[m.kind];ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle='#fff';ctx.stroke();
+    ctx.strokeStyle='#fff';ctx.fillStyle='#fff';ctx.lineWidth=1.5;ctx.lineCap='round';
+    const ix=x0+12,iy=y;
+    if(m.kind==='sun'){   // half sun on a horizon line
+      ctx.beginPath();ctx.moveTo(ix-6,iy+3);ctx.lineTo(ix+6,iy+3);ctx.stroke();
+      ctx.beginPath();ctx.arc(ix,iy+3,4,Math.PI,0);ctx.stroke();
+    } else {              // crescent moon
+      ctx.beginPath();ctx.arc(ix,iy,5,0,Math.PI*2);ctx.fill();   // white disc, then a pill-coloured disc bites the crescent
+      ctx.beginPath();ctx.arc(ix+2.6,iy-1.6,4.2,0,Math.PI*2);ctx.fillStyle=DL_COL.dark;ctx.fill();ctx.fillStyle='#fff';
+    }
+    ctx.fillText(txt,x0+22,iy+0.5);
+  }
+  ctx.restore();
+}
 function dayNightBg(dt,sun){
   if(!dt||!sun)return'var(--card2)';
   const t=dt.getTime();
@@ -23251,7 +23327,7 @@ function updateLive(){
     const gLive=(!_freeRiding()&&r.points&&r.points.length>1&&UI.gpsDistKm!=null);
     const g=gLive?gradeAt(r,UI.gpsDistKm):0;
     const gBg=gLive?gradeCol(g):_neutralGrey;   // v304 — same neutral slate as everywhere else
-    const gDark=(gBg==='#4ade80'||gBg==='#fbbf24');
+    const gDark=GRADE_LIGHT.has(gBg);   // v418
     const gTxt=gLive?((Math.abs(g)<0.05?'0.0':Math.abs(g)<10?g.toFixed(1):String(Math.round(g)))+'%'):'—';
     if(gCurEl.textContent!==gTxt){gCurEl.textContent=gTxt;}
     if(gCurEl._c!==gDark){gCurEl._c=gDark;gCurEl.style.color=gDark?'#000':'#fff';}
