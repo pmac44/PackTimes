@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v418';
+window.APP_VERSION='v419';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -13603,26 +13603,6 @@ function drawMap(cvs,r,opts){
     });
   }
 
-  // Weather dots — only on stops-map and desktop-map when weather layer is visible (route-only)
-  if(hasRoute&&!_hideRoute&&(cvs.id==='stops-map'||cvs.id==='desktop-map')&&!UI.hiddenMapTypes.has('weather')){
-    const sdt=startDT(r);
-    const spacingKm=UI.weatherSpacingKm||25;
-    const isDesktop=cvs.id==='desktop-map';
-    const minPx=isDesktop?50:40; // minimum pixel gap between chips
-    let lastX=-9999,lastY=-9999;
-    for(let dist=0;dist<=r.totalDist;dist+=spacingKm){
-      const p=r.points[cidx(r,dist)];
-      if(!p)continue;
-      const cx=px(p.lon),cy=py(p.lat)-20;
-      // Skip if too close to last rendered chip
-      if(Math.abs(cx-lastX)<minPx&&Math.abs(cy-lastY)<minPx)continue;
-      const eta=sdt?etaAt(dist,r):null;
-      const w=weatherAtEta(p.lat,p.lon,eta);
-      if(!w)continue;
-      drawWeatherDot(ctx,cx,cy,w,mapFontSm,isDesktop);
-      lastX=cx;lastY=cy;
-    }
-  }
 
   if(hasRoute&&!_hideRoute){
   const flag=(i,col,lbl)=>{const p=pts[i];
@@ -13737,6 +13717,31 @@ function drawMap(cvs,r,opts){
     }
   }
   } // end if(hasRoute) for flags, km markers, day splits
+
+  // Weather dots — only on stops-map and desktop-map when weather layer is visible (route-only)
+  if(hasRoute&&!_hideRoute&&(cvs.id==='stops-map'||cvs.id==='desktop-map')&&!UI.hiddenMapTypes.has('weather')){
+    const sdt=startDT(r);
+    const spacingKm=UI.weatherSpacingKm||25;
+    const isDesktop=cvs.id==='desktop-map';
+    const minPx=isDesktop?50:40; // minimum pixel gap between chips
+    let lastX=-9999,lastY=-9999;
+    // v419 — km labels sit ABOVE their dot at round distances, and the weather is fetched at round
+    // distances too (0, 25, 50… — the cache is keyed by those exact points, so a chip can't move along
+    // the route without showing the wrong place's forecast). So the chip goes BELOW the line, and is
+    // drawn after the km markers and day splits so nothing covers it (Peter: km labels hid the chips).
+    for(let dist=0;dist<=r.totalDist;dist+=spacingKm){
+      const p=r.points[cidx(r,dist)];
+      if(!p)continue;
+      const cx=px(p.lon),cy=py(p.lat)+20;   // v419 — below the line (was -20, under the km label)
+      // Skip if too close to last rendered chip
+      if(Math.abs(cx-lastX)<minPx&&Math.abs(cy-lastY)<minPx)continue;
+      const eta=sdt?etaAt(dist,r):null;
+      const w=weatherAtEta(p.lat,p.lon,eta);
+      if(!w)continue;
+      drawWeatherDot(ctx,cx,cy,w,mapFontSm,isDesktop);
+      lastX=cx;lastY=cy;
+    }
+  }
 
   // ── Turn highlight — orange over the route through the imminent turn. Drawn HERE, inside the
   //    already-rotated map frame, using the SAME px/py as the route line, so it rides the route
