@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v423';
+window.APP_VERSION='v424';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -18265,22 +18265,27 @@ function _pickPop(anchor,items,cur,onPick){
   const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
   const a=anchor.getBoundingClientRect();
   const touch=!IS_DESKTOP();   // v423 — on a phone: glove-size rows and bigger type
-  const h=Math.max(touch?46:32,Math.round(a.height)),w=Math.max(Math.round(a.width),touch?130:96);
+  // Row height follows a small button, but is capped: a 110 px Ride cell made 13 rows run off the screen (v424).
+  const h=Math.min(Math.max(touch?46:32,Math.round(a.height)),touch?50:40),w=Math.max(Math.round(a.width),touch?130:96);
+  const big=a.width>80;   // a Ride cell, not a map button: the list goes BELOW it, centred, not beside it
   const pop=document.createElement('div');
   pop.id='fpill-pick-ov';
-  pop.style.cssText='position:fixed;z-index:9999;display:flex;flex-direction:column;gap:4px;padding:6px;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:var(--shadow-float);';
+  // v424 — more than 7 choices on a phone: two columns, so the Ride-cell list (13) fits below the cell
+  const cols=(touch&&items.length>7)?2:1;
+  pop.style.cssText='position:fixed;z-index:9999;display:grid;grid-template-columns:repeat('+cols+',auto);gap:4px;padding:6px;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:var(--shadow-float);';
   pop.innerHTML=items.map(it=>{
     const on=it.k===cur, col=it.col;
     return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${h}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;">${it.name}</button>`;
   }).join('');
   document.body.appendChild(pop);
   const pw=pop.offsetWidth,ph=pop.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
-  let left=(a.left+a.width/2>vw/2)?a.left-pw-6:a.right+6;
+  let left=big?a.left+a.width/2-pw/2:(a.left+a.width/2>vw/2)?a.left-pw-6:a.right+6;
   left=Math.max(6,Math.min(left,vw-pw-6));
   // v423 — grow UPWARD from the button (bottom edges aligned) whenever there is room above, so the list
   // stays over the map instead of dropping onto the stop list below it (Peter). Map buttons sit at the
   // map's bottom edge, which on a phone is mid-screen, so "lower half of the window" was the wrong test.
-  const top=(a.bottom-ph>=6)?a.bottom-ph:Math.max(6,Math.min(a.top,vh-ph-6));
+  const top=big?Math.max(6,Math.min(a.bottom+6,vh-ph-6))
+            :(a.bottom-ph>=6)?a.bottom-ph:Math.max(6,Math.min(a.top,vh-ph-6));
   pop.style.left=left+'px';pop.style.top=top+'px';
   const close=()=>{pop.remove();document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',esc,true);};
   const outside=e=>{if(!pop.contains(e.target)&&!anchor.contains(e.target))close();};
@@ -18295,8 +18300,8 @@ function _pickPop(anchor,items,cur,onPick){
 }
 function _pickSheet(title,items,cur,onPick,anchor,popAlways){
   // v421 desktop pop-up; v423 — map style and route colour use the pop-up on the phone too (popAlways;
-  // Peter: 'the pop-up is really good… the big one, even on the phone, is probably a bit wrong'). The
-  // Ride-cell list stays full screen on a phone: 13 choices with descriptions, read with glasses.
+  // Peter: 'the pop-up is really good… the big one, even on the phone, is probably a bit wrong'). v424 —
+  // the Ride-cell list too. The full-screen sheet now only shows when no anchor is passed.
   if(anchor&&(IS_DESKTOP()||popAlways))return _pickPop(anchor,items,cur,onPick);
   const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
   const btn=it=>{
@@ -18339,7 +18344,7 @@ function _fpillPick(slot,anchor){
     UI.livePills=pills;
     saveAll();
     _fpillsSync();   // not renderKeepScroll — see the v259 note on _fpillsSync
-  },anchor);
+  },anchor,true);   // v424 — pop-up on the phone too (Peter)
 }
 
 function _render(){
