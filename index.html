@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v433';
+window.APP_VERSION='v434';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -17079,8 +17079,31 @@ function scrollTileToTop(tile){
   if(!scroller||!tile)return;
   const scrollerRect=scroller.getBoundingClientRect();
   const tileRect=tile.getBoundingClientRect();
-  const offset=tileRect.top-scrollerRect.top;
-  scroller.scrollTo({top:scroller.scrollTop+offset,behavior:'smooth'});
+  // v434 — on a computer the list is zoomed to .875 (v416). Screen rectangles are in ZOOMED pixels but
+  // scrollTop is in the list's own unzoomed pixels, so the screen offset must be divided by the zoom —
+  // without it every jump fell 12.5% short and the stop above stayed half in view (Peter, 13 Oct). The
+  // tile stops SNAP_TOP_GAP px below the list's top edge, so its own top border is never cut off.
+  const z=parseFloat(getComputedStyle(scroller).zoom)||1, SNAP_TOP_GAP=6;
+  const offset=(tileRect.top-scrollerRect.top)/z-SNAP_TOP_GAP;
+  const target=Math.max(0,Math.min(scroller.scrollHeight-scroller.clientHeight,scroller.scrollTop+offset));
+  _scrollAnim(scroller,target);
+
+}
+// v434 — OUR OWN short scroll animation instead of scrollTo({behavior:'smooth'}). The browser's smooth
+// scroll on the zoomed desktop list could stall, and when it was still running as the next stop was tapped
+// it carried on past the new target. This one is cancelled by the next call, eases over SCROLL_ANIM_MS,
+// and a timer pins the exact target even if animation frames are held back (hidden window).
+const SCROLL_ANIM_MS=260;
+function _scrollAnim(el,target){
+  if(el._anim)el._anim.cancel();
+  const start=el.scrollTop,d=target-start,t0=performance.now();
+  if(Math.abs(d)<2){el.scrollTop=target;return;}
+  let done=false;
+  const finish=()=>{if(done)return;done=true;el.scrollTop=target;};
+  el._anim={cancel:()=>{done=true;}};
+  const step=now=>{if(done)return;const k=Math.min(1,(now-t0)/SCROLL_ANIM_MS);el.scrollTop=start+d*(1-Math.pow(1-k,3));if(k<1)requestAnimationFrame(step);else finish();};
+  requestAnimationFrame(step);
+  setTimeout(finish,SCROLL_ANIM_MS+120);
 }
 function renderKeepScroll(anchorSid){
   const wrap=document.getElementById('content-wrap');
@@ -17101,7 +17124,7 @@ function renderKeepScroll(anchorSid){
         const newEl=Array.from(document.querySelectorAll('.mission-node')).find(el=>el.dataset.sid===String(anchorSid));
         if(newEl){
           const newOffset=newEl.getBoundingClientRect().top-w.getBoundingClientRect().top;
-          w.scrollTop+=newOffset-anchorOffsetBefore;
+          w.scrollTop+=(newOffset-anchorOffsetBefore)/(parseFloat(getComputedStyle(w).zoom)||1);   // v434 — ÷zoom (desktop .875)
           return;
         }
       }
@@ -23859,7 +23882,7 @@ document.getElementById('tabs').addEventListener('click',e=>{
           // Scroll within content div, not the whole page — keeps header and tabs visible
           const contentRect=content.getBoundingClientRect();
           const targetRect=target.getBoundingClientRect();
-          content.scrollTop+=targetRect.top-contentRect.top-16;
+          content.scrollTop+=(targetRect.top-contentRect.top)/(parseFloat(getComputedStyle(content).zoom)||1)-16;   // v434 — ÷zoom (desktop .875)
         }
       },120);
     }
