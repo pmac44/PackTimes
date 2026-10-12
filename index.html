@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v427';
+window.APP_VERSION='v428';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -12845,25 +12845,37 @@ const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://se
 const MAPBOX_MODES=[5,6];
 const TILE_MODE_NAMES=['Off','OSM','Satellite','CyclOSM','Topo','Mapbox Outdoors','Mapbox Satellite'];
 const TILE_MODE_DESC=['Route only, no map','OpenStreetMap roads and towns','Aerial photos','Cycling map, bike routes','Contours and terrain','Outdoors map, saves offline','Aerial photos, saves offline'];   // v420 — pick list
-// v426 — A REAL PIECE OF EACH MAP STYLE in the Map style pop-up (Peter: 'all buttons look the same… you
-// have to read and comprehend the text rather than just see the background type'). One tile per style, at
-// the centre of the map the button belongs to, a zoom step closer than the map shows, drawn as a small
-// square BESIDE the name (never behind it — legibility). Plain CSS background, so a tile that can't load
-// (offline, never fetched) just leaves the square blank and the name still says what it is.
+// v426/v428 — A PICTURE OF EACH MAP STYLE in the Map style pop-up, beside the name (never behind it).
+// v428 — FIXED, HAND-PICKED SPOTS, not the map's centre. Peter, 13 Oct: on the phone the first open showed
+// no pictures, the next only one or two, and some showed nothing useful depending on where the map was;
+// "static thumbnails that are indicative of what you're going to see", like Google Maps' layer picker.
+// Each style gets the tile that shows it best (chosen from a contact sheet of Canberra / Stromlo / Grimsel /
+// Lake District at z13–14): OSM and CyclOSM over Canberra's suburbs and bike paths, the rest over Grimsel's
+// lake, switchbacks and contours. fx/fy = the point inside the tile to centre on (0–1).
+// NOT bundled into the file: OSM, CyclOSM, OpenTopoMap and Esri don't allow storing copies of their tiles
+// (see the v386 note), so each is an ordinary tile request — and because the URL never changes, the service
+// worker's cache-first tile cache answers every open after the first, offline included. _thumbWarm()
+// requests them in the background after start-up, so even the first open has its pictures.
 const THUMB_TILE_PX=128;   // the 256 px tile drawn at half size, so the square shows real detail
+const THUMB_SPOTS={
+  1:{z:13,x:7488,y:4954,fx:.28,fy:.3},    // OSM — Canberra: suburbs, arterial roads, nature reserve
+  2:{z:13,x:4285,y:2895,fx:.45,fy:.45},   // Satellite — Grimsel: lake, rock, snow
+  3:{z:13,x:7488,y:4954,fx:.3,fy:.25},    // CyclOSM — Canberra: the blue cycle-path network
+  4:{z:14,x:8571,y:5791,fx:.62,fy:.45},   // Topo — Grimsel: switchbacks over contours and hillshade
+  5:{z:13,x:4285,y:2895,fx:.5,fy:.5},     // Mapbox Outdoors — Grimsel
+  6:{z:13,x:4285,y:2895,fx:.45,fy:.45},   // Mapbox Satellite — Grimsel
+};
+function _tileThumbUrl(mode){const s=THUMB_SPOTS[mode];return s?tileUrl(mode,s.z,s.x,s.y):null;}
 function _tileThumb(mapId,mode,box){
-  if(!mode)return null;   // 'Off' — blank square
-  const cv=document.getElementById(mapId);
-  if(!cv||cv._cLat==null||cv._cLon==null||!cv._scale||!cv._kx)return null;
-  const z=Math.max(3,Math.min(16,Math.round(Math.log2(360*cv._kx*cv._scale/256))+1));
-  const n=Math.pow(2,z),lat=cv._cLat*Math.PI/180;
-  const fx=(cv._cLon+180)/360*n, fy=(1-Math.log(Math.tan(lat)+1/Math.cos(lat))/Math.PI)/2*n;
-  const x=Math.floor(fx),y=Math.floor(fy);
-  // centred on the map centre, but clamped so the tile always covers the whole square (a centre near a
-  // tile edge left half the square empty)
-  const cl=v=>Math.max(box-THUMB_TILE_PX,Math.min(0,v));
-  const ox=cl(Math.round(box/2-(fx-x)*THUMB_TILE_PX)), oy=cl(Math.round(box/2-(fy-y)*THUMB_TILE_PX));
-  return`url('${tileUrl(mode,z,x,y)}') ${ox}px ${oy}px / ${THUMB_TILE_PX}px ${THUMB_TILE_PX}px no-repeat`;   // single quotes: this lands inside a double-quoted style attribute
+  const s=THUMB_SPOTS[mode];
+  if(!s)return null;   // 'Off' — blank square
+  const cl=v=>Math.max(box-THUMB_TILE_PX,Math.min(0,v));   // the tile always covers the whole square
+  const ox=cl(Math.round(box/2-s.fx*THUMB_TILE_PX)), oy=cl(Math.round(box/2-s.fy*THUMB_TILE_PX));
+  return`url('${_tileThumbUrl(mode)}') ${ox}px ${oy}px / ${THUMB_TILE_PX}px ${THUMB_TILE_PX}px no-repeat`;   // single quotes: this lands inside a double-quoted style attribute
+}
+function _thumbWarm(){
+  if(navigator.onLine===false)return;
+  Object.keys(THUMB_SPOTS).forEach(m=>{if(tileModeAvailable(+m)){const i=new Image();i.src=_tileThumbUrl(+m);}});
 }
 function tileModeAvailable(m){return !MAPBOX_MODES.includes(m)||!!UI.mapboxToken;}
 function tileUrl(mode,z,x,y){
@@ -26304,6 +26316,7 @@ loadAll().catch(()=>{ROUTES=[];CUR=-1;}).finally(()=>{
   if(eventActive())packStart();
   // Crash recovery: prompt for any unfinished recordings found during loadAll
   _recRecoveryShow();
+  setTimeout(_thumbWarm,8000);   // v428 — fetch the map-style pictures in the background (cached forever after)
   // v389 — a fresh mid-ride reload restores the ride silently (_recRehydrate), but GPS was reset
   // just above, so the ride sat "recording" with NO GPS — and pause/resume didn't restart it.
   // Found on the native app 27 Sep: Android can kill and relaunch the app mid-ride, so this now
