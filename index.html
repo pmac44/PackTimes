@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v422';
+window.APP_VERSION='v423';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4379,7 +4379,7 @@ function toggleRouteOverlay(anchor){
       return;
     }
     _setRouteOverlay(next);
-  },anchor);
+  },anchor,true);
 }
 function _setRouteOverlay(next){
   UI.routeOverlay=next;
@@ -14892,7 +14892,7 @@ document.addEventListener('click',e=>{
   if(tm){
     // v420 — a list, not a cycle (see _pickSheet). Mapbox styles are listed only once a token is saved (v386).
     _pickSheet('Map style',TILE_MODE_NAMES.map((n,i)=>({k:String(i),name:n,desc:TILE_MODE_DESC[i]})).filter(it=>tileModeAvailable(+it.k)),
-      String(_tileMode),k=>{_tileMode=+k;_tileApply();},tm);
+      String(_tileMode),k=>{_tileMode=+k;_tileApply();},tm,true);
     return;
   }
 });
@@ -18264,19 +18264,23 @@ const PILL_GROUP_COL={spd:'var(--pick-spd)',clb:'var(--pick-clb)',pwr:'var(--pic
 function _pickPop(anchor,items,cur,onPick){
   const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
   const a=anchor.getBoundingClientRect();
-  const h=Math.max(32,Math.round(a.height)),w=Math.max(Math.round(a.width),96);
+  const touch=!IS_DESKTOP();   // v423 — on a phone: glove-size rows and bigger type
+  const h=Math.max(touch?46:32,Math.round(a.height)),w=Math.max(Math.round(a.width),touch?130:96);
   const pop=document.createElement('div');
   pop.id='fpill-pick-ov';
   pop.style.cssText='position:fixed;z-index:9999;display:flex;flex-direction:column;gap:4px;padding:6px;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:var(--shadow-float);';
   pop.innerHTML=items.map(it=>{
     const on=it.k===cur, col=it.col;
-    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${h}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:14px;font-weight:${on?700:600};cursor:pointer;">${it.name}</button>`;
+    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${h}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;">${it.name}</button>`;
   }).join('');
   document.body.appendChild(pop);
   const pw=pop.offsetWidth,ph=pop.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
   let left=(a.left+a.width/2>vw/2)?a.left-pw-6:a.right+6;
   left=Math.max(6,Math.min(left,vw-pw-6));
-  const top=Math.max(6,Math.min(a.top,vh-ph-6));
+  // v423 — grow UPWARD from the button (bottom edges aligned) whenever there is room above, so the list
+  // stays over the map instead of dropping onto the stop list below it (Peter). Map buttons sit at the
+  // map's bottom edge, which on a phone is mid-screen, so "lower half of the window" was the wrong test.
+  const top=(a.bottom-ph>=6)?a.bottom-ph:Math.max(6,Math.min(a.top,vh-ph-6));
   pop.style.left=left+'px';pop.style.top=top+'px';
   const close=()=>{pop.remove();document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',esc,true);};
   const outside=e=>{if(!pop.contains(e.target)&&!anchor.contains(e.target))close();};
@@ -18289,8 +18293,11 @@ function _pickPop(anchor,items,cur,onPick){
     onPick(b.dataset.pick);
   });
 }
-function _pickSheet(title,items,cur,onPick,anchor){
-  if(anchor&&IS_DESKTOP())return _pickPop(anchor,items,cur,onPick);   // v421
+function _pickSheet(title,items,cur,onPick,anchor,popAlways){
+  // v421 desktop pop-up; v423 — map style and route colour use the pop-up on the phone too (popAlways;
+  // Peter: 'the pop-up is really good… the big one, even on the phone, is probably a bit wrong'). The
+  // Ride-cell list stays full screen on a phone: 13 choices with descriptions, read with glasses.
+  if(anchor&&(IS_DESKTOP()||popAlways))return _pickPop(anchor,items,cur,onPick);
   const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
   const btn=it=>{
     const on=it.k===cur, col=it.col;
