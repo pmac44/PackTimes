@@ -1778,7 +1778,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v414';
+window.APP_VERSION='v415';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -16080,7 +16080,7 @@ function _renderDesktopMapInner(){
       </div>`:'')
       +(!UI.hiddenMapTypes.has('weather')?`<div style="margin-top:6px;padding:4px 6px;background:var(--overlay-soft);border-radius:4px;max-width:130px;">
         <div style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);margin-bottom:3px;line-height:1.5;">Weather at ETA · faded = low confidence (4+ days)</div>
-        ${[['rgba(234,179,8,0.92)','rgba(253,224,71,0.8)','#fefce8','Sun'],['rgba(71,85,105,0.88)','rgba(148,163,184,0.4)','#e2e8f0','Cloud'],['rgba(37,99,235,0.88)','rgba(147,197,253,0.5)','#bfdbfe','Rain'],['rgba(30,64,175,0.92)','rgba(147,197,253,0.6)','#bfdbfe','Heavy'],['rgba(91,33,182,0.92)','rgba(196,181,253,0.8)','#ddd6fe','Storm !']].map(([bg,border,tc,lbl])=>`
+        ${[['rgba(242,239,99,0.95)','rgba(11,18,16,0.45)','#0b1210','Sun'],['rgba(71,85,105,0.88)','rgba(148,163,184,0.4)','#e2e8f0','Cloud'],['rgba(37,99,235,0.88)','rgba(147,197,253,0.5)','#bfdbfe','Rain'],['rgba(30,64,175,0.92)','rgba(147,197,253,0.6)','#bfdbfe','Heavy'],['rgba(91,33,182,0.92)','rgba(196,181,253,0.8)','#ddd6fe','Storm !']].map(([bg,border,tc,lbl])=>`
           <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;">
             <div style="background:${bg};border:1px solid ${border};border-radius:4px;padding:1px 5px;font-size:9px;font-family:var(--font);color:${tc};min-width:24px;text-align:center;">18°</div>
             <span style="font-size:10px;color:rgba(255,255,255,0.5);font-family:var(--font);">${lbl}</span>
@@ -21438,16 +21438,16 @@ function drawWeatherDot(ctx,x,y,w,mapFontSm,isDesktop){
                isHeavyRain?'rgba(30,64,175,0.92)':  // dark blue — heavy rain
                isRain?'rgba(37,99,235,0.88)':        // blue — rain
                isCloud?'rgba(71,85,105,0.88)':       // grey — cloud
-               'rgba(234,179,8,0.92)';               // yellow — sun
+               'rgba(242,239,99,0.95)';              // v415 — lemon (#F2EF63, GravelRouter's climb yellow); was mustard #EAB308, Peter: 'a bit of a dirty yellow'
   const pillBorder=isStorm?'rgba(196,181,253,0.8)':
                    isHeavyRain?'rgba(147,197,253,0.6)':
                    isRain?'rgba(147,197,253,0.5)':
                    isCloud?'rgba(148,163,184,0.4)':
-                   'rgba(253,224,71,0.8)';
+                   'rgba(11,18,16,0.45)';
   const textCol=isStorm?'#ddd6fe':
                 isHeavyRain||isRain?'#bfdbfe':
                 isCloud?'#e2e8f0':
-                '#fefce8';
+                '#0b1210';   // v415 — dark text: lemon is light
   ctx.globalAlpha=alpha;
   const pillW=isDesktop?(isStorm?52:46):isStorm?42:36;
   const pillH=isDesktop?20:16;
@@ -21510,8 +21510,8 @@ function weatherPillHTML(code,temp,label){
   const isHeavyRain=code>=65&&code<80;
   const isRain=wmoIsRainy(code)&&!isStorm;
   const isCloud=code>=3&&code<51;
-  const bg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'rgba(202,138,4,1)';
-  const tc=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#fefce8';
+  const bg=isStorm?'rgba(91,33,182,1)':isHeavyRain?'rgba(30,64,175,1)':isRain?'rgba(37,99,235,1)':isCloud?'rgba(51,65,85,1)':'#f2ef63';   // v415 — lemon, was mustard #CA8A04
+  const tc=isStorm?'#ddd6fe':isHeavyRain||isRain?'#bfdbfe':isCloud?'#e2e8f0':'#0b1210';
   return`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
     <div style="background:${bg};border-radius:6px;padding:5px 10px;min-width:48px;text-align:center;">
       <!-- v265: 600 → 500. --font is DM Mono, which SHIPS 400/500 ONLY (v244's rule: "DM
