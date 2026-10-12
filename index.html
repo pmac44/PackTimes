@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v425';
+window.APP_VERSION='v426';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4370,9 +4370,12 @@ function toggleRouteOverlay(anchor){
   if(!r||r.points.length<2)return;
   const hasSurf=!!(r.surfaceSegs&&r.surfaceSegs.length);
   _pickSheet('Route colour',[
-    {k:'off',name:'Day / night',desc:'Daylight and dark at your planned times'},
-    {k:'surf',name:'Surface',desc:'Road, gravel, track, trail',note:hasSurf?'':'not fetched yet'},
-    {k:'grade',name:'Gradient',desc:'Coloured by steepness'},
+    // v426 — each option shows a swatch of the colours its line uses (Peter: 'the same would apply for
+    // the route line'). Hard-stop diagonal bands, from the real tables: dayNightBg's key colours,
+    // SURFACE_COLS, GRADE_FLAT/GRADE_COLS.
+    {k:'off',name:'Day / night',desc:'Daylight and dark at your planned times',thumb:()=>_swatch(['rgb(64,128,190)','rgb(74,120,178)','rgb(70,78,150)','rgb(14,24,58)'])},
+    {k:'surf',name:'Surface',desc:'Road, gravel, track, trail',note:hasSurf?'':'not fetched yet',thumb:()=>_swatch([SURFACE_COLS.road,SURFACE_COLS.grade2,SURFACE_COLS.grade4,SURFACE_COLS.single])},
+    {k:'grade',name:'Gradient',desc:'Coloured by steepness',thumb:()=>_swatch([GRADE_FLAT].concat(GRADE_COLS.slice(0,4)))},
   ],UI.routeOverlay||'off',next=>{
     if(next==='surf'&&!hasSurf){
       if(confirm('No surface data loaded for this route.\nFetch it from OpenStreetMap now?'))fetchSurfaceData();
@@ -4380,6 +4383,10 @@ function toggleRouteOverlay(anchor){
     }
     _setRouteOverlay(next);
   },anchor,true);
+}
+function _swatch(cols){   // v426 — equal hard-stop diagonal bands for a pick-list square
+  const st=100/cols.length;
+  return'linear-gradient(135deg,'+cols.map((c,i)=>c+' '+(i*st)+'% '+((i+1)*st)+'%').join(',')+')';
 }
 function _setRouteOverlay(next){
   UI.routeOverlay=next;
@@ -12838,6 +12845,26 @@ const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://se
 const MAPBOX_MODES=[5,6];
 const TILE_MODE_NAMES=['Off','OSM','Satellite','CyclOSM','Topo','Mapbox Outdoors','Mapbox Satellite'];
 const TILE_MODE_DESC=['Route only, no map','OpenStreetMap roads and towns','Aerial photos','Cycling map, bike routes','Contours and terrain','Outdoors map, saves offline','Aerial photos, saves offline'];   // v420 — pick list
+// v426 — A REAL PIECE OF EACH MAP STYLE in the Map style pop-up (Peter: 'all buttons look the same… you
+// have to read and comprehend the text rather than just see the background type'). One tile per style, at
+// the centre of the map the button belongs to, a zoom step closer than the map shows, drawn as a small
+// square BESIDE the name (never behind it — legibility). Plain CSS background, so a tile that can't load
+// (offline, never fetched) just leaves the square blank and the name still says what it is.
+const THUMB_TILE_PX=128;   // the 256 px tile drawn at half size, so the square shows real detail
+function _tileThumb(mapId,mode,box){
+  if(!mode)return null;   // 'Off' — blank square
+  const cv=document.getElementById(mapId);
+  if(!cv||cv._cLat==null||cv._cLon==null||!cv._scale||!cv._kx)return null;
+  const z=Math.max(3,Math.min(16,Math.round(Math.log2(360*cv._kx*cv._scale/256))+1));
+  const n=Math.pow(2,z),lat=cv._cLat*Math.PI/180;
+  const fx=(cv._cLon+180)/360*n, fy=(1-Math.log(Math.tan(lat)+1/Math.cos(lat))/Math.PI)/2*n;
+  const x=Math.floor(fx),y=Math.floor(fy);
+  // centred on the map centre, but clamped so the tile always covers the whole square (a centre near a
+  // tile edge left half the square empty)
+  const cl=v=>Math.max(box-THUMB_TILE_PX,Math.min(0,v));
+  const ox=cl(Math.round(box/2-(fx-x)*THUMB_TILE_PX)), oy=cl(Math.round(box/2-(fy-y)*THUMB_TILE_PX));
+  return`url('${tileUrl(mode,z,x,y)}') ${ox}px ${oy}px / ${THUMB_TILE_PX}px ${THUMB_TILE_PX}px no-repeat`;   // single quotes: this lands inside a double-quoted style attribute
+}
 function tileModeAvailable(m){return !MAPBOX_MODES.includes(m)||!!UI.mapboxToken;}
 function tileUrl(mode,z,x,y){
   return (TILE_URLS[mode]||TILE_URLS[1]).replace('{z}',z).replace('{x}',x).replace('{y}',y).replace('{t}',encodeURIComponent(UI.mapboxToken||''));
@@ -14893,7 +14920,7 @@ document.addEventListener('click',e=>{
   const tm=e.target.closest('[data-tilemap]');
   if(tm){
     // v420 — a list, not a cycle (see _pickSheet). Mapbox styles are listed only once a token is saved (v386).
-    _pickSheet('Map style',TILE_MODE_NAMES.map((n,i)=>({k:String(i),name:n,desc:TILE_MODE_DESC[i]})).filter(it=>tileModeAvailable(+it.k)),
+    _pickSheet('Map style',TILE_MODE_NAMES.map((n,i)=>({k:String(i),name:n,desc:TILE_MODE_DESC[i],thumb:mid=>_tileThumb(tm.dataset.tilemap,i,mid)})).filter(it=>tileModeAvailable(+it.k)),
       String(_tileMode),k=>{_tileMode=+k;_tileApply();},tm,true);
     return;
   }
@@ -18275,9 +18302,11 @@ function _pickPop(anchor,items,cur,onPick){
   // v424 — more than 7 choices on a phone: two columns, so the Ride-cell list (13) fits below the cell
   const cols=(touch&&items.length>7)?2:1;
   pop.style.cssText='position:fixed;z-index:9999;display:grid;grid-template-columns:repeat('+cols+',auto);gap:4px;padding:6px;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:var(--shadow-float);';
+  const tb=h-12;   // v426 thumbnail square, inside the row
   pop.innerHTML=items.map(it=>{
     const on=it.k===cur, col=it.col;
-    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${h}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;">${it.name}</button>`;
+    const th=it.thumb?`<span aria-hidden="true" style="flex-shrink:0;width:${tb}px;height:${tb}px;border-radius:5px;border:1px solid var(--border2);background:${it.thumb(tb)||'var(--surface-sunken)'};background-color:var(--surface-sunken);"></span>`:'';
+    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${h}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;${th?'display:flex;align-items:center;gap:8px;padding-left:6px;':''}">${th}${it.name}</button>`;
   }).join('');
   document.body.appendChild(pop);
   const pw=pop.offsetWidth,ph=pop.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
