@@ -512,7 +512,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .pack-peeking #rec-ctrl{visibility:hidden;}
 .tabs{display:flex;justify-content:space-around;background:var(--surface);flex-shrink:0;overflow:hidden;padding:0;padding-top:env(safe-area-inset-top,0px);}
 .tabs::-webkit-scrollbar{display:none;}
-.tab{flex:0 1 auto;min-width:0;padding:8px 6px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:15px;font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
+/* v414 — side padding 6→4 px and type min(15px,4.1vw): the six labels needed 356 of 360 px and clipped "Settings" whenever a scrollbar took width; this keeps ~25 px spare down to a 320 px phone. Never ellipsise a tab label. */
+.tab{flex:0 1 auto;min-width:0;padding:8px 4px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:min(15px,4.1vw);font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
 .tab.active{color:var(--tab-active);border-bottom-color:var(--tab-active);}
 .tab-icon{display:flex;align-items:center;justify-content:center;font-size:18px;height:20px;margin-bottom:1px;}
 /* Normal scrolling content (most tabs) */
@@ -1777,7 +1778,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v412';
+window.APP_VERSION='v414';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -18214,8 +18215,8 @@ function _fpillPick(slot){
   const btn=k=>{
     const[n,d,g]=PILL_INFO[k]||[k,'','oth'], on=k===cur, nd=needs(k)||(k==='wkg'&&!(UI.riderKg>0)?'set weight':''), col=PILL_GROUP_COL[g];
     return`<button type="button" data-pick="${k}" style="min-width:0;text-align:left;padding:9px 10px 9px 12px;border-radius:var(--r-ctrl);border:${on?'3px solid var(--text)':'1px solid var(--border2)'};border-left:8px solid ${col};background:color-mix(in srgb,${col} ${on?28:12}%,var(--card2));color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
-      <div style="font-size:20px;font-weight:700;line-height:1.15;white-space:nowrap;">${n}</div>
-      <div style="font-size:15px;color:var(--text2);margin-top:3px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nd?`<span style="color:var(--text3);">${nd}</span>`:d}</div></button>`;
+      <div style="font-size:20px;font-weight:700;line-height:1.15;">${n}</div>
+      <div style="font-size:15px;color:var(--text2);margin-top:3px;line-height:1.3;">${nd?`<span style="color:var(--text3);">${nd}</span>`:d}</div></button>`;
   };
   const ov=document.createElement('div');
   ov.id='fpill-pick-ov';
@@ -19124,36 +19125,6 @@ function tLiveShell(r){
   };
 
   // Compact progress strip for top of map
-  const finDay=sdt&&finEta?dayOff(finEta,sdt):'';
-  // Available live stat slot definitions (excludes distbar which is always slot 0)
-  const LIVE_STATS={
-    finish:  {label:'Finish',    val:()=>(finDay?finDay.trim()+' ':'')+fmtT(finEta),unit:''},
-    speed:   {label:'Speed',     val:()=>{const s=UI.gpsPos&&UI.gpsPos.speed!=null?(UI.gpsPos.speed*3.6):null;return s!==null&&s>=0.3?s.toFixed(1):'—';},unit:'km/h'},
-    '1hr':   {label:'1hr',       val:()=>{const win=UI._adaptiveWindow||[];if(win.length<2)return'—';const km=win[win.length-1].dist-win[0].dist,h=(win[win.length-1].ts-win[0].ts)/3600000;return h>0?(km/h).toFixed(1):'—';},unit:'km/h'},
-    // v408 — _rideAvgKmh, like the pills. This copy subtracted the odometer baseline from the
-    // ALONG-ROUTE position (gpsDistKm), not from gpsTravelledKm as the pills do.
-    rideavg: {label:_rideAvgLbl(),  val:()=>{const a=_rideAvgKmh();return a.kmh!=null?a.kmh.toFixed(1):'—';},unit:'km/h'},
-    done:    {label:'Done',      val:()=>liveDist.toFixed(1),unit:'km'},
-    left:    {label:'To go',     val:()=>(r.totalDist-liveDist).toFixed(1),unit:'km'},
-    recdist: {label:'Rec dist',  val:()=>_rec?_rec.totalDist.toFixed(1):'—',unit:'km'},
-    rectime: {label:'Rec time',  val:()=>{
-      if(!_rec)return'—';
-      const ms=(_rec.status==='finalised'&&_rec.endTS?_rec.endTS:Date.now())-_rec.startTS;
-      const totalSec=Math.floor(ms/1000);
-      const h=Math.floor(totalSec/3600),m=Math.floor((totalSec%3600)/60);
-      return h>0?h+':'+String(m).padStart(2,'0'):m+':'+String(totalSec%60).padStart(2,'0');
-    },unit:''},
-  };
-  const STAT_ORDER=['done','left','finish','speed','1hr','rideavg','recdist','rectime'];
-  const makePill=(slotIdx)=>{
-    const key=(UI.liveStatSlots||['speed','rideavg'])[slotIdx]||STAT_ORDER[slotIdx];
-    const stat=LIVE_STATS[key]||LIVE_STATS.done;
-    const valStr=stat.val();
-    return`<div style="flex:1;background:#000;border:1px solid #222;border-radius:6px;padding:4px 7px;cursor:pointer;-webkit-tap-highlight-color:transparent;min-width:0;overflow:hidden;" class="live-stat-pill" data-slot="${slotIdx}" id="live-pill-slot${slotIdx}">
-      <div style="font-size:10px;color:#666;font-family:var(--font);letter-spacing:.3px;white-space:nowrap;" id="live-lbl-slot${slotIdx}">${stat.label}</div>
-      <div style="font-size:19px;font-weight:500;color:var(--text);font-family:var(--sans);white-space:nowrap;line-height:1.2;" id="live-val-slot${slotIdx}">${valStr}${stat.unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${stat.unit}</span>`:''}</div>
-    </div>`;
-  };
   // v261: the bar is a CHEVRON RULER with its two figures in a row BELOW it. The centre
   // slot that rotated leg ETA / ride time / GPS distance every 4s went in v258 and stays
   // gone:
@@ -21026,7 +20997,7 @@ function _setLayout(shell,SEC,r){
       `<button type="button" data-setpage="${p.k}" style="display:flex;align-items:center;gap:12px;width:100%;min-height:64px;margin:0 0 8px;padding:10px 14px;text-align:left;border-radius:var(--r-card);border:1px solid var(--border2);border-left:8px solid ${p.c};background:color-mix(in srgb,${p.c} 10%,var(--card));color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
         <span style="flex:1;min-width:0;">
           <span style="display:block;font-size:19px;font-weight:700;line-height:1.2;">${p.t}</span>
-          <span style="display:block;font-size:15px;color:var(--text2);line-height:1.3;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.d}</span>
+          <span style="display:block;font-size:15px;color:var(--text2);line-height:1.3;margin-top:2px;">${p.d}</span>
         </span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text3);"><polyline points="9 6 15 12 9 18"/></svg>
       </button>`).join('');
@@ -21037,10 +21008,13 @@ function _setLayout(shell,SEC,r){
       ${keys.length>1?`<div class="set-panel-hdr" style="cursor:default;"><span class="ctitle" style="margin-bottom:0;font-size:18px;">${_setStripEmoji(SEC[k].title)}</span></div>`:''}
       <div class="set-panel-body">${SEC[k].body}</div>
     </div>`).join('');
-  return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0 10px;">
+  // v413 — Back on its own row and the title on its own full-width line, wrapping if it must.
+  // Side by side, "Sharing & group rides" was cut to "Sharing & group ri…" (Peter: "that's
+  // just unacceptable… a failure of our layout"). Nothing in Settings is ever ellipsised.
+  return`<div style="padding:8px 0 12px;">
       <button type="button" id="set-back" class="btn" style="min-height:48px;padding:0 14px 0 8px;font-size:17px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>Settings</button>
-      <span style="font-size:22px;font-weight:700;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pg.t}</span>
+      <div style="font-size:24px;font-weight:700;line-height:1.2;color:var(--text);margin-top:12px;">${pg.t}</div>
     </div>`+body;
 }
 function _setGo(k){
@@ -23648,32 +23622,6 @@ function updateLive(){
     if(mcCtrl.innerHTML !== newInner) mcCtrl.innerHTML = newInner;
   }
 
-  // Phase 1a Step 4: live-update the configurable stat-pill values when they
-  // depend on recording state (recdist / rectime tick during a recording).
-  // Cheap: just recompute and patch text on the two slot elements.
-  const slots=UI.liveStatSlots||['speed','rideavg'];
-  for(let i=0;i<2;i++){
-    const key=slots[i];
-    if(key!=='recdist'&&key!=='rectime')continue;
-    const valEl=document.getElementById('live-val-slot'+i);
-    if(!valEl)continue;
-    let valStr,unit;
-    if(key==='recdist'){
-      valStr=_rec?_rec.totalDist.toFixed(1):'—';
-      unit='km';
-    } else {
-      if(!_rec){ valStr='—'; unit=''; }
-      else {
-        const ms2=(_rec.status==='finalised'&&_rec.endTS?_rec.endTS:Date.now())-_rec.startTS;
-        const totalSec=Math.floor(ms2/1000);
-        const h=Math.floor(totalSec/3600),m=Math.floor((totalSec%3600)/60);
-        valStr=h>0?h+':'+String(m).padStart(2,'0'):m+':'+String(totalSec%60).padStart(2,'0');
-        unit='';
-      }
-    }
-    const newHtml=valStr+(unit?`<span style="font-size:13px;color:#aaa;margin-left:1px;">${unit}</span>`:'');
-    if(valEl.innerHTML!==newHtml)valEl.innerHTML=newHtml;
-  }
 }
 
 function patchGPSInfo(){
@@ -24250,22 +24198,6 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Tap weather bar → expand/collapse
-  // Tap a configurable stat pill → cycle to next metric
-  const sp=e.target.closest('.live-stat-pill');
-  if(sp&&UI.tab==='live'&&sp.dataset.slot!=='dist'){
-    const STAT_ORDER=['done','left','finish','speed','1hr','rideavg','recdist','rectime'];
-    const slotIdx=+sp.dataset.slot;
-    const slots=UI.liveStatSlots||['speed','rideavg'];
-    const cur=slots[slotIdx]||STAT_ORDER[slotIdx];
-    const nextKey=STAT_ORDER[(STAT_ORDER.indexOf(cur)+1)%STAT_ORDER.length];
-    UI.liveStatSlots=slots.map((k,i)=>i===slotIdx?nextKey:k);
-    saveAll();
-    const LABEL_MAP={done:'Done',left:'To go',finish:'Finish',speed:'Speed','1hr':'1hr',rideavg:_rideAvgLbl(),recdist:'Rec dist',rectime:'Rec time'};
-    const lbl=document.getElementById('live-lbl-slot'+slotIdx);
-    if(lbl)lbl.textContent=LABEL_MAP[nextKey]||nextKey;
-    updateLive();
-    return;
-  }
   // Floating pill tap → v409: open the pick list (was: cycle to the next type).
   // (Long-press on unpaired power/hr pill triggers BLE pairing — see _fpillLP handler below)
   const fpill=e.target.closest('.live-fpill');
