@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v424';
+window.APP_VERSION='v425';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -14681,7 +14681,9 @@ function mapCtrlHTML(mapId,showGPS){
   const pos=isLiveAny?'top:auto;bottom:8px;right:8px;left:auto;transform:none;z-index:5;'
            :isStopsMobile?'top:auto;bottom:8px;right:8px;left:auto;transform:none;'
            :(mapId==='stops-map'?'left:auto;right:8px;':'');
-  const btnSize=isLiveMobile?'width:52px;height:52px;font-size:22px;':'';
+  // v425 — the Stops map on a phone gets the Ride map's 52 px buttons too (Peter: the same buttons
+  // should be one size; it was 38 px by default, never a decision).
+  const btnSize=(isLiveMobile||isStopsMobile)?'width:52px;height:52px;font-size:22px;':'';
   // ── v273: THE RECORD CONTROL NO LONGER LIVES HERE. ────────────────────────────────────
   // It moved to the bottom-LEFT, above the sharing button — see recCtrlHTML / _recBtnSync in
   // the LOCATION SHARING section. Peter: "The start ride button can move to the left and
