@@ -1208,7 +1208,7 @@ select option{background:var(--bg3);}
              [data-recenter] delegator. Deliberately NO GPS toggle: its id would collide with the
              Ride tab's recording button, which shares #btn-gpstoggle. -->
         <button class="zbtn zbtn-w" data-recenter="desktop-map" title="Centre on GPS" style="overflow:hidden;"><svg viewBox="0 0 38 38" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style="display:block;"><line x1="19" y1="0" x2="19" y2="38" stroke="currentColor" stroke-width="1.5"/><line x1="0" y1="19" x2="38" y2="19" stroke="currentColor" stroke-width="1.5"/><circle cx="19" cy="19" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
-        <button class="zbtn zbtn-w" id="btn-surface-desktop-map" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="font-size:11px;font-family:var(--font);font-weight:500;">DAY</button>
+        <button class="zbtn zbtn-w" id="btn-surface-desktop-map" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay(this)" style="font-size:11px;font-family:var(--font);font-weight:500;">DAY</button>
       </div>
     </div>
   </div>
@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v420';
+window.APP_VERSION='v421';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4364,7 +4364,7 @@ function updateOverlayButtons(){
     }
   });
 }
-function toggleRouteOverlay(){
+function toggleRouteOverlay(anchor){
   // Map DAY/SURF/GRAD button. v420 — opens a list (was a cycle). Never silently fetches —
   // if surface data is missing, ask first (Peter hit an unwanted auto-fetch).
   const r=cur();
@@ -4380,7 +4380,7 @@ function toggleRouteOverlay(){
       return;
     }
     _setRouteOverlay(next);
-  });
+  },anchor);
 }
 function _setRouteOverlay(next){
   UI.routeOverlay=next;
@@ -14776,7 +14776,7 @@ function mapCtrlHTML(mapId,showGPS){
   // (planning maps, 38px buttons) width:auto is fine — nothing square sits next to it.
   const tileSquare=(mapId==='live-map')?'padding:0;':''; // v338 — width now via .zbtn-w
   const tileBtn=`<button class="zbtn tile-tog${wCls}" data-tilemap="${mapId}" title="Toggle map tiles" style="${btnSize}font-size:13px;font-family:var(--font);font-weight:500;${tileSquare}${_tileMode?'color:var(--accent);border-color:var(--accent3);':''}">${TILE_LABELS[_tileMode]}</button>`;
-  const surfBtn=(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn zbtn-w" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay()" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:500;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${OVERLAY_BTN_LABELS[UI.routeOverlay]||'DAY'}</button>`:'';
+  const surfBtn=(mapId==='desktop-map'||mapId==='stops-map')?`<button class="zbtn zbtn-w" id="btn-surface-${mapId}" title="Cycle overlay: off / surface / grade" onclick="toggleRouteOverlay(this)" style="${btnSize}font-size:11px;font-family:var(--font);font-weight:500;${UI.routeOverlay!=='off'?'color:var(--accent);border-color:var(--accent3);':''}">${OVERLAY_BTN_LABELS[UI.routeOverlay]||'DAY'}</button>`:'';
   // Restyle: on the ride map, fit-route + tile toggle MERGE into one pill (Peter). Elsewhere
   // (planning maps) they stay separate buttons — those columns also carry the surface toggle.
   const inner = (mapId==='live-map')
@@ -14893,7 +14893,7 @@ document.addEventListener('click',e=>{
   if(tm){
     // v420 — a list, not a cycle (see _pickSheet). Mapbox styles are listed only once a token is saved (v386).
     _pickSheet('Map style',TILE_MODE_NAMES.map((n,i)=>({k:String(i),name:n,desc:TILE_MODE_DESC[i]})).filter(it=>tileModeAvailable(+it.k)),
-      String(_tileMode),k=>{_tileMode=+k;_tileApply();});
+      String(_tileMode),k=>{_tileMode=+k;_tileApply();},tm);
     return;
   }
 });
@@ -18256,7 +18256,42 @@ const PILL_GROUP_COL={spd:'var(--pick-spd)',clb:'var(--pick-clb)',pwr:'var(--pic
 // seven it's just silly… the more options you have, the target gets smaller"). Full screen, 20/15 px,
 // 2-col grid with minmax(0,1fr) (plain 1fr let nowrap text push the right column off-screen), an
 // optional colour stripe per item, nothing ellipsised. items: [{k,name,desc,note?,col?}].
-function _pickSheet(title,items,cur,onPick){
+// v421 — ON A COMPUTER, A SMALL POP-UP BESIDE THE BUTTON. Peter: on the desktop "the whole browser
+// tab changes… I'd rather just have a smaller window pop up… however big the icon is… six other
+// options of that size pop up near it." So with an anchor element and IS_DESKTOP(), the same items
+// show as a column of buttons the trigger's own height, placed beside it (left of it when it sits in
+// the right half of the window), kept inside the window. Names only; the description is the hover
+// title. Closes on a pick, a click elsewhere, or Escape. Phones keep the full-screen sheet.
+function _pickPop(anchor,items,cur,onPick){
+  const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
+  const a=anchor.getBoundingClientRect();
+  const h=Math.max(32,Math.round(a.height)),w=Math.max(Math.round(a.width),96);
+  const pop=document.createElement('div');
+  pop.id='fpill-pick-ov';
+  pop.style.cssText='position:fixed;z-index:9999;display:flex;flex-direction:column;gap:4px;padding:6px;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:var(--shadow-float);';
+  pop.innerHTML=items.map(it=>{
+    const on=it.k===cur, col=it.col;
+    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${h}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:14px;font-weight:${on?700:600};cursor:pointer;">${it.name}</button>`;
+  }).join('');
+  document.body.appendChild(pop);
+  const pw=pop.offsetWidth,ph=pop.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
+  let left=(a.left+a.width/2>vw/2)?a.left-pw-6:a.right+6;
+  left=Math.max(6,Math.min(left,vw-pw-6));
+  const top=Math.max(6,Math.min(a.top,vh-ph-6));
+  pop.style.left=left+'px';pop.style.top=top+'px';
+  const close=()=>{pop.remove();document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',esc,true);};
+  const outside=e=>{if(!pop.contains(e.target)&&!anchor.contains(e.target))close();};
+  const esc=e=>{if(e.key==='Escape')close();};
+  setTimeout(()=>{document.addEventListener('pointerdown',outside,true);document.addEventListener('keydown',esc,true);},0);
+  pop.addEventListener('click',e=>{
+    const b=e.target.closest('[data-pick]');if(!b)return;
+    e.stopPropagation();
+    close();
+    onPick(b.dataset.pick);
+  });
+}
+function _pickSheet(title,items,cur,onPick,anchor){
+  if(anchor&&IS_DESKTOP())return _pickPop(anchor,items,cur,onPick);   // v421
   const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
   const btn=it=>{
     const on=it.k===cur, col=it.col;
@@ -18285,7 +18320,7 @@ function _pickSheet(title,items,cur,onPick){
   });
   document.body.appendChild(ov);
 }
-function _fpillPick(slot){
+function _fpillPick(slot,anchor){
   const cur=(UI.livePills||FPILL_DEFAULT)[slot]||'off';
   const needs=k=>(k==='power'||k==='wkg'||k==='cad'||k==='force')?(UI.powerConnected?'':'not paired')
     :k==='hr'?(UI.hrConnected?'':'not paired'):'';
@@ -18298,7 +18333,7 @@ function _fpillPick(slot){
     UI.livePills=pills;
     saveAll();
     _fpillsSync();   // not renderKeepScroll — see the v259 note on _fpillsSync
-  });
+  },anchor);
 }
 
 function _render(){
@@ -24314,7 +24349,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   const fpill=e.target.closest('.live-fpill');
   if(fpill&&UI.tab==='live'){
     if(_fpillLP.fired){_fpillLP.fired=false;return;} // suppress click after long-press
-    _fpillPick(+fpill.dataset.slot);
+    _fpillPick(+fpill.dataset.slot,fpill);
     return;
   }
   if(e.target.closest('#live-weather-bar')&&UI.tab==='live'){
