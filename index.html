@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v432';
+window.APP_VERSION='v433';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -12852,6 +12852,7 @@ const TILE_PICK_ORDER=[0,1,3,4,5,2,6];   // v430 — the pick list's order; the 
 const SAVED_BADGE='<svg role="img" aria-label="saved for offline" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 function _tileSavedForRoute(r,mode){
   const o=r&&r.offlineTiles;
+  if(o&&o.styles)return !!o.styles[TILE_MODE_NAMES[mode]];   // v433 — every style ever saved
   return !!(o&&o.cached>0&&String(o.mode||'').split(' + ').includes(TILE_MODE_NAMES[mode]));
 }
 const TILE_MODE_DESC=['Route only, no map','OpenStreetMap roads and towns','Aerial photos','Cycling map, bike routes','Contours and terrain','Outdoors map, saves offline','Aerial photos, saves offline'];   // v420 — pick list
@@ -13049,7 +13050,14 @@ async function startTileDownload(ridx,modes){
     UI.tileDownloadStatus='done';
     UI.tileDownloadMsg=result.cached+' of '+result.total+' tiles saved'+(result.failed?' ('+result.failed+' failed)':'');
     // Persist download info on the route object
-    r.offlineTiles={mode:modes.map(m=>TILE_MODE_NAMES[m]).join(' + '),count:result.total,cached:result.cached,failed:result.failed||0,at:new Date().toISOString()};
+    // v433 — REMEMBER EVERY STYLE EVER SAVED for this route (Peter), not just the last download's. styles
+    // = {name:{at,cached}}; a record from before v433 (mode string only) seeds it. mode stays as the
+    // joined list of every saved style so the route row's '… saved Xd ago' line keeps working; count/
+    // cached/failed/at describe the latest run.
+    const _now=new Date().toISOString(), _prev=r.offlineTiles||null;
+    const styles=Object.assign({},_prev&&_prev.styles?_prev.styles:(_prev&&_prev.cached>0?Object.fromEntries(String(_prev.mode||'').split(' + ').filter(Boolean).map(n=>[n,{at:_prev.at,cached:_prev.cached}])):{}));
+    if(result.cached>0)modes.forEach(m=>{styles[TILE_MODE_NAMES[m]]={at:_now,cached:result.cached};});
+    r.offlineTiles={mode:Object.keys(styles).join(' + ')||modes.map(m=>TILE_MODE_NAMES[m]).join(' + '),styles,count:result.total,cached:result.cached,failed:result.failed||0,at:_now};
     saveAll();
   } else {
     UI.tileDownloadStatus=result.msg==='Cancelled'?'idle':'error';
