@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v428';
+window.APP_VERSION='v429';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -13205,7 +13205,6 @@ function _canvasFit(cvs,bw,bh){
 }
 function drawMap(cvs,r,opts){
   opts=opts||{};
-  let _dlMarks=null;   // v417 daylight pills, collected with the day/night line
   if(!r)return;
   const hasRoute=r.points&&r.points.length>0;
   const hasStops=r.stops&&r.stops.some(s=>s.lat&&s.lon);
@@ -13383,17 +13382,12 @@ function drawMap(cvs,r,opts){
     const _dnW=(cvs&&cvs.offsetWidth)||880;
     const dnSampleKm=Math.max(0.25,r.totalDist/Math.max(400,_dnW*2));
     let nextSampleDist=0;
-    const _dl=_dlTracker();   // v417 — dawn/sunrise/sunset/dusk pills, found on the same samples (no extra etaAt)
-    const _eta0=etaAt(pts[0].dist,r);
-    let curCol=getCol(_eta0,pts[0].lat,pts[0].lon);
-    _dl.step(_eta0,pts[0]);
+    let curCol=getCol(etaAt(pts[0].dist,r),pts[0].lat,pts[0].lon);
     ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
     for(let i=1;i<pts.length;i++){
       let col=curCol;
       if(pts[i].dist>=nextSampleDist){
-        const _eta=etaAt(pts[i].dist,r);
-        col=getCol(_eta,pts[i].lat,pts[i].lon);
-        _dl.step(_eta,pts[i]);
+        col=getCol(etaAt(pts[i].dist,r),pts[i].lat,pts[i].lon);
         nextSampleDist=pts[i].dist+dnSampleKm;
       }
       if(col!==curCol){
@@ -13404,7 +13398,6 @@ function drawMap(cvs,r,opts){
       ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
     }
     ctx.strokeStyle=curCol;ctx.lineWidth=2.5;ctx.stroke();
-    _dlMarks=_dl.marks;   // drawn last, above stops and weather — see the end of drawMap
   } else {
   ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
   for(let i=1;i<pts.length;i++)ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
@@ -13881,7 +13874,6 @@ function drawMap(cvs,r,opts){
     ctx.restore();
   }
 
-  if(_dlMarks)_dlDraw(ctx,_dlMarks,px,py);   // v417 — on top of stop pins and weather
   // Restore rotation transform and draw north arrow
   if(heading!==null){
     ctx.restore();
@@ -22044,57 +22036,10 @@ function dnTextCol(sky){
     : {text:'#f6f4ef',soft:'rgba(246,244,239,0.78)'};// dark sky  → light text
 }
 
-// ── v417 — DAWN / SUNRISE / SUNSET / DUSK PILLS ON THE PLANNING MAPS. Peter, from GravelRouter:
-// "a pill showing when it's sunrise, sunset, dawn and dusk might be good." The day/night line
-// already shows WHERE it gets dark; the pill adds WHEN, as a clock time at that spot.
-// Amber = the sun on the horizon (sunrise, sunset); indigo = the edge of dark (dawn, dusk =
-// nautical twilight, the same −12° the line uses). Found on the line's own ETA samples, so it
-// costs no extra etaAt calls. An event that falls inside a gap of more than DL_GAP_MS between
-// two samples happened while stopped (a sleep), so it gets no pill. Pills closer than
-// DL_MIN_PX to one already drawn are skipped, so a zoomed-out multi-day route doesn't pile up.
-// Planning maps only — the Ride map's line colour is spoken for (v243/v246 note above).
-const DL_GAP_MS=2*3600000, DL_MIN_PX=46;
-const DL_COL={sun:'#D08A1C',dark:'#3F4F9E'};
-function _dlTracker(){
-  const marks=[];let prev=null;
-  return{marks,step(eta,p){
-    if(!eta)return;
-    const t=eta.getTime(),sun=sunAt(p.lat,p.lon,eta);
-    if(prev&&t>prev.t&&t-prev.t<=DL_GAP_MS){
-      for(const S of [prev.sun,sun])for(const [k,kind] of [['dawn','dark'],['sunrise','sun'],['sunset','sun'],['dusk','dark']]){
-        const e=S[k].getTime();
-        if(e>prev.t&&e<=t&&!marks.some(m=>m.k===k&&Math.abs(m.e-e)<600000))
-          marks.push({k,kind,e,lat:p.lat,lon:p.lon});
-      }
-    }
-    prev={t,sun};
-  }};
-}
-function _dlDraw(ctx,marks,px,py){
-  if(!marks.length)return;
-  const drawn=[];
-  ctx.save();
-  ctx.font='700 12px "DM Mono",monospace';ctx.textBaseline='middle';ctx.textAlign='left';
-  for(const m of marks){
-    const x=px(m.lon),y=py(m.lat);
-    if(drawn.some(d=>Math.hypot(d[0]-x,d[1]-y)<DL_MIN_PX))continue;
-    drawn.push([x,y]);
-    const txt=fmtT(new Date(m.e)),tw=ctx.measureText(txt).width,w=tw+30,h=20,x0=x-w/2,y0=y-h/2;
-    ctx.beginPath();ctx.roundRect?ctx.roundRect(x0,y0,w,h,10):ctx.rect(x0,y0,w,h);
-    ctx.fillStyle=DL_COL[m.kind];ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle='#fff';ctx.stroke();
-    ctx.strokeStyle='#fff';ctx.fillStyle='#fff';ctx.lineWidth=1.5;ctx.lineCap='round';
-    const ix=x0+12,iy=y;
-    if(m.kind==='sun'){   // half sun on a horizon line
-      ctx.beginPath();ctx.moveTo(ix-6,iy+3);ctx.lineTo(ix+6,iy+3);ctx.stroke();
-      ctx.beginPath();ctx.arc(ix,iy+3,4,Math.PI,0);ctx.stroke();
-    } else {              // crescent moon
-      ctx.beginPath();ctx.arc(ix,iy,5,0,Math.PI*2);ctx.fill();   // white disc, then a pill-coloured disc bites the crescent
-      ctx.beginPath();ctx.arc(ix+2.6,iy-1.6,4.2,0,Math.PI*2);ctx.fillStyle=DL_COL.dark;ctx.fill();ctx.fillStyle='#fff';
-    }
-    ctx.fillText(txt,x0+22,iy+0.5);
-  }
-  ctx.restore();
-}
+// v429 — the v417 dawn/sunrise/sunset/dusk pills were REMOVED (Peter, 13 Oct): the day/night line and the
+// elevation profile already change colour where it gets light and dark, the pills only repeated that, and
+// dawn and dusk wore the same moon glyph so 05:22 and 20:15 looked identical. Exact times: hover the line
+// on a computer; on the ride, the weather panel. Don't re-add without a way to tell rise from set.
 function dayNightBg(dt,sun){
   if(!dt||!sun)return'var(--card2)';
   const t=dt.getTime();
