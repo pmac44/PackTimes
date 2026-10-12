@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v426';
+window.APP_VERSION='v427';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -14920,7 +14920,7 @@ document.addEventListener('click',e=>{
   const tm=e.target.closest('[data-tilemap]');
   if(tm){
     // v420 — a list, not a cycle (see _pickSheet). Mapbox styles are listed only once a token is saved (v386).
-    _pickSheet('Map style',TILE_MODE_NAMES.map((n,i)=>({k:String(i),name:n,desc:TILE_MODE_DESC[i],thumb:mid=>_tileThumb(tm.dataset.tilemap,i,mid)})).filter(it=>tileModeAvailable(+it.k)),
+    _pickSheet('Map style',TILE_MODE_NAMES.map((n,i)=>({k:String(i),name:n,desc:TILE_MODE_DESC[i],thumb:mid=>_tileThumb(tm.dataset.tilemap,i,mid),lift:true})).filter(it=>tileModeAvailable(+it.k)),
       String(_tileMode),k=>{_tileMode=+k;_tileApply();},tm,true);
     return;
   }
@@ -18302,11 +18302,18 @@ function _pickPop(anchor,items,cur,onPick){
   // v424 — more than 7 choices on a phone: two columns, so the Ride-cell list (13) fits below the cell
   const cols=(touch&&items.length>7)?2:1;
   pop.style.cssText='position:fixed;z-index:9999;display:grid;grid-template-columns:repeat('+cols+',auto);gap:4px;padding:6px;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:var(--shadow-float);';
-  const tb=h-12;   // v426 thumbnail square, inside the row
+  // v427 — picture rows on a phone are much bigger (Peter, on the phone: the 34 px squares "almost read
+  // as monochrome"): 84 px rows with a 72 px picture, and the name may wrap to two lines ("Mapbox /
+  // Outdoors") so the pop-up stays narrow. Desktop keeps the trigger-height rows.
+  const thumbs=items.some(it=>it.thumb), bigThumb=thumbs&&touch;
+  const rh=bigThumb?84:h, tb=bigThumb?72:h-12;
   pop.innerHTML=items.map(it=>{
     const on=it.k===cur, col=it.col;
-    const th=it.thumb?`<span aria-hidden="true" style="flex-shrink:0;width:${tb}px;height:${tb}px;border-radius:5px;border:1px solid var(--border2);background:${it.thumb(tb)||'var(--surface-sunken)'};background-color:var(--surface-sunken);"></span>`:'';
-    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${h}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;${th?'display:flex;align-items:center;gap:8px;padding-left:6px;':''}">${th}${it.name}</button>`;
+    // v427 — map pictures get a LIGHT saturation/contrast lift (Peter: 'heavily doctor… or just make them
+    // bigger' — bigger did most of it). Light on purpose: the square must still look like the map you get.
+    const lift=it.lift?'filter:saturate(1.5) contrast(1.12);':'';
+    const th=it.thumb?`<span aria-hidden="true" style="flex-shrink:0;width:${tb}px;height:${tb}px;border-radius:5px;border:1px solid var(--border2);background:${it.thumb(tb)||'var(--surface-sunken)'};background-color:var(--surface-sunken);${lift}"></span>`:'';
+    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${rh}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;${th?'display:flex;align-items:center;gap:10px;padding-left:6px;':''}">${th}${th&&bigThumb?`<span style="white-space:normal;max-width:118px;line-height:1.15;">${it.name}</span>`:it.name}</button>`;
   }).join('');
   document.body.appendChild(pop);
   const pw=pop.offsetWidth,ph=pop.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
