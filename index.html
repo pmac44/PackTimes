@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v419';
+window.APP_VERSION='v420';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4365,16 +4365,24 @@ function updateOverlayButtons(){
   });
 }
 function toggleRouteOverlay(){
-  // Map SURF/GRADE button: cycles the overlay only. Never silently fetches —
+  // Map DAY/SURF/GRAD button. v420 — opens a list (was a cycle). Never silently fetches —
   // if surface data is missing, ask first (Peter hit an unwanted auto-fetch).
   const r=cur();
   if(!r||r.points.length<2)return;
-  const cycle={off:'surf',surf:'grade',grade:'off'};
-  let next=cycle[UI.routeOverlay]||'surf';
-  if(next==='surf'&&!(r.surfaceSegs&&r.surfaceSegs.length)){
-    if(confirm('No surface data loaded for this route.\nFetch it from OpenStreetMap now?')){fetchSurfaceData();return;}
-    next='grade'; // skip the surface overlay, go straight to grade colouring
-  }
+  const hasSurf=!!(r.surfaceSegs&&r.surfaceSegs.length);
+  _pickSheet('Route colour',[
+    {k:'off',name:'Day / night',desc:'Daylight and dark at your planned times'},
+    {k:'surf',name:'Surface',desc:'Road, gravel, track, trail',note:hasSurf?'':'not fetched yet'},
+    {k:'grade',name:'Gradient',desc:'Coloured by steepness'},
+  ],UI.routeOverlay||'off',next=>{
+    if(next==='surf'&&!hasSurf){
+      if(confirm('No surface data loaded for this route.\nFetch it from OpenStreetMap now?'))fetchSurfaceData();
+      return;
+    }
+    _setRouteOverlay(next);
+  });
+}
+function _setRouteOverlay(next){
   UI.routeOverlay=next;
   if(UI.routeOverlay==='surf')UI.hiddenMapTypes.delete('surface');
   else UI.hiddenMapTypes.add('surface');
@@ -12830,6 +12838,7 @@ const TILE_URLS=['','https://tile.openstreetmap.org/{z}/{x}/{y}.png','https://se
 // token needs a paid account and an open token would bill whoever owns it.
 const MAPBOX_MODES=[5,6];
 const TILE_MODE_NAMES=['Off','OSM','Satellite','CyclOSM','Topo','Mapbox Outdoors','Mapbox Satellite'];
+const TILE_MODE_DESC=['Route only, no map','OpenStreetMap roads and towns','Aerial photos','Cycling map, bike routes','Contours and terrain','Outdoors map, saves offline','Aerial photos, saves offline'];   // v420 — pick list
 function tileModeAvailable(m){return !MAPBOX_MODES.includes(m)||!!UI.mapboxToken;}
 function tileUrl(mode,z,x,y){
   return (TILE_URLS[mode]||TILE_URLS[1]).replace('{z}',z).replace('{x}',x).replace('{y}',y).replace('{t}',encodeURIComponent(UI.mapboxToken||''));
@@ -14882,7 +14891,14 @@ document.addEventListener('click',e=>{
   }
   const tm=e.target.closest('[data-tilemap]');
   if(tm){
-    do{_tileMode=(_tileMode+1)%TILE_URLS.length;}while(!tileModeAvailable(_tileMode));   // v386 — Mapbox styles only once a token is saved
+    // v420 — a list, not a cycle (see _pickSheet). Mapbox styles are listed only once a token is saved (v386).
+    _pickSheet('Map style',TILE_MODE_NAMES.map((n,i)=>({k:String(i),name:n,desc:TILE_MODE_DESC[i]})).filter(it=>tileModeAvailable(+it.k)),
+      String(_tileMode),k=>{_tileMode=+k;_tileApply();});
+    return;
+  }
+});
+// v420 — applies _tileMode after a pick from the Map style list.
+function _tileApply(){
     // Update all tile toggle button styles on the page
     document.querySelectorAll('[data-tilemap]').forEach(btn=>{
       // v375: TILE_LABELS is the ONE authority — this and the two setTimeout syncs below had
@@ -14896,9 +14912,7 @@ document.addEventListener('click',e=>{
     ['map-cvs','stops-map','live-map','pace-map','desktop-map'].forEach(id=>redrawMap(id));
     // Second redraw after a beat lets newly-loaded tiles render
     requestAnimationFrame(()=>['map-cvs','stops-map','live-map','pace-map','desktop-map'].forEach(id=>redrawMap(id)));
-    return;
-  }
-});
+}
 
 // ═══════════════════════════════════════════
 //  ELEVATION CANVAS
@@ -18237,38 +18251,54 @@ const PILL_INFO={
 // v416 — tied to what the pills wear in use (Peter): speed/time = the pace pill's teal, climbing = lemon
 // (sunny weather, v415), power = a power-zone blue, heart rate = the top HR-zone red. Per-theme tokens.
 const PILL_GROUP_COL={spd:'var(--pick-spd)',clb:'var(--pick-clb)',pwr:'var(--pick-pwr)',hr:'var(--pick-hr)',oth:'var(--pick-oth)'};
-function _fpillPick(slot){
+// v420 — ONE PICK-LIST SHEET for every "choose one of many" control: Ride cells (v409/v411), map
+// style and route colour (Peter, 12 Oct: "if there are three it's okay to cycle… when there are six or
+// seven it's just silly… the more options you have, the target gets smaller"). Full screen, 20/15 px,
+// 2-col grid with minmax(0,1fr) (plain 1fr let nowrap text push the right column off-screen), an
+// optional colour stripe per item, nothing ellipsised. items: [{k,name,desc,note?,col?}].
+function _pickSheet(title,items,cur,onPick){
   const old=document.getElementById('fpill-pick-ov');if(old)old.remove();
-  const cur=(UI.livePills||FPILL_DEFAULT)[slot]||'off';
-  const needs=k=>(k==='power'||k==='wkg'||k==='cad'||k==='force')?(UI.powerConnected?'':'not paired')
-    :k==='hr'?(UI.hrConnected?'':'not paired'):'';
-  const btn=k=>{
-    const[n,d,g]=PILL_INFO[k]||[k,'','oth'], on=k===cur, nd=needs(k)||(k==='wkg'&&!(UI.riderKg>0)?'set weight':''), col=PILL_GROUP_COL[g];
-    return`<button type="button" data-pick="${k}" style="min-width:0;text-align:left;padding:9px 10px 9px 12px;border-radius:var(--r-ctrl);border:${on?'3px solid var(--text)':'1px solid var(--border2)'};border-left:8px solid ${col};background:color-mix(in srgb,${col} ${on?28:12}%,var(--card2));color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
-      <div style="font-size:20px;font-weight:700;line-height:1.15;">${n}</div>
-      <div style="font-size:15px;color:var(--text2);margin-top:3px;line-height:1.3;">${nd?`<span style="color:var(--text3);">${nd}</span>`:d}</div></button>`;
+  const btn=it=>{
+    const on=it.k===cur, col=it.col;
+    const edge=col?`border-left:8px solid ${col};background:color-mix(in srgb,${col} ${on?28:12}%,var(--card2));`
+                 :`background:${on?'color-mix(in srgb,var(--text) 10%,var(--card2))':'var(--card2)'};`;
+    return`<button type="button" data-pick="${it.k}" style="min-width:0;text-align:left;padding:9px 10px 9px 12px;border-radius:var(--r-ctrl);border:${on?'3px solid var(--text)':'1px solid var(--border2)'};${edge}color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
+      <div style="font-size:20px;font-weight:700;line-height:1.15;">${it.name}</div>
+      <div style="font-size:15px;color:var(--text2);margin-top:3px;line-height:1.3;">${it.note?`<span style="color:var(--text3);">${it.note}</span>`:it.desc}</div></button>`;
   };
   const ov=document.createElement('div');
   ov.id='fpill-pick-ov';
   ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--card);display:flex;flex-direction:column;-webkit-tap-highlight-color:transparent;';
   ov.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 10px;flex-shrink:0;border-bottom:1px solid var(--border2);">
-      <span style="font-size:22px;font-weight:700;color:var(--text);">Show in this cell</span>
+      <span style="font-size:22px;font-weight:700;color:var(--text);">${title}</span>
       <button class="btn" data-pick-x style="min-width:48px;min-height:48px;font-size:22px;padding:0;">✕</button>
     </div>
     <div style="overflow-y:auto;min-height:0;flex:1;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));">
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:640px;margin:0 auto;">${PILL_CYCLE.map(btn).join('')}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:640px;margin:0 auto;">${items.map(btn).join('')}</div>
     </div>`;
   ov.addEventListener('click',e=>{
     if(e.target.closest('[data-pick-x]')){ov.remove();return;}
     const b=e.target.closest('[data-pick]');if(!b)return;
-    const pills=(UI.livePills||FPILL_DEFAULT).slice();
-    pills[slot]=b.dataset.pick;
-    UI.livePills=pills;
-    saveAll();
+    e.stopPropagation();   // the sheet sits over the maps; don't let the document delegator see this tap
     ov.remove();
-    _fpillsSync();   // not renderKeepScroll — see the v259 note on _fpillsSync
+    onPick(b.dataset.pick);
   });
   document.body.appendChild(ov);
+}
+function _fpillPick(slot){
+  const cur=(UI.livePills||FPILL_DEFAULT)[slot]||'off';
+  const needs=k=>(k==='power'||k==='wkg'||k==='cad'||k==='force')?(UI.powerConnected?'':'not paired')
+    :k==='hr'?(UI.hrConnected?'':'not paired'):'';
+  _pickSheet('Show in this cell',PILL_CYCLE.map(k=>{
+    const[n,d,g]=PILL_INFO[k]||[k,'','oth'];
+    return{k,name:n,desc:d,col:PILL_GROUP_COL[g],note:needs(k)||(k==='wkg'&&!(UI.riderKg>0)?'set weight':'')};
+  }),cur,k=>{
+    const pills=(UI.livePills||FPILL_DEFAULT).slice();
+    pills[slot]=k;
+    UI.livePills=pills;
+    saveAll();
+    _fpillsSync();   // not renderKeepScroll — see the v259 note on _fpillsSync
+  });
 }
 
 function _render(){
