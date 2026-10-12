@@ -1785,7 +1785,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v431';
+window.APP_VERSION='v432';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -12846,7 +12846,14 @@ const MAPBOX_MODES=[5,6];
 const TILE_MODE_NAMES=['Off','OSM','Satellite','CyclOSM','Topo','Mapbox Outdoors','Mapbox Satellite'];
 const TILE_PICK_ORDER=[0,1,3,4,5,2,6];   // v430 — the pick list's order; the mode numbers themselves never change
 // v430 — 'saves offline' badge (download arrow into a tray), line icon per the style guide
-const OFFLINE_BADGE='<svg role="img" aria-label="saves offline" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--text);"><title>Saves for offline use</title><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 19h14"/></svg>';
+// v432 — the arrow read as a button that downloads (Peter). Now the Mapbox rows say their STATE for the
+// loaded route: a green tick on the picture + 'saved for this route', or 'not saved' in grey. The route's
+// own record of what was downloaded (r.offlineTiles, written by startTileDownload) is the authority.
+const SAVED_BADGE='<svg role="img" aria-label="saved for offline" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+function _tileSavedForRoute(r,mode){
+  const o=r&&r.offlineTiles;
+  return !!(o&&o.cached>0&&String(o.mode||'').split(' + ').includes(TILE_MODE_NAMES[mode]));
+}
 const TILE_MODE_DESC=['Route only, no map','OpenStreetMap roads and towns','Aerial photos','Cycling map, bike routes','Contours and terrain','Outdoors map, saves offline','Aerial photos, saves offline'];   // v420 — pick list
 // v426/v428 — A PICTURE OF EACH MAP STYLE in the Map style pop-up, beside the name (never behind it).
 // v428 — FIXED, HAND-PICKED SPOTS, not the map's centre. Peter, 13 Oct: on the phone the first open showed
@@ -14930,8 +14937,20 @@ document.addEventListener('click',e=>{
     // v430 — grouped like with like (Peter): street maps (OSM, CyclOSM), terrain (Topo, Mapbox Outdoors),
     // aerial (Satellite, Mapbox Satellite). The two Mapbox styles carry a download badge: they're the only
     // ones that save for offline (v386).
-    _pickSheet('Map style',TILE_PICK_ORDER.map(i=>({k:String(i),name:TILE_MODE_NAMES[i],desc:TILE_MODE_DESC[i],thumb:mid=>_tileThumb(tm.dataset.tilemap,i,mid),lift:true,badge:MAPBOX_MODES.includes(i)?OFFLINE_BADGE:''})).filter(it=>tileModeAvailable(+it.k)),
-      String(_tileMode),k=>{_tileMode=+k;_tileApply();},tm,true);
+    // v432 — Mapbox rows show 'saved for this route' (green tick) or 'not saved'; a last row opens the
+    // route's offline download picker when anything downloadable isn't saved yet.
+    const _r=cur(), _ri=CUR;
+    const items=TILE_PICK_ORDER.filter(i=>tileModeAvailable(i)).map(i=>{
+      const mb=MAPBOX_MODES.includes(i), saved=mb&&_tileSavedForRoute(_r,i);
+      return{k:String(i),name:TILE_MODE_NAMES[i],desc:TILE_MODE_DESC[i],thumb:mid=>_tileThumb(tm.dataset.tilemap,i,mid),lift:true,
+        badge:saved?SAVED_BADGE:'',sub:mb&&_r?(saved?'saved for this route':'not saved'):'',subOk:saved};
+    });
+    if(_r&&_r.points&&_r.points.length&&MAPBOX_MODES.some(m=>tileModeAvailable(m)&&!_tileSavedForRoute(_r,m)))
+      items.push({k:'__save',name:'Save maps for offline…',desc:'Download Mapbox maps along this route'});
+    _pickSheet('Map style',items,String(_tileMode),k=>{
+      if(k==='__save'){openOfflinePicker(_ri);return;}
+      _tileMode=+k;_tileApply();
+    },tm,true);
     return;
   }
 });
@@ -18310,7 +18329,7 @@ function _pickPop(anchor,items,cur,onPick){
   const pop=document.createElement('div');
   pop.id='fpill-pick-ov';
   // v424 — more than 7 choices on a phone: two columns, so the Ride-cell list (13) fits below the cell
-  const cols=(touch&&items.length>7)?2:1;
+  const cols=(touch&&items.length>7&&!items.some(it=>it.thumb))?2:1;   // v432 — never for picture lists
   pop.style.cssText='position:fixed;z-index:9999;display:grid;grid-template-columns:repeat('+cols+',auto);gap:4px;padding:6px;background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:var(--shadow-float);';
   // v427 — picture rows on a phone are much bigger (Peter, on the phone: the 34 px squares "almost read
   // as monochrome"): 84 px rows with a 72 px picture, and the name may wrap to two lines ("Mapbox /
@@ -18322,8 +18341,8 @@ function _pickPop(anchor,items,cur,onPick){
     // v427 — map pictures get a LIGHT saturation/contrast lift (Peter: 'heavily doctor… or just make them
     // bigger' — bigger did most of it). Light on purpose: the square must still look like the map you get.
     const lift=it.lift?'filter:saturate(1.5) contrast(1.12);':'';
-    const th=it.thumb?`<span aria-hidden="true" style="flex-shrink:0;width:${tb}px;height:${tb}px;border-radius:5px;border:1px solid var(--border2);background:${it.thumb(tb)||'var(--surface-sunken)'};background-color:var(--surface-sunken);${lift}position:relative;">${it.badge?`<span style="position:absolute;right:-6px;bottom:-6px;display:flex;padding:2px;border-radius:50%;background:var(--card);border:1px solid var(--border2);">${it.badge}</span>`:""}</span>`:'';
-    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${rh}px;padding:0 12px;text-align:left;white-space:nowrap;border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;${th?'display:flex;align-items:center;gap:10px;padding-left:6px;':''}">${th}${th&&bigThumb?`<span style="white-space:normal;width:min-content;line-height:1.15;">${it.name}</span>`:it.name}${th?"":(it.badge||"")}</button>`;
+    const th=it.thumb?`<span aria-hidden="true" style="flex-shrink:0;width:${tb}px;height:${tb}px;border-radius:5px;border:1px solid var(--border2);background:${it.thumb(tb)||'var(--surface-sunken)'};background-color:var(--surface-sunken);${lift}position:relative;">${it.badge?`<span style="position:absolute;right:-6px;bottom:-6px;display:flex;padding:3px;border-radius:50%;background:#2e9e44;border:2px solid var(--card);">${it.badge}</span>`:""}</span>`:'';
+    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${th||!bigThumb?rh:56}px;padding:0 12px;text-align:left;white-space:${th||!bigThumb?'nowrap':'normal'};border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;${th?'display:flex;align-items:center;gap:10px;padding-left:6px;':''}">${th}${th&&bigThumb?`<span style="display:flex;flex-direction:column;gap:2px;"><span style="white-space:normal;width:min-content;line-height:1.15;">${it.name}</span>${it.sub?`<span style="white-space:normal;max-width:96px;font-size:13px;line-height:1.2;font-weight:600;color:${it.subOk?'#2e9e44':'var(--text3)'};">${it.sub}</span>`:''}</span>`:it.name+(it.sub?` <span style="font-size:12px;font-weight:600;color:${it.subOk?'#2e9e44':'var(--text3)'};">· ${it.sub}</span>`:'')}${th?"":(it.badge||"")}</button>`;
   }).join('');
   document.body.appendChild(pop);
   const pw=pop.offsetWidth,ph=pop.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
