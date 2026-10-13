@@ -159,6 +159,10 @@
   /* Radius */
   --r-ctrl:8px;--r-card:12px;--r-panel:14px;
   --border-w:1.5px;--hit-min:44px;
+  /* v435 — Ride-cell TONES (v436: speed violet, pace keeps teal; elapsed time back to black — Peter:
+     "only one needs to not be black. Clocks are black and white, but so are speedometers"): a constant colour on a cell's top half that names the cell (never a zone).
+     Light, so the figure and label on them are dark. Same in both themes, like the pace cell's teal. */
+  --tone-spd:#2dd4bf;--tone-speed:#a78bfa;--tone-vam:#87ceeb;--tone-kj:#f9a8d4;--tone-ink:#000;--tone-ink-muted:rgba(0,0,0,.72);
 }
 
 [data-theme="paper"]{
@@ -1785,7 +1789,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v434';
+window.APP_VERSION='v436';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1970,7 +1974,7 @@ async function saveAll(){
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false,scope:UI.stravaScope||null}).catch(()=>{});
   // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
   await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,riderKg:UI.riderKg||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,riderKg:UI.riderKg||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,legStartKj:UI.legStartKj||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -2044,6 +2048,7 @@ async function loadAll(){
       if(prefs.legStartKm!=null)UI.legStartKm=prefs.legStartKm;
       if(prefs.legStartRouteKm!=null)UI.legStartRouteKm=prefs.legStartRouteKm;
       if(prefs.legStoppedMs)UI.legStoppedMs=prefs.legStoppedMs;
+      if(prefs.legStartKj)UI.legStartKj=prefs.legStartKj;   // v435
       if(prefs.recMinMoveM)UI.recMinMoveM=prefs.recMinMoveM;
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
       if(prefs.avgIncStops!==undefined)UI.avgIncStops=prefs.avgIncStops!==false;
@@ -2085,6 +2090,7 @@ async function loadAll(){
         // Restore NP accumulators
         if(lastGps.npSum4!=null){_npSum4=lastGps.npSum4;_npCount=lastGps.npCount||0;}
         if(Array.isArray(lastGps.npBuffer))_npRawBuffer.push(...lastGps.npBuffer);
+        if(lastGps.kjRide!=null)UI.kjRide=lastGps.kjRide;   // v435
       }
     }
     // v371 — no sun cache to restore. Sun times are computed locally from a
@@ -5924,7 +5930,7 @@ function _doStartGPS(){
         rideAvgKm:UI._rideAvgKmAccum||0,rideAvgMs:UI._rideAvgMsAccum||0,rideAvgStopMs:UI._rideAvgStopMs||0,rideAvgSleepMs:UI._rideAvgSleepMs||0,
         sessKm:UI._rideAvgSessionKm,sessTs:UI._rideAvgSessionTs,stoppedTs:UI._rideAvgStoppedTs,
         travelledKm:UI.gpsTravelledKm,snapIdx:UI._lastSnapIdx,
-        npSum4:_npSum4,npCount:_npCount,npBuffer:_npRawBuffer.slice(-NP_WINDOW_S)};
+        npSum4:_npSum4,npCount:_npCount,npBuffer:_npRawBuffer.slice(-NP_WINDOW_S),kjRide:UI.kjRide||0};
       DB.setKV('lastGpsState',UI._lastGpsState).catch(()=>{});
     }
     const speedKmh=(pos.coords.speed||0)*3.6;
@@ -6199,6 +6205,7 @@ function _legReset(ts, km){
   UI.legStartRouteKm = (UI.gpsDistKm != null) ? UI.gpsDistKm : null;
   UI.legStoppedMs = 0;
   _legStopT = null;
+  UI.legStartKj = UI.kjRide || 0;   // v435 — the kJ cell's leg figure is ride total minus this
 }
 // Every leg figure, from one authority. Null when there's no ride to measure.
 function _legVals(){
@@ -6325,6 +6332,7 @@ async function startRecording(routeId){
   _recStop = null;
   _recStored = null;
   _recAnchor = null;
+  UI.kjRide = 0; _kjLastT = 0; _kjLastW = 0;   // v435 — kJ is per recording
   _legReset(_rec.startTS, UI.gpsTravelledKm);   // v259: the leg clock starts with the ride
   _shareLastPos = null;    // new ride = push immediately, don't wait out the interval
   if(UI.shareNextRideId){ UI.shareNextRideId = null; _shareSaveAuth(); }  // consumed
@@ -11917,6 +11925,7 @@ function _simSensorTick(){
   // HR lags power and saturates — good enough to exercise the zones, not a physiology model.
   UI.hrBpm=Math.round(Math.min(190,95+base*0.21));
   _recSensorSample(Date.now());   // v387 — same path as the real meter
+  _kjSample(w,Date.now());        // v435
   // Feed the SAME average accumulator the BLE handler uses, or the HR pill's reversed half
   // sits on "—" on the desktop and the thing you're trying to look at never appears —
   // exactly the trap the NP accumulator would have been.
@@ -18165,7 +18174,7 @@ function sortedLayers(r){
 // v405 — 'batt' (phone battery % + hours left) goes last: it's about the phone, not the ride.
 // v409 — 'vam' after 'grade' (both climbing, no sensor). Since v409 this is the PICK LIST's
 // order, not a tap cycle — see _fpillPick.
-const PILL_CYCLE=['speed','pace','mspeed','stop','grade','vam','power','wkg','cad','force','hr','batt','off'];   // v411 + 'wkg'
+const PILL_CYCLE=['speed','pace','mspeed','stop','grade','vam','power','wkg','cad','force','kj','hr','batt','off'];   // v411 + 'wkg', v435 + 'kj'
 // ── PEDAL FORCE (v360) ───────────────────────────────────────────────────────
 // Peter's use for it: "grinding too big a gear or busting your knees, and as a trigger to
 // increase cadence if you want more power."
@@ -18319,7 +18328,7 @@ function _fpillsSync(){
 // we need some different colours… it helps differentiate." The group colour is the left
 // stripe plus a light tint of the tile; it identifies the KIND of number (speed & time,
 // climbing, power meter, heart rate, phone), and appears only here — the pills themselves
-// stay monochrome (the v260 rule: on the Ride screen colour means zone).
+// stay monochrome (the v260 rule: on the Ride screen colour means zone). v435: no longer — see PILL_TONE.
 // [name, what it shows, group]
 const PILL_INFO={
   speed:['Speed','Now · average','spd'],
@@ -18332,6 +18341,7 @@ const PILL_INFO={
   wkg:['Watts / kg','3 sec · weighted','pwr'],
   cad:['Cadence','rpm · left/right','pwr'],
   force:['Pedal force','Newtons','pwr'],
+  kj:['Kilojoules','Ride · per hour','pwr'],
   hr:['Heart rate','bpm · average','hr'],
   batt:['Battery','% · hours left','oth'],
   off:['Empty','Shows the map','oth'],
@@ -18339,6 +18349,9 @@ const PILL_INFO={
 // v416 — tied to what the pills wear in use (Peter): speed/time = the pace pill's teal, climbing = lemon
 // (sunny weather, v415), power = a power-zone blue, heart rate = the top HR-zone red. Per-theme tokens.
 const PILL_GROUP_COL={spd:'var(--pick-spd)',clb:'var(--pick-clb)',pwr:'var(--pick-pwr)',hr:'var(--pick-hr)',oth:'var(--pick-oth)'};
+// v435 — a cell that wears its own constant tone shows that tone in the pick list, so the list
+// matches the Ride screen. The rest keep their group colour.
+const PILL_TONE={speed:'var(--tone-speed)',mspeed:'var(--tone-speed)',vam:'var(--tone-vam)',kj:'var(--tone-kj)'};
 // v420 — ONE PICK-LIST SHEET for every "choose one of many" control: Ride cells (v409/v411), map
 // style and route colour (Peter, 12 Oct: "if there are three it's okay to cycle… when there are six or
 // seven it's just silly… the more options you have, the target gets smaller"). Full screen, 20/15 px,
@@ -18431,11 +18444,11 @@ function _pickSheet(title,items,cur,onPick,anchor,popAlways){
 }
 function _fpillPick(slot,anchor){
   const cur=(UI.livePills||FPILL_DEFAULT)[slot]||'off';
-  const needs=k=>(k==='power'||k==='wkg'||k==='cad'||k==='force')?(UI.powerConnected?'':'not paired')
+  const needs=k=>(k==='power'||k==='wkg'||k==='cad'||k==='force'||k==='kj')?(UI.powerConnected?'':'not paired')
     :k==='hr'?(UI.hrConnected?'':'not paired'):'';
   _pickSheet('Show in this cell',PILL_CYCLE.map(k=>{
     const[n,d,g]=PILL_INFO[k]||[k,'','oth'];
-    return{k,name:n,desc:d,col:PILL_GROUP_COL[g],note:needs(k)||(k==='wkg'&&!(UI.riderKg>0)?'set weight':'')};
+    return{k,name:n,desc:d,col:PILL_TONE[k]||PILL_GROUP_COL[g],note:needs(k)||(k==='wkg'&&!(UI.riderKg>0)?'set weight':'')};
   }),cur,k=>{
     const pills=(UI.livePills||FPILL_DEFAULT).slice();
     pills[slot]=k;
@@ -19452,6 +19465,10 @@ function tLiveShell(r){
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display:block;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </div></div>`;
     }
+    // ⚠ v435 — OVERTAKEN BY PETER, 13 Oct: "there needs to be some more colour in the cells." Speed,
+    // moving speed violet, pace teal, VAM sky blue, kJ pink (--tone-* tokens; elapsed time stays black).
+    // The line below still holds: those are CONSTANT tones that name the cell, never a reading, and
+    // they sit on the TOP half only. Zone colour (power, HR, grade) is still the only colour that moves.
     // ── COLOUR ON THE PILLS IS SPOKEN FOR. DON'T ADD MORE. ──────────────────────────
     // Raised and settled 17 Jul 2026. Peter: "the black and white contrast is good, but I
     // think colour could be used too. What colour could we use for the time/duration pill?
@@ -19497,17 +19514,21 @@ function tLiveShell(r){
       // steady for "88.8" (2 digits + point + 1 — Peter: >100 km/h can fend for
       // itself). The AVERAGE half is REVERSED (light bg, dark figures) — on a long
       // ride the average is the number that matters; current speed wobbles.
+      // v435 — TONED: Peter, 13 Oct: "there needs to be some more colour in the cells… speed or time must
+      // change from black." A constant tone names the cell; it never moves, so it can't read as a zone.
+      // v436 — violet, so it is told apart from pace's teal at a glance (Peter: "speed should have a
+      // different colour to pace"). Deeper than the sleep tag's pale purple on purpose.
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-speed">
-        <div style="padding:5px 8px 3px;">
+        <div style="padding:5px 8px 3px;background:var(--tone-speed);">
           <!-- numbers RIGHT-JUSTIFIED in a fixed 4-character box (DM Mono = equal
                widths), so the decimal point never moves between 9.2 and 18.0 -->
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-speed-cur">${curSpd}</span></div>
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:36px;font-weight:700;color:var(--tone-ink);font-family:var(--font);" id="live-speed-cur">${curSpd}</span></div>
           <!-- v260 (Peter, from the ride): "we actually can't read that grey km/h… it should be
                white, with full contrast. I think for all those pills, I'd just use black and
                white." Right — SIZE carries the hierarchy here (34px vs 11px), so the colour
                doesn't need to as well, and grey on a moving map at arm's length is unreadable.
                Also moved off var(--font): these are WORDS, and mono is for figures (v244). -->
-          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">km/h</div>
+          <div style="font-size:11px;font-weight:600;color:var(--tone-ink-muted);font-family:var(--sans);line-height:1.1;">km/h</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-speed-avg">${avgVal}</span></div>
@@ -19546,7 +19567,7 @@ function tLiveShell(r){
       const avgKmh=RA.kmh;
       const curPace=fmtPaceMinKm(s), avgPace=fmtPaceMinKm(avgKmh);
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-pace">
-        <div style="padding:5px 8px 3px;background:#2dd4bf;">
+        <div style="padding:5px 8px 3px;background:var(--tone-spd);">
           <div style="line-height:1.0;"><span style="display:flex;width:100%;justify-content:center;font-size:36px;font-weight:700;color:#000;font-family:var(--font);" id="live-pace-cur">${_paceCells(curPace)}</span></div>
           <div style="font-size:11px;font-weight:600;color:#083b37;font-family:var(--sans);line-height:1.1;">min/km</div>
         </div>
@@ -19595,9 +19616,9 @@ function tLiveShell(r){
       const mvH=L?(L.movingMs/3600000):0;
       const mAvg=(L&&L.movingMs>60000&&mvH>0&&L.distKm>0)?(L.distKm/mvH).toFixed(1):'—';
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-mspeed">
-        <div style="padding:5px 8px 3px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-mspeed-cur">${curSpd}</span></div>
-          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">km/h</div>
+        <div style="padding:5px 8px 3px;background:var(--tone-speed);">
+          <div style="line-height:1.0;"><span style="display:inline-block;width:4ch;text-align:right;font-size:36px;font-weight:700;color:var(--tone-ink);font-family:var(--font);" id="live-mspeed-cur">${curSpd}</span></div>
+          <div style="font-size:11px;font-weight:600;color:var(--tone-ink-muted);font-family:var(--sans);line-height:1.1;">km/h</div>
         </div>
         <!-- Geometry is the speed pill's, property for property — 34px in a 4ch box, same
              paddings, same label sizes. ONLY the background tone differs. That is what makes
@@ -19636,9 +19657,10 @@ function tLiveShell(r){
     if(type==='vam'){   // v409 — climbing rate m/h (last 3 min) over metres climbed this ride; see _vamSample
       const v=_vamVals();
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-vam">
-        <div style="padding:5px 8px 3px;">
-          <div style="line-height:1.0;"><span style="font-size:36px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-vam-cur">${v.rate}</span></div>
-          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">VAM m/h</div>
+        <!-- v435 — SKY BLUE (Peter: "to symbolise you climbing up to the sky"). Constant tone, not a zone. -->
+        <div style="padding:5px 8px 3px;background:var(--tone-vam);">
+          <div style="line-height:1.0;"><span style="font-size:36px;font-weight:700;color:var(--tone-ink);font-family:var(--font);" id="live-vam-cur">${v.rate}</span></div>
+          <div style="font-size:11px;font-weight:600;color:var(--tone-ink-muted);font-family:var(--sans);line-height:1.1;">VAM m/h</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-vam-asc">${v.asc}</span></div>
@@ -19916,6 +19938,33 @@ function tLiveShell(r){
         <div id="live-power-bot" style="background:${npBg};border-top:1px solid rgba(10,15,10,0.85);padding:2px 8px 4px;">
           <div style="line-height:1.0;"><span style="display:inline-block;min-width:4ch;text-align:center;font-size:30px;font-weight:600;color:${npCol};font-family:var(--font);" id="live-power-np">${np}</span></div>
           <div style="font-size:10px;font-weight:500;color:${npCol};font-family:var(--sans);line-height:1.1;" id="live-power-nplbl">W weighted</div>
+        </div>
+      </div>`;
+    }
+    if(type==='kj'){
+      // v435 — KILOJOULES (see _kjSample). Top = this ride, bottom (reversed) = this leg, the figure
+      // you'd eat against. Pink tone names the cell — constant, never a zone.
+      // Unpaired AND nothing counted yet → the power meter's pairing state. Once a ride has kJ, a
+      // dropout keeps showing the total (it just stops growing) rather than hiding work already done.
+      if(!UI.powerConnected&&!(UI.kjRide>0))
+        return`<div class="live-fpill" data-slot="${slotIdx}" data-pair="power" style="${base}background:${pillBg};text-align:center;" id="live-fpill-kj">
+          <div style="padding:5px 8px 3px;background:var(--tone-kj);">
+            <div style="height:34px;display:flex;align-items:center;justify-content:center;"><span style="font-size:22px;font-weight:600;color:var(--tone-ink);font-family:var(--sans);">kJ</span></div>
+            <div style="font-size:11px;font-weight:600;color:var(--tone-ink-muted);font-family:var(--sans);line-height:1.1;">ride</div>
+          </div>
+          <div style="background:var(--cell-bottom);padding:3px 8px 4px;height:45px;box-sizing:content-box;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:13px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;white-space:nowrap;">${_pairHint('power')}</span>
+          </div>
+        </div>`;
+      const v=_kjVals();
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-kj">
+        <div style="padding:5px 8px 3px;background:var(--tone-kj);">
+          <div style="line-height:1.0;"><span style="font-size:36px;font-weight:700;color:var(--tone-ink);font-family:var(--font);" id="live-kj-ride">${v.ride}</span></div>
+          <div style="font-size:11px;font-weight:600;color:var(--tone-ink-muted);font-family:var(--sans);line-height:1.1;" id="live-kj-ridelbl">${v.rideLbl}</div>
+        </div>
+        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-kj-leg">${v.leg}</span></div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-kj-leglbl">${v.legLbl}</div>
         </div>
       </div>`;
     }
@@ -23440,6 +23489,7 @@ function updateLive(){
     if(bb&&bb.textContent!==v.lbl)bb.textContent=v.lbl;
   }
   _wkgPatch();   // v411
+  _kjPatch();    // v435
   // ── v409 — the VAM pill, patched live.
   const vCurEl=document.getElementById('live-vam-cur');
   if(vCurEl){
@@ -25971,6 +26021,7 @@ async function _powerAttach(dev){
       if(minForceN!==null&&minForceN>-1000&&minForceN<3000)UI.powerMinForceN=minForceN;
       if(maxTorqueNm!==null&&maxTorqueNm>=0&&maxTorqueNm<500)UI.powerMaxTorqueNm=maxTorqueNm;
       _recSensorSample(now);   // v387: 1 s sensor samples, independent of GPS fixes
+      _kjSample(watts,now);    // v435
       // NP: sample instantaneous watts every ~1s into 30s rolling buffer
       if(now-_npLastSampleTs>=950){
         _npLastSampleTs=now;
@@ -26035,6 +26086,7 @@ async function _powerAttach(dev){
       const balEl=document.getElementById('live-cad-bal');
       if(balEl)balEl.textContent=_powerBalTxt();   // v267 — one authority, see _powerBalTxt
       _wkgPatch();   // v411
+      _kjPatch();    // v435
     });}
     UI.powerConnected=true;
     UI.powerDeviceName=dev.name||'Power meter';
@@ -26259,6 +26311,52 @@ function _wkgPatch(){
   if(c.textContent!==v.cur)c.textContent=v.cur;
   const n=document.getElementById('live-wkg-np');if(n&&n.textContent!==v.np)n.textContent=v.np;
   const l=document.getElementById('live-wkg-lbl');if(l&&l.textContent!==v.lbl)l.textContent=v.lbl;
+}
+// ── v435 — KILOJOULES: work done at the pedals, watts × seconds ÷ 1000, summed through the ride.
+// Needs only the power meter — no weight, no heart rate. Roughly equal to kcal burned (the body's
+// ~20–25% efficiency cancels the 4.18 kJ-per-kcal conversion), so it doubles as a food guide.
+// Each reading's watts are held until the next one arrives (left sum). Rules:
+//   · counts only while a recording is running (or the desktop sim), so the total is this ride's;
+//   · coasting and stops add nothing by themselves — zero watts is zero work;
+//   · a gap over KJ_MAX_GAP_MS (pedals dropped out, page frozen) adds NOTHING — never carry a
+//     stale reading across a hole we didn't measure.
+// UI.kjRide (kJ) persists in lastGpsState next to the NP sums; UI.legStartKj in uiPrefs next to the
+// other leg baselines. Leg = ride − legStartKj, so a sleep (_legReset) starts the leg at zero.
+const KJ_MAX_GAP_MS=5000;
+let _kjLastT=0,_kjLastW=0;
+function _kjSample(watts,now){
+  const live=(_rec&&_rec.status==='active')||UI.simSensors;
+  if(!live){_kjLastT=0;return;}
+  const dt=now-_kjLastT;
+  if(_kjLastT&&dt>0&&dt<=KJ_MAX_GAP_MS&&_kjLastW>0)UI.kjRide=(UI.kjRide||0)+_kjLastW*dt/1e6;
+  _kjLastT=now;_kjLastW=watts>0?watts:0;
+}
+// Never more than 4 characters: the desktop cell (94 px) holds 4 DM Mono figures at 36 px, not 5.
+// Whole kJ to 9,999 (a long day's riding), then MJ — one decimal to 99.9, whole above.
+function _kjFmt(kj){ return kj<9999.5?{n:String(Math.round(kj)),u:'kJ'}:kj<99950?{n:(kj/1000).toFixed(1),u:'MJ'}:{n:String(Math.round(kj/1000)),u:'MJ'}; }
+// v436 — BOTTOM HALF: the leg only differs from the ride on a fixed-wake plan (a sleep starts a new
+// leg). Anywhere else it would just repeat the top, so it shows kJ PER HOUR instead — the burn rate,
+// ~= kcal/h, the number a rider eating to a plan wants. Hours follow Settings → Averages (incl.
+// stops or moving, same switch as speed and power); sleeps are never in it. Waits a minute, like
+// the moving-average cell, because a few seconds of riding gives a wild rate.
+function _kjVals(){
+  const ride=Math.max(0,UI.kjRide||0), a=_kjFmt(ride);
+  const r=cur();
+  if(r&&legHasFixedWake(r)){
+    const b=_kjFmt(Math.max(0,ride-(UI.legStartKj||0)));
+    return{ride:a.n,rideLbl:a.u+' ride',leg:b.n,legLbl:b.u+' this leg'};
+  }
+  const L=_legVals(), incl=avgIncStops();
+  const ms=L?(incl?L.elapsedMs:L.movingMs):0;
+  const rate=(L&&L.elapsedMs>60000&&ms>0)?String(Math.round(ride/(ms/3600000))):'—';
+  return{ride:a.n,rideLbl:a.u+' ride',leg:rate,legLbl:incl?'kJ/h incl. stops':'kJ/h moving'};
+}
+function _kjPatch(){
+  const c=document.getElementById('live-kj-ride');if(!c)return;
+  const v=_kjVals();
+  if(c.textContent!==v.ride)c.textContent=v.ride;
+  const set=(id,t)=>{const e=document.getElementById(id);if(e&&e.textContent!==t)e.textContent=t;};
+  set('live-kj-ridelbl',v.rideLbl);set('live-kj-leg',v.leg);set('live-kj-leglbl',v.legLbl);
 }
 // The unpaired cell's hint: while a sensor is being looked for (restored at ride start, or
 // dropped mid-ride and retrying) it says so, instead of asking for a pairing that isn't needed.
