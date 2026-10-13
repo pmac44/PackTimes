@@ -13,3 +13,7 @@ CLAUDE.md
 CLAUDE.md.bak
 CLAUDE-log-archive.md
 CLAUDE-log-archive.md.bak
+
+# Pre-change copies of index.html (one per version). Local only: git already holds every version,
+# Backblaze backs up F:, and anything committed here is published on GitHub Pages (13 Oct 2026).
+backup/
