@@ -1789,7 +1789,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v436';
+window.APP_VERSION='v437';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -21464,6 +21464,13 @@ function geoCountry(lat,lon){
 // ─── Weather cache (Open-Meteo, free, no key) ───
 const _weatherCache={}; // key='lat2,lon2' → {fetchedAt, current:{temp,windspeed,winddeg,code}, hourly:[{time,temp,windspeed,winddeg,code}]}
 let _weatherFetching=false;
+// v437 — when the last weather fetch failed. render() calls ensureWeatherCache and a finished
+// fetch called render(), so a fetch that failed without filling the cache looped: in aeroplane
+// mode fetch fails instantly and the whole page rebuilt ~30 times a second (Peter's 14 Oct
+// flight: "the screen flickered badly"). A failure now waits a minute before trying again.
+let _weatherFailAt=0;
+const WEATHER_RETRY_MS=60000;
+window.addEventListener('online',()=>{_weatherFailAt=0;});
 
 function wmoIcon(code){
   if(code===0)return'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="4" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="20" x2="12" y2="22" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/><line x1="2" y1="12" x2="4" y2="12" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/><line x1="20" y1="12" x2="22" y2="12" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/><line x1="4.9" y1="4.9" x2="6.3" y2="6.3" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/><line x1="17.7" y1="17.7" x2="19.1" y2="19.1" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/><line x1="4.9" y1="19.1" x2="6.3" y2="17.7" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/><line x1="17.7" y1="6.3" x2="19.1" y2="4.9" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/></svg>'; // sun
@@ -21642,10 +21649,17 @@ function ensureWeatherCache(r){
   });
   if(!toFetch.length)return;
   if(_weatherFetching)return;
+  if(navigator.onLine===false)return;
+  if(_weatherFailAt&&Date.now()-_weatherFailAt<WEATHER_RETRY_MS)return;
   _weatherFetching=true;
   Promise.all(toFetch.map(({lat,lon,days})=>fetchWeather(lat,lon,days)))
-    .then(()=>{_weatherFetching=false;_adoptRouteTz(r);render();})
-    .catch(()=>{_weatherFetching=false;});
+    .then(res=>{
+      _weatherFetching=false;
+      _weatherFailAt=res.every(Boolean)?0:Date.now();
+      if(!res.some(Boolean))return;   // nothing new to show — re-rendering would only ask again
+      _adoptRouteTz(r);render();
+    })
+    .catch(()=>{_weatherFetching=false;_weatherFailAt=Date.now();});
 }
 
 function weatherAtEta(lat,lon,eta){
