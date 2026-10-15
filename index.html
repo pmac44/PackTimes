@@ -1789,7 +1789,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v437';
+window.APP_VERSION='v438';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7448,48 +7448,178 @@ function _recMovingH(rec){
   return ms / 3600000;
 }
 
-// Try to read surface mix + climb straight off the followed route.
-// Returns null when the ride can't be confidently matched to its route, else
-// {elevM, surface|null, load, secKm}. surface is null when the route has no
-// (or too little) surface data for the ridden section — the modal then asks.
-function _recCalibAuto(rec){
-  const r = _recRouteFor(rec);
-  const pts = (rec.points || []).filter(p => !p._synthetic);
-  if(!r || !r.points || r.points.length < 2 || pts.length < 2 || !rec.totalDist) return null;
-  // Five checkpoints along the ride must all sit within 300 m of the route
-  const checks = [0, 0.25, 0.5, 0.75, 1].map(f => pts[Math.round(f * (pts.length - 1))]);
-  const snaps = checks.map(p => snapTo(r, p.lat, p.lon, null));
-  if(snaps.some(s => !s || s.off > 0.3)) return null;
-  let lo = Math.min(snaps[0].dist, snaps[4].dist);
-  let hi = Math.max(snaps[0].dist, snaps[4].dist);
-  // Loops start and end at the same spot, so the endpoint span collapses —
-  // if the ridden distance roughly matches the whole route, use the whole route.
-  if(hi - lo < rec.totalDist * 0.5){
-    if(Math.abs((r.totalDist || 0) - rec.totalDist) <= rec.totalDist * 0.25){ lo = 0; hi = r.totalDist; }
-    else return null;
-  } else if(Math.abs((hi - lo) - rec.totalDist) > rec.totalDist * 0.3){
-    return null;  // section length and ridden length disagree — don't guess
-  }
-  const secPts = r.points.filter(p => p.dist >= lo && p.dist <= hi);
-  if(secPts.length < 2) return null;
-  const elevM = elevGain(secPts);
-  // Distance-weighted surface mix over the ridden section, mapped onto the
-  // three calibration buckets. Needs tagged coverage of at least half of it.
-  let surface = null;
-  if(r.surfaceSegs && r.surfaceSegs.length){
-    const MAP = {road: 'road', road_minor: 'road', grade1: 'grade2', grade2: 'grade2',
-                 grade3: 'grade2', grade4: 'grade4', grade5: 'grade4', path: 'grade4',
-                 single: 'single', single_tech: 'grade4'};
-    const w = {road: 0, grade2: 0, grade4: 0, single: 0};
-    for(const sg of r.surfaceSegs){
-      const overlap = Math.min(hi, sg.toDist) - Math.max(lo, sg.fromDist);
-      if(overlap > 0 && MAP[sg.cat]) w[MAP[sg.cat]] += overlap;
+// Try to read surface mix + climb straight off a saved route the ride followed.
+//
+// v438 — LOOK AT EVERY SAVED ROUTE, AND MATCH THE RIDE PIECE BY PIECE. Peter: "if you've
+// ridden on a longer PackTimes route it should already know the surface." It used to check
+// only the route that happened to be LOADED when recording started, and then demanded the
+// whole ride be one tidy section of it (five checkpoints all within 300 m, lengths within
+// 30 %). So a training ride over part of the Hunt 1000, recorded with some other route
+// loaded — or with a short detour to a servo — always fell through to "pick a surface".
+//
+// Now: sample the ride every ~200 m and snap each sample onto every saved route. A route
+// "covers" the ride when at least 80 % of the ridden distance sits within 300 m of it
+// (detours and car-park laps allowed). The best-covering route wins; the loaded route wins
+// a near-tie. Surface is the distance-weighted mix of the route's tagged segments under the
+// on-route stretches only; climb is the route's own elevation along those stretches, IN THE
+// DIRECTION RIDDEN (riding a route backwards climbs what it descends), scaled up for the
+// off-route bit. Same contract as before: returns null when nothing covers the ride, else
+// {elevM, surface|null, load, secKm, routeName}. surface is null when the route has too
+// little surface data for the ridden stretches — the modal then says it's a guess.
+// It still only PRE-FILLS the save modal; the rider can change any of it.
+const REC_AUTO_SAMPLE_M = 200;    // spacing of ride samples
+const REC_AUTO_OFF_KM   = 0.3;    // a sample within this of a route counts as on it
+const REC_AUTO_COVER    = 0.8;    // share of ridden distance that must be on the route
+const REC_AUTO_CELL     = 0.005;  // grid cell (deg, ~500 m) for the route segment index
+
+// Grid index of a route's segments, so snapping ~thousands of samples onto a 4,000 km route
+// stays instant. Each segment is filed under every cell its bounding box touches.
+function _recAutoIndex(r){
+  const g = new Map(), C = REC_AUTO_CELL, P = r.points;
+  for(let i = 0; i < P.length - 1; i++){
+    const a = P[i], b = P[i+1];
+    const x0 = Math.floor(Math.min(a.lon, b.lon) / C), x1 = Math.floor(Math.max(a.lon, b.lon) / C);
+    const y0 = Math.floor(Math.min(a.lat, b.lat) / C), y1 = Math.floor(Math.max(a.lat, b.lat) / C);
+    if((x1 - x0 + 1) * (y1 - y0 + 1) > 400) continue;   // absurd jump in the GPX — skip it
+    for(let x = x0; x <= x1; x++) for(let y = y0; y <= y1; y++){
+      const k = x + ',' + y;
+      let arr = g.get(k); if(!arr){ arr = []; g.set(k, arr); }
+      arr.push(i);
     }
-    const tagged = w.road + w.grade2 + w.grade4 + w.single;
-    if(tagged >= (hi - lo) * 0.5)
-      surface = Object.keys(w).reduce((a, b) => w[a] >= w[b] ? a : b);
   }
-  return {elevM, surface, load: r.loadPreset || 'moderate', secKm: hi - lo};
+  return g;
+}
+
+// Every route position within REC_AUTO_OFF_KM of (lat,lon): [{dist, off}], one per segment.
+function _recAutoNear(r, g, lat, lon){
+  const C = REC_AUTO_CELL, P = r.points, out = [], seen = new Set();
+  const cx = Math.floor(lon / C), cy = Math.floor(lat / C);
+  const kx = Math.cos(lat * Math.PI / 180) * 111.32, ky = 110.57;   // km per degree
+  for(let x = cx - 1; x <= cx + 1; x++) for(let y = cy - 1; y <= cy + 1; y++){
+    const arr = g.get(x + ',' + y); if(!arr) continue;
+    for(const i of arr){
+      if(seen.has(i)) continue; seen.add(i);
+      const a = P[i], b = P[i+1];
+      const ax = (a.lon - lon) * kx, ay = (a.lat - lat) * ky;
+      const bx = (b.lon - lon) * kx, by = (b.lat - lat) * ky;
+      const dx = bx - ax, dy = by - ay, L2 = dx*dx + dy*dy;
+      const t = L2 > 0 ? Math.max(0, Math.min(1, -(ax*dx + ay*dy) / L2)) : 0;
+      const px = ax + t*dx, py = ay + t*dy, off = Math.sqrt(px*px + py*py);
+      if(off <= REC_AUTO_OFF_KM) out.push({dist: a.dist + t * (b.dist - a.dist), off});
+    }
+  }
+  return out;
+}
+
+// Match ride samples to one route. Returns {onKm, w:{road,grade2,grade4,single}, climb} or null.
+function _recAutoMatch(r, samples){
+  if(!r || !r.points || r.points.length < 2) return null;
+  const g = _recAutoIndex(r);
+  // Snap each sample. Where the route passes the spot twice (out-and-back, figure-8), keep
+  // the reading closest in route-km to the previous sample — you can't jump 14 km along a
+  // route in 200 m of riding. First sample (or after an off-route bit) takes the nearest.
+  const snap = [];
+  let prev = null;
+  for(const s of samples){
+    const near = _recAutoNear(r, g, s.lat, s.lon);
+    if(!near.length){ snap.push(null); prev = null; continue; }
+    let pick = near[0];
+    for(const c of near){
+      if(prev != null ? Math.abs(c.dist - prev) < Math.abs(pick.dist - prev) : c.off < pick.off) pick = c;
+    }
+    snap.push(pick.dist); prev = pick.dist;
+  }
+  // Sorted copy of the surface segments for lookup by route-km.
+  const segs = (r.surfaceSegs || []).slice().sort((a, b) => a.fromDist - b.fromDist);
+  const catAt = d => {
+    let lo = 0, hi = segs.length - 1;
+    while(lo <= hi){
+      const m = (lo + hi) >> 1, sg = segs[m];
+      if(d < sg.fromDist) hi = m - 1; else if(d > sg.toDist) lo = m + 1; else return sg.cat;
+    }
+    return null;
+  };
+  const MAP = {road: 'road', road_minor: 'road', grade1: 'grade2', grade2: 'grade2',
+               grade3: 'grade2', grade4: 'grade4', grade5: 'grade4', path: 'grade4',
+               single: 'single', single_tech: 'grade4'};
+  const w = {road: 0, grade2: 0, grade4: 0, single: 0};
+  const P = r.points;
+  // Route elevation profile along the ridden stretches, in riding order. A break in the
+  // ride (off-route, or a jump) starts a new run so we never invent a climb across it.
+  let onKm = 0, climb = 0, run = [];
+  const flush = () => { if(run.length > 1) climb += elevGain(run); run = []; };
+  const eleAt = d => {   // interpolated route elevation at route-km d
+    let lo = 0, hi = P.length - 1;
+    while(hi - lo > 1){ const m = (lo + hi) >> 1; if(P[m].dist <= d) lo = m; else hi = m; }
+    const a = P[lo], b = P[hi], span = b.dist - a.dist;
+    return (a.ele || 0) + (span > 0 ? (d - a.dist) / span : 0) * ((b.ele || 0) - (a.ele || 0));
+  };
+  const idxAfter = d => {   // first route point with dist > d
+    let lo = 0, hi = P.length;
+    while(lo < hi){ const m = (lo + hi) >> 1; if(P[m].dist <= d) lo = m + 1; else hi = m; }
+    return lo;
+  };
+  for(let i = 1; i < samples.length; i++){
+    const da = snap[i-1], db = snap[i], gapKm = samples[i].km - samples[i-1].km;
+    // Both ends on the route and the route-km moved about as far as we rode: on-route.
+    if(da == null || db == null || Math.abs(db - da) > gapKm * 3 + 0.3){ flush(); continue; }
+    onKm += gapKm;
+    const c = MAP[catAt((da + db) / 2)];
+    if(c) w[c] += gapKm;
+    if(!run.length) run.push({ele: eleAt(da)});
+    // Route points between da and db, in the direction ridden, then db itself.
+    if(db >= da){ for(let k = idxAfter(da); k < P.length && P[k].dist < db; k++) run.push({ele: P[k].ele || 0}); }
+    else        { for(let k = idxAfter(da) - 1; k >= 0 && P[k].dist > db; k--) if(P[k].dist < da) run.push({ele: P[k].ele || 0}); }
+    run.push({ele: eleAt(db)});
+  }
+  flush();
+  return {onKm, w, climb};
+}
+
+function _recCalibAuto(rec){
+  const pts = (rec.points || []).filter(p => !p._synthetic);
+  if(pts.length < 2 || !rec.totalDist) return null;
+  // Sample the ride every ~200 m, keeping the cumulative ridden km at each sample.
+  const samples = [{lat: pts[0].lat, lon: pts[0].lon, km: 0}];
+  let cum = 0, since = 0;
+  for(let i = 1; i < pts.length; i++){
+    const d = _recDist(pts[i-1], pts[i]);
+    cum += d; since += d;
+    if(since >= REC_AUTO_SAMPLE_M || i === pts.length - 1){
+      samples.push({lat: pts[i].lat, lon: pts[i].lon, km: cum / 1000}); since = 0;
+    }
+  }
+  const rideKm = cum / 1000;
+  if(rideKm < 0.5 || samples.length < 3) return null;
+  // Cheap reject first: a route whose bounding box doesn't reach the ride can't cover it.
+  let la0 = Infinity, la1 = -Infinity, lo0 = Infinity, lo1 = -Infinity;
+  for(const s of samples){ la0 = Math.min(la0, s.lat); la1 = Math.max(la1, s.lat); lo0 = Math.min(lo0, s.lon); lo1 = Math.max(lo1, s.lon); }
+  const linked = _recRouteFor(rec);
+  let best = null;
+  for(const r of ROUTES){
+    if(!r || !r.points || r.points.length < 2) continue;
+    let ra0 = Infinity, ra1 = -Infinity, ro0 = Infinity, ro1 = -Infinity;
+    for(const p of r.points){ if(p.lat < ra0) ra0 = p.lat; if(p.lat > ra1) ra1 = p.lat; if(p.lon < ro0) ro0 = p.lon; if(p.lon > ro1) ro1 = p.lon; }
+    if(ra1 < la0 - 0.01 || ra0 > la1 + 0.01 || ro1 < lo0 - 0.01 || ro0 > lo1 + 0.01) continue;
+    const m = _recAutoMatch(r, samples);
+    if(!m) continue;
+    const cover = m.onKm / rideKm;
+    if(cover < REC_AUTO_COVER) continue;
+    // The loaded route wins anything that isn't clearly better; then better coverage; then
+    // the route with more surface data (a curated route beats an untagged copy of it).
+    const tagged = m.w.road + m.w.grade2 + m.w.grade4 + m.w.single;
+    const score = cover + (r === linked ? 0.03 : 0) + (tagged / Math.max(m.onKm, 0.1)) * 0.02;
+    if(!best || score > best.score) best = {r, m, score, tagged};
+  }
+  if(!best) return null;
+  const {r, m, tagged} = best;
+  let surface = null;
+  if(tagged >= m.onKm * 0.5)
+    surface = Object.keys(m.w).reduce((a, b) => m.w[a] >= m.w[b] ? a : b);
+  // Off-route bits have no profile — assume they climb at the same rate as the rest.
+  const elevM = m.onKm > 0 ? m.climb * (rideKm / m.onKm) : 0;
+  return {elevM, surface, load: r.loadPreset || 'moderate', secKm: m.onKm,
+          routeName: (r.label || r.name || '').trim()};
 }
 
 let _recSaveCtx = null;       // {rec, auto} while the save modal is open
@@ -7519,7 +7649,7 @@ function _recSaveShow(rec){
   document.getElementById('rsm-surface').value = (auto && auto.surface) ? auto.surface : 'road';
   note('rsm-surface-note', auto
     ? (auto.surface
-        ? 'From your route — change it if that\'s wrong.'
+        ? 'From your route' + (auto.routeName ? ' “' + auto.routeName + '”' : '') + ' — change it if that\'s wrong.'
         : 'Your route has no surface data here, so this is a guess. Please check it.')
     : null);
 
@@ -7533,7 +7663,7 @@ function _recSaveShow(rec){
   // obvious case. Pre-fill it, flag where it came from, let it be changed.
   document.getElementById('rsm-load').value = (auto && auto.load) ? auto.load : 'moderate';
   note('rsm-load-note', auto
-    ? 'From this route\'s Load setting — change it if you carried something different today.'
+    ? 'From ' + (auto.routeName ? '“' + auto.routeName + '”' : 'this route') + '\'s Load setting — change it if you carried something different today.'
     : null);
 
   document.getElementById('rsm-nonstop').checked = false;
