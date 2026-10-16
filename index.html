@@ -1789,7 +1789,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v438';
+window.APP_VERSION='v439';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -13570,7 +13570,7 @@ function drawMap(cvs,r,opts){
   // Surface type overlay
   if(UI.routeOverlay==='surf'&&r.surfaceSegs&&r.surfaceSegs.length&&(id==='desktop-map'||id==='stops-map')){
     ctx.save();
-    // Grey out stretches with no surface data, matching the elevation strip —
+    // Solid pink (SURF_UNKNOWN) on stretches with no surface data, matching the legend and elevation strip —
     // otherwise the day/night base line shows through the gaps and reads as
     // if it were a surface colour (one colour language per mode)
     (()=>{
@@ -13586,7 +13586,7 @@ function drawMap(cvs,r,opts){
         if(segPts.length<2)continue;
         ctx.beginPath();ctx.moveTo(px(segPts[0].lon),py(segPts[0].lat));
         for(let i=1;i<segPts.length;i++)ctx.lineTo(px(segPts[i].lon),py(segPts[i].lat));
-        ctx.strokeStyle=SURF_UNKNOWN;ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.stroke();ctx.setLineDash([]);
+        ctx.strokeStyle=SURF_UNKNOWN;ctx.lineWidth=3;ctx.stroke();
       }
     })();
     for(const seg of r.surfaceSegs){
