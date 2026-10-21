@@ -555,6 +555,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    crystallises. `turn-active` is toggled on #live-map-section by renderTurnCue. (Peter) */
 .live-map-section .live-fpill{transition:opacity .22s ease;}
 #live-map-section.turn-active .live-fpill{opacity:0!important;pointer-events:none!important;}   /* fade out, not display:none, so it can transition */
+#fpill-grid.no-row3 .live-fpill[data-slot="6"],#fpill-grid.no-row3 .live-fpill[data-slot="7"],#fpill-grid.no-row3 .live-fpill[data-slot="8"]{display:none!important;}  /* v443 — row 3 only when it clears the rider's arrow; see _fpillRow3Sync */
 #live-map-section.turn-active #tc-box{top:calc(var(--fpill-top,58px) + 10px)!important;bottom:auto!important;height:110px!important;animation:tcIn .22s ease;}  /* top gap + height match the data-cell grid (FPILL_CELL_H=110) */
 @keyframes tcIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 /* v276c — THE ARROW USES THE BOX'S PADDING. Peter: "the arrow could be taller."
@@ -1791,7 +1792,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v442';
+window.APP_VERSION='v443';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -18535,8 +18536,17 @@ function _paceCells(v){
 // "49/51", which v260 had to shrink to 28px because it burst a ~100px free-floating pill.
 // A fixed cell is what buys that back. The tightest is "120h34" at 129.8 of 131 (a >100 h
 // non-stop effort); watch it if a leg ever runs that long.
-const FPILL_DEFAULT=['speed','off','off','off','off','off'];
-const FPILL_N=6;
+// v443 — NINE SLOTS, 3 × 3. Peter: "maybe we need another row… on my Pixel 10 there is space
+// for another row, even with the elevation profile showing. However that might be affected by
+// how many 'next stops' are at the bottom." It is: the map shrinks as the next-stops strip grows
+// (up to 4 rows), and on a smaller phone a third row would sit on the rider's own arrow (drawn
+// at 65% of the map's height). So row 3 (slots 6–8) is shown only while it ends at least
+// FPILL_ROW3_CLEAR px above the arrow — see _fpillRow3Sync. Hidden cells keep their setting
+// and come back when the room does. Measured at 412×923 (Pixel 10) with 4 next stops: row 3
+// ends at 473, the arrow is at ~520.
+const FPILL_DEFAULT=['speed','off','off','off','off','off','off','off','off'];
+const FPILL_N=9;
+const FPILL_ROW3_CLEAR=40;
 // v270b — 95 → 110. My 95 came from the MOCKUP, where I drew the halves myself; the real
 // ones are taller, so every label was clipped (Peter: "there's a bit of an offset error in
 // all the pills"). Measured from the actual CSS, not guessed:
@@ -18593,13 +18603,32 @@ function _fpillsSync(){
       // older version), rebuilding the whole grid is the only safe repair: appending would
       // put it in the wrong square.
       const grid=document.getElementById('fpill-grid');
-      if(grid)grid.innerHTML=[0,1,2,3,4,5].map(j=>_renderFloatingPill(j)).join('');
+      if(grid)grid.innerHTML=Array.from({length:FPILL_N},(_,j)=>_renderFloatingPill(j)).join('');
       return;
     }
     const tmp=document.createElement('div');tmp.innerHTML=html;
     const fresh=tmp.firstElementChild;
     if(fresh)el.replaceWith(fresh); else el.remove();
   }
+}
+// v443 — show row 3 only while it clears the rider's arrow (see FPILL_ROW3_CLEAR). Measured,
+// not guessed: the grid's own top plus three rows against 65% of the map section's height
+// (the live map's follow anchor in redrawMap). A ResizeObserver on the map section re-runs it
+// whenever the map changes height — the next-stops strip growing or shrinking, the elevation
+// profile opening, rotation — so no caller has to remember to.
+let _fpillRow3RO=null;
+function _fpillRow3Sync(){
+  const sec=document.getElementById('live-map-section'), grid=document.getElementById('fpill-grid');
+  if(!sec||!grid)return;
+  const s=sec.getBoundingClientRect(), g=grid.getBoundingClientRect();
+  if(!s.height)return;
+  const rowsEnd=g.top+3*FPILL_CELL_H+2*8;   // 8 = the grid's gap
+  const arrowY=s.top+s.height*0.65;
+  grid.classList.toggle('no-row3',rowsEnd>arrowY-FPILL_ROW3_CLEAR);
+  if(!_fpillRow3RO&&window.ResizeObserver){
+    _fpillRow3RO=new ResizeObserver(()=>_fpillRow3Sync());
+  }
+  if(_fpillRow3RO&&_fpillRow3RO._sec!==sec){_fpillRow3RO.disconnect();_fpillRow3RO.observe(sec);_fpillRow3RO._sec=sec;}
 }
 
 // ── v409 — TAP A PILL, PICK FROM A LIST. Peter, 12 Oct: "we have so many now that it's pretty
@@ -18669,7 +18698,11 @@ function _pickPop(anchor,items,cur,onPick){
     // bigger' — bigger did most of it). Light on purpose: the square must still look like the map you get.
     const lift=it.lift?'filter:saturate(1.5) contrast(1.12);':'';
     const th=it.thumb?`<span aria-hidden="true" style="flex-shrink:0;width:${tb}px;height:${tb}px;border-radius:5px;border:1px solid var(--border2);background:${it.thumb(tb)||'var(--surface-sunken)'};background-color:var(--surface-sunken);${lift}position:relative;">${it.badge?`<span style="position:absolute;right:-6px;bottom:-6px;display:flex;padding:3px;border-radius:50%;background:#2e9e44;border:2px solid var(--card);">${it.badge}</span>`:""}</span>`:'';
-    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${th||!bigThumb?rh:56}px;padding:0 12px;text-align:left;white-space:${th||!bigThumb?'nowrap':'normal'};border-radius:var(--r-ctrl);border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on?700:600};cursor:pointer;${th?'display:flex;align-items:center;gap:10px;padding-left:6px;':''}">${th}${th&&bigThumb?`<span style="display:flex;flex-direction:column;gap:2px;"><span style="white-space:normal;width:min-content;line-height:1.15;">${it.name}</span>${it.sub?`<span style="white-space:normal;max-width:96px;font-size:13px;line-height:1.2;font-weight:600;color:${it.subOk?'#2e9e44':'var(--text3)'};">${it.sub}</span>`:''}</span>`:it.name+(it.sub?` <span style="font-size:12px;font-weight:600;color:${it.subOk?'#2e9e44':'var(--text3)'};">· ${it.sub}</span>`:'')}${th?"":(it.badge||"")}</button>`;
+    return`<button type="button" data-pick="${it.k}" title="${(it.note||it.desc||'').replace(/"/g,'&quot;')}" style="min-width:${w}px;height:${th||!bigThumb?rh:56}px;padding:0 12px;text-align:left;white-space:${th||!bigThumb?'nowrap':'normal'};border-radius:var(--r-ctrl);${it.inv
+        // v443 — an `inv` item (the Ride cells' Empty) is REVERSED: text colour as the fill, full
+        // width of a two-column list. Selected = a ring outside it, since a border would vanish.
+        ?`border:1px solid var(--text);background:var(--text);color:var(--card);${on?'box-shadow:0 0 0 3px var(--card),0 0 0 5px var(--text);':''}${cols>1?'grid-column:1/-1;':''}`
+        :`border:${on?'2px solid var(--text)':'1px solid var(--border2)'};${col?`border-left:6px solid ${col};`:''}background:${on?'color-mix(in srgb,var(--text) 12%,var(--card2))':'var(--card2)'};color:var(--text);`}font-family:var(--sans);font-size:${touch?17:14}px;font-weight:${on||it.inv?700:600};cursor:pointer;${th?'display:flex;align-items:center;gap:10px;padding-left:6px;':''}">${th}${th&&bigThumb?`<span style="display:flex;flex-direction:column;gap:2px;"><span style="white-space:normal;width:min-content;line-height:1.15;">${it.name}</span>${it.sub?`<span style="white-space:normal;max-width:96px;font-size:13px;line-height:1.2;font-weight:600;color:${it.subOk?'#2e9e44':'var(--text3)'};">${it.sub}</span>`:''}</span>`:it.name+(it.sub?` <span style="font-size:12px;font-weight:600;color:${it.subOk?'#2e9e44':'var(--text3)'};">· ${it.sub}</span>`:'')}${th?"":(it.badge||"")}</button>`;
   }).join('');
   document.body.appendChild(pop);
   const pw=pop.offsetWidth,ph=pop.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
@@ -18702,6 +18735,10 @@ function _pickSheet(title,items,cur,onPick,anchor,popAlways){
     const on=it.k===cur, col=it.col;
     const edge=col?`border-left:8px solid ${col};background:color-mix(in srgb,${col} ${on?28:12}%,var(--card2));`
                  :`background:${on?'color-mix(in srgb,var(--text) 10%,var(--card2))':'var(--card2)'};`;
+    // v443 — `inv` (Empty): reversed and spanning both columns, as in _pickPop.
+    if(it.inv)return`<button type="button" data-pick="${it.k}" style="grid-column:1/-1;min-width:0;text-align:left;padding:9px 10px 9px 12px;border-radius:var(--r-ctrl);border:1px solid var(--text);background:var(--text);color:var(--card);${on?'box-shadow:0 0 0 3px var(--card),0 0 0 6px var(--text);':''}font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
+      <div style="font-size:20px;font-weight:700;line-height:1.15;">${it.name}</div>
+      <div style="font-size:15px;margin-top:3px;line-height:1.3;opacity:.8;">${it.desc}</div></button>`;
     return`<button type="button" data-pick="${it.k}" style="min-width:0;text-align:left;padding:9px 10px 9px 12px;border-radius:var(--r-ctrl);border:${on?'3px solid var(--text)':'1px solid var(--border2)'};${edge}color:var(--text);font-family:var(--sans);cursor:pointer;-webkit-tap-highlight-color:transparent;">
       <div style="font-size:20px;font-weight:700;line-height:1.15;">${it.name}</div>
       <div style="font-size:15px;color:var(--text2);margin-top:3px;line-height:1.3;">${it.note?`<span style="color:var(--text3);">${it.note}</span>`:it.desc}</div></button>`;
@@ -18729,8 +18766,12 @@ function _fpillPick(slot,anchor){
   const cur=(UI.livePills||FPILL_DEFAULT)[slot]||'off';
   const needs=k=>(k==='power'||k==='wkg'||k==='cad'||k==='force'||k==='kj')?(UI.powerConnected?'':'not paired')
     :k==='hr'?(UI.hrConnected?'':'not paired'):'';
-  _pickSheet('Show in this cell',PILL_CYCLE.map(k=>{
+  // v443 — EMPTY FIRST, INVERTED (Peter: "EMPTY should be the first one and should stand out a
+  // lot"). It is the one choice that isn't a number — it gives the map back — so it leads the
+  // list and wears reversed colours (`inv`) instead of a group stripe.
+  _pickSheet('Show in this cell',['off',...PILL_CYCLE.filter(k=>k!=='off')].map(k=>{
     const[n,d,g]=PILL_INFO[k]||[k,'','oth'];
+    if(k==='off')return{k,name:n,desc:d,inv:true};
     return{k,name:n,desc:d,col:PILL_TONE[k]||PILL_GROUP_COL[g],note:needs(k)||(k==='wkg'&&!(UI.riderKg>0)?'set weight':'')};
   }),cur,k=>{
     const pills=(UI.livePills||FPILL_DEFAULT).slice();
@@ -20438,8 +20479,9 @@ function tLiveShell(r){
   const gridStyle='position:absolute;top:calc(var(--fpill-top,58px) + 10px);left:0;right:0;z-index:12;'
                  +'pointer-events:none;box-sizing:border-box;padding:0 10px;'
                  +'display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:'+FPILL_CELL_H+'px;gap:8px;';
-  const floatingPills=`<div id="fpill-grid" style="${gridStyle}">`
-    +[0,1,2,3,4,5].map(i=>_renderFloatingPill(i)).join('')+`</div>`;
+  // v443 — nine cells; row 3 starts hidden and _fpillRow3Sync shows it once the map is measured.
+  const floatingPills=`<div id="fpill-grid" class="no-row3" style="${gridStyle}">`
+    +Array.from({length:FPILL_N},(_,i)=>_renderFloatingPill(i)).join('')+`</div>`;
 
   return`
   <div class="live-outer" id="live-scroller">
@@ -20606,6 +20648,7 @@ function initLiveMap(r){
     // redrawMap('live-map') already handles peek / follow / fitted correctly.
     redrawMap('live-map');
     _distBarSync();   // v258: the bar's width just changed, so its flip points did too
+    _fpillRow3Sync(); // v443 — the map's height just changed; does row 3 still clear the arrow?
   };
   // Call immediately, then again after layout settles (sidebar/strips may not have final dimensions yet)
   sizeLiveMap();
