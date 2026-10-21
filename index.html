@@ -163,6 +163,8 @@
      "only one needs to not be black. Clocks are black and white, but so are speedometers"): a constant colour on a cell's top half that names the cell (never a zone).
      Light, so the figure and label on them are dark. Same in both themes, like the pace cell's teal. */
   --tone-spd:#2dd4bf;--tone-speed:#a78bfa;--tone-vam:#87ceeb;--tone-kj:#f9a8d4;--tone-ink:#000;--tone-ink-muted:rgba(0,0,0,.72);
+  /* v440 — the Schedule cell's top half. NOT constant tones: ahead/behind IS the reading (the zone rule). */
+  --tone-ahead:#86efac;--tone-behind:#fca5a5;
 }
 
 [data-theme="paper"]{
@@ -1789,7 +1791,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v439';
+window.APP_VERSION='v442';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3586,6 +3588,94 @@ function etaAt(distKm,r){
   // rule both live in _planOffTable now, unchanged.
   hrs+=_planOffAt(_planOffTable(r,base,targetTotal,crTot),distKm);
   return new Date(base.getTime()+hrs*3600000);
+}
+
+// ── v440 — THE SCHEDULE, AS PLANNED (the Schedule ride cell). ──────────────────────────────
+// Peter: "it tells you, in time, whether you're ahead or behind your schedule… based on your
+// time estimates. Clearly, it would not update with GPS because then there'd be no point."
+// So this is deliberately NOT etaAt. etaAt re-anchors to now + position once GPS is on, and
+// adaptive calibration moves timeFactor mid-ride — either would chase the rider and read zero.
+// This is the plan as planned: the planned start (or the ride-now start), the BASELINE factor,
+// and every planned stop — sleeps and meals included. Peter: on rides this long the stops
+// matter, so the schedule counts them, exactly as the mission times do.
+// Unlike etaAt, a night already behind the rider still counts: it was in the schedule.
+// ── v442 — SET START OR RIDE-IT-WHENEVER, decided automatically. Peter: "I often ride a
+// particular route on my training ride… but I start at different times each day (whereas in a
+// race or a set ride, you do have a set start time)." Two clocks, no setting:
+//   · SET START — this recording began within SCHED_SET_START_MS of the plan's date + time. The
+//     planned start IS the schedule: rolling out 20 min late is 20 min behind.
+//   · WHENEVER — anything else. The plan becomes a ghost that sets off with you: its clock starts
+//     where this recording first came onto the route (SCHED_JOIN_OFF_KM), at that point's plan
+//     time — so riding to the start from home, or joining at km 40, both just work.
+// NOT r.actualStartTime: it is stamped once, on the first ride, and never refreshed until the
+// date changes, so on a re-ridden training route it is last week's start.
+// Read from the recording itself, so it survives a reload or crash recovery. No recording, no
+// ride start to measure from: the cell dashes. (The one known miss: a race start >3 h late.)
+const SCHED_SET_START_MS=3*3600000;
+const SCHED_JOIN_OFF_KM=0.3;
+let _schedJoin={recId:null,rid:null,i:0,km:null,t:null};
+function _schedPlanned(r){
+  if(!r.startDate||!r.startTime)return null;
+  const d=routeWallToInstant(r.startDate,r.startTime,r);
+  return d?d.getTime():null;
+}
+// Where this recording first came onto the route: {t, km}, or null. Scans only points it hasn't
+// seen yet, and stops scanning once found.
+function _schedJoinPoint(r){
+  if(!_rec)return null;
+  const J=_schedJoin;
+  if(J.recId!==_rec.id||J.rid!==r.id){J.recId=_rec.id;J.rid=r.id;J.i=0;J.km=null;J.t=null;}
+  if(J.km!==null)return J;
+  const pts=_rec.points||[];
+  for(;J.i<pts.length;J.i++){
+    const p=pts[J.i];if(p._synthetic||p.lat==null)continue;
+    const s=snapTo(r,p.lat,p.lon);
+    if(s&&s.off<=SCHED_JOIN_OFF_KM&&r.points[s.idx]){J.km=isFinite(s.dist)?s.dist:r.points[s.idx].dist;J.t=p.t;return J;}
+  }
+  return null;
+}
+// The schedule's start instant (ms): the plan's own start, or the whenever-ghost's start shifted
+// so the plan has you at the join point exactly when you were there. {base, set} or null.
+function _schedBase(r){
+  const p=_schedPlanned(r), rs=_rec?_rec.startTS:null;
+  if(p!=null&&rs!=null&&Math.abs(rs-p)<=SCHED_SET_START_MS)return{base:p,set:true};
+  const j=_schedJoinPoint(r);if(!j)return null;
+  const w=_schedAt(r,j.km,j.t);if(!w)return null;
+  return{base:j.t-(w.arr-j.t),set:false};
+}
+// {arr, dep} in ms — when the plan, started at `base`, has you at distKm. They differ only beside
+// a sleep stop (within SLEEP_NEAR_KM): lying in the motel through the planned night is on
+// schedule, so the night is a window, not a point. Everywhere else arr === dep.
+function _schedAt(r,distKm,base){
+  if(base==null)return null;
+  const estTotal=r.estDuration||naismith(r.points,r.totalDist,r);
+  if(!estTotal||!r.totalDist)return null;
+  const tf=r.adaptiveSpeed?(r.baseTimeFactor||r.timeFactor||1):(r.timeFactor||1);
+  const targetTotal=estTotal*tf;
+  const crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
+  const rideH=d=>{const c=cumRidingAt(d,r);return(c!==null&&crTot>0)?c*(targetTotal/crTot):targetTotal*(d/r.totalDist);};
+  // Same stops, same meal folding and same sleep arithmetic as _planOffTable — minus its
+  // _sleepDone skip.
+  const cmi=_clusterMealInfo(r);
+  const stops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length)))
+    .sort((a,b)=>a.dist-b.dist);
+  let off=0,arrOff=null;
+  for(const st of stops){
+    if(st.dist>distKm+SLEEP_NEAR_KM)break;
+    const hasSleep=st.type==='sleep'||(st.type==='stop'&&(st.sleepAt||st.sleepH))||st.sleepAt;
+    const near=hasSleep&&Math.abs(st.dist-distKm)<=SLEEP_NEAR_KM;
+    if(st.dist>=distKm&&!near)continue;
+    if(near&&arrOff===null)arrOff=off;
+    const ms=_mealSplit(st,hasSleep,cmi);
+    off+=ms.before;
+    if(hasSleep){
+      if(st.departTime)off+=sleepHoursFor(st,new Date(base+(rideH(st.dist)+off)*3600000),r);
+      else off+=st.sleepH||(st.type==='stop'?0.25:10);
+    }
+    off+=ms.after;
+  }
+  const h=rideH(distKm);
+  return{arr:base+(h+(arrOff!==null?arrOff:off))*3600000,dep:base+(h+off)*3600000};
 }
 
 // v257: THE END OF TODAY, not the end of the ride.
@@ -13360,6 +13450,9 @@ function _canvasFit(cvs,bw,bh){
   else cvs.width=bw;   // no reset() (old browser): the only other way to clear state
   return ctx;
 }
+// v441 — the route line's solid dark edge and the GPS puck's radius (px). See drawMap.
+const ROUTE_CASING='#041a20';
+const GPS_PUCK_R=20;   // Peter may find it too big: 16 is the old arrow's footprint
 function drawMap(cvs,r,opts){
   opts=opts||{};
   if(!r)return;
@@ -13558,13 +13651,13 @@ function drawMap(cvs,r,opts){
   } else {
   ctx.beginPath();ctx.moveTo(px(pts[0].lon),py(pts[0].lat));
   for(let i=1;i<pts.length;i++)ctx.lineTo(px(pts[i].lon),py(pts[i].lat));
-  if(_tileMode>0){
-    ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=5;ctx.stroke();
-    ctx.strokeStyle='#22d3ee';ctx.lineWidth=3.5;ctx.stroke();
-  } else {
-    ctx.strokeStyle='#1a2d1a';ctx.lineWidth=4;ctx.stroke();
-    ctx.strokeStyle='#22d3ee';ctx.lineWidth=2.5;ctx.stroke();
-  }
+  // v441 — A REAL BORDER (Peter, after a 280 km ride: on some basemaps the line "just blends in").
+  // The old edge was 0.75 px of 50% black each side — no border at all. Now a solid 1.5 px
+  // near-black edge round a 4 px cyan core, on every basemap and on no map. Option B of
+  // _planning/PackTimes-Route-Contrast_Mockup_v1.html.
+  ctx.lineJoin='round';ctx.lineCap='round';
+  ctx.strokeStyle=ROUTE_CASING;ctx.lineWidth=7;ctx.stroke();
+  ctx.strokeStyle='#22d3ee';ctx.lineWidth=4;ctx.stroke();
   }
 
   // Surface type overlay
@@ -14016,18 +14109,25 @@ function drawMap(cvs,r,opts){
     ctx.save();
     ctx.translate(gx,gy);
     ctx.rotate(ar);
-    // Outer glow
-    ctx.beginPath();ctx.arc(0,0,16,0,Math.PI*2);
-    ctx.fillStyle='rgba(96,165,250,.15)';ctx.fill();
-    // Arrow shape — points upward (0 deg = north)
+    // v441 — THE PUCK (option 3 of the route-contrast mockup). Peter: the arrow needs more
+    // contrast, "bigger, and maybe a ring around it". The old one was a blue arrow sitting ON a
+    // cyan line, so the two blurred together. A white disc is the one colour no basemap is made
+    // of, and the navy arrow reads against white. Peter suspects it's too big — trial on the
+    // bike; GPS_PUCK_R is the one knob (the arrow scales with it).
+    const pr=GPS_PUCK_R, as=pr/16.7;
+    ctx.save();
+    ctx.shadowColor='rgba(0,0,0,.55)';ctx.shadowBlur=8;ctx.shadowOffsetY=2;
+    ctx.beginPath();ctx.arc(0,0,pr,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+    ctx.restore();
+    ctx.beginPath();ctx.arc(0,0,pr,0,Math.PI*2);ctx.strokeStyle='#0b1b33';ctx.lineWidth=2;ctx.stroke();
+    // Arrow shape — points upward (0 deg = north), nudged 1 unit down to sit centred in the disc
     ctx.beginPath();
-    ctx.moveTo(0,-11);   // tip
-    ctx.lineTo(7,8);     // right
-    ctx.lineTo(0,4);     // notch
-    ctx.lineTo(-7,8);    // left
+    ctx.moveTo(0,-10*as);   // tip
+    ctx.lineTo(7*as,9*as);  // right
+    ctx.lineTo(0,5*as);     // notch
+    ctx.lineTo(-7*as,9*as); // left
     ctx.closePath();
-    ctx.fillStyle='#60a5fa';ctx.fill();
-    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#1d4ed8';ctx.fill();
     ctx.restore();
   }
 
@@ -17778,6 +17878,58 @@ function _vamVals(){
   const asc=(_vam.ref==null&&!_vam.asc)?'—':String(Math.round(_vam.asc));
   return{rate,asc};
 }
+// ── v440 — THE SCHEDULE CELL: minutes ahead of (+) or behind (−) the plan, from _schedAt. ──
+// Top: the gap now, its background green ahead / coral behind — colour IS the reading here,
+// the v260 zone rule, so it is allowed to move. Bottom: how much of it changed over the last
+// hour, same sign — "+6" is six minutes clawed back. Peter named it Schedule: "pace" is taken.
+const SCHED_ON_TIME_MIN=2;        // within ±2 min reads "on time", neutral
+const SCHED_TREND_MS=3600000;     // the bottom half's window
+const SCHED_TREND_MIN_MS=15*60000;// no trend until this much history — a 2-minute trend is noise
+const SCHED_SAMPLE_MS=60000;      // one trend sample per ride-clock minute
+let _schedHist={rid:null,buf:[]};
+// The pill's figures fit 4 characters at 36px in the 94px desktop cell (the v435 limit):
+// "+12" / "−15" under an hour; "1h05" past it, the sign moving to the label; "12h" past 10 h.
+function _fmtSchedMin(min){
+  const a=Math.round(Math.abs(min));
+  if(a<60)return a===0?'0':(min>0?'+':'−')+a;
+  if(a<600)return Math.floor(a/60)+'h'+String(a%60).padStart(2,'0');
+  return Math.round(a/60)+'h';
+}
+function _schedVals(){
+  const r=cur();
+  const out={top:'—',lbl:'schedule',tone:null,trend:'—',tlbl:'last hour'};
+  if(!r||!r.points||r.points.length<2||_freeRiding()||UI.gpsDistKm==null)return out;
+  const sim=!!(UI.simRunning||UI.simPaused);
+  if(!sim&&!UI.gpsActive)return out;
+  // THE SIM'S CLOCK is ride time from the plan's own start (v259 lesson: any ride-time figure
+  // asks the sim) — the sim seeds it from the plan at its start km, so the plan's own start is
+  // the base. It never stops, so in the sim a planned stop shows up as time gained.
+  // v442 — a real ride asks _schedBase: set start, or the whenever-ghost (needs a recording).
+  // A future-dated plan no longer blocks it: a training ride on next month's race route is a
+  // whenever ride.
+  let base;
+  if(sim){const p=_schedPlanned(r);base=p!=null?p:(_rec?_rec.startTS:Date.now());}
+  else{const sb=_schedBase(r);if(!sb){if(!_rec)out.lbl=planShowsPlanned(r)?'not started':'record to start';return out;}base=sb.base;}
+  const w=_schedAt(r,UI.gpsDistKm,base);if(!w)return out;
+  const now=sim?base+_simElapsedMs:Date.now();
+  const dMs=now<w.arr?w.arr-now:now>w.dep?w.dep-now:0;
+  const dMin=dMs/60000, a=Math.abs(dMin);
+  out.top=a<SCHED_ON_TIME_MIN?'0':_fmtSchedMin(dMin);
+  out.lbl=a<SCHED_ON_TIME_MIN?'on time':(a<60?'min ':'')+(dMin>0?'ahead':'behind');
+  out.tone=a<SCHED_ON_TIME_MIN?null:dMin>0?'var(--tone-ahead)':'var(--tone-behind)';
+  // Trend history: per route, cleared if the clock runs backwards (a sim restart or scrub).
+  const H=_schedHist;
+  if(H.rid!==r.id||(H.buf.length&&now<H.buf[H.buf.length-1].t)){H.rid=r.id;H.buf=[];}
+  if(!H.buf.length||now-H.buf[H.buf.length-1].t>=SCHED_SAMPLE_MS)H.buf.push({t:now,d:dMin});
+  while(H.buf.length>1&&now-H.buf[1].t>=SCHED_TREND_MS)H.buf.shift();
+  const old=H.buf[0], span=now-old.t;
+  if(span>=SCHED_TREND_MIN_MS){
+    const ch=dMin-old.d, ca=Math.round(Math.abs(ch));
+    out.trend=ca===0?'0':_fmtSchedMin(ch);
+    out.tlbl=span>=SCHED_TREND_MS-SCHED_SAMPLE_MS?'last hour':'last '+Math.round(span/60000)+' min';
+  }
+  return out;
+}
 
 // Compute grade segments (~50m) from route points — cached on route object.
 // v276 — the grade of each segment now comes from gradeAt (smoothed), so the map/desktop
@@ -18304,7 +18456,7 @@ function sortedLayers(r){
 // v405 — 'batt' (phone battery % + hours left) goes last: it's about the phone, not the ride.
 // v409 — 'vam' after 'grade' (both climbing, no sensor). Since v409 this is the PICK LIST's
 // order, not a tap cycle — see _fpillPick.
-const PILL_CYCLE=['speed','pace','mspeed','stop','grade','vam','power','wkg','cad','force','kj','hr','batt','off'];   // v411 + 'wkg', v435 + 'kj'
+const PILL_CYCLE=['speed','pace','mspeed','stop','sched','grade','vam','power','wkg','cad','force','kj','hr','batt','off'];   // v411 + 'wkg', v435 + 'kj', v440 + 'sched'
 // ── PEDAL FORCE (v360) ───────────────────────────────────────────────────────
 // Peter's use for it: "grinding too big a gear or busting your knees, and as a trigger to
 // increase cadence if you want more power."
@@ -18465,6 +18617,7 @@ const PILL_INFO={
   pace:['Pace','min/km','spd'],
   mspeed:['Moving speed','Leaves out stops','spd'],
   stop:['Elapsed time','Time · % stopped','spd'],
+  sched:['Schedule','Ahead · behind plan','spd'],
   grade:['Grade','% · to the top','clb'],
   vam:['VAM','Climbing m/h','clb'],
   power:['Power','3 sec · weighted','pwr'],
@@ -19840,6 +19993,19 @@ function tLiveShell(r){
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="${Fb}color:var(--cell-bottom-text);" id="live-grade-totop">${gb.num}</span><span style="${U}color:var(--cell-bottom-text);" id="live-grade-tounit">${gb.unit}</span></div>
           <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-grade-botlbl">${gb.label}</div>
+        </div>
+      </div>`;
+    }
+    if(type==='sched'){   // v440 — ahead/behind the plan; see _schedVals
+      const v=_schedVals();
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-sched">
+        <div id="live-sched-top" style="padding:5px 8px 3px;${v.tone?`background:${v.tone};`:''}">
+          <div style="line-height:1.0;"><span style="font-size:36px;font-weight:700;color:${v.tone?'var(--tone-ink)':'var(--text)'};font-family:var(--font);" id="live-sched-cur">${v.top}</span></div>
+          <div style="font-size:11px;font-weight:600;color:${v.tone?'var(--tone-ink-muted)':'var(--cell-top-muted)'};font-family:var(--sans);line-height:1.1;" id="live-sched-lbl">${v.lbl}</div>
+        </div>
+        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-sched-trend">${v.trend}</span></div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-sched-tlbl">${v.tlbl}</div>
         </div>
       </div>`;
     }
@@ -23634,6 +23800,23 @@ function updateLive(){
   }
   _wkgPatch();   // v411
   _kjPatch();    // v435
+  // ── v440 — the SCHEDULE pill, patched live: figure, label, trend, and the ahead/behind tone.
+  const sCurEl=document.getElementById('live-sched-cur');
+  if(sCurEl){
+    const v=_schedVals();
+    if(sCurEl.textContent!==v.top)sCurEl.textContent=v.top;
+    const sl=document.getElementById('live-sched-lbl'),st=document.getElementById('live-sched-trend'),
+          stl=document.getElementById('live-sched-tlbl'),sTop=document.getElementById('live-sched-top');
+    if(sl&&sl.textContent!==v.lbl)sl.textContent=v.lbl;
+    if(st&&st.textContent!==v.trend)st.textContent=v.trend;
+    if(stl&&stl.textContent!==v.tlbl)stl.textContent=v.tlbl;
+    if(sTop&&sCurEl._tone!==v.tone){
+      sCurEl._tone=v.tone;
+      sTop.style.background=v.tone||'';
+      sCurEl.style.color=v.tone?'var(--tone-ink)':'var(--text)';
+      if(sl)sl.style.color=v.tone?'var(--tone-ink-muted)':'var(--cell-top-muted)';
+    }
+  }
   // ── v409 — the VAM pill, patched live.
   const vCurEl=document.getElementById('live-vam-cur');
   if(vCurEl){
