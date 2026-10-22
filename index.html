@@ -1792,7 +1792,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v443';
+window.APP_VERSION='v447';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3603,7 +3603,7 @@ function etaAt(distKm,r){
 // ── v442 — SET START OR RIDE-IT-WHENEVER, decided automatically. Peter: "I often ride a
 // particular route on my training ride… but I start at different times each day (whereas in a
 // race or a set ride, you do have a set start time)." Two clocks, no setting:
-//   · SET START — this recording began within SCHED_SET_START_MS of the plan's date + time. The
+//   · SET START — (v447: only when the rider picks "Planned start" on the start sheet). The
 //     planned start IS the schedule: rolling out 20 min late is 20 min behind.
 //   · WHENEVER — anything else. The plan becomes a ghost that sets off with you: its clock starts
 //     where this recording first came onto the route (SCHED_JOIN_OFF_KM), at that point's plan
@@ -3612,6 +3612,12 @@ function etaAt(distKm,r){
 // date changes, so on a re-ridden training route it is last week's start.
 // Read from the recording itself, so it survives a reload or crash recovery. No recording, no
 // ride start to measure from: the cell dashes. (The one known miss: a race start >3 h late.)
+// ── v447 — FROM NOW IS THE DEFAULT; SET START ONLY WHEN THE RIDER SAYS SO. Peter, after a
+// training ride that opened "1h18 behind" because he rolled out 78 min after the route's stored
+// start: "that's my training ride… as soon as you press start, it should be going from there."
+// The 3 h window no longer decides anything. It only decides whether the start sheet ASKS
+// (_rideModeShow's schedule row) — tapping "Planned start" sets _rec.schedSet. Lives on the
+// recording, so it survives a reload or crash recovery.
 const SCHED_SET_START_MS=3*3600000;
 const SCHED_JOIN_OFF_KM=0.3;
 let _schedJoin={recId:null,rid:null,i:0,km:null,t:null};
@@ -3639,7 +3645,7 @@ function _schedJoinPoint(r){
 // so the plan has you at the join point exactly when you were there. {base, set} or null.
 function _schedBase(r){
   const p=_schedPlanned(r), rs=_rec?_rec.startTS:null;
-  if(p!=null&&rs!=null&&Math.abs(rs-p)<=SCHED_SET_START_MS)return{base:p,set:true};
+  if(p!=null&&_rec&&_rec.schedSet)return{base:p,set:true};
   const j=_schedJoinPoint(r);if(!j)return null;
   const w=_schedAt(r,j.km,j.t);if(!w)return null;
   return{base:j.t-(w.arr-j.t),set:false};
@@ -9082,6 +9088,7 @@ function _rideModeShow(r,autoMs){
     </div>
     <button class="btn ${free?'':'btn-p'}" id="ridemode-follow" style="width:100%;height:52px;margin-bottom:var(--sp-2);">Follow the route</button>
     <button class="btn ${free?'btn-p':''}" id="ridemode-free" style="width:100%;height:52px;">Just ride — no route</button>
+    ${_rideModeSchedRow(r,autoMs)}
   </div>`;
   // Direct listener: this hangs off document.body, where the content-wrap delegator
   // cannot hear it (the v257 standing gotcha).
@@ -9089,7 +9096,34 @@ function _rideModeShow(r,autoMs){
   document.body.appendChild(ov);
   if(autoMs>0)_rideModeTimer=setTimeout(_rideModeClose,autoMs);
 }
+// v447 — THE SCHEDULE QUESTION. The Schedule cell runs from when you press start; a race or a
+// set ride wants the plan's own start instead. Asked at record start only when this ride began
+// within SCHED_SET_START_MS of the plan's date + time (otherwise it plainly isn't that ride);
+// always offered when the rider opens the sheet from the distance bar. Ignored = from now.
+function _rideModeSchedRow(r,autoMs){
+  const p=_schedPlanned(r);
+  if(p==null||!_rec)return'';
+  if(autoMs>0&&Math.abs((_rec.startTS||Date.now())-p)>SCHED_SET_START_MS)return'';
+  const set=!!_rec.schedSet;
+  return`<div style="margin-top:var(--sp-4);font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-2);">Schedule runs from</div>
+    <div style="display:flex;gap:var(--sp-2);">
+      <button class="btn ${set?'':'btn-p'}" id="ridemode-sched-now" style="flex:1;height:48px;justify-content:center;">Now</button>
+      <button class="btn ${set?'btn-p':''}" id="ridemode-sched-set" style="flex:1;height:48px;justify-content:center;">Planned start ${r.startTime}</button>
+    </div>`;
+}
 function _rideModeOnClick(e){
+  const sNow=e.target.closest('#ridemode-sched-now'), sSet=e.target.closest('#ridemode-sched-set');
+  if(sNow||sSet){
+    // Picks the clock and keeps the sheet open — follow / just ride still closes it. The rider is
+    // engaging, so the auto-close timer stops.
+    if(_rideModeTimer){clearTimeout(_rideModeTimer);_rideModeTimer=null;}
+    if(_rec){_rec.schedSet=!!sSet;DB.putRecording(_rec).catch(()=>{});}
+    const a=document.getElementById('ridemode-sched-now'),b=document.getElementById('ridemode-sched-set');
+    if(a)a.classList.toggle('btn-p',!sSet);
+    if(b)b.classList.toggle('btn-p',!!sSet);
+    _schedPatch();
+    return;
+  }
   const follow=e.target.closest('#ridemode-follow'), free=e.target.closest('#ridemode-free');
   if(!follow&&!free)return;   // scrim taps do nothing: this is a real either/or
   // FREESTYLE REUSES v245's _offRouteMode='abandoned' — the flag the off-route alert's
@@ -16000,11 +16034,15 @@ function showFatigueHelp(){
   document.body.appendChild(ov);
 }
 function speedNudge(faster){
-  const r=cur();if(!r||!r.estDuration)return;
-  // Step size: ~15 min of riding time. 15min = 0.25h. delta = 0.25/estDuration
-  const step=Math.max(0.01,0.25/r.estDuration);
-  r.timeFactor=Math.max(0.25,Math.min(4.0,r.timeFactor+(faster?-step:step)));
-  r.timeFactor=Math.round(r.timeFactor*100)/100;
+  const r=cur();if(!r||!r.estDuration||!r.totalDist)return;
+  // v446: each tap moves the shown average (totalDist / riding hours) by exactly 0.5 km/h,
+  // floored at 2 km/h. Factor kept to 4 decimals so the average lands on the step
+  // (2 decimals drifted it by up to ±0.15 km/h). Older steps were time-based and jumped
+  // 0.16 a tap on a 1.5 h route.
+  const avg=r.totalDist/(r.estDuration*r.timeFactor);
+  const target=Math.max(2,avg+(faster?0.5:-0.5));
+  r.timeFactor=Math.max(0.25,Math.min(4.0,r.totalDist/(r.estDuration*target)));
+  r.timeFactor=Math.round(r.timeFactor*10000)/10000;
   // Manual adjust also updates baseline so adaptive cap moves with it
   if(r.adaptiveSpeed)r.baseTimeFactor=r.timeFactor;
   saveAll();_speedRefresh();
@@ -17883,11 +17921,12 @@ function _vamVals(){
 // Top: the gap now, its background green ahead / coral behind — colour IS the reading here,
 // the v260 zone rule, so it is allowed to move. Bottom: how much of it changed over the last
 // hour, same sign — "+6" is six minutes clawed back. Peter named it Schedule: "pace" is taken.
-const SCHED_ON_TIME_MIN=2;        // within ±2 min reads "on time", neutral
+const SCHED_ON_TIME_MIN=0.5;      // v447: within ±30 s the colour stays neutral (was ±2 min)
+const SCHED_SEC_MIN=10;           // v447: under 10 min the top figure is m:ss, e.g. "4:32"
 const SCHED_TREND_MS=3600000;     // the bottom half's window
 const SCHED_TREND_MIN_MS=15*60000;// no trend until this much history — a 2-minute trend is noise
 const SCHED_SAMPLE_MS=60000;      // one trend sample per ride-clock minute
-let _schedHist={rid:null,buf:[]};
+let _schedHist={rid:null,recId:null,buf:[]};
 // The pill's figures fit 4 characters at 36px in the 94px desktop cell (the v435 limit):
 // "+12" / "−15" under an hour; "1h05" past it, the sign moving to the label; "12h" past 10 h.
 function _fmtSchedMin(min){
@@ -17915,12 +17954,22 @@ function _schedVals(){
   const now=sim?base+_simElapsedMs:Date.now();
   const dMs=now<w.arr?w.arr-now:now>w.dep?w.dep-now:0;
   const dMin=dMs/60000, a=Math.abs(dMin);
-  out.top=a<SCHED_ON_TIME_MIN?'0':_fmtSchedMin(dMin);
-  out.lbl=a<SCHED_ON_TIME_MIN?'on time':(a<60?'min ':'')+(dMin>0?'ahead':'behind');
+  // v447 — under SCHED_SEC_MIN, minutes AND seconds with no sign ("4:32", 4 characters — the
+  // v435 limit); the label says ahead/behind. Peter: you're chasing time back, so let it move.
+  const secs=Math.round(Math.abs(dMs)/1000);
+  if(a<SCHED_SEC_MIN){
+    out.top=Math.floor(secs/60)+':'+String(secs%60).padStart(2,'0');
+    out.lbl=secs===0?'on time':(dMin>0?'ahead':'behind');
+  } else {
+    out.top=_fmtSchedMin(dMin);
+    out.lbl=(a<60?'min ':'')+(dMin>0?'ahead':'behind');
+  }
   out.tone=a<SCHED_ON_TIME_MIN?null:dMin>0?'var(--tone-ahead)':'var(--tone-behind)';
-  // Trend history: per route, cleared if the clock runs backwards (a sim restart or scrub).
-  const H=_schedHist;
-  if(H.rid!==r.id||(H.buf.length&&now<H.buf[H.buf.length-1].t)){H.rid=r.id;H.buf=[];}
+  // Trend history: per route AND per recording (v446 — stop, save and start again on the same
+  // route used to carry the last ride's samples over, so the new ride's "last hour" compared
+  // against a different base), cleared if the clock runs backwards (a sim restart or scrub).
+  const H=_schedHist, rid=_rec?_rec.id:null;
+  if(H.rid!==r.id||H.recId!==rid||(H.buf.length&&now<H.buf[H.buf.length-1].t)){H.rid=r.id;H.recId=rid;H.buf=[];}
   if(!H.buf.length||now-H.buf[H.buf.length-1].t>=SCHED_SAMPLE_MS)H.buf.push({t:now,d:dMin});
   while(H.buf.length>1&&now-H.buf[1].t>=SCHED_TREND_MS)H.buf.shift();
   const old=H.buf[0], span=now-old.t;
@@ -23749,6 +23798,33 @@ function renderTurnCue(r,liveDist){
 // ═══════════════════════════════════════════
 //  TARGETED LIVE UPDATE (no DOM rebuild)
 // ═══════════════════════════════════════════
+// ── v440 — the SCHEDULE pill, patched live: figure, label, trend, and the ahead/behind tone.
+// v447 — also ticked every second (below), not only per GPS fix: standing still, fixes can
+// thin out, and a stopped rider is exactly when the gap should visibly grow.
+function _schedPatch(){
+  const sCurEl=document.getElementById('live-sched-cur');
+  if(sCurEl){
+    const v=_schedVals();
+    if(sCurEl.textContent!==v.top)sCurEl.textContent=v.top;
+    const sl=document.getElementById('live-sched-lbl'),st=document.getElementById('live-sched-trend'),
+          stl=document.getElementById('live-sched-tlbl'),sTop=document.getElementById('live-sched-top');
+    if(sl&&sl.textContent!==v.lbl)sl.textContent=v.lbl;
+    if(st&&st.textContent!==v.trend)st.textContent=v.trend;
+    if(stl&&stl.textContent!==v.tlbl)stl.textContent=v.tlbl;
+    if(sTop&&sCurEl._tone!==v.tone){
+      sCurEl._tone=v.tone;
+      sTop.style.background=v.tone||'';
+      sCurEl.style.color=v.tone?'var(--tone-ink)':'var(--text)';
+      if(sl)sl.style.color=v.tone?'var(--tone-ink-muted)':'var(--cell-top-muted)';
+    }
+  }
+}
+setInterval(()=>{
+  if(UI.tab!=='live'||document.visibilityState!=='visible')return;
+  if(!UI.gpsActive&&!UI.simRunning)return;
+  _schedPatch();
+},1000);
+
 function updateLive(){
   const r=cur();if(!r)return;
   _packBtnSync();    // built here, not in the template — see the note on _packBtnSync
@@ -23843,23 +23919,7 @@ function updateLive(){
   }
   _wkgPatch();   // v411
   _kjPatch();    // v435
-  // ── v440 — the SCHEDULE pill, patched live: figure, label, trend, and the ahead/behind tone.
-  const sCurEl=document.getElementById('live-sched-cur');
-  if(sCurEl){
-    const v=_schedVals();
-    if(sCurEl.textContent!==v.top)sCurEl.textContent=v.top;
-    const sl=document.getElementById('live-sched-lbl'),st=document.getElementById('live-sched-trend'),
-          stl=document.getElementById('live-sched-tlbl'),sTop=document.getElementById('live-sched-top');
-    if(sl&&sl.textContent!==v.lbl)sl.textContent=v.lbl;
-    if(st&&st.textContent!==v.trend)st.textContent=v.trend;
-    if(stl&&stl.textContent!==v.tlbl)stl.textContent=v.tlbl;
-    if(sTop&&sCurEl._tone!==v.tone){
-      sCurEl._tone=v.tone;
-      sTop.style.background=v.tone||'';
-      sCurEl.style.color=v.tone?'var(--tone-ink)':'var(--text)';
-      if(sl)sl.style.color=v.tone?'var(--tone-ink-muted)':'var(--cell-top-muted)';
-    }
-  }
+  _schedPatch();   // v440 / v447
   // ── v409 — the VAM pill, patched live.
   const vCurEl=document.getElementById('live-vam-cur');
   if(vCurEl){
