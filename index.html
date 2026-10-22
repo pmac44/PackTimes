@@ -1792,7 +1792,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v447';
+window.APP_VERSION='v448';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3611,14 +3611,13 @@ function etaAt(distKm,r){
 // NOT r.actualStartTime: it is stamped once, on the first ride, and never refreshed until the
 // date changes, so on a re-ridden training route it is last week's start.
 // Read from the recording itself, so it survives a reload or crash recovery. No recording, no
-// ride start to measure from: the cell dashes. (The one known miss: a race start >3 h late.)
+// ride start to measure from: the cell dashes.
 // ── v447 — FROM NOW IS THE DEFAULT; SET START ONLY WHEN THE RIDER SAYS SO. Peter, after a
 // training ride that opened "1h18 behind" because he rolled out 78 min after the route's stored
 // start: "that's my training ride… as soon as you press start, it should be going from there."
-// The 3 h window no longer decides anything. It only decides whether the start sheet ASKS
-// (_rideModeShow's schedule row) — tapping "Planned start" sets _rec.schedSet. Lives on the
+// The v442 3 h window is gone (v448 also stopped using it to decide whether to ask): the start
+// sheet always offers "Planned …" (_rideModeSchedRow), which sets _rec.schedSet. Lives on the
 // recording, so it survives a reload or crash recovery.
-const SCHED_SET_START_MS=3*3600000;
 const SCHED_JOIN_OFF_KM=0.3;
 let _schedJoin={recId:null,rid:null,i:0,km:null,t:null};
 function _schedPlanned(r){
@@ -9097,18 +9096,21 @@ function _rideModeShow(r,autoMs){
   if(autoMs>0)_rideModeTimer=setTimeout(_rideModeClose,autoMs);
 }
 // v447 — THE SCHEDULE QUESTION. The Schedule cell runs from when you press start; a race or a
-// set ride wants the plan's own start instead. Asked at record start only when this ride began
-// within SCHED_SET_START_MS of the plan's date + time (otherwise it plainly isn't that ride);
-// always offered when the rider opens the sheet from the distance bar. Ignored = from now.
+// set ride wants the plan's own start instead. Ignored = from now.
+// v448 — offered on EVERY record start that has a planned start, no 3 h window. Peter: the
+// window "could be an issue"; just default to now and always offer the other. The date shows
+// when the planned start isn't today, so "Planned 05:00" can't be mistaken for this morning.
 function _rideModeSchedRow(r,autoMs){
   const p=_schedPlanned(r);
   if(p==null||!_rec)return'';
-  if(autoMs>0&&Math.abs((_rec.startTS||Date.now())-p)>SCHED_SET_START_MS)return'';
   const set=!!_rec.schedSet;
-  return`<div style="margin-top:var(--sp-4);font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-2);">Schedule runs from</div>
+  const d=new Date(p), today=new Date();
+  // Non-breaking spaces: on a phone the button wraps as "Planned" / "2 Aug 05:00", never mid-date.
+  const when=((d.toDateString()===today.toDateString()?'':d.toLocaleDateString('en-AU',{day:'numeric',month:'short'})+' ')+r.startTime).replace(/ /g,' ');
+  return`<div style="margin-top:var(--sp-4);font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-2);">Schedule starts now — or from the planned start?</div>
     <div style="display:flex;gap:var(--sp-2);">
-      <button class="btn ${set?'':'btn-p'}" id="ridemode-sched-now" style="flex:1;height:48px;justify-content:center;">Now</button>
-      <button class="btn ${set?'btn-p':''}" id="ridemode-sched-set" style="flex:1;height:48px;justify-content:center;">Planned start ${r.startTime}</button>
+      <button class="btn ${set?'':'btn-p'}" id="ridemode-sched-now" style="flex:1;height:52px;justify-content:center;">Now</button>
+      <button class="btn ${set?'btn-p':''}" id="ridemode-sched-set" style="flex:1;height:52px;justify-content:center;">Planned ${when}</button>
     </div>`;
 }
 function _rideModeOnClick(e){
