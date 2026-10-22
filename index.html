@@ -1793,7 +1793,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v450';
+window.APP_VERSION='v451';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3643,12 +3643,31 @@ function _schedJoinPoint(r){
 }
 // The schedule's start instant (ms): the plan's own start, or the whenever-ghost's start shifted
 // so the plan has you at the join point exactly when you were there. {base, set} or null.
-function _schedBase(r){
-  const p=_schedPlanned(r), rs=_rec?_rec.startTS:null;
-  if(p!=null&&_rec&&_rec.schedSet)return{base:p,set:true};
+// v451 — THE MISSION START is an ANCHOR: a moment and a km where the plan has you exactly on
+// time. Three kinds, in priority order:
+//   · 'restart' — the rider held the Mission cell and chose "Restart mission from now"
+//                 (_rec.schedAnchor {t, km}); the anchor it replaced is kept in _rec.schedPrev
+//                 so "Put back earlier start" can undo it, even hours later;
+//   · 'planned' — "Planned start" on the start sheet: the plan's own date + time, at km 0;
+//   · 'start'   — the default: where this recording first came onto the route.
+// All three live on the recording, so they survive a reload or crash recovery.
+function _schedAnchor(r){
+  if(!_rec)return null;
+  if(_rec.schedAnchor&&_rec.schedAnchor.t!=null)return{t:_rec.schedAnchor.t,km:_rec.schedAnchor.km||0,kind:'restart'};
+  const p=_schedPlanned(r);
+  if(p!=null&&_rec.schedSet)return{t:p,km:0,kind:'planned'};
   const j=_schedJoinPoint(r);if(!j)return null;
-  const w=_schedAt(r,j.km,j.t);if(!w)return null;
-  return{base:j.t-(w.arr-j.t),set:false};
+  return{t:j.t,km:j.km,kind:'start'};
+}
+// The plan's start instant that puts the rider exactly on time at anchor a.
+function _schedBaseAt(r,a){
+  const w=_schedAt(r,a.km,a.t);
+  return w?a.t-(w.arr-a.t):null;
+}
+function _schedBase(r){
+  const a=_schedAnchor(r);if(!a)return null;
+  const b=_schedBaseAt(r,a);if(b==null)return null;
+  return{base:b,set:a.kind==='planned',anchor:a};
 }
 // {arr, dep} in ms — when the plan, started at `base`, has you at distKm. They differ only beside
 // a sleep stop (within SLEEP_NEAR_KM): lying in the motel through the planned night is on
@@ -9120,7 +9139,7 @@ function _rideModeOnClick(e){
     // Picks the clock and keeps the sheet open — follow / just ride still closes it. The rider is
     // engaging, so the auto-close timer stops.
     if(_rideModeTimer){clearTimeout(_rideModeTimer);_rideModeTimer=null;}
-    if(_rec){_rec.schedSet=!!sSet;DB.putRecording(_rec).catch(()=>{});}
+    if(_rec){_rec.schedSet=!!sSet;_rec.schedAnchor=null;_rec.schedPrev=null;DB.putRecording(_rec).catch(()=>{});}   // v451 — an explicit pick replaces any restart
     const a=document.getElementById('ridemode-sched-now'),b=document.getElementById('ridemode-sched-set');
     if(a)a.classList.toggle('btn-p',!sSet);
     if(b)b.classList.toggle('btn-p',!!sSet);
@@ -17938,24 +17957,46 @@ function _fmtSchedMin(min){
   if(a<600)return Math.floor(a/60)+'h'+String(a%60).padStart(2,'0');
   return Math.round(a/60)+'h';
 }
+// v451 — "now" on the mission clock. THE SIM'S CLOCK is ride time from the plan's own start
+// (v259 lesson: any ride-time figure asks the sim). It never stops, so in the sim a planned stop
+// shows up as time gained.
+function _schedNow(r){
+  if(!(UI.simRunning||UI.simPaused))return Date.now();
+  const p=_schedPlanned(r);
+  return(p!=null?p:(_rec?_rec.startTS:Date.now()))+_simElapsedMs;
+}
+// v451 — the gap itself, shared by the cell and the Mission clock pop-up: {dMs (+ ahead,
+// − behind), base, now, anchor}; {why} when there is no clock yet; null when it can't apply.
+// A real ride asks _schedBase (v442: a future-dated plan no longer blocks it — a training ride
+// on next month's race route still has a clock). The sim's base is the plan's own start unless
+// the rider restarted the mission clock (its t is sim-clock time, so it can be tested there).
+function _schedGap(r){
+  if(!r||!r.points||r.points.length<2||_freeRiding()||UI.gpsDistKm==null)return null;
+  const sim=!!(UI.simRunning||UI.simPaused);
+  if(!sim&&!UI.gpsActive)return null;
+  const now=_schedNow(r);
+  let base,anchor;
+  if(sim){
+    const ra=_rec&&_rec.schedAnchor;
+    anchor=(ra&&ra.t!=null)?{t:ra.t,km:ra.km||0,kind:'restart'}:{t:now-_simElapsedMs,km:0,kind:'planned'};
+    base=anchor.kind==='restart'?_schedBaseAt(r,anchor):anchor.t;
+    if(base==null)return null;
+  }
+  else{
+    const sb=_schedBase(r);
+    if(!sb)return{why:_rec?'mission':(planShowsPlanned(r)?'not started':'record to start')};
+    base=sb.base;anchor=sb.anchor;
+  }
+  const w=_schedAt(r,UI.gpsDistKm,base);if(!w)return null;
+  return{dMs:now<w.arr?w.arr-now:now>w.dep?w.dep-now:0,base,now,anchor};
+}
 function _schedVals(){
   const r=cur();
   const out={top:'—',lbl:'mission',tone:null,trend:'—',tlbl:'last hour'};   // v450 — the cell is called Mission (Peter); code names stay sched*
-  if(!r||!r.points||r.points.length<2||_freeRiding()||UI.gpsDistKm==null)return out;
-  const sim=!!(UI.simRunning||UI.simPaused);
-  if(!sim&&!UI.gpsActive)return out;
-  // THE SIM'S CLOCK is ride time from the plan's own start (v259 lesson: any ride-time figure
-  // asks the sim) — the sim seeds it from the plan at its start km, so the plan's own start is
-  // the base. It never stops, so in the sim a planned stop shows up as time gained.
-  // v442 — a real ride asks _schedBase: set start, or the whenever-ghost (needs a recording).
-  // A future-dated plan no longer blocks it: a training ride on next month's race route is a
-  // whenever ride.
-  let base;
-  if(sim){const p=_schedPlanned(r);base=p!=null?p:(_rec?_rec.startTS:Date.now());}
-  else{const sb=_schedBase(r);if(!sb){if(!_rec)out.lbl=planShowsPlanned(r)?'not started':'record to start';return out;}base=sb.base;}
-  const w=_schedAt(r,UI.gpsDistKm,base);if(!w)return out;
-  const now=sim?base+_simElapsedMs:Date.now();
-  const dMs=now<w.arr?w.arr-now:now>w.dep?w.dep-now:0;
+  const G=_schedGap(r);
+  if(!G)return out;
+  if(G.dMs==null){out.lbl=G.why;return out;}
+  const dMs=G.dMs, now=G.now;
   const dMin=dMs/60000, a=Math.abs(dMin);
   // v447 — under SCHED_SEC_MIN, minutes AND seconds with no sign ("4:32", 4 characters — the
   // v435 limit); the label says ahead/behind. Peter: you're chasing time back, so let it move.
@@ -17971,8 +18012,10 @@ function _schedVals(){
   // Trend history: per route AND per recording (v446 — stop, save and start again on the same
   // route used to carry the last ride's samples over, so the new ride's "last hour" compared
   // against a different base), cleared if the clock runs backwards (a sim restart or scrub).
+  // v451 — and per mission start: a restart or put-back moves base, and the old samples were
+  // measured against the old one.
   const H=_schedHist, rid=_rec?_rec.id:null;
-  if(H.rid!==r.id||H.recId!==rid||(H.buf.length&&now<H.buf[H.buf.length-1].t)){H.rid=r.id;H.recId=rid;H.buf=[];}
+  if(H.rid!==r.id||H.recId!==rid||H.base!==G.base||(H.buf.length&&now<H.buf[H.buf.length-1].t)){H.rid=r.id;H.recId=rid;H.base=G.base;H.buf=[];}
   if(!H.buf.length||now-H.buf[H.buf.length-1].t>=SCHED_SAMPLE_MS)H.buf.push({t:now,d:dMin});
   while(H.buf.length>1&&now-H.buf[1].t>=SCHED_TREND_MS)H.buf.shift();
   const old=H.buf[0], span=now-old.t;
@@ -17982,6 +18025,94 @@ function _schedVals(){
     out.tlbl=span>=SCHED_TREND_MS-SCHED_SAMPLE_MS?'last hour':'last '+Math.round(span/60000)+' min';
   }
   return out;
+}
+
+// ── v451 — THE MISSION CLOCK POP-UP: hold the Mission cell. ─────────────────────────────────
+// Peter: a wave start, or pressing record in the start pen, leaves the clock running early; the
+// fix must be manual (GPS can't tell a pen shuffle from the start) and must never cost a rider
+// their clock by accident on day 2 of a tour. So:
+//   · two big buttons, each saying exactly what it means — the time (and km) of the mission start
+//     you'd keep, and where the restart would put 0:00;
+//   · ignoring it (10 s, or a tap outside) KEEPS the clock: the risk is a press nobody saw;
+//   · a restart keeps the start it replaced (_rec.schedPrev), and "Put back earlier start" swaps
+//     them back, any time later — so even a confirmed mistake is recoverable.
+const MISSION_POP_MS=10000;
+let _missionPopTimer=null;
+function _missionKm(km){return km>=10?String(Math.round(km)):(Math.round(km*10)/10).toFixed(1);}
+// Route-local, like every other time in the app (fmtT / fmtDT, v374). Date only when not today.
+function _missionWhen(t){
+  const d=new Date(t), r=cur();
+  return toRouteClock(d,r).toDateString()===toRouteClock(new Date(),r).toDateString()?fmtT(d):fmtDT(d);
+}
+function _missionAnchorText(a){
+  const at=a.km>=0.5?' at km '+_missionKm(a.km):'';
+  return a.kind==='restart'?'Restarted '+_missionWhen(a.t)+at
+    :a.kind==='planned'?'Planned start, '+_missionWhen(a.t)
+    :'Started '+_missionWhen(a.t)+at;
+}
+// "12 min behind", "4:32 ahead", "1h05 behind", "on time"
+function _missionGapText(dMs){
+  const secs=Math.round(Math.abs(dMs)/1000), dir=dMs>0?'ahead':'behind';
+  if(secs===0)return'on time';
+  if(secs<600)return Math.floor(secs/60)+':'+String(secs%60).padStart(2,'0')+' '+dir;
+  const m=Math.round(secs/60);
+  return(m<60?m+' min':Math.floor(m/60)+'h'+String(m%60).padStart(2,'0'))+' '+dir;
+}
+function _missionPopClose(){
+  if(_missionPopTimer){clearTimeout(_missionPopTimer);_missionPopTimer=null;}
+  const ov=document.getElementById('mission-pop-ov');if(ov)ov.remove();
+}
+function _missionPopShow(){
+  const r=cur(), G=_schedGap(r);
+  if(!_rec||!G||G.dMs==null){_recToast('The mission clock starts when you record a ride on a route');return;}
+  _missionPopClose();
+  const prev=_rec.schedPrev;
+  const gap=_missionGapText(G.dMs);
+  const big='width:100%;min-height:76px;padding:10px 14px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;text-align:left;margin-bottom:var(--sp-2);';
+  const ov=document.createElement('div');
+  ov.id='mission-pop-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(5,8,5,.6);display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);max-width:420px;width:100%;">
+    <div style="font-size:var(--fs-xl);font-weight:700;margin-bottom:var(--sp-1);">Mission clock</div>
+    <div style="font-size:var(--fs-base);color:var(--text2);line-height:1.4;margin-bottom:var(--sp-4);">${gap==='on time'?'You\'re right on your mission.':'You\'re '+gap+' your mission.'}</div>
+    <button class="btn btn-p" id="mission-keep" style="${big}">
+      <span style="font-size:20px;font-weight:700;">Keep mission start</span>
+      <span style="font-size:15px;font-weight:500;opacity:.85;">${_missionAnchorText(G.anchor)}</span>
+    </button>
+    <button class="btn" id="mission-restart" style="${big}">
+      <span style="font-size:20px;font-weight:700;">Restart mission from now</span>
+      <span style="font-size:15px;font-weight:500;color:var(--text2);">Sets the clock to 0:00 here, at km ${_missionKm(UI.gpsDistKm||0)}</span>
+    </button>
+    ${prev?`<button class="btn" id="mission-back" style="${big}">
+      <span style="font-size:20px;font-weight:700;">Put back earlier start</span>
+      <span style="font-size:15px;font-weight:500;color:var(--text2);">${_missionAnchorText(prev)}${prev.gapMs!=null?' · was '+_missionGapText(prev.gapMs):''}</span>
+    </button>`:''}
+    <div style="font-size:var(--fs-xs);color:var(--text3);line-height:1.45;margin-top:var(--sp-2);">The Mission cell shows how far you are ahead of or behind your mission times. It starts when you press record, or at the planned start if you chose that. Restart it here if you pressed record before the start line.</div>
+  </div>`;
+  // Direct listener: this hangs off document.body, where the content-wrap delegator can't hear it.
+  ov.addEventListener('click',e=>{
+    if(e.target===ov||e.target.closest('#mission-keep')){_missionPopClose();return;}
+    const R=cur(), now=_schedGap(R);
+    if(!now||now.dMs==null){_missionPopClose();return;}
+    const was={t:now.anchor.t,km:now.anchor.km,kind:now.anchor.kind,gapMs:now.dMs};
+    if(e.target.closest('#mission-restart')){
+      _rec.schedPrev=was;
+      _rec.schedAnchor={t:now.now,km:UI.gpsDistKm||0};
+      _recToast('Mission clock restarted — 0:00 at km '+_missionKm(UI.gpsDistKm||0));
+    } else if(e.target.closest('#mission-back')&&_rec.schedPrev){
+      const p=_rec.schedPrev;
+      // A swap, not a delete: "put back" can itself be put back.
+      if(p.kind==='restart')_rec.schedAnchor={t:p.t,km:p.km};
+      else{_rec.schedAnchor=null;_rec.schedSet=p.kind==='planned';}
+      _rec.schedPrev=was;
+      _recToast('Earlier mission start put back');
+    } else return;
+    DB.putRecording(_rec).catch(()=>{});
+    _missionPopClose();
+    _schedPatch();
+  });
+  document.body.appendChild(ov);
+  _missionPopTimer=setTimeout(_missionPopClose,MISSION_POP_MS);
 }
 
 // Compute grade segments (~50m) from route points — cached on route object.
@@ -20797,7 +20928,8 @@ function _helloDetailHTML(){
     <div>
       <div style="font-size:13px;font-family:var(--font);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:6px;">Riding</div>
       <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Live GPS map with your next water, food and sleep stops and arrival estimates.</p>
-      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Tap the floating pills to cycle between speed, power, heart rate, or hide them. Long-press an unpaired power or HR pill to pair a Bluetooth sensor.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;">Tap a ride cell to choose what it shows. Hold an unpaired power or heart-rate cell to pair a Bluetooth sensor.</p>
+      <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:6px;"><strong>Mission</strong> shows how far you are ahead of or behind your mission times. It starts when you press record, or at the planned start if you choose that when you start. Hold the cell to restart it, for example if you pressed record before reaching the start line. A restart can always be undone from the same place.</p>
       <p style="font-size:15px;color:var(--text2);line-height:1.6;"><strong>wP</strong> (weighted Power) accounts for the variability of your effort — coasting zeros don't drag the number down the way a simple average would. It uses a 30-second rolling average raised to the 4th power, so hard efforts count more than easy ones.</p>
     </div>
   </div>`;
@@ -26049,17 +26181,25 @@ function loadDemo(){
 }
 
 // ─── Long-press on floating pill to pair BLE sensor ───
-const _fpillLP={timer:null,fired:false};
+// v451 — also the Mission cell (→ the mission clock pop-up), and a finger that moves more than
+// LP_SLOP_PX (panning the map, a bump in the road) cancels the hold.
+const _fpillLP={timer:null,fired:false,x:0,y:0};
+const LP_SLOP_PX=12;
 document.addEventListener('pointerdown',e=>{
-  const fp=e.target.closest('.live-fpill[data-pair]');
+  const fp=e.target.closest('.live-fpill[data-pair], #live-fpill-sched');
   if(!fp)return;
-  _fpillLP.fired=false;
+  _fpillLP.fired=false;_fpillLP.x=e.clientX;_fpillLP.y=e.clientY;
   _fpillLP.timer=setTimeout(()=>{
+    _fpillLP.timer=null;
     _fpillLP.fired=true;
+    if(fp.id==='live-fpill-sched'){_missionPopShow();return;}
     const t=fp.dataset.pair;
     if(t==='power')connectPowerMeter();
     else if(t==='hr')connectHRMonitor();
   },600);
+});
+document.addEventListener('pointermove',e=>{
+  if(_fpillLP.timer&&Math.hypot(e.clientX-_fpillLP.x,e.clientY-_fpillLP.y)>LP_SLOP_PX){clearTimeout(_fpillLP.timer);_fpillLP.timer=null;}
 });
 document.addEventListener('pointerup',()=>{if(_fpillLP.timer){clearTimeout(_fpillLP.timer);_fpillLP.timer=null;}});
 document.addEventListener('pointercancel',()=>{if(_fpillLP.timer){clearTimeout(_fpillLP.timer);_fpillLP.timer=null;}});
