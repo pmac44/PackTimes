@@ -1124,14 +1124,21 @@ select option{background:var(--bg3);}
 .startbar{background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px;margin-top:9px;}
 .startbar-lbl{font-size:var(--fs-sm);color:var(--text3);font-family:var(--font);}
 .startbar-val{font-family:var(--font);font-size:var(--fs-sm);color:var(--accent);font-weight:500;}
-.rli{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:6px;display:flex;flex-direction:column;gap:4px;cursor:pointer;transition:border-color .15s;}
-.rli:hover{border-color:var(--border2);}.rli.active{border-color:var(--accent);}
+.rli{background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;display:flex;flex-direction:column;cursor:pointer;transition:border-color .15s;overflow:hidden;}
+.rli:hover{border-color:var(--border2);}.rli.active{border-color:var(--accent);border-width:2px;}
 .rli.active .ri-name{color:var(--accent);}
-/* v381: route action row — equal-width buttons so the row always fits a phone width */
-.rli-acts{display:flex;gap:4px;align-items:stretch;}
-.rli-acts>.btn{flex:1 1 0;min-width:0;padding:6px 4px;white-space:nowrap;}
-.ri-inf{min-width:0;}.ri-name{font-weight:500;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.ri-meta{font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;}
+/* v452 — THE TILE IS TWO ZONES. Peter: "I'm hitting the title, but I'm ending up hitting the button"
+   and the icon-only buttons were "a mystery… even I have to think about it". Top: a big tap target
+   (the whole name block picks the route; the name wraps, never ellipsised). Bottom: a separate,
+   tinted panel of LABELLED buttons, 3 across, where a tap between buttons does nothing. */
+.ri-inf{min-width:0;padding:14px 14px 12px;min-height:64px;}
+.ri-name{font-weight:600;font-size:20px;line-height:1.25;overflow-wrap:anywhere;}
+.ri-meta{font-size:15px;color:var(--text3);font-family:var(--font);margin-top:4px;}
+.rli>*:not(.ri-inf):not(.rli-acts){margin:0 14px 10px;}
+.rli-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:10px;border-top:1px solid var(--border);background:color-mix(in srgb,var(--text) 6%,var(--card2));cursor:default;}
+.rli-acts .rename-route svg{stroke:currentColor;}   /* ICON_EDIT is drawn white for dark buttons; here it must follow the theme */
+.rli-acts>.btn{min-width:0;min-height:56px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;white-space:normal;line-height:1.15;font-size:13px;text-align:center;}
+.rli-acts>.btn>.ra-lbl{font-family:var(--sans);font-weight:600;}
 /* alert overlay CSS removed — stop alerts now use next-strip pulse + audio chime */
 </style>
 </head>
@@ -1793,7 +1800,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v451';
+window.APP_VERSION='v452';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -21033,22 +21040,14 @@ function tRoutes(r){
       const ICON_TURNS='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6 3L6 14"/><path d="M18 3L18 9"/><polyline points="3,6 6,3 9,6"/><polyline points="15,6 18,3 21,6"/><path d="M18 9 Q18 14 12 14"/><path d="M6 14 Q6 19 12 19"/><polyline points="9,16 12,19 15,16"/></svg>';
       const turnLabel=turnCount===0
         ? ICON_TURNS
-        : (ICON_TURNS+'<span style="font-size:12px;font-family:var(--font);margin-left:3px;">'+turnCount+'</span>');
+        : ('<span style="display:inline-flex;align-items:center;">'+ICON_TURNS+'<span style="font-size:12px;font-family:var(--font);margin-left:3px;">'+turnCount+'</span></span>');
       return'<div class="rli '+(i===CUR?'active':'')+'" data-ridx="'+i+'">'
         +'<div class="ri-inf">'
-        +'<div style="display:flex;align-items:center;gap:8px;">'
-        +'<div class="ri-name" id="ri-name-'+i+'" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(rt.label||rt.name)+'</div>'
+        +'<div style="display:flex;align-items:flex-start;gap:8px;">'
+        +'<div class="ri-name" id="ri-name-'+i+'" style="flex:1;min-width:0;">'+(rt.label||rt.name)+'</div>'
         +(rt.sourceId?'<span style="font-size:11px;color:var(--text3);font-family:var(--font);opacity:0.7;flex-shrink:0;">'+formatSourceId(rt.sourceId)+'</span>':'')
         +'</div>'
         +'<div class="ri-meta">'+(rt.points.length?''+(rt.totalDist?rt.totalDist.toFixed(0)+'km':'')+(rt.totalDist?' · ':''):'Plan · ')+rt.stops.length+' stop'+(rt.stops.length!==1?'s':'')+(rt.startDate?' · '+(rt.startDate):'')+'</div>'
-        +'</div>'
-        +'<div class="rli-acts">'
-        +'<button class="btn btn-sm rename-route" data-ridx="'+i+'" title="Rename">'+ICON_EDIT+'</button>'
-        +'<button class="btn btn-sm route-turns-btn" data-ridx="'+i+'" title="Turn navigation" style="display:inline-flex;align-items:center;">'+turnLabel+'</button>'
-        +'<button class="btn btn-sm dl-tiles-btn" data-ridx="'+i+'" title="Download offline map tiles"'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?' disabled':'')+'>'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?'<div class="spin" style="width:14px;height:14px;"></div>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>')+'</button>'
-        +'<button class="btn btn-sm share-route" data-ridx="'+i+'" title="Share this ride (route + plan)" style="display:inline-flex;align-items:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>'
-        +'<button class="btn btn-sm reload-route" data-ridx="'+i+'" title="Update route (reimport GPX)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg></button>'
-        +'<button class="btn btn-sm btn-r del-route" data-ridx="'+i+'" title="Delete route">✕</button>'
         +'</div>'
         // PackRide doorway (v257 slice 3): on the SELECTED route only — logo + words,
         // not logo alone (the mark hasn't earned solo recognition yet).
@@ -21057,6 +21056,14 @@ function tRoutes(r){
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='done'?'<div style="font-size:12px;color:var(--accent);">✓ '+(UI.tileDownloadMsg||'Cached')+'</div>':'')
         +(UI.tileDownloadIdx===i&&UI.tileDownloadStatus==='error'?'<div style="font-size:12px;color:#ef4444;">✗ '+(UI.tileDownloadMsg||'Failed')+'</div>':'')
         +(rt.offlineTiles&&!(UI.tileDownloadIdx===i&&(UI.tileDownloadStatus==='loading'||UI.tileDownloadStatus==='done'))?(()=>{const ot=rt.offlineTiles;const d=new Date(ot.at);const ago=Math.floor((Date.now()-d.getTime())/86400000);const when=ago<1?'today':ago===1?'yesterday':ago+'d ago';return'<div style="font-size:11px;color:var(--text3);font-family:var(--font);display:flex;align-items:center;gap:5px;">'+'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="'+(ago>14?'#f97316':'var(--accent)')+'" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'+'<span style="color:'+(ago>14?'#f97316':'var(--text3)')+';">'+ot.mode+' · '+ot.count+' tiles · '+when+(ago>14?' — may be stale':'')+'</span>'+'</div>';})():'')
+        +'<div class="rli-acts">'
+        +'<button class="btn btn-sm rename-route" data-ridx="'+i+'" title="Rename">'+ICON_EDIT+'<span class="ra-lbl">Rename</span></button>'
+        +'<button class="btn btn-sm route-turns-btn" data-ridx="'+i+'" title="Turn navigation">'+turnLabel+'<span class="ra-lbl">Turns</span></button>'
+        +'<button class="btn btn-sm dl-tiles-btn" data-ridx="'+i+'" title="Download offline map tiles"'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?' disabled':'')+'>'+(UI.tileDownloadStatus==='loading'&&UI.tileDownloadIdx===i?'<div class="spin" style="width:14px;height:14px;"></div>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>')+'<span class="ra-lbl">Offline map</span></button>'
+        +'<button class="btn btn-sm share-route" data-ridx="'+i+'" title="Share this ride (route + plan)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg><span class="ra-lbl">Share ride</span></button>'
+        +'<button class="btn btn-sm reload-route" data-ridx="'+i+'" title="Update route (reimport GPX)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg><span class="ra-lbl">Replace file</span></button>'
+        +'<button class="btn btn-sm btn-r del-route" data-ridx="'+i+'" title="Delete route"><span style="font-size:16px;line-height:1;">✕</span><span class="ra-lbl">Delete</span></button>'
+        +'</div>'
         +'</div>';
     }).join(''):`<p style="font-size:17px;color:var(--text3);">No routes yet. Tap ↑ Upload FIT / TCX / GPX / KML above to get started.</p>`}
     </div>
@@ -24532,7 +24539,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   if(e.target.id==='maxhr-clear'){UI.maxHr=null;saveAll();if(UI.tab==='settings')render();return;}
   // Route list select
   const rli=e.target.closest('.rli');
-  if(rli&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('.reload-route')&&!e.target.closest('.share-route')&&!e.target.closest('.packride-route')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
+  if(rli&&!e.target.closest('.rli-acts')&&!e.target.closest('.del-route')&&!e.target.closest('.rename-route')&&!e.target.closest('.route-turns-btn')&&!e.target.closest('.dl-tiles-btn')&&!e.target.closest('.reload-route')&&!e.target.closest('.share-route')&&!e.target.closest('.packride-route')&&!e.target.closest('#btn-review-turns')&&e.target.tagName!=='INPUT'){
     const newIdx=+rli.dataset.ridx;
     if(newIdx!==CUR&&IS_DESKTOP()){
       // Reset desktop map so it zooms to fit the newly selected route
