@@ -1124,8 +1124,9 @@ select option{background:var(--bg3);}
 .startbar{background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px;margin-top:9px;}
 .startbar-lbl{font-size:var(--fs-sm);color:var(--text3);font-family:var(--font);}
 .startbar-val{font-family:var(--font);font-size:var(--fs-sm);color:var(--accent);font-weight:500;}
-.rli{background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;display:flex;flex-direction:column;cursor:pointer;transition:border-color .15s;overflow:hidden;}
-.rli:hover{border-color:var(--border2);}.rli.active{border-color:var(--accent);border-width:2px;}
+.rli{background:var(--card2);border:2px solid color-mix(in srgb,var(--text) 55%,transparent);border-radius:8px;margin-bottom:14px;display:flex;flex-direction:column;cursor:pointer;transition:border-color .15s;overflow:hidden;}
+/* v453 — a clear edge on every tile (near-white on Graphite, dark grey on Paper). Peter, on Graphite: the tiles ran together. */
+.rli:hover{border-color:var(--text);}.rli.active{border-color:var(--accent);border-width:3px;}
 .rli.active .ri-name{color:var(--accent);}
 /* v452 — THE TILE IS TWO ZONES. Peter: "I'm hitting the title, but I'm ending up hitting the button"
    and the icon-only buttons were "a mystery… even I have to think about it". Top: a big tap target
@@ -1800,7 +1801,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v452';
+window.APP_VERSION='v453';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
