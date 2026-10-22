@@ -1793,7 +1793,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v449';
+window.APP_VERSION='v450';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -9108,7 +9108,7 @@ function _rideModeSchedRow(r,autoMs){
   const d=new Date(p), today=new Date();
   // Non-breaking spaces: on a phone the button wraps as "Planned" / "2 Aug 05:00", never mid-date.
   const when=((d.toDateString()===today.toDateString()?'':d.toLocaleDateString('en-AU',{day:'numeric',month:'short'})+' ')+r.startTime).replace(/ /g,' ');
-  return`<div style="margin-top:var(--sp-4);font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-2);">Schedule starts now — or from the planned start?</div>
+  return`<div style="margin-top:var(--sp-4);font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-2);">Mission clock starts now — or from the planned start?</div>
     <div style="display:flex;gap:var(--sp-2);">
       <button class="btn ${set?'':'btn-p'}" id="ridemode-sched-now" style="flex:1;height:52px;justify-content:center;">Now</button>
       <button class="btn ${set?'btn-p':''}" id="ridemode-sched-set" style="flex:1;height:52px;justify-content:center;">Planned ${when}</button>
@@ -17940,7 +17940,7 @@ function _fmtSchedMin(min){
 }
 function _schedVals(){
   const r=cur();
-  const out={top:'—',lbl:'schedule',tone:null,trend:'—',tlbl:'last hour'};
+  const out={top:'—',lbl:'mission',tone:null,trend:'—',tlbl:'last hour'};   // v450 — the cell is called Mission (Peter); code names stay sched*
   if(!r||!r.points||r.points.length<2||_freeRiding()||UI.gpsDistKm==null)return out;
   const sim=!!(UI.simRunning||UI.simPaused);
   if(!sim&&!UI.gpsActive)return out;
@@ -18719,7 +18719,7 @@ const PILL_INFO={
   pace:['Pace','min/km','spd'],
   mspeed:['Moving speed','Leaves out stops','spd'],
   stop:['Elapsed time','Time · % stopped','spd'],
-  sched:['Schedule','Ahead · behind plan','spd'],
+  sched:['Mission','Ahead · behind your mission','spd'],   // v450 — was Schedule
   grade:['Grade','% · to the top','clb'],
   vam:['VAM','Climbing m/h','clb'],
   power:['Power','3 sec · weighted','pwr'],
