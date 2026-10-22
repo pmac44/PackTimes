@@ -555,7 +555,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    crystallises. `turn-active` is toggled on #live-map-section by renderTurnCue. (Peter) */
 .live-map-section .live-fpill{transition:opacity .22s ease;}
 #live-map-section.turn-active .live-fpill{opacity:0!important;pointer-events:none!important;}   /* fade out, not display:none, so it can transition */
-#fpill-grid.no-row3 .live-fpill[data-slot="6"],#fpill-grid.no-row3 .live-fpill[data-slot="7"],#fpill-grid.no-row3 .live-fpill[data-slot="8"]{display:none!important;}  /* v443 — row 3 only when it clears the rider's arrow; see _fpillRow3Sync */
+#fpill-grid.no-row3 .live-fpill[data-slot="6"],#fpill-grid.no-row3 .live-fpill[data-slot="7"],#fpill-grid.no-row3 .live-fpill[data-slot="8"]{display:none!important;}  /* v449 — whole row 3 off only when the map is too short for it; see _fpillRow3Sync */
+#fpill-grid.no-row3mid .live-fpill[data-slot="7"]{visibility:hidden!important;pointer-events:none!important;}  /* v449 — middle cell off when it would cover the GPS marker. visibility, not display: the grid places by order, so display:none would slide slot 8 into the middle */
 #live-map-section.turn-active #tc-box{top:calc(var(--fpill-top,58px) + 10px)!important;bottom:auto!important;height:110px!important;animation:tcIn .22s ease;}  /* top gap + height match the data-cell grid (FPILL_CELL_H=110) */
 @keyframes tcIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 /* v276c — THE ARROW USES THE BOX'S PADDING. Peter: "the arrow could be taller."
@@ -1792,7 +1793,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v448';
+window.APP_VERSION='v449';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -14442,9 +14443,9 @@ function _redrawMapInner(id){
       // Match GPS handler exactly so tile loads / redraws don't cause a jump.
       // forceHeading = route-aligned (or GPS-heading off-route) orientation; the
       // triangle is drawn fixed pointing up, so the map turns and "you" stays put.
-      drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:false,forceHeading:_rideHeadingDeg(r.points),highlightId:_highlightStopId});
+      drawMap(cvs,r,{showGPS:true,followGPS:true,anchor:_liveAnchor,rotate:false,forceHeading:_rideHeadingDeg(r.points),highlightId:_highlightStopId});
     } else {
-      const liveAnchor=_packPeekOn()?_packPeekAnchor:((st.cx===null||st.cy===null)?0.5:0.65);
+      const liveAnchor=_packPeekOn()?_packPeekAnchor:((st.cx===null||st.cy===null)?0.5:_liveAnchor);
       drawMap(cvs,r,{showGPS:true,followGPS:false,anchor:liveAnchor,highlightId:_highlightStopId});
     }
   } else {
@@ -18663,10 +18664,21 @@ function _fpillsSync(){
   }
 }
 // v443 — show row 3 only while it clears the rider's arrow (see FPILL_ROW3_CLEAR). Measured,
-// not guessed: the grid's own top plus three rows against 65% of the map section's height
-// (the live map's follow anchor in redrawMap). A ResizeObserver on the map section re-runs it
-// whenever the map changes height — the next-stops strip growing or shrinking, the elevation
-// profile opening, rotation — so no caller has to remember to.
+// not guessed: the grid's own top plus three rows against the map section's height. A
+// ResizeObserver on the map section re-runs it whenever the map changes height — the next-stops
+// strip growing or shrinking, the elevation profile opening, rotation — so no caller has to.
+// v449 — SPLIT BY COLUMN (Peter's idea). On his Pixel 10 the whole row missed by ~3 px and he
+// lost all three cells, though only the MIDDLE one can ever sit over the GPS marker (drawn at
+// the map's horizontal centre). So:
+//   · outer cells (slots 6, 8): shown whenever the row ends FPILL_ROW3_FLOOR px above the
+//     map's bottom-corner buttons (share / record on the left, map controls and weather on the
+//     right — measured, they ride up and down with the map). They hide as a row, all three;
+//   · middle cell (slot 7): needs FPILL_ROW3_CLEAR px above the marker. The marker's height
+//     (_liveAnchor, normally 0.65 of the map) may drop as far as LIVE_ANCHOR_MAX to make room;
+//     past that the middle hides (visibility, so slot 8 keeps its square).
+const LIVE_ANCHOR_BASE=0.65, LIVE_ANCHOR_MAX=0.72, FPILL_ROW3_FLOOR=8;
+const FPILL_CORNER_IDS=['share-btn','rec-ctrl','live-map-ctrl','live-weather-bar'];
+let _liveAnchor=LIVE_ANCHOR_BASE;
 let _fpillRow3RO=null;
 function _fpillRow3Sync(){
   const sec=document.getElementById('live-map-section'), grid=document.getElementById('fpill-grid');
@@ -18674,8 +18686,18 @@ function _fpillRow3Sync(){
   const s=sec.getBoundingClientRect(), g=grid.getBoundingClientRect();
   if(!s.height)return;
   const rowsEnd=g.top+3*FPILL_CELL_H+2*8;   // 8 = the grid's gap
-  const arrowY=s.top+s.height*0.65;
-  grid.classList.toggle('no-row3',rowsEnd>arrowY-FPILL_ROW3_CLEAR);
+  let floor=s.bottom-80;   // no corner buttons drawn → keep clear of the zoom buttons
+  for(const id of FPILL_CORNER_IDS){const b=document.getElementById(id);if(!b)continue;const r=b.getBoundingClientRect();if(r.height)floor=Math.min(floor,r.top);}
+  const rowFits=rowsEnd<=floor-FPILL_ROW3_FLOOR;
+  const need=(rowsEnd+FPILL_ROW3_CLEAR-s.top)/s.height;   // the anchor that just clears the middle cell
+  const midFits=rowFits&&need<=LIVE_ANCHOR_MAX;
+  const anchor=midFits?Math.max(LIVE_ANCHOR_BASE,need):LIVE_ANCHOR_BASE;
+  grid.classList.toggle('no-row3',!rowFits);
+  grid.classList.toggle('no-row3mid',!midFits);
+  if(Math.abs(anchor-_liveAnchor)>0.001){
+    _liveAnchor=anchor;
+    if(document.getElementById('live-map'))redrawMap('live-map');
+  }
   if(!_fpillRow3RO&&window.ResizeObserver){
     _fpillRow3RO=new ResizeObserver(()=>_fpillRow3Sync());
   }
@@ -24283,7 +24305,7 @@ function updateLive(){
               // (fires on every GPS/sim tick), so the map was told two different
               // orientations many times a second: the jitter at every bend, on the
               // phone and the sim alike. Now the same single authority everywhere.
-              drawMap(mc2,r,{showGPS:true,followGPS:true,anchor:0.65,rotate:false,forceHeading:_rideHeadingDeg(r.points)});
+              drawMap(mc2,r,{showGPS:true,followGPS:true,anchor:_liveAnchor,rotate:false,forceHeading:_rideHeadingDeg(r.points)});
             }
           }
         });
