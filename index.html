@@ -1847,7 +1847,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v469';
+window.APP_VERSION='v470';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2917,23 +2917,43 @@ function ebikeModeFactor(mode){
   if(any)return{f:any.f,n:0,band:0.25,borrowed:true};
   return{f:1,n:0,band:0.3,borrowed:false};
 }
-// v469 — where the battery is assumed back to full: every overnight stop, plus any stop the rider
-// marked with the lightning button on the Stops tab (stop.chargeHere — Peter: "a charge point stop,
-// that we nominate… boosts the battery back up to 100%"). Full, not partial: a top-up by hours on the
-// charger needs a stop duration, which is a later step.
-function ebikeChargeKms(r){
-  return(r.stops||[]).filter(s=>isSleepStop(s)||s.chargeHere===true).map(s=>s.dist).sort((a,b)=>a-b);
+// v470 — CHARGING ONLY WHERE THE RIDER SAYS, TO THE LEVEL THEY SAY (Peter: "separate overnight stops
+// from recharging. If you are remote, charging may not be available… some people… do not fully charge
+// as it saves time"). stop.chargeTo = target % (100/90/…/50), set from the lightning button on the
+// Stops tab; arriving above the target changes nothing. v469's stop.chargeHere (and its automatic
+// overnight recharge) is read as chargeTo 100 for chargeHere only — sleep stops no longer charge.
+function ebikeStopChargeTo(s){
+  if(s&&+s.chargeTo>0)return Math.min(100,+s.chargeTo);
+  if(s&&s.chargeHere===true)return 100;
+  return 0;
 }
-// Walk the route once for one mode. The battery starts full and is assumed recharged to full at
-// each overnight stop, so the figure that matters is the hungriest LEG (start→sleep, sleep→sleep…).
+function ebikeCharges(r){
+  return(r.stops||[]).map(s=>({dist:s.dist,to:ebikeStopChargeTo(s)})).filter(c=>c.to>0).sort((a,b)=>a.dist-b.dist);
+}
+function ebikeChargeKms(r){return ebikeCharges(r).map(c=>c.dist);}
+// The lightning button on a stop row (e-bike setting on only; any stop, sleep stops included).
+// Off: an outline bolt. On: a filled bolt plus the level, e.g. "80%".
+function _chargeBtnHTML(s){
+  if(!_ebikeOn())return'';
+  const to=ebikeStopChargeTo(s), on=to>0;
+  const bc=on?'rgba(250,204,21,0.75)':'rgba(255,255,255,0.22)', cc=on?'#facc15':'rgba(255,255,255,0.85)';
+  return'<button class="btn btn-sm charge-at-stop" data-sid="'+s.id+'" title="E-bike charging at this stop — tap to choose" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;gap:2px;border:1px solid '+bc+';color:'+cc+';">'
+    +'<svg width="16" height="16" viewBox="0 0 24 24" fill="'+(on?'#facc15':'none')+'" stroke="'+(on?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>'
+    +(on?'<span style="font-family:var(--font);font-size:12px;font-weight:600;">'+to+'%</span>':'')+'</button>';
+}
+const EBIKE_CHARGE_LEVELS=[100,90,80,70,60,50];
+// Walk the route once for one mode. The battery starts full and is topped up at each charge point,
+// so the figure that matters is the LOWEST level reached anywhere on the route.
 // Climb uses elevGain's 10 m hysteresis, counted as it happens.
 function ebikeRouteEstimate(r,mode){
   if(!r||!r.points||r.points.length<2)return null;
   const p=ebikeProfile(), pr=_ebikePrior(mode), mf=ebikeModeFactor(mode);
   const mass=_ebikeMass(r.loadPreset||'moderate');
   const segs=(r.surfaceSegs||[]).slice().sort((a,b)=>a.fromDist-b.fromDist);
-  const sleeps=ebikeChargeKms(r);   // v469 — overnight stops AND stops marked "charge here"
+  const charges=ebikeCharges(r);   // v470 — stops marked with a charge level
   const usable=p.wh*(1-p.reservePct/100);
+  // legWh is the energy BELOW FULL (a charge to T% caps it at (100−T)% of the battery), so
+  // maxLegWh is the deepest the battery goes anywhere on the route.
   let si=0,sl=0,legWh=0,maxLegWh=0,totalWh=0,reserveKm=null,reserveLeg=-1,emptyKm=null,unknownKm=0;
   let peak=r.points[0].ele;
   // v467 — battery % left at every route point (same index as r.points), for the map/profile colour.
@@ -2943,7 +2963,12 @@ function ebikeRouteEstimate(r,mode){
   const cum=new Float64Array(r.points.length);
   for(let i=1;i<r.points.length;i++){
     const a=r.points[i-1], b=r.points[i];
-    while(sl<sleeps.length&&sleeps[sl]<=a.dist){maxLegWh=Math.max(maxLegWh,legWh);legWh=0;sl++;}
+    while(sl<charges.length&&charges[sl].dist<=a.dist){
+      maxLegWh=Math.max(maxLegWh,legWh);
+      legWh=Math.min(legWh,(100-charges[sl].to)/100*p.wh);
+      pct[i-1]=100-legWh/p.wh*100;   // the level leaving the charge point (the map marks the jump)
+      sl++;
+    }
     const dx=Math.max(0,b.dist-a.dist), mid=(a.dist+b.dist)/2;
     while(si<segs.length&&segs[si].toDist<mid)si++;
     const cat=si<segs.length&&segs[si].fromDist<=mid?segs[si].cat:null;
@@ -2960,11 +2985,11 @@ function ebikeRouteEstimate(r,mode){
     pct[i]=100-legWh/p.wh*100;
     cum[i]=totalWh;
     if(reserveKm==null&&legWh>usable){reserveKm=b.dist;reserveLeg=sl;}
-    // "Flat" only on the same leg as the reserve — after an overnight recharge it's a new battery.
+    // "Flat" only on the same leg as the reserve — after a charge it's a refilled battery.
     if(emptyKm==null&&reserveLeg===sl&&legWh>p.wh)emptyKm=b.dist;
   }
   maxLegWh=Math.max(maxLegWh,legWh);
-  return{mode,mf,totalWh,maxLegWh,legs:sleeps.length+1,usedPct:maxLegWh/p.wh*100,
+  return{mode,mf,totalWh,maxLegWh,legs:charges.length+1,charges:charges.length,usedPct:maxLegWh/p.wh*100,
     reserveKm,emptyKm,unknownKm,reservePct:p.reservePct,pct,cum};
 }
 // ── v467 — BATTERY ROUTE COLOUR (Peter: a route-line option coloured by battery left, with a
@@ -2985,7 +3010,7 @@ function ebikeTrack(r,mode){
   mode=mode||ebikeMapMode();
   const p=ebikeProfile();
   const key=[r.id,mode,r.points.length,r.loadPreset,r.surfaceSegs?r.surfaceSegs.length:0,
-    ebikeChargeKms(r).map(d=>d.toFixed(2)).join(','),
+    ebikeCharges(r).map(c=>c.dist.toFixed(2)+'>'+c.to).join(','),
     p.wh,p.reservePct,JSON.stringify(p.modes),JSON.stringify(UI.ebikeRides||[])].join('|');
   const hit=_ebikeTrackCache.find(c=>c.key===key);
   if(hit)return hit.est;
@@ -3079,8 +3104,21 @@ function _ebikeDrawMap(ctx,r,pts,px,py,part){
   if(bars){gauge(px(pts[0].lon),py(pts[0].lat),p.bars);lastX=px(pts[0].lon);lastY=py(pts[0].lat);}
   for(let i=1;i<pts.length;i++){
     const a=pc[i-1], b=pc[i];
-    // An overnight recharge (a jump back up): a full gauge again.
-    if(bars&&b>a+20){const x=px(pts[i].lon),y=py(pts[i].lat);gauge(x,y,p.bars);lastX=x;lastY=y;continue;}
+    // v470 — a charge point (a jump back up): the gauge at the level charged to, or in % mode a
+    // pill with a yellow (charging) edge. Always drawn — never skipped for crowding.
+    if(b>a+0.5){
+      const x=px(pts[i].lon),y=py(pts[i].lat);   // pc[i] is the level leaving the charge point
+      if(bars)gauge(x,y,Math.ceil(b/(100/p.bars)-1e-9));
+      else{
+        const txt='↑'+Math.round(b)+'%', w=ctx.measureText(txt).width+10, hh=16;
+        ctx.beginPath();
+        if(ctx.roundRect)ctx.roundRect(x-w/2,y-hh/2,w,hh,8);else ctx.rect(x-w/2,y-hh/2,w,hh);
+        ctx.fillStyle='rgba(0,0,0,0.85)';ctx.fill();
+        ctx.strokeStyle='#facc15';ctx.lineWidth=2;ctx.stroke();
+        ctx.fillStyle='#fff';ctx.fillText(txt,x,y+0.5);
+      }
+      lastX=x;lastY=y;continue;
+    }
     if(!(b<a))continue;
     for(const L of levels){
       if(!(a>L&&b<=L))continue;
@@ -3322,8 +3360,10 @@ function _ebikeCardHTML(r){
     const mono=s=>'<span style="font-family:var(--font);">'+s+'</span>';
     let main, col;
     if(est.reserveKm==null){
-      main=mono(Math.round(est.usedPct)+'%')+' used'+(est.legs>1?' on the longest day':'')+' <span style="color:var(--text3);font-weight:400;white-space:nowrap;">('+mono(lo+'–'+hi+'%')+')</span>';
-      col=hi>100-p.reservePct?'#f97316':'var(--accent)';
+      // v470 — said as battery LEFT at the lowest point (with charge points that's not the finish).
+      const left=Math.round(100-est.usedPct), lLo=Math.max(0,100-hi), lHi=Math.min(100,100-lo);
+      main=(est.charges?'Lowest '+mono(left+'%')+' left':mono(left+'%')+' left at the finish')+' <span style="color:var(--text3);font-weight:400;white-space:nowrap;">('+mono(lLo+'–'+lHi+'%')+')</span>';
+      col=lLo<p.reservePct?'#f97316':'var(--accent)';
     } else {
       main='Down to '+mono(p.reservePct+'%')+' at '+mono(est.reserveKm.toFixed(0)+' km')+(est.emptyKm!=null?' · flat by about '+mono(est.emptyKm.toFixed(0)+' km'):'');
       col='var(--red)';
@@ -3337,7 +3377,8 @@ function _ebikeCardHTML(r){
   const est0=ebikeRouteEstimate(r,p.modes[0].name);
   const nRides=(UI.ebikeRides||[]).filter(s=>ebikeSampleFactor(s)!=null).length;
   const notes=[
-    'Starting from a full '+p.wh+' Wh battery'+(est0&&est0.legs>1?', recharged to full at each overnight stop and charge point':'')+'.',
+    'Starting from a full '+p.wh+' Wh battery'+(est0&&est0.charges?', charged at '+est0.charges+' stop'+(est0.charges!==1?'s':'')+' you marked'
+      :' with no charging planned — mark charge stops with the lightning button on the Stops tab')+'.',
     nRides?'Corrected by '+nRides+' battery sample ride'+(nRides!==1?'s':'')+'.':'From your range guesses only — add battery readings when you save rides to sharpen this.',
   ];
   if(est0&&est0.unknownKm>r.totalDist*0.2)notes.push('No surface data for '+est0.unknownKm.toFixed(0)+' km — counted as sealed road, so off-road use may be higher.');
@@ -23087,7 +23128,7 @@ function stopRow(s,r,sdt,inCluster){
         ${s.type!=='sleep'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}">${s.sleepAt?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
         <button class="btn btn-sm food-at-stop" data-sid="${s.id}" title="Add food" style="${s.meals&&s.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>
         ${(()=>{if(s.type==='water')return'';const on=waterAssigned(s);const bc=on?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)';const cc=on?'#60a5fa':'rgba(255,255,255,0.85)';return'<button class="btn btn-sm water-at-stop" data-sid="'+s.id+'" title="Water available here? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+bc+';color:'+cc+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(on?'#60a5fa':'none')+'" stroke="'+(on?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})()}
-        ${(()=>{/* v469 — e-bike charge point: battery back to 100% here (only with the e-bike setting on; sleep stops already recharge) */if(!_ebikeOn()||isSleepStop(s))return'';const on=s.chargeHere===true;const bc=on?'rgba(250,204,21,0.75)':'rgba(255,255,255,0.22)';const cc=on?'#facc15':'rgba(255,255,255,0.85)';return'<button class="btn btn-sm charge-at-stop" data-sid="'+s.id+'" title="E-bike charge point — battery back to full here. Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+bc+';color:'+cc+';"><svg width="16" height="16" viewBox="0 0 24 24" fill="'+(on?'#facc15':'none')+'" stroke="'+(on?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg></button>';})()}
+        ${_chargeBtnHTML(s)}
         <button class="btn btn-sm edit-dist" data-sid="${s.id}" title="Edit" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);">${ICON_EDIT}</button>
         <button class="btn btn-r btn-sm del-stop" data-sid="${s.id}" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.5" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
@@ -26139,21 +26180,27 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
-  // v469 — e-bike charge point toggle (see ebikeChargeKms). Patched in place like the droplet; the
-  // Battery card, route colour and live cell all read stop.chargeHere on their next draw.
+  // v470 — e-bike charging at a stop: a short list (no charging / charge to 100…50%), see
+  // ebikeStopChargeTo. The button is swapped in place like the droplet, so the list never jumps; the
+  // Battery card, route colour and live cell all read stop.chargeTo on their next draw.
   const chg=e.target.closest('.charge-at-stop');
   if(chg&&r){
     const s=r.stops.find(x=>String(x.id)===String(chg.dataset.sid));
     if(s){
-      if(s.chargeHere===true)delete s.chargeHere; else s.chargeHere=true;
-      saveAll();
-      const on=s.chargeHere===true;
-      chg.style.borderColor=on?'rgba(250,204,21,0.75)':'rgba(255,255,255,0.22)';
-      chg.style.color=on?'#facc15':'rgba(255,255,255,0.85)';
-      const svg=chg.querySelector('svg');
-      if(svg){svg.setAttribute('fill',on?'#facc15':'none');svg.setAttribute('stroke',on?'none':'rgba(255,255,255,0.85)');}
-      ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
-      _recToast(on?'Charge point — battery back to full here':'Charge point removed');
+      const cur0=ebikeStopChargeTo(s);
+      _pickSheet('Charging here',[{k:'0',name:'No charging',desc:'No charger, or no time'}]
+        .concat(EBIKE_CHARGE_LEVELS.map(v=>({k:String(v),name:'Charge to '+v+'%',desc:v===100?'Full':'Faster — charging slows near full'}))),
+        String(cur0),k=>{
+          const v=+k;
+          delete s.chargeHere;   // v469 field, replaced by chargeTo
+          if(v>0)s.chargeTo=v; else delete s.chargeTo;
+          saveAll();
+          const tmp=document.createElement('div');tmp.innerHTML=_chargeBtnHTML(s);
+          const fresh=tmp.firstElementChild;if(fresh&&chg.isConnected)chg.replaceWith(fresh);
+          ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
+          if(IS_DESKTOP())renderDesktopMap();
+          _recToast(v>0?'Charging here to '+v+'%':'No charging here');
+        },chg,true);
     }
     return;
   }
