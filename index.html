@@ -1847,7 +1847,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v470';
+window.APP_VERSION='v471';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3154,6 +3154,52 @@ function _ebikeFactorWords(f){
   return'matches your range guess';
 }
 function _ebikeEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+// ── v471 — "HOW BATTERY ESTIMATES WORK" (Peter: "I want to be very clear to the user what is being
+// considered"). Same sheet as showSurfHelp. Figures are the rider's OWN — their battery, their first
+// mode, their samples — worked out from the live model, so the words can't drift from the maths.
+function showEbikeHelp(){
+  document.getElementById('ebike-help-ov')?.remove();
+  const p=ebikeProfile(), m0=p.modes[0], pr=_ebikePrior(m0.name);
+  const climbFlatM=Math.round(pr.climb/pr.flat*1000);
+  const heavyPct=Math.round((_ebikeMass('heavy')/_ebikeMass('light')-1)*100);
+  const learned=p.modes.map(m=>{const mf=ebikeModeFactor(m.name);
+    return mf.n?_ebikeEsc(m.name)+' '+_ebikeFactorWords(mf.f)+' ('+mf.n+' ride'+(mf.n!==1?'s':'')+')':null;}).filter(Boolean);
+  const hd=t=>`<div style="color:var(--text2);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin:14px 0 8px;">${t}</div>`;
+  const row=(name,desc)=>`<div style="margin-bottom:10px;"><span style="color:var(--text);font-weight:600;">${name}</span><div style="color:var(--text2);font-size:14px;line-height:1.5;margin-top:1px;">${desc}</div></div>`;
+  const body=
+    hd('What PackTimes counts')
+    +row('Distance','Each km costs battery at a rate set by the assist mode. It starts from your range guess — '+_ebikeEsc(m0.name)+': '+Math.round(+m0.rangeKm)+' km on a '+p.wh+' Wh battery, about '+pr.flat.toFixed(1)+' Wh per km on flat sealed road.')
+    +row('Surface','Rougher ground costs more per km: gravel 1.3×, singletrack 1.5×, rough track 1.6× sealed road. Where the route has no surface data it is counted as sealed road, so off-road use can come out low.')
+    +row('Climbing','Every metre climbed costs extra, on top of the distance. In '+_ebikeEsc(m0.name)+', 1 m of climbing uses about as much as '+climbFlatM+' m on the flat — a 500 m climb costs about the same as '+(climbFlatM*0.5).toFixed(0)+' km of flat riding. Descents add nothing extra, and nothing back.')
+    +row('Weight','The route\'s Load setting: a heavy load uses about '+heavyPct+'% more than a light one, on the flat and on climbs.')
+    +row('Your rides','Battery readings you note at the start and end of saved rides correct each mode, so the estimate becomes yours, not the guess. '+(learned.length?'So far: '+learned.join('; ')+'.':'No battery rides saved yet.'))
+    +row('Charging','Only at stops you mark with the lightning button on the Stops tab, up to the level you choose. Nowhere else — overnight stops included.')
+    +hd('What it does not count')
+    +row('Speed','The motor helps only up to the legal limit (25 km/h in Australia and Europe). Below that, riding faster uses more battery per km, because air resistance climbs steeply with speed. Above it the motor stops, so the battery is used less. PackTimes doesn\'t look at your speed — your own sample rides carry your usual pace into the estimate.')
+    +row('Wind and temperature','A headwind costs a lot. Cold cuts battery capacity — often 10–30% below about 5 °C.')
+    +row('Also','Stop-start riding, tyre pressure, battery age, and regenerative braking on the few bikes that have it (treated as a bonus).')
+    +hd('Reading the numbers')
+    +row('The range in brackets','How sure the estimate is: about ±30% from your guesses alone, narrowing as you add battery rides of that mode.')
+    +row('Your bike\'s reading','Battery % on the display isn\'t perfectly even through the charge, and bars are coarse — one bar of five is 20%. Keep the reserve you set ('+p.reservePct+'%).')
+    +row('On the Ride screen','The E-bike battery cell is the same model run on what you\'ve actually ridden. Hold it to enter the bike\'s real reading — that resets the estimate, and is how you log a recharge.');
+  const ov=document.createElement('div');
+  ov.id='ebike-help-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;-webkit-tap-highlight-color:transparent;';
+  ov.innerHTML=`<div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:500px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
+      <span style="font-size:18px;font-weight:600;color:var(--text);">How battery estimates work</span>
+      <button class="btn btn-sm" id="ebike-help-x">✕</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;min-height:0;">${body}</div>
+    <button class="btn btn-p btn-full" id="ebike-help-done" style="flex-shrink:0;margin-top:10px;margin-bottom:env(safe-area-inset-bottom,0px);">Done</button>
+  </div>`;
+  const close=()=>ov.remove();
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  ov.querySelector('#ebike-help-x').addEventListener('click',close);
+  ov.querySelector('#ebike-help-done').addEventListener('click',close);
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
+  document.body.appendChild(ov);
+}
 // ── v468 — E-BIKE BATTERY CELL (Ride screen, live). Peter: "a ride pill… live info to the rider
 // about battery life". No Bluetooth yet, so this is the plan's model running on what you've ACTUALLY
 // ridden: start from the reading typed at record start (or the last check-in), subtract the modelled
@@ -3289,7 +3335,8 @@ function _ebikeSettingsHTML(){
   const top=`<label style="display:flex;align-items:center;gap:8px;font-size:15px;margin-bottom:10px;cursor:pointer;">
       <input type="checkbox" id="eb-on" ${p.on?'checked':''}> I ride an e-bike — estimate battery use
     </label>
-    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">PackTimes estimates how much battery a route will use in each assist mode. It starts from your own range guess, then learns from rides where you note the battery at the start and end.</p>`;
+    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">PackTimes estimates how much battery a route will use in each assist mode. It starts from your own range guess, then learns from rides where you note the battery at the start and end.</p>
+    <button type="button" class="btn btn-sm" onclick="showEbikeHelp()" style="margin-bottom:12px;">How battery estimates work</button>`;
   if(!p.on)return top;
   const bars=p.unit==='bars';
   const modeRows=p.modes.map((m,i)=>{
@@ -3385,7 +3432,10 @@ function _ebikeCardHTML(r){
   return`<div class="card">
     <div class="secrow">
       <div class="ctitle">Battery</div>
+      <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+      <button type="button" title="How battery estimates work" onclick="showEbikeHelp()" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 8px;color:var(--on-dark);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font);font-size:13px;font-weight:700;line-height:1;-webkit-tap-highlight-color:transparent;">?</button>
       <button type="button" onclick="UI.tab='settings';_setGo('ebike')" title="E-bike battery settings" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 6px;color:var(--on-dark);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">${ICON_EDIT}</button>
+      </div>
     </div>
     ${rows}
     <p style="font-size:13px;color:var(--text2);line-height:1.5;margin-top:8px;">${UI.routeOverlay==='batt'?'Tap another mode to show it on the map.':'Tap a mode to colour the route by battery left.'}</p>
