@@ -12,7 +12,10 @@ const si=src.indexOf('// Try to read surface mix + climb straight off a saved ro
 const ei=src.indexOf('let _recSaveCtx = null;');
 if(si<0||ei<0)throw new Error('anchors');
 const pick=(name)=>{const a=src.indexOf('function '+name+'(');let d=0,i=src.indexOf('{',a);for(;;i++){if(src[i]==='{')d++;else if(src[i]==='}'&&--d===0)break;}return src.slice(a,i+1);};
-const code=[pick('elevGain'),pick('hav'),pick('_recDist'),src.slice(si,ei)].join('\n');
+// v454 — the shared surface table and mix helpers live by calibFactor; lift them too.
+const mi=src.indexOf('const CALIB_SURF_MAP='), me=src.indexOf('function calibFactor(){');
+if(mi<0||me<0)throw new Error('mix anchors');
+const code=[pick('elevGain'),pick('hav'),pick('_recDist'),pick('_calibMixParts'),src.slice(mi,me),src.slice(si,ei)].join('\n');
 
 // 100 km route heading north from (-35,149), point every 100 m, a 300 m hill at km 45–50.
 // Surface: road 0–40, gravel 40–60, road 60–100.
@@ -46,4 +49,11 @@ r=ctx._recCalibAuto(ride(58,42));
 ok(r&&r.surface==='grade2'&&r.elevM<20,'ridden backwards → descends, ~0 m climb ('+(r&&Math.round(r.elevM))+')');
 r=ctx._recCalibAuto(ride(42,58,{detour:[43,10,2000]}));
 ok(r===null,'mostly off any route → no match (modal asks)');
+// v454 — a ride across a surface change keeps the MIX, not just the winner.
+r=ctx._recCalibAuto(ride(30,50));
+ok(r&&r.mix&&Math.abs((r.mix.road||0)-0.5)<0.06&&Math.abs((r.mix.grade2||0)-0.5)<0.06,'km 30–50 (10 sealed + 10 gravel) → mix ~50/50 ('+(r&&JSON.stringify(r.mix))+')');
+r=ctx._recCalibAuto(ride(5,35));
+ok(r&&r.mix&&r.mix.road===1,'all-sealed stretch → mix is 100% road');
+ok(ctx._calibMixText({mix:{road:0.52,grade2:0.48}})==='52% sealed · 48% gravel','mix words');
+ok(ctx._calibMixFromKm({road:3},10)===null,'under half the ride tagged → no mix (rider picks)');
 console.log(fail?'\nRESULT: '+fail+' failed':'\nRESULT: all passed');process.exit(fail?1:0);

@@ -1707,8 +1707,8 @@ select option{background:var(--bg3);}
         <p style="margin:10px 0 4px;"><b style="color:var(--text2);">Ride it like the event you're planning</b></p>
         <p style="margin:0 0 10px;">Steady all-day endurance pace, long enough to be honest. Don't use a flat-out effort or a PB — a short maximum effort makes every plan optimistic.</p>
 
-        <p style="margin:0 0 4px;"><b style="color:var(--text2);">Keep rides to a single surface as much as possible</b></p>
-        <p style="margin:0 0 10px;">Sealed, gravel, singletrack or rough track — whichever it mostly was. A pure single-surface ride is rare, so don't agonise: pick a section of a longer ride if you can, since shorter sections make one surface more likely.</p>
+        <p style="margin:0 0 4px;"><b style="color:var(--text2);">Mixed surfaces are fine</b></p>
+        <p style="margin:0 0 10px;">A ride you record in PackTimes uses its real surface mix — from the route you followed, or looked up on OpenStreetMap after you save. For a ride you enter by hand, pick the surface it mostly was.</p>
 
         <p style="margin:0 0 4px;"><b style="color:var(--text2);">Say what shape the section was</b></p>
         <p style="margin:0 0 10px;">Rolling/loop if it finishes near the height it started, or mostly-climbing for a climb. Avoid mostly-downhill sections — they measure your braking, not your fitness.</p>
@@ -1725,6 +1725,7 @@ select option{background:var(--bg3);}
          hiding it behind a button on the one screen dedicated to editing it was silly. The
          summary screen (Speed Estimation) shows only the factor, so there's no duplication.
          Header and Save footer are fixed; everything between them scrolls as one. -->
+    <div id="calib-grid" style="margin-bottom:var(--sp-4);"></div>
     <div id="calib-rides-label" style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;"></div>
     <div id="calib-rides-wrap"></div>
     <!-- "Manually" is deliberate (Peter): it implies an automatic route exists — and it does.
@@ -1801,7 +1802,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v453';
+window.APP_VERSION='v454';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2705,9 +2706,41 @@ function calibRideFactor(s){
   let h=parseFloat(s.hours);
   if(!d||!h||d<=0||h<=0)return null;
   if(s.nonstop)h*=CALIB_FAFF_UPLIFT;   // no stops in the sample → add typical faff back
-  const pred=calibPredictH(d,e,s.surface||'road',s.load||'moderate',s.profile||'rolling');
+  // v454 — A MIXED RIDE IS PREDICTED AS ITS MIX. Peter: almost every long ride is mixed (a
+  // gravel ride still goes through sealed towns), and collapsing it to the dominant surface
+  // expected the wrong speed for the whole ride. s.mix = {road, grade2, grade4, single} as
+  // fractions of the ride; distance and climb are split in the same proportions.
+  const pred=_calibMixParts(s).reduce((t,[k,f])=>t+calibPredictH(d*f,e*f,k,s.load||'moderate',s.profile||'rolling'),0);
   if(pred<=0)return null;
   return h/pred; // >1 = slower than the Regular baseline, <1 = faster
+}
+// [[surface, fraction], …] for a sample: its stored mix, or the one surface it was given.
+function _calibMixParts(s){
+  const m=s&&s.mix;
+  if(m){const parts=Object.keys(m).filter(k=>m[k]>0).map(k=>[k,m[k]]);if(parts.length)return parts;}
+  return[[(s&&s.surface)||'road',1]];
+}
+// OSM surface category → the four calibration surfaces (shared by route matching and the ride lookup).
+const CALIB_SURF_MAP={road:'road',road_minor:'road',grade1:'grade2',grade2:'grade2',
+  grade3:'grade2',grade4:'grade4',grade5:'grade4',path:'grade4',single:'single',single_tech:'grade4'};
+const CALIB_SURF_ORDER=['road','grade2','single','grade4'];
+const CALIB_SURF_WORD={road:'sealed',grade2:'gravel',single:'singletrack',grade4:'rough'};
+// km per calibration surface → a mix, or null when under half the ride has surface data
+// (then the rider's own pick is the better guess).
+function _calibMixFromKm(w,totalKm){
+  const tagged=CALIB_SURF_ORDER.reduce((t,k)=>t+(w[k]||0),0);
+  if(!(tagged>0)||tagged<totalKm*0.5)return null;
+  const mix={};
+  for(const k of CALIB_SURF_ORDER)if(w[k]>0)mix[k]=Math.round(w[k]/tagged*1000)/1000;
+  return mix;
+}
+function _calibMixDominant(mix){return CALIB_SURF_ORDER.reduce((a,b)=>(mix[b]||0)>(mix[a]||0)?b:a);}
+// "52% sealed · 48% gravel" — parts under 5% are left out of the words, not the maths.
+function _calibMixText(s){
+  if(!s.mix)return null;
+  const parts=_calibMixParts(s).filter(([,f])=>f>=0.05).sort((a,b)=>b[1]-a[1]);
+  if(parts.length<2)return null;
+  return parts.map(([k,f])=>Math.round(f*100)+'% '+CALIB_SURF_WORD[k]).join(' · ');
 }
 function calibFactor(){
   // Distance-weighted mean across valid samples; null if none entered yet.
@@ -4640,14 +4673,18 @@ function surfBuildSegs(samples,arr){
   if(runCat!==null)segs.push({fromDist:runFrom,toDist:samples[samples.length-1].dist,cat:runCat});
   return segs;
 }
-async function fetchSurfaceData(force){
-  const r=cur();
+// v454 — `target`: run on that route-shaped object instead of the open route, QUIETLY — no
+// status line, no overlay switch, no save, no re-render. Used for a recorded ride's own track
+// (_calibSurfFetch). Everything else is the same proven chunking, mirrors and circuit breaker.
+async function fetchSurfaceData(force,target){
+  const r=target||cur(), quiet=!!target;
   if(!r||r.points.length<2)return;
   // v370 — Refresh on a part-fetched route RESUMES instead of starting over. A
   // full wipe only happens when coverage is already complete, i.e. the user is
   // deliberately re-querying OSM for a route whose data is all there.
   const resuming=!!(force&&r.surfDone&&r.surfDone.length&&surfGapKm(r)>0.5);
   if(force&&!resuming){r.surfaceSegs=null;r.surfDone=null;r.surfGuess=null;}
+  if(quiet&&!resuming&&r.surfaceSegs&&r.surfaceSegs.length)return;
   if(!resuming&&r.surfaceSegs&&r.surfaceSegs.length){
     // Cycle: off → surf → grade → off
     const cycle={off:'surf',surf:'grade',grade:'off'};
@@ -4661,7 +4698,7 @@ async function fetchSurfaceData(force){
     saveAll();
     return;
   }
-  UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data…';renderKeepScroll();
+  if(!quiet){UI.surfaceStatus='loading';UI.surfaceMsg='Fetching surface data…';renderKeepScroll();}
   const SAMPLE_M=200;
   const samples=[];
   let lastDist=-999;
@@ -4728,7 +4765,7 @@ async function fetchSurfaceData(force){
       else k++;
     }
     r.surfGuess=g;
-    await saveAll();
+    if(!quiet)await saveAll();
   };
   // Queue-based: a chunk too heavy for Overpass (dense track networks) gets
   // split in half and retried rather than silently returning partial data
@@ -4758,9 +4795,11 @@ async function fetchSurfaceData(force){
   const FAIL_STREAK_STOP=80, NO_PROGRESS_MS=4*60*1000;
   while(chunkQueue.length){
     const chunk=chunkQueue.shift();
-    UI.surfaceMsg=`Fetching surface data… ${processed+1}/${processed+1+chunkQueue.length}`+(startKm>1?` (${Math.round(startKm)} km already stored)`:'');
-    const msgEl=document.getElementById('surface-status-msg');
-    if(msgEl)msgEl.textContent=UI.surfaceMsg;
+    if(!quiet){
+      UI.surfaceMsg=`Fetching surface data… ${processed+1}/${processed+1+chunkQueue.length}`+(startKm>1?` (${Math.round(startKm)} km already stored)`:'');
+      const msgEl=document.getElementById('surface-status-msg');
+      if(msgEl)msgEl.textContent=UI.surfaceMsg;
+    }
     // Corridor query — only ways within ~80 m of the route line. Vastly less
     // data than the old bounding-box query, which pulled every road/footpath
     // in the whole rectangular region (huge near towns, and very slow).
@@ -4846,6 +4885,7 @@ async function fetchSurfaceData(force){
     await new Promise(res=>setTimeout(res,300));
   }
   await commit();
+  if(quiet)return;
   const gapKm=surfGapKm(r);
   if(!okChunks&&chunks.length&&!(r.surfaceSegs&&r.surfaceSegs.length)){
     // Nothing answered and there was nothing stored to begin with — the old error path.
@@ -7663,9 +7703,7 @@ function _recAutoMatch(r, samples){
     }
     return null;
   };
-  const MAP = {road: 'road', road_minor: 'road', grade1: 'grade2', grade2: 'grade2',
-               grade3: 'grade2', grade4: 'grade4', grade5: 'grade4', path: 'grade4',
-               single: 'single', single_tech: 'grade4'};
+  const MAP = CALIB_SURF_MAP;
   const w = {road: 0, grade2: 0, grade4: 0, single: 0};
   const P = r.points;
   // Route elevation profile along the ridden stretches, in riding order. A break in the
@@ -7742,7 +7780,9 @@ function _recCalibAuto(rec){
     surface = Object.keys(m.w).reduce((a, b) => m.w[a] >= m.w[b] ? a : b);
   // Off-route bits have no profile — assume they climb at the same rate as the rest.
   const elevM = m.onKm > 0 ? m.climb * (rideKm / m.onKm) : 0;
-  return {elevM, surface, load: r.loadPreset || 'moderate', secKm: m.onKm,
+  // v454 — and the full mix, not just the winner (null when the route has too little data).
+  const mix = surface ? _calibMixFromKm(m.w, m.onKm) : null;
+  return {elevM, surface, mix, load: r.loadPreset || 'moderate', secKm: m.onKm,
           routeName: (r.label || r.name || '').trim()};
 }
 
@@ -7771,11 +7811,12 @@ function _recSaveShow(rec){
     el.style.display = text ? 'block' : 'none';
   };
   document.getElementById('rsm-surface').value = (auto && auto.surface) ? auto.surface : 'road';
-  note('rsm-surface-note', auto
-    ? (auto.surface
-        ? 'From your route' + (auto.routeName ? ' “' + auto.routeName + '”' : '') + ' — change it if that\'s wrong.'
-        : 'Your route has no surface data here, so this is a guess. Please check it.')
-    : null);
+  // v454 — say the mix when there is one; and when there's no route data, say a lookup follows.
+  const mixTxt = auto && auto.mix ? _calibMixText(auto) : null;
+  note('rsm-surface-note', auto && auto.surface
+    ? 'From your route' + (auto.routeName ? ' “' + auto.routeName + '”' : '')
+      + (mixTxt ? ': ' + mixTxt + '. The estimate uses the full mix — change this only if it\'s wrong.' : ' — change it if that\'s wrong.')
+    : 'No surface data for this ride yet — pick the main surface. When you\'re next on Wi-Fi, PackTimes looks the surfaces up on OpenStreetMap and updates this sample if it finds them.');
 
   // Real climb off the route beats a terrain bucket; only one of the two is ever shown.
   document.getElementById('rsm-climb-field').style.display = auto ? 'block' : 'none';
@@ -7823,11 +7864,18 @@ async function _recSaveConfirm(){
                        : Math.round(distKm * (+document.getElementById('rsm-hill').value));
     const load = document.getElementById('rsm-load').value;
     const nonstop = document.getElementById('rsm-nonstop').checked;
+    // v454 — keep the route's mix unless the rider overrode the surface. With no mix, mark the
+    // sample for a surface lookup on the ride's own track (_calibSurfFetch, after saving).
+    const mix = (auto && auto.mix && surface === auto.surface) ? auto.mix : null;
+    const entry = {surface, distKm, hours: +hours.toFixed(2), elevM, load, nonstop,
+                   profile: 'rolling', src: 'rec', recId: rec.id, name: rec.name,
+                   ts: rec.startTS || Date.now()};
+    if(mix) entry.mix = mix;
+    else if(!(auto && auto.surface && surface !== auto.surface)) entry.surfPending = true;
     // ts = when the ride happened. The factor maths ignores it; it's there so the sample list
     // can show an age and you can spot evidence that's gone stale (fitness drifts).
-    _recCalibAdd({surface, distKm, hours: +hours.toFixed(2), elevM, load, nonstop,
-                  profile: 'rolling', src: 'rec', recId: rec.id, name: rec.name,
-                  ts: rec.startTS || Date.now()});
+    _recCalibAdd(entry);
+    if(entry.surfPending) setTimeout(() => _calibSurfFetch(rec.id), 1500);
   }
   await DB.putRecording(rec).catch(()=>{});
   const i = RECS.findIndex(x => x.id === rec.id);
@@ -7926,6 +7974,87 @@ function _recCalibAdd(entry){
                      : UI.estModeAdv ? 'Added to Speed Calibration'
                                      : 'Saved to Speed Calibration — used when Advanced Estimation is on');
 }
+
+// ── v454 — SURFACES FOR A RIDE WITH NO ROUTE DATA ───────────────────────────────────────
+// A recorded ride IS a route file (Peter) — its own GPS track. So when it followed no saved
+// route with surface data, run the ordinary surface fetch on the track itself, in the
+// background, after the save. Long rides take a while (several Overpass chunks), so nothing
+// waits on it: the sample is saved with the rider's pick and flagged surfPending; when the
+// lookup lands the mix replaces the pick and a toast says so.
+//   · WI-FI ONLY unless the rider says otherwise (Peter: on a big ride you don't want mobile
+//     data chewed up). Automatic lookups wait for Wi-Fi; the sample tile offers "Look up now
+//     (uses mobile data)" for when you want it anyway (allowMobile);
+//   · offline / every mirror failing → stays pending; retried when the phone comes back online,
+//     joins Wi-Fi, and at app start, up to CALIB_SURF_TRIES attempts;
+//   · fetched, but OpenStreetMap has surface tags for under half the ride → the pick stands.
+const CALIB_SURF_TRIES=5;
+const _calibSurfBusy=new Set();
+// Wi-Fi (or a wired/desktop connection)? Android's WebView reports the type; a browser that
+// doesn't (desktop) has no mobile data to protect, so it counts as Wi-Fi. 'unknown' doesn't.
+function _onWifi(){
+  const c=navigator.connection;
+  if(!c||!c.type)return true;
+  return c.type==='wifi'||c.type==='ethernet'||c.type==='wimax';
+}
+async function _calibSurfFetch(recId,allowMobile){
+  const find=()=>(UI.calibRides||[]).find(x=>x.recId===recId&&x.surfPending);
+  if(!find()||_calibSurfBusy.has(recId)||!navigator.onLine)return;
+  if(!allowMobile&&!_onWifi())return;   // waits for Wi-Fi; the tile says so
+  let rec=(typeof RECS!=='undefined'?RECS:[]).find(x=>x.id===recId);
+  if(!rec){try{rec=await DB.getRecording(recId);}catch(e){}}
+  if(!rec){const s0=find();if(s0)delete s0.surfPending;saveAll();return;}   // ride deleted: nothing to look up
+  const rt=_recAsRoute({...rec,points:(rec.points||[]).filter(pt=>!pt._synthetic&&pt.lat!=null)});
+  if(rt.points.length<2||!rt.totalDist)return;
+  _calibSurfBusy.add(recId);
+  _calibSurfTileRefresh();
+  try{await fetchSurfaceData(true,rt);}catch(e){console.log('[calib surface]',e);}
+  finally{_calibSurfBusy.delete(recId);_calibSurfTileRefresh();}
+  const s=find();if(!s)return;   // removed from the list meanwhile
+  s.surfTries=(s.surfTries||0)+1;
+  const asked=surfFetchedKm(rt);
+  const nm=s.name?'“'+s.name+'”':'your ride';
+  if(asked<rt.totalDist*0.5){
+    // Most of the ride never got an answer — a network problem, not missing data. Try later.
+    if(s.surfTries>=CALIB_SURF_TRIES){delete s.surfPending;delete s.surfTries;_recToast('Couldn\'t reach OpenStreetMap for '+nm+' — kept the surface you picked');}
+    saveAll();return;
+  }
+  const w={};
+  for(const sg of (rt.surfaceSegs||[])){const k=CALIB_SURF_MAP[sg.cat];if(k)w[k]=(w[k]||0)+Math.max(0,sg.toDist-sg.fromDist);}
+  const mix=_calibMixFromKm(w,rt.totalDist);
+  delete s.surfPending;delete s.surfTries;
+  if(mix){
+    s.mix=mix;s.surface=_calibMixDominant(mix);
+    const t=_calibMixText(s);
+    _recToast('Surfaces found for '+nm+(t?': '+t:': '+CALIB_SURF_WORD[s.surface])+' — sample updated');
+    if(UI.estModeAdv)for(const r of ROUTES)rebuildPace(r);
+  } else _recToast('OpenStreetMap has little surface data for '+nm+' — kept the surface you picked');
+  saveAll();
+  const cm=document.getElementById('calib-modal');
+  if(cm&&cm.style.display==='flex')openCalibModal();
+}
+async function _calibSurfRetryAll(){
+  const ids=(UI.calibRides||[]).filter(x=>x.surfPending&&x.recId).map(x=>x.recId);
+  for(const id of ids)await _calibSurfFetch(id);   // one at a time — be kind to Overpass
+}
+// The tile's "Look up now (uses mobile data)". Saves the sample list first, so the refresh the
+// lookup ends with can't throw away an edit in progress.
+function _calibSurfNow(i){
+  const d=_calibDraft[i], id=d&&d._x&&d._x.recId;
+  if(!id)return;
+  if(!navigator.onLine){_recToast('No signal — PackTimes will look this up when you\'re back online');return;}
+  _calibCommit();
+  _recToast('Looking up surfaces — this can take a minute');
+  _calibSurfFetch(id,true);
+}
+// Redraw the sample list if it's open, so "Looking up…" appears and clears on time.
+function _calibSurfTileRefresh(){
+  const cm=document.getElementById('calib-modal');
+  if(cm&&cm.style.display==='flex'&&typeof _calibRenderModal==='function')_calibRenderModal();
+}
+window.addEventListener('online',()=>setTimeout(_calibSurfRetryAll,3000));
+if(navigator.connection&&navigator.connection.addEventListener)
+  navigator.connection.addEventListener('change',()=>{if(_onWifi())setTimeout(_calibSurfRetryAll,3000);});
+setTimeout(_calibSurfRetryAll,20000);   // after start-up has loaded the samples and rides
 
 // Wire the save modal + rename controls once.
 (function(){
@@ -15616,7 +15745,8 @@ function openCalibModal(){
     profile:s.profile||'rolling',
     nonstop:!!s.nonstop,   // undefined on older samples → false = "stops included" (old behaviour)
     // Recorded rides carry extra fields (name, src, recId, ts) — keep them through the draft
-    _x:(s.src||s.name||s.recId||s.ts)?{src:s.src,recId:s.recId,name:s.name,ts:s.ts}:null
+    // v454 — mix and surfPending ride along in _x too; picking a surface by hand drops them.
+    _x:(s.src||s.name||s.recId||s.ts||s.mix||s.surfPending)?{src:s.src,recId:s.recId,name:s.name,ts:s.ts,mix:s.mix,surfPending:s.surfPending}:null
   }));
   if(!_calibDraft.length)_calibDraft.push(_calibNewDraft());
   // Expand the first incomplete sample; if all are complete, start collapsed
@@ -15632,6 +15762,8 @@ function _calibDraftToRide(d){
   // Name lives on the ride itself. Set AFTER the _x spread so an edited name wins over the
   // original recorded-ride name; delete it if blanked, so we never store an empty string.
   if(nm)r.name=nm; else delete r.name;
+  if(!r.mix)delete r.mix;
+  if(!r.surfPending)delete r.surfPending;
   return r;
 }
 function _calibAdd(){
@@ -15674,7 +15806,9 @@ function _calibShowMap(i){
 function _calibField(i,field,value){
   if(!_calibDraft[i])return;
   _calibDraft[i][field]=value;
+  if(field==='surface'&&_calibDraft[i]._x){delete _calibDraft[i]._x.mix;delete _calibDraft[i]._x.surfPending;}
   _calibUpdateFactors();
+  if(field==='surface'||field==='load'||field==='distKm'||field==='h'||field==='m')_calibGridRender();
 }
 function _calibUpdateFactors(){
   let wsum=0,dsum=0;
@@ -15709,32 +15843,95 @@ function _calibUpdateFactors(){
     `<div style="font-size:14px;color:var(--text2);margin-top:6px;line-height:1.45;">${desc}</div>`+
     `<div style="font-size:12px;color:var(--text3);margin-top:6px;">From ${n} sample ride${n===1?'':'s'} · every plan's times are scaled by this</div>`;
 }
+// ── v454 — WHAT YOUR SAMPLES COVER: surface across, load down. Peter: the sample rides are a
+// set of reference rides, so show the reference set. A cell counts the samples with at least
+// CALIB_GRID_MIN of their distance on that surface at that load (a mixed ride fills several).
+// An EMPTY cell is not a missing estimate — the planner still times it, from your other rides
+// plus its own surface and load adjustments — so it says "no ride of yours yet", and tapping
+// it starts a sample with that surface and load filled in.
+const CALIB_GRID_MIN=0.2;
+const CALIB_LOAD_ORDER=['unloaded','light','moderate','heavy'];
+function _calibGridRender(){
+  const el=document.getElementById('calib-grid');if(!el)return;
+  const cnt={};
+  for(const d of _calibDraft){
+    const r=_calibDraftToRide(d);
+    if(calibRideFactor(r)===null)continue;
+    for(const[k,f]of _calibMixParts(r))if(f>=CALIB_GRID_MIN){const key=(r.load||'moderate')+'|'+k;cnt[key]=(cnt[key]||0)+1;}
+  }
+  const head={road:'Sealed',grade2:'Gravel',single:'Single&shy;track',grade4:'Rough'};
+  const loadW={unloaded:'Unloaded',light:'Light',moderate:'Moderate',heavy:'Heavy'};
+  const cell=(l,k)=>{
+    const n=cnt[l+'|'+k]||0;
+    return n
+      ?`<div style="display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:8px;background:color-mix(in srgb,var(--accent) 22%,var(--card2));border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);font-family:var(--font);font-size:20px;font-weight:600;color:var(--text);">${n}</div>`
+      :`<button type="button" class="btn" onclick="_calibAddLike('${k}','${l}')" title="Add a ${CALIB_SURF_WORD[k]} ride at ${loadW[l].toLowerCase()} load" style="min-height:44px;padding:0;justify-content:center;font-size:20px;color:var(--text3);border-style:dashed;">+</button>`;
+  };
+  el.innerHTML=`<div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">What your samples cover</div>
+    <div style="display:grid;grid-template-columns:76px repeat(4,minmax(0,1fr));gap:5px;align-items:center;">
+      <div></div>${CALIB_SURF_ORDER.map(k=>`<div style="font-size:13px;font-weight:600;color:var(--text2);text-align:center;line-height:1.15;">${head[k]}</div>`).join('')}
+      ${CALIB_LOAD_ORDER.map(l=>`<div style="font-size:13px;font-weight:600;color:var(--text2);line-height:1.15;">${loadW[l]}</div>${CALIB_SURF_ORDER.map(k=>cell(l,k)).join('')}`).join('')}
+    </div>
+    <div style="font-size:13px;color:var(--text3);line-height:1.45;margin-top:8px;">Numbers are how many of your rides cover that surface and load. A <b style="color:var(--text2);">+</b> means none yet — PackTimes still estimates it, from your other rides and its built-in surface and load adjustments. Tap it to add a ride like that.</div>`;
+}
+function _calibAddLike(surface,load){
+  if(_calibDraft.length>=CALIB_MAX_RIDES){_recToast('Sample list is full ('+CALIB_MAX_RIDES+') — remove one first');return;}
+  const d=_calibNewDraft();d.surface=surface;d.load=load;
+  // An untouched blank form left over from opening an empty list is replaced, not added to.
+  const only=_calibDraft.length===1&&!_calibDraft[0].distKm&&!_calibDraft[0].h&&!_calibDraft[0].name;
+  if(only)_calibDraft[0]=d;else _calibDraft.push(d);
+  _calibOpenIdx=_calibDraft.indexOf(d);
+  _calibRenderModal();
+  _calibScrollTo(_calibOpenIdx);
+}
 function _calibRenderModal(){
   const wrap=document.getElementById('calib-rides-wrap');
   const surfShort={road:'Sealed',grade2:'Gravel',single:'Singletrack',grade4:'Rough'};
   const loadShort={unloaded:'Unloaded',light:'Light',moderate:'Moderate',heavy:'Heavy'};
   wrap.innerHTML=_calibDraft.map((d,i)=>{
     if(i!==_calibOpenIdx){
-      // Collapsed one-line summary — tap to expand
-      const complete=calibRideFactor(_calibDraftToRide(d))!==null;
+      // v454 — A TILE, like the route tiles (Peter: make it clear what each sample shows). Name
+      // big and wrapping (it used to be one ellipsised line); then what it was — the surface mix
+      // or single surface, and the load — as chips; then the numbers; then the result in words.
+      // The buttons sit in their own panel so a tap meant for the tile can't land on Delete.
+      const ride=_calibDraftToRide(d);
+      const f=calibRideFactor(ride), complete=f!==null;
       // Age is shown so you can prune deliberately — it is NEVER used to weight or evict.
       // Big rides are rare and therefore old; ageing them out would delete the best evidence
       // you have for planning another one (Peter's point).
       const age=(d._x&&d._x.ts)?' · '+_calibAgeStr(d._x.ts):'';
-      const bits=complete
-        ?`${d.name?d.name+' · ':''}${surfShort[d.surface]||d.surface} · ${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑ · ${loadShort[d.load]||d.load}${d.profile==='climb'?' · climb':''}${d.nonstop?' · +15% faff':''}${age}`
-        :'incomplete — tap to finish';
-      // The row opens the editor, but there was NOTHING saying so — just a ✕, which made the
-      // whole list read as delete-only (Peter couldn't find where to rename a ride). An explicit
-      // "Edit" button says it in words; the row itself still works as a big tap target.
-      return `<div onclick="_calibOpen(${i})" style="border:1px solid var(--border2);border-radius:10px;padding:9px 10px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;">
-        <span style="font-size:13px;color:${complete?'var(--text2)':'var(--text3)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${bits}</span>
-        <span style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
-          <span id="calib-rf-${i}" style="font-size:13px;color:var(--accent);font-family:var(--font);"></span>
-          ${_calibHasTrack(i)?`<button class="btn btn-sm" title="See where this ride was" onclick="event.stopPropagation();_calibShowMap(${i})" style="padding:2px 8px;">Map</button>`:''}
-          <button class="btn btn-sm" onclick="event.stopPropagation();_calibOpen(${i})" style="padding:2px 8px;">Edit</button>
-          ${_calibDraft.length>1?`<button class="btn btn-sm btn-r" onclick="event.stopPropagation();_calibRemove(${i})" style="padding:2px 8px;">✕</button>`:''}
-        </span>
+      const chip=t=>`<span style="display:inline-block;font-size:14px;font-weight:600;color:var(--text);background:color-mix(in srgb,var(--text) 9%,var(--card2));border:1px solid var(--border2);border-radius:6px;padding:3px 8px;line-height:1.3;">${t}</span>`;
+      const surfTxt=_calibMixText(ride)||(surfShort[d.surface]||d.surface);
+      const pct=complete?Math.round(Math.abs(1-f)*100):0;
+      const res=!complete?'':f<0.98?pct+'% faster than an average rider':f>1.02?pct+'% slower than an average rider':'About average pace';
+      const flags=[d.profile==='climb'?'Mostly climbing':'',d.nonstop?'+15% faff added':''].filter(Boolean).join(' · ');
+      // v454 — a ride waiting for its surface lookup says which: busy now, or waiting for Wi-Fi
+      // (with the mobile-data override). Hand-picked surface is in use meanwhile.
+      const pend=d._x&&d._x.surfPending&&d._x.recId, busy=pend&&_calibSurfBusy.has(d._x.recId);
+      const pendHTML=!pend?'':busy
+        ?`<div style="font-size:14px;color:var(--accent);margin-top:8px;">Looking up surfaces on OpenStreetMap…</div>`
+        :`<div style="font-size:14px;color:var(--text2);margin-top:8px;line-height:1.4;">Surfaces not looked up yet — ${_onWifi()?'waiting for a connection':'waiting for Wi-Fi'}. Using the surface you picked for now.</div>
+          <button class="btn" onclick="event.stopPropagation();_calibSurfNow(${i})" style="width:100%;min-height:44px;justify-content:center;margin-top:8px;font-size:15px;">Look up now (uses mobile data)</button>`;
+      const nm=d.name?d.name.replace(/</g,'&lt;'):'Sample ride '+(i+1);
+      const btn=(lbl,fn,cls)=>`<button class="btn ${cls||''}" onclick="event.stopPropagation();${fn}" style="flex:1;min-height:44px;justify-content:center;font-size:15px;">${lbl}</button>`;
+      return `<div onclick="_calibOpen(${i})" style="border:2px solid color-mix(in srgb,var(--text) 55%,transparent);border-radius:10px;margin-bottom:10px;cursor:pointer;overflow:hidden;background:var(--card2);">
+        <div style="padding:12px 12px 10px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+            <div style="font-size:18px;font-weight:600;color:var(--text);line-height:1.25;overflow-wrap:anywhere;">${nm}</div>
+            <span id="calib-rf-${i}" style="font-size:15px;color:var(--accent);font-family:var(--font);white-space:nowrap;"></span>
+          </div>
+          ${complete?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">${chip(surfTxt)}${chip(d.load==='unloaded'?'Unloaded':(loadShort[d.load]||d.load)+' load')}</div>
+          <div style="font-size:14px;color:var(--text3);font-family:var(--font);margin-top:8px;">${(+d.distKm).toFixed(0)} km · ${parseFloat(d.h)||0}h ${parseFloat(d.m)||0}m · ${(+d.elevM||0).toFixed(0)} m ↑${age}</div>
+          <div style="font-size:15px;color:var(--text2);margin-top:4px;">${res}</div>
+          ${flags?`<div style="font-size:13px;color:var(--text3);margin-top:4px;">${flags}</div>`:''}
+          ${pendHTML}`
+          :`<div style="font-size:15px;color:var(--text3);margin-top:6px;">Incomplete — tap to finish</div>`}
+        </div>
+        <div onclick="event.stopPropagation()" style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--border);background:color-mix(in srgb,var(--text) 6%,var(--card2));cursor:default;">
+          ${_calibHasTrack(i)?btn('Map',`_calibShowMap(${i})`):''}
+          ${btn('Edit',`_calibOpen(${i})`)}
+          ${_calibDraft.length>1?btn('Delete',`_calibRemove(${i})`,'btn-r'):''}
+        </div>
       </div>`;
     }
     return `
@@ -15814,6 +16011,7 @@ function _calibRenderModal(){
   const addBtn=document.getElementById('calib-add');
   addBtn.style.display=_calibDraft.length>=CALIB_MAX_RIDES?'none':'';
   _calibUpdateFactors();
+  _calibGridRender();
 }
 // Write the draft to UI.calibRides. Shared by the footer "Save Sample Rides" (which then closes)
 // and the per-sample "Save this ride" (which doesn't) — so both routes commit identically and
