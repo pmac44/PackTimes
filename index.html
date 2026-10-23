@@ -1847,7 +1847,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v471';
+window.APP_VERSION='v472';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2864,6 +2864,11 @@ function calibRiderMult(){
 const EBIKE_REF_CLIMB=10;          // m per km behind the rider's "typical range" figure
 const EBIKE_CLIMB_SHARE=0.3;       // share of that energy spent climbing
 const EBIKE_SURF_MULT={road:1,grade2:1.3,single:1.5,grade4:1.6};
+// v472 — a stretch with no surface data counts as GRAVEL (Peter: "is that safe?" — it wasn't; it
+// counted as sealed). Using more battery is the safe way to be wrong, and the speed model already
+// treats unknown as gravel (FLAT_KMH_BY_SURFACE._default 11 = grade2). Not rough track: untagged
+// stretches are often quiet roads.
+const EBIKE_UNKNOWN_SURF='grade2';
 const EBIKE_LOAD_KG={unloaded:0,light:3,moderate:10,heavy:20};
 const EBIKE_BASE_KG=100;           // rider + bike
 const EBIKE_MIN_USED=20;           // % — a smaller drop is kept but called rough
@@ -2973,7 +2978,7 @@ function ebikeRouteEstimate(r,mode){
     while(si<segs.length&&segs[si].toDist<mid)si++;
     const cat=si<segs.length&&segs[si].fromDist<=mid?segs[si].cat:null;
     if(!cat)unknownKm+=dx;
-    const k=cat?(CALIB_SURF_MAP[cat]||'road'):'road';
+    const k=cat?(CALIB_SURF_MAP[cat]||'road'):EBIKE_UNKNOWN_SURF;
     let dz=0;
     const e=b.ele;
     if(e!=null){
@@ -3169,7 +3174,7 @@ function showEbikeHelp(){
   const body=
     hd('What PackTimes counts')
     +row('Distance','Each km costs battery at a rate set by the assist mode. It starts from your range guess — '+_ebikeEsc(m0.name)+': '+Math.round(+m0.rangeKm)+' km on a '+p.wh+' Wh battery, about '+pr.flat.toFixed(1)+' Wh per km on flat sealed road.')
-    +row('Surface','Rougher ground costs more per km: gravel 1.3×, singletrack 1.5×, rough track 1.6× sealed road. Where the route has no surface data it is counted as sealed road, so off-road use can come out low.')
+    +row('Surface','Rougher ground costs more per km: gravel 1.3×, singletrack 1.5×, rough track 1.6× sealed road. Where the route has no surface data it is counted as gravel — on the safe side for a sealed road, a little low for rough track. Fetch surface data (Route tab) for a sharper figure.')
     +row('Climbing','Every metre climbed costs extra, on top of the distance. In '+_ebikeEsc(m0.name)+', 1 m of climbing uses about as much as '+climbFlatM+' m on the flat — a 500 m climb costs about the same as '+(climbFlatM*0.5).toFixed(0)+' km of flat riding. Descents add nothing extra, and nothing back.')
     +row('Weight','The route\'s Load setting: a heavy load uses about '+heavyPct+'% more than a light one, on the flat and on climbs.')
     +row('Your rides','Battery readings you note at the start and end of saved rides correct each mode, so the estimate becomes yours, not the guess. '+(learned.length?'So far: '+learned.join('; ')+'.':'No battery rides saved yet.'))
@@ -3236,8 +3241,10 @@ function _ebLiveTick(){
   if(!(dk>0||dz>0))return;
   const mode=_ebRideMode(), pr=_ebikePrior(mode), mf=ebikeModeFactor(mode);
   const r=cur(), onRoute=!!(r&&!_freeRiding()&&UI.gpsDistKm!=null);
+  // On a route: its surface, or gravel where it has none (v472, as the plan). Off route there is
+  // nothing to go on, so sealed — the ride's own rate takes over after 5 km anyway.
   let k='road';
-  if(onRoute){const c=surfaceCatAt(UI.gpsDistKm,r);if(c)k=CALIB_SURF_MAP[c]||'road';}
+  if(onRoute){const c=surfaceCatAt(UI.gpsDistKm,r);k=c?(CALIB_SURF_MAP[c]||'road'):EBIKE_UNKNOWN_SURF;}
   s.usedWh+=(dk*pr.flat*(EBIKE_SURF_MULT[k]||1)+dz*pr.climb)*_ebikeMass((r&&r.loadPreset)||'moderate')*mf.f;
   s.kmSince+=dk;
 }
@@ -3428,7 +3435,7 @@ function _ebikeCardHTML(r){
       :' with no charging planned — mark charge stops with the lightning button on the Stops tab')+'.',
     nRides?'Corrected by '+nRides+' battery sample ride'+(nRides!==1?'s':'')+'.':'From your range guesses only — add battery readings when you save rides to sharpen this.',
   ];
-  if(est0&&est0.unknownKm>r.totalDist*0.2)notes.push('No surface data for '+est0.unknownKm.toFixed(0)+' km — counted as sealed road, so off-road use may be higher.');
+  if(est0&&est0.unknownKm>r.totalDist*0.2)notes.push('No surface data for '+est0.unknownKm.toFixed(0)+' km — counted as gravel to be safe. Fetch surface data for a sharper figure.');
   return`<div class="card">
     <div class="secrow">
       <div class="ctitle">Battery</div>
