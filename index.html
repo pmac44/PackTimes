@@ -1847,7 +1847,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v465';
+window.APP_VERSION='v466';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -22623,13 +22623,15 @@ function tSettings(r){
 // open page key, or null for the menu; the Settings tab button resets it to the menu.
 const SET_PAGES=[
   {k:'sensors',t:'Sensors & zones',d:'Power, heart rate, crank length, weight',s:['ftp'],c:'var(--cat-vending)'},
-  {k:'ebike',t:'E-bike battery',d:'Battery size, assist modes, range',s:['ebike'],c:'var(--cat-bike)'},
   {k:'ride',t:'Ride screen',d:'Averages, alerts, map zoom, weather',s:['averages','alerts','zoom','weather'],c:'var(--cat-water)'},
   {k:'uploads',t:'Uploads & sync',d:'Strava, intervals.icu, Dropbox',s:['strava','intervals','dropbox'],c:'var(--cat-fuel)'},
   {k:'sharing',t:'Sharing & group rides',d:'Live location, PackRide',s:['sharing','packride'],c:'var(--cat-school)'},
   {k:'maps',t:'Offline maps',d:'Map downloads, storage',s:['offlineMaps','offline'],c:'var(--cat-camp)'},
   {k:'appearance',t:'Appearance',d:'Light, dark or automatic',s:['appearance'],c:'var(--cat-church)'},
   {k:'accom',t:'Accommodation search',d:'Geoapify key',s:['geoapify'],c:'var(--cat-accom)'},
+  // v466 — near the bottom on purpose (Peter): few ultra riders use e-bikes and some dislike them,
+  // so the menu mustn't present it as a priority. Keep it just above Danger zone.
+  {k:'ebike',t:'E-bike battery',d:'Battery size, assist modes, range',s:['ebike'],c:'var(--cat-bike)'},
   {k:'danger',t:'Danger zone',d:'Delete data',s:['danger'],c:'var(--cat-fire)'},
 ];
 // Panel titles carried emoji in the folding list; on a page the page's own colour does that job.
