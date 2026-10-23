@@ -1847,7 +1847,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v472';
+window.APP_VERSION='v473';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2944,9 +2944,24 @@ function _chargeBtnHTML(s){
   const bc=on?'rgba(250,204,21,0.75)':'rgba(255,255,255,0.22)', cc=on?'#facc15':'rgba(255,255,255,0.85)';
   return'<button class="btn btn-sm charge-at-stop" data-sid="'+s.id+'" title="E-bike charging at this stop — tap to choose" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;gap:2px;border:1px solid '+bc+';color:'+cc+';">'
     +'<svg width="16" height="16" viewBox="0 0 24 24" fill="'+(on?'#facc15':'none')+'" stroke="'+(on?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>'
-    +(on?'<span style="font-family:var(--font);font-size:12px;font-weight:600;">'+to+'%</span>':'')+'</button>';
+    +(on?'<span style="font-family:var(--font);font-size:12px;font-weight:600;white-space:nowrap;">'+to+'%'+(+s.chargeMin>0?' · '+_fmtChargeMin(+s.chargeMin):'')+'</span>':'')+'</button>';
 }
 const EBIKE_CHARGE_LEVELS=[100,90,80,70,60,50];
+// v473 — how long the rider stops to charge. Suggested from how flat the battery arrives and a
+// typical 4 A charger (~150 W), at half speed above 80% because charging slows near full.
+const EBIKE_CHARGE_MINS=[15,30,45,60,90,120,180,240];
+const EBIKE_CHARGER_W=150;
+function _fmtChargeMin(m){return m<60?m+'m':(m%60?(m/60).toFixed(1):String(m/60))+'h';}
+function ebikeChargeSuggestMin(r,s,to){
+  const est=ebikeTrack(r,ebikeMapMode());
+  if(!est||!est.pct)return null;
+  const P=r.points;let i=0;while(i<P.length-1&&P[i+1].dist<s.dist)i++;
+  const arr=Math.max(0,Math.min(100,est.pct[i]));   // the level arriving here (before this stop's charge)
+  if(arr>=to)return 0;
+  const wh=ebikeProfile().wh;
+  const low=Math.max(0,Math.min(to,80)-arr), high=Math.max(0,to-Math.max(arr,80));
+  return Math.round((low/100*wh/EBIKE_CHARGER_W+high/100*wh/(EBIKE_CHARGER_W/2))*60);
+}
 // Walk the route once for one mode. The battery starts full and is topped up at each charge point,
 // so the figure that matters is the LOWEST level reached anywhere on the route.
 // Climb uses elevGain's 10 m hysteresis, counted as it happens.
@@ -3178,7 +3193,7 @@ function showEbikeHelp(){
     +row('Climbing','Every metre climbed costs extra, on top of the distance. In '+_ebikeEsc(m0.name)+', 1 m of climbing uses about as much as '+climbFlatM+' m on the flat — a 500 m climb costs about the same as '+(climbFlatM*0.5).toFixed(0)+' km of flat riding. Descents add nothing extra, and nothing back.')
     +row('Weight','The route\'s Load setting: a heavy load uses about '+heavyPct+'% more than a light one, on the flat and on climbs.')
     +row('Your rides','Battery readings you note at the start and end of saved rides correct each mode, so the estimate becomes yours, not the guess. '+(learned.length?'So far: '+learned.join('; ')+'.':'No battery rides saved yet.'))
-    +row('Charging','Only at stops you mark with the lightning button on the Stops tab, up to the level you choose. Nowhere else — overnight stops included.')
+    +row('Charging','Only at stops you mark with the lightning button on the Stops tab, up to the level you choose. Nowhere else — overnight stops included. At a daytime stop you also say how long you\'ll stop to charge; the part longer than any meal there is added to your plan, so the ETAs after it move. Overnight charging adds no time.')
     +hd('What it does not count')
     +row('Speed','The motor helps only up to the legal limit (25 km/h in Australia and Europe). Below that, riding faster uses more battery per km, because air resistance climbs steeply with speed. Above it the motor stops, so the battery is used less. PackTimes doesn\'t look at your speed — your own sample rides carry your usual pace into the estimate.')
     +row('Wind and temperature','A headwind costs a lot. Cold cuts battery capacity — often 10–30% below about 5 °C.')
@@ -3520,7 +3535,7 @@ function buildCumRiding(pts,paceSegs,r){
   const fpBase=(r&&UI.fatigueMode&&UI.fatigueMode!=='off')?fatigueParams():null;
   const fSd=fpBase?startDT(r):null;
   const fClock0=fSd?fSd.getTime():null;
-  const fStops0=fpBase?(r.stops||[]).filter(s=>s.type==='sleep'||s.sleepAt||s.sleepH||(s.meals&&s.meals.length)).slice().sort((a,b)=>a.dist-b.dist):null;
+  const fStops0=fpBase?(r.stops||[]).filter(s=>s.type==='sleep'||s.sleepAt||s.sleepH||(s.meals&&s.meals.length)||_stopHasCharge(s)).slice().sort((a,b)=>a.dist-b.dist):null;
   // One forward pass. Pass fp=null to skip fatigue entirely (identical to Off).
   const accumulate=(fp)=>{
     let fClock=fClock0,fSince=0,fSi=0;const fStops=fStops0;
@@ -3552,7 +3567,8 @@ function buildCumRiding(pts,paceSegs,r){
           const mealH=(s.meals||[]).filter(m=>m.source!=='here-carry').reduce((a,m)=>a+(m.durationMin||20)/60,0);
           const hasSleep=s.type==='sleep'||s.sleepAt||(s.type==='stop'&&s.sleepH);
           const sleepH=hasSleep?sleepHoursFor(s,fClock!=null?new Date(fClock):null,r):0;
-          if(fClock!=null)fClock+=(mealH+sleepH)*3600000;
+          const chgH=stopChargeExtraH(s,hasSleep,mealH);   // v473 — a charging stop is rest too
+          if(fClock!=null)fClock+=(mealH+sleepH+chgH)*3600000;
           // Partial, diminishing-returns recovery (τ=4.2h): a short nap barely
           // dents the debt, ~4h clears most of it, a full night resets you. (A flat
           // reset would wrongly treat a 15-min catnap like a night's sleep.)
@@ -3974,6 +3990,17 @@ function _sleepDone(s,r,atDist){
   return false;                                                 // genuinely unknown — ask (chip)
 }
 
+// v473 — E-BIKE CHARGING TIME (Peter: charging "takes time… prompt the user to say how long… so
+// that it is added to the mission"). stop.chargeMin = minutes stopped to charge (set with the
+// charge level from the lightning button). Charging runs ALONGSIDE whatever else you do there, so a
+// stop only ADDS the part of the charge longer than its meals, and nothing at a sleep stop (you
+// charge overnight). Every ETA walker below adds this to the stop's "before" time, so they agree.
+// E-bike setting off → 0 everywhere, so non-e-bike plans are untouched.
+function stopChargeExtraH(s,hasSleep,mealH){
+  if(hasSleep||!s||!(+s.chargeMin>0)||!_ebikeOn()||!(ebikeStopChargeTo(s)>0))return 0;
+  return Math.max(0,s.chargeMin/60-(mealH||0));
+}
+function _stopHasCharge(s){return !!(s&&+s.chargeMin>0&&ebikeStopChargeTo(s)>0&&_ebikeOn());}
 // Get total sleep hours accounting for fixed departure times
 function totalSleepHours(r){
   return r.stops.filter(s=>s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH)))
@@ -4044,7 +4071,7 @@ function _planOffTable(r,base,targetTotal,crTot){
   const _cmi=_clusterMealInfo(r);
   // Same predicate and same sort as the loop this replaces, minus the distance
   // cutoff — the cutoff is what the binary search below now applies.
-  const stops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length)))
+  const stops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length)||_stopHasCharge(s)))
     .sort((a,b)=>a.dist-b.dist);
   const dists=new Float64Array(stops.length),offs=new Float64Array(stops.length);
   let off=0;
@@ -4052,7 +4079,7 @@ function _planOffTable(r,base,targetTotal,crTot){
     const st=stops[i];
     const hasSleep=st.type==='sleep'||(st.type==='stop'&&(st.sleepAt||st.sleepH))||st.sleepAt;
     const _ms=_mealSplit(st,hasSleep,_cmi);
-    off+=_ms.before;
+    off+=_ms.before+stopChargeExtraH(st,hasSleep,_ms.before);   // v473 — charging beyond the meal
     if(hasSleep&&!_sleepDone(st,r,null)){
       if(st.departTime){
         let rideHrsToStop;
@@ -4120,7 +4147,7 @@ function etaAt(distKm,r){
     // list and _sleepDone makes the call. Non-sleep stops keep the strict test.
     const aheadStops=r.stops.filter(s=>{
       const hasSleep=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
-      if(!hasSleep&&!(s.meals&&s.meals.length))return false;
+      if(!hasSleep&&!(s.meals&&s.meals.length)&&!_stopHasCharge(s))return false;
       if(s.dist>=distKm)return false;
       return hasSleep?(s.dist>nowDist-SLEEP_NEAR_KM):(s.dist>nowDist);
     }).sort((a,b)=>a.dist-b.dist);
@@ -4132,7 +4159,7 @@ function etaAt(distKm,r){
         return;
       }
       const beforeMealH=(s.meals||[]).filter(m=>!hasSleep||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
-      stopOffset+=beforeMealH;
+      stopOffset+=beforeMealH+stopChargeExtraH(s,hasSleep,beforeMealH);   // v473
       if(hasSleep){
         // v361 — the "already slept?" call is made ONCE, at the top of this loop
         // (see _sleepDone). It used to live here as `s.actualArrival || (within 2 km
@@ -4217,7 +4244,7 @@ function etaAt(distKm,r){
       .forEach(s=>{
         const hs=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
         const bm=(s.meals||[]).filter(m=>!hs||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
-        fwdOffset+=bm;
+        fwdOffset+=bm+stopChargeExtraH(s,hs,bm);   // v473
         if(hs){
           if(s.actualArrival){
             // This intermediate stop also has a recorded time — use it to anchor further
@@ -4292,7 +4319,7 @@ function etaAt(distKm,r){
       .forEach(s=>{
         const hs=s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt;
         const bm=(s.meals||[]).filter(m=>!hs||(m.when==='before'||!m.when)).reduce((a,m)=>a+(m.durationMin||20)/60,0);
-        fwdOffset+=bm;
+        fwdOffset+=bm+stopChargeExtraH(s,hs,bm);   // v473
         if(hs&&!_sleepDone(s,r,null)){   // v361 — a marked/known-done night costs no hours
           if(s.departTime){
             const arrEta=new Date(anchorTime+remRidingHrs*3600000+fwdOffset*3600000);
@@ -4427,7 +4454,7 @@ function _schedAt(r,distKm,base){
   // Same stops, same meal folding and same sleep arithmetic as _planOffTable — minus its
   // _sleepDone skip.
   const cmi=_clusterMealInfo(r);
-  const stops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length)))
+  const stops=r.stops.filter(s=>((s.type==='sleep'||(s.type==='stop'&&(s.sleepAt||s.sleepH))||s.sleepAt)||(s.meals&&s.meals.length)||_stopHasCharge(s)))
     .sort((a,b)=>a.dist-b.dist);
   let off=0,arrOff=null;
   for(const st of stops){
@@ -4437,7 +4464,7 @@ function _schedAt(r,distKm,base){
     if(st.dist>=distKm&&!near)continue;
     if(near&&arrOff===null)arrOff=off;
     const ms=_mealSplit(st,hasSleep,cmi);
-    off+=ms.before;
+    off+=ms.before+stopChargeExtraH(st,hasSleep,ms.before);   // v473
     if(hasSleep){
       if(st.departTime)off+=sleepHoursFor(st,new Date(base+(rideH(st.dist)+off)*3600000),r);
       else off+=st.sleepH||(st.type==='stop'?0.25:10);
@@ -24058,7 +24085,10 @@ function tPlan(r){
     <span style="flex:1;"></span>
     <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
   </div>`;
-  if(!r.stops.length) return header+'<div class="banner info"><span>📊</span><span>Add stops on the Stops tab to see your plan.</span></div>';
+  // v473 — A ROUTE WITH NO STOPS STILL GETS ITS MISSION (Peter: it should "at least show the start
+  // and finish points… we want to see an ETA somewhere"). This used to return the hint alone; now
+  // the hint sits above the ordinary Start → Finish list, which carries the finish ETA.
+  const noStopsHint=r.stops.length?'':'<div class="banner info"><span>📊</span><span>No stops yet — add them on the Stops tab to plan food, water and sleep.</span></div>';
   const unstarredCount=r.stops.filter(s=>s.starred===false&&s.type!=='sleep'&&!(s.type==='stop'&&(s.sleepAt||s.sleepH))).length;
 
   const planStops=r.stops.filter(s=>s.starred!==false||s.type==='sleep'||(s.type==='stop')||(s.sleepAt));
@@ -24443,7 +24473,7 @@ function tPlan(r){
   }
 
   const printBtn='<button class="btn btn-sm" id="btn-print-mission" style="font-size:12px;padding:3px 8px;font-family:var(--font);letter-spacing:.3px;">Print</button>';
-  return header+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;"><div style="display:flex;align-items:center;gap:6px;"><span style="background:var(--stop-card-bg);border:1px solid rgba(251,191,36,0.7);border-radius:6px;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span>Starred stops appear here</span></div>${printBtn}</div>`:`<div style="padding:2px 4px 8px;display:flex;justify-content:flex-end;">${printBtn}</div>`)
+  return header+noStopsHint+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;"><div style="display:flex;align-items:center;gap:6px;"><span style="background:var(--stop-card-bg);border:1px solid rgba(251,191,36,0.7);border-radius:6px;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span>Starred stops appear here</span></div>${printBtn}</div>`:`<div style="padding:2px 4px 8px;display:flex;justify-content:flex-end;">${printBtn}</div>`)
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
     +'<div class="card mission-card">'
       +'<div class="mission-hdr">'
@@ -26250,13 +26280,35 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
         String(cur0),k=>{
           const v=+k;
           delete s.chargeHere;   // v469 field, replaced by chargeTo
-          if(v>0)s.chargeTo=v; else delete s.chargeTo;
-          saveAll();
-          const tmp=document.createElement('div');tmp.innerHTML=_chargeBtnHTML(s);
-          const fresh=tmp.firstElementChild;if(fresh&&chg.isConnected)chg.replaceWith(fresh);
-          ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
-          if(IS_DESKTOP())renderDesktopMap();
-          _recToast(v>0?'Charging here to '+v+'%':'No charging here');
+          // Saved and redrawn; ETAs move, so the list re-renders (keeping its scroll).
+          const done=msg=>{
+            saveAll();
+            ['desktop-map','stops-map'].forEach(id=>redrawMap(id));
+            if(IS_DESKTOP())renderDesktopMap();
+            renderKeepScroll();
+            _recToast(msg);
+          };
+          if(!(v>0)){delete s.chargeTo;delete s.chargeMin;done('No charging here');return;}
+          s.chargeTo=v;
+          // A sleep stop charges overnight: no time to ask about, nothing added to the plan.
+          if(isSleepStop(s)){delete s.chargeMin;done('Charging overnight to '+v+'%');return;}
+          // v473 — then: how long you'll stop to charge. Runs alongside any meal here, so only the
+          // part longer than the meal is added to the plan.
+          const sug=ebikeChargeSuggestMin(r,s,v);
+          const pickSug=sug==null?null:(sug<=0?null:(EBIKE_CHARGE_MINS.find(m=>m>=sug)||EBIKE_CHARGE_MINS[EBIKE_CHARGE_MINS.length-1]));
+          const curMin=+s.chargeMin>0?+s.chargeMin:pickSug;
+          setTimeout(()=>{
+            const anchor=document.querySelector('.charge-at-stop[data-sid="'+s.id+'"]')||chg;
+            _pickSheet('Time stopped to charge',EBIKE_CHARGE_MINS.map(m=>({k:String(m),name:_fmtChargeMin(m),
+                desc:(m===pickSug?'Suggested — about '+_fmtChargeMin(sug)+' from your estimate. ':'')+'Added to your plan beyond any meal here',
+                sub:m===pickSug?'suggested':''})),
+              curMin!=null?String(curMin):'',km=>{
+                s.chargeMin=+km;
+                done('Charging to '+v+'% · '+_fmtChargeMin(+km)+' stop');
+              },anchor.isConnected?anchor:null,true);
+          },0);
+          s.chargeMin=curMin||s.chargeMin||60;   // a sensible value if the time list is dismissed
+          done('Charging here to '+v+'%');
         },chg,true);
     }
     return;
