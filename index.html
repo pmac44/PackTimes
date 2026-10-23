@@ -1545,9 +1545,12 @@ select option{background:var(--bg3);}
         <div class="lbl" style="margin-bottom:8px;">Optional</div>
         <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:15px;font-weight:600;color:var(--text);">
           <input type="checkbox" id="rsm-calib" checked style="width:17px;height:17px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);cursor:pointer;">
-          <span>Use this ride as a speed sample</span>
+          <span>Use this ride for your future time estimates</span>
         </label>
-        <p style="font-size:13px;color:var(--text3);line-height:1.5;margin:6px 0 0 26px;">Real rides teach PackTimes how fast you actually ride, so its time estimates get better. Samples stay visible under Sample Rides — you can remove any of them later.</p>
+        <!-- v457 — say WHAT makes a good sample (Peter: a short sealed blast or a flat-out sprint
+             is no use for estimating an ultra, and the old wording didn't say so). -->
+        <p style="font-size:14px;color:var(--text2);line-height:1.5;margin:6px 0 0 26px;">Leave this ticked if you rode at your normal long-ride pace — the kind of riding you plan for.</p>
+        <p style="font-size:13px;color:var(--text3);line-height:1.5;margin:4px 0 0 26px;">Untick it for a short sprint, a flat-out effort, a ride at someone else's pace, or one with long mechanical stops. Samples stay under Sample Rides — you can remove any later.</p>
         <!-- ── WHAT WE'RE ABOUT TO RECORD — ALWAYS VISIBLE, ALWAYS EDITABLE ──
              This block used to HIDE itself whenever the ride matched a route, showing one grey
              uneditable line instead. That was the bug behind "it's recording it as too fast"
@@ -1561,16 +1564,28 @@ select option{background:var(--bg3);}
              and never hides them. A sample ride scales every plan you make — you get to see
              exactly what's going into it before it does. -->
         <div id="rsm-calib-body" style="margin-top:10px;">
-          <p style="font-size:12px;color:var(--text3);line-height:1.5;margin:0 0 9px;">Check these before saving — they're what your time gets compared against.</p>
+          <p style="font-size:12px;color:var(--text3);line-height:1.5;margin:0 0 9px;">Your time gets compared against these. Check the load — it's the one thing PackTimes can't work out for itself.</p>
+          <!-- v457 — WHEN THE ROUTE KNOWS THE SURFACE, IT'S A FACT, NOT A QUESTION (Peter: "you
+               should only have the option of how loaded you were, because that's something the app
+               cannot tell"). The mix is shown read-only. The 7 Aug lesson above still holds — map
+               data can be wrong — so a small "Wrong? Change it" opens the dropdown; it is never
+               hidden away. No route data → the dropdown, as before. -->
           <div class="field" id="rsm-surface-field">
-            <label class="lbl">Surface (mostly)</label>
-            <select id="rsm-surface" style="font-family:var(--sans);">
-              <option value="road">Sealed road</option>
-              <option value="grade2">Gravel / dirt road</option>
-              <option value="single">Singletrack</option>
-              <option value="grade4">Rough track / hike-a-bike</option>
-            </select>
-            <div id="rsm-surface-note" class="rsm-note" style="display:none;"></div>
+            <label class="lbl">Surface</label>
+            <div id="rsm-surface-known" style="display:none;">
+              <div id="rsm-surface-known-val" style="font-family:var(--sans);font-size:16px;font-weight:600;color:var(--text);padding:2px 0;"></div>
+              <div id="rsm-surface-known-note" class="rsm-note"></div>
+              <button type="button" class="btn btn-sm" id="rsm-surface-change" onclick="_recSaveSurfaceChange()" style="margin-top:6px;">Wrong? Change it</button>
+            </div>
+            <div id="rsm-surface-pick">
+              <select id="rsm-surface" style="font-family:var(--sans);">
+                <option value="road">Sealed road</option>
+                <option value="grade2">Gravel / dirt road</option>
+                <option value="single">Singletrack</option>
+                <option value="grade4">Rough track / hike-a-bike</option>
+              </select>
+              <div id="rsm-surface-note" class="rsm-note" style="display:none;"></div>
+            </div>
           </div>
           <!-- Climb: when the ride matched a route we have the REAL figure, so we show it
                rather than asking you to pick a terrain bucket that would only estimate it.
@@ -1802,7 +1817,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v456';
+window.APP_VERSION='v458';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4438,9 +4453,18 @@ function surfaceCategory(tags){
   if(highway==='primary'||highway==='secondary'||highway==='trunk'||highway==='motorway')return unsealed?unsealedCat():'road';
   if(highway==='tertiary'||highway==='unclassified')return unsealed?unsealedCat():'road_minor';
   if(highway==='residential'||highway==='service'||highway==='living_street')return unsealed?unsealedCat():'road_minor';
-  if(highway==='cycleway')return unsealed?'grade2':'grade1';
-  if(highway==='path'||highway==='bridleway')return technical?'single_tech':'single';
-  if(highway==='footway')return paved?'path':(technical?'single_tech':'single');
+  // v458 — A SEALED BIKE PATH IS A MINOR ROAD (Peter, Canberra: a 10 km straight sealed cycleway
+  // "is about as fast as a road… faster than some roads with traffic lights"). It used to be Track
+  // G1 — planned at gravel speed (11 km/h) and filed as GRAVEL in sample rides, so a sealed lunch
+  // loop made him look far faster than he is and every plan came out optimistic. An untagged
+  // cycleway is a minor road too, and the fetcher marks it a guess (road_minor + no surface tag),
+  // so neighbour inference can still turn it to gravel inside a gravel rail trail.
+  // Shared paths mapped as path / footway with a PAVED surface are the same thing: they were
+  // singletrack (12 km/h) or 'path' (4 km/h, hike-a-bike) — now minor road. Unpaved / untagged
+  // path and footway are unchanged.
+  if(highway==='cycleway')return unsealed?'grade2':'road_minor';
+  if(highway==='path'||highway==='bridleway')return paved?'road_minor':(technical?'single_tech':'single');
+  if(highway==='footway')return paved?'road_minor':(technical?'single_tech':'single');
   if(highway==='track'){
     if(tracktype==='grade1')return'grade1';
     if(tracktype==='grade2')return'grade2';
@@ -4467,7 +4491,7 @@ function showSurfHelp(){
   const body=
     hd('Sealed & minor roads')
     +row(S.road,'Sealed road','Paved main roads — bitumen or concrete.')
-    +row(S.road_minor,'Minor road','Smaller sealed roads, streets and service roads.')
+    +row(S.road_minor,'Minor road','Smaller sealed roads, streets, service roads and sealed bike paths.')
     +hd('Dirt roads — vehicle-width two-track (OSM tracktype)')
     +row(S.grade1,'Track G1','Firm, well-made — often compacted or near-sealed.')
     +row(S.grade2,'Track G2','Solid gravel or dirt road. The default good gravel.')
@@ -4690,13 +4714,17 @@ function surfBuildSegs(samples,arr){
 // v454 — `target`: run on that route-shaped object instead of the open route, QUIETLY — no
 // status line, no overlay switch, no save, no re-render. Used for a recorded ride's own track
 // (_calibSurfFetch). Everything else is the same proven chunking, mirrors and circuit breaker.
+// v458 — SURF_RULES_VER: bumped whenever surfaceCategory changes what a way becomes. Stored
+// surface segments are already-classified (no raw tags kept), so a route fetched under older
+// rules can only be corrected by fetching again — Refresh never RESUMES one, it starts over.
+const SURF_RULES_VER=2;
 async function fetchSurfaceData(force,target){
   const r=target||cur(), quiet=!!target;
   if(!r||r.points.length<2)return;
   // v370 — Refresh on a part-fetched route RESUMES instead of starting over. A
   // full wipe only happens when coverage is already complete, i.e. the user is
   // deliberately re-querying OSM for a route whose data is all there.
-  const resuming=!!(force&&r.surfDone&&r.surfDone.length&&surfGapKm(r)>0.5);
+  const resuming=!!(force&&r.surfVer===SURF_RULES_VER&&r.surfDone&&r.surfDone.length&&surfGapKm(r)>0.5);
   if(force&&!resuming){r.surfaceSegs=null;r.surfDone=null;r.surfGuess=null;}
   if(quiet&&!resuming&&r.surfaceSegs&&r.surfaceSegs.length)return;
   if(!resuming&&r.surfaceSegs&&r.surfaceSegs.length){
@@ -4773,6 +4801,7 @@ async function fetchSurfaceData(force,target){
     surfInferNeighbours(work,done);
     r.surfaceSegs=surfBuildSegs(samples,work);
     r.surfDone=surfRangesFromDone(samples,done,r.totalDist);
+    r.surfVer=SURF_RULES_VER;
     const g=[];let k=0;
     while(k<samples.length){
       if(result[k]&&result[k].guess){let e=k;while(e<samples.length&&result[e]&&result[e].guess)e++;g.push([samples[k].dist,samples[e-1].dist]);k=e;}
@@ -7826,10 +7855,19 @@ function _recSaveShow(rec){
   };
   document.getElementById('rsm-surface').value = (auto && auto.surface) ? auto.surface : 'road';
   // v454 — say the mix when there is one; and when there's no route data, say a lookup follows.
+  // v457 — a known surface is shown as a fact (rsm-surface-known), the dropdown only when unknown
+  // or when the rider taps "Wrong? Change it".
   const mixTxt = auto && auto.mix ? _calibMixText(auto) : null;
-  note('rsm-surface-note', auto && auto.surface
-    ? 'From your route' + (auto.routeName ? ' “' + auto.routeName + '”' : '')
-      + (mixTxt ? ': ' + mixTxt + '. The estimate uses the full mix — change this only if it\'s wrong.' : ' — change it if that\'s wrong.')
+  const known = !!(auto && auto.surface);
+  document.getElementById('rsm-surface-known').style.display = known ? 'block' : 'none';
+  document.getElementById('rsm-surface-pick').style.display = known ? 'none' : 'block';
+  if(known){
+    const word = {road:'Sealed road', grade2:'Gravel / dirt road', single:'Singletrack', grade4:'Rough track'}[auto.surface] || auto.surface;
+    document.getElementById('rsm-surface-known-val').textContent = mixTxt ? mixTxt.charAt(0).toUpperCase() + mixTxt.slice(1) : word;
+    document.getElementById('rsm-surface-known-note').textContent = 'From your route' + (auto.routeName ? ' “' + auto.routeName + '”' : '') + (mixTxt ? ' — the estimate uses the full mix.' : '');
+  }
+  note('rsm-surface-note', known
+    ? 'Pick a different surface to replace the route\'s ' + (mixTxt ? 'mix' : 'surface') + ' for this sample.'
     : 'No surface data for this ride yet — pick the main surface. When you\'re next on Wi-Fi, PackTimes looks the surfaces up on OpenStreetMap and updates this sample if it finds them.');
 
   // Real climb off the route beats a terrain bucket; only one of the two is ever shown.
@@ -7850,6 +7888,12 @@ function _recSaveShow(rec){
   modal.style.display = 'flex';
 }
 
+// v457 — "Wrong? Change it": swap the read-only surface for the dropdown (pre-set to the route's).
+function _recSaveSurfaceChange(){
+  document.getElementById('rsm-surface-known').style.display = 'none';
+  document.getElementById('rsm-surface-pick').style.display = 'block';
+  document.getElementById('rsm-surface').focus();
+}
 function _recSaveCalibToggle(){
   const on = document.getElementById('rsm-calib').checked;
   document.getElementById('rsm-calib-body').style.display = on ? 'block' : 'none';
@@ -21451,7 +21495,7 @@ function tRoutes(r){
     ${UI.surfaceStatus==='done'?`<div class="banner ok"><span>✓</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='error'?`<div class="banner err"><span>✗</span><span>${UI.surfaceMsg}</span></div>`:''}
     ${UI.surfaceStatus==='idle'&&(!r||!r.surfaceSegs)?`<p style="font-size:15px;color:var(--text3);">Fetches road/track surface types from OSM. Toggle via the Surface layer in the map legend.</p>`:''}
-    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail',single:'Singletrack',single_tech:'Singletrack tech'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}${(()=>{/* v370 — TWO DIFFERENT THINGS, and only surfDone tells them apart. "Unknown" is queried but untagged in OSM, and Refresh will never help. "Not fetched" is a stretch the run never reached, and Refresh resumes exactly there. Before v370 both showed as "Unknown — try Refresh", which sent you re-querying ground that has no data to find. */const covered=r.surfaceSegs.reduce((a,s)=>a+(s.toDist-s.fromDist),0);const gap=surfGapKm(r);const unknown=Math.max(0,r.totalDist-covered-gap);let out='';if(unknown>1)out+=`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${SURF_UNKNOWN};color:#fff;white-space:nowrap;">Unknown ${unknown.toFixed(0)}km</span>`;if(gap>1)out+=`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:#f97316;color:#fff;white-space:nowrap;">Not fetched ${gap.toFixed(0)}km — Refresh resumes</span>`;return out;})()}</div>`:''}
+    ${r&&r.surfaceSegs?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${Object.entries(SURFACE_COLS).map(([cat,col])=>{const count=r.surfaceSegs.filter(s=>s.cat===cat).length;if(!count)return'';const labels={road:'Sealed road',road_minor:'Minor road',grade1:'Track G1',grade2:'Track G2',grade3:'Track G3',grade4:'Track G4',grade5:'Track G5',path:'Path/trail',single:'Singletrack',single_tech:'Singletrack tech'};const distKm=r.surfaceSegs.filter(s=>s.cat===cat).reduce((a,s)=>a+(s.toDist-s.fromDist),0);return`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${col};color:#fff;white-space:nowrap;">${labels[cat]||cat} ${distKm.toFixed(0)}km</span>`;}).join('')}${(()=>{/* v370 — TWO DIFFERENT THINGS, and only surfDone tells them apart. "Unknown" is queried but untagged in OSM, and Refresh will never help. "Not fetched" is a stretch the run never reached, and Refresh resumes exactly there. Before v370 both showed as "Unknown — try Refresh", which sent you re-querying ground that has no data to find. */const covered=r.surfaceSegs.reduce((a,s)=>a+(s.toDist-s.fromDist),0);const gap=surfGapKm(r);const unknown=Math.max(0,r.totalDist-covered-gap);let out='';if(r.surfVer!==SURF_RULES_VER)out+=`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:#f97316;color:#fff;">Surface rules updated — Refresh to re-read this route</span>`;if(unknown>1)out+=`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:${SURF_UNKNOWN};color:#fff;white-space:nowrap;">Unknown ${unknown.toFixed(0)}km</span>`;if(gap>1)out+=`<span style="font-size:12px;padding:2px 7px;border-radius:10px;background:#f97316;color:#fff;white-space:nowrap;">Not fetched ${gap.toFixed(0)}km — Refresh resumes</span>`;return out;})()}</div>`:''}
   </div>
   <div class="card">
     <div id="hike-card-hdr" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;${UI.hikeExpanded?'margin-bottom:10px;':''}">
