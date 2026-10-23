@@ -1536,8 +1536,8 @@ select option{background:var(--bg3);}
 
     <div style="overflow-y:auto;flex:1;min-height:0;">
 
-      <!-- ── 2. Name it ── -->
-      <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--r-card);padding:12px 13px;margin-bottom:var(--sp-4);">
+      <!-- ── 2. Name it ── (hidden when opened from Recorded Rides — Rename is on that screen) -->
+      <div id="rsm-name-card" style="background:var(--card2);border:1px solid var(--border);border-radius:var(--r-card);padding:12px 13px;margin-bottom:var(--sp-4);">
         <label class="lbl" for="rsm-name" style="margin-bottom:7px;">Ride name</label>
         <!-- var(--sans): a ride NAME is prose, not a metric. The global input rule is
              DM Mono (right for dates/distances/times, wrong for words). -->
@@ -1545,7 +1545,11 @@ select option{background:var(--bg3);}
       </div>
 
       <!-- ── 3. Optional: feed the speed model ── -->
-      <div style="background:var(--card2);border:1px dashed var(--border2);border-radius:var(--r-card);padding:12px 13px;">
+      <div id="rsm-calib-panel" style="background:var(--card2);border:1px dashed var(--border2);border-radius:var(--r-card);padding:12px 13px;">
+        <!-- v463 — the "Optional / use this ride?" question only at ride end. Opened from Recorded
+             Rides the rider has ALREADY said yes (Peter: "I had already hit the button to add it"),
+             so it's replaced by one line on what makes a good sample, and the button says Add. -->
+        <div id="rsm-calib-ask">
         <div class="lbl" style="margin-bottom:8px;">Optional</div>
         <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;font-size:15px;font-weight:600;color:var(--text);">
           <input type="checkbox" id="rsm-calib" checked style="width:17px;height:17px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);cursor:pointer;">
@@ -1555,6 +1559,8 @@ select option{background:var(--bg3);}
              is no use for estimating an ultra, and the old wording didn't say so). -->
         <p style="font-size:14px;color:var(--text2);line-height:1.5;margin:6px 0 0 26px;">Leave this ticked if you rode at your normal long-ride pace — the kind of riding you plan for.</p>
         <p style="font-size:13px;color:var(--text3);line-height:1.5;margin:4px 0 0 26px;">Untick it for a short sprint, a flat-out effort, a ride at someone else's pace, or one with long mechanical stops. Samples stay under Sample Rides — you can remove any later.</p>
+        </div>
+        <p id="rsm-later-intro" style="display:none;font-size:14px;color:var(--text2);line-height:1.5;margin:0;">Sample rides work best when you rode at your normal long-ride pace — not a sprint, a flat-out effort or a ride at someone else's pace. Check the details below, then tap the button.</p>
         <!-- ── WHAT WE'RE ABOUT TO RECORD — ALWAYS VISIBLE, ALWAYS EDITABLE ──
              This block used to HIDE itself whenever the ride matched a route, showing one grey
              uneditable line instead. That was the bug behind "it's recording it as too fast"
@@ -1821,7 +1827,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v462';
+window.APP_VERSION='v463';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7956,7 +7962,18 @@ function _recSaveShow(rec, opts){
   _recSaveCtx = {rec, auto, later, prevName: rec.name};
   const head = document.getElementById('rsm-head');
   const existing = (UI.calibRides || []).find(s => s.recId === rec.id);
-  if(head) head.textContent = later ? (existing ? 'Update sample ride' : 'Add to sample rides') : 'Ride saved';
+  const verb = existing ? 'Update sample ride' : 'Add to sample rides';
+  if(head) head.textContent = later ? verb : 'Ride saved';
+  // v463 — opened from Recorded Rides: no "Optional / use this ride?" question, no name card,
+  // a solid panel, and the button says what it does. Ride end keeps the original screen.
+  const show = (id, on) => { const el = document.getElementById(id); if(el) el.style.display = on ? '' : 'none'; };
+  show('rsm-calib-ask', !later);
+  show('rsm-name-card', !later);
+  show('rsm-later-intro', later);
+  const panel = document.getElementById('rsm-calib-panel');
+  if(panel) panel.style.border = later ? '1px solid var(--border2)' : '1px dashed var(--border2)';
+  const saveBtn = document.getElementById('rsm-save');
+  if(saveBtn) saveBtn.textContent = later ? verb : 'Done';
   const movH = _recMovingH(rec);
   // Figures in DM Mono, words in DM Sans — the whole line used to be mono, which made
   // the prose read like a typewriter (Peter's screenshot).
@@ -8000,7 +8017,8 @@ function _recSaveShow(rec, opts){
   // obvious case. Pre-fill it, flag where it came from, let it be changed.
   document.getElementById('rsm-load').value = (auto && auto.load) ? auto.load : 'moderate';
   note('rsm-load-note', auto
-    ? 'From ' + (auto.routeName ? '“' + auto.routeName + '”' : 'this route') + '\'s Load setting — change it if you carried something different today.'
+    ? (existing ? 'What you chose last time — change it if that\'s wrong.'
+       : 'From ' + (auto.routeName ? '“' + auto.routeName + '”' : 'this route') + '\'s Load setting — change it if you carried something different ' + (later ? 'on this ride.' : 'today.'))
     : null);
 
   document.getElementById('rsm-nonstop').checked = false;
