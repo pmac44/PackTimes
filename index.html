@@ -1450,7 +1450,7 @@ select option{background:var(--bg3);}
 <div id="rec-detail-modal" style="display:none;position:fixed;inset:0;background:var(--scrim);z-index:998;align-items:flex-end;justify-content:center;">
   <div class="modal-sheet-full" style="background:var(--card);border:1px solid var(--border2);border-radius:14px 14px 0 0;padding:16px 15px 24px;width:100%;max-width:520px;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;flex-shrink:0;padding-top:env(safe-area-inset-top,0px);">
-      <span style="font-size:19px;font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="rdm-title">Ride</span>
+      <span style="font-size:19px;font-weight:600;color:var(--text);min-width:0;overflow-wrap:anywhere;line-height:1.25;" id="rdm-title">Ride</span>
       <span style="display:flex;gap:8px;flex-shrink:0;">
         <button class="btn btn-sm" id="rdm-rename" title="Rename ride">Rename</button>
         <button class="btn btn-sm" id="rdm-x">✕</button>
@@ -1471,6 +1471,10 @@ select option{background:var(--bg3);}
       <button class="btn btn-p btn-full" id="rdm-fillgaps" style="display:none;">Fill missing GPS sections&hellip;</button>
       <button class="btn btn-full" id="rdm-strava" style="display:none;">Upload to Strava</button>
       <button class="btn btn-full" id="rdm-icu" style="display:none;">Send to intervals.icu</button>
+      <!-- v462 — Peter: a recorded ride that never became a sample (or should be redone) can be
+           added later. Opens the same end-of-ride save screen, so it gets the route's surface mix,
+           the Wi-Fi surface lookup and the load/faff choices exactly as a fresh ride does. -->
+      <button class="btn btn-full" id="rdm-sample">Add to sample rides</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-p" id="rdm-fit" style="flex:1;justify-content:center;">Export FIT</button>
         <button class="btn" id="rdm-gpx" style="flex:1;justify-content:center;">Export GPX</button>
@@ -1525,7 +1529,7 @@ select option{background:var(--bg3);}
     <div style="flex-shrink:0;display:flex;align-items:flex-start;gap:10px;background:color-mix(in srgb,var(--accent) 12%,transparent);border:1px solid var(--accent3);border-radius:var(--r-card);padding:12px 13px;margin-bottom:var(--sp-4);">
       <svg viewBox="0 0 24 24" width="22" height="22" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="11" fill="var(--accent3)"/><path d="M7 12.5 L10.5 16 L17 8.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <div style="min-width:0;">
-        <div style="font-size:17px;font-weight:700;color:var(--text);line-height:1.2;">Ride saved</div>
+        <div id="rsm-head" style="font-size:17px;font-weight:700;color:var(--text);line-height:1.2;">Ride saved</div>
         <div id="rsm-stats" style="font-size:14px;color:var(--text2);margin-top:3px;line-height:1.4;"></div>
       </div>
     </div>
@@ -1817,7 +1821,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v461';
+window.APP_VERSION='v462';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7503,10 +7507,17 @@ function _ridesCardHTML(){
 let _recDetailRec = null;     // the recording being viewed
 let _recDetailRoute = null;   // its route-shaped projection (checked by redrawMap on tile loads)
 
+// v462 — the detail screen's sample button says whether this ride is already a sample.
+function _recDetailSampleBtnSync(rec){
+  const b = document.getElementById('rdm-sample');
+  if(!b || !rec) return;
+  b.textContent = (UI.calibRides || []).some(s => s.recId === rec.id) ? 'Update sample ride' : 'Add to sample rides';
+}
 function _recDetailOpen(recId){
   const rec = RECS.find(x => x.id === recId);
   if(!rec) return;
   _recDetailRec = rec;
+  _recDetailSampleBtnSync(rec);
   _recDetailRoute = _recAsRoute(rec);
   const rt = ROUTES.find(x => x.id === rec.routeId);
   const durH = (rec.totalDur || 0) / 3600000;
@@ -7687,6 +7698,7 @@ async function _recDetailDelete(){
   $('rdm-fit').addEventListener('click', ()=>exportRecordingAsFIT());
   $('rdm-gpx').addEventListener('click', ()=>exportRecordingAsGPX());
   $('rdm-copy').addEventListener('click', _recDetailCopyAsRoute);
+  $('rdm-sample').addEventListener('click', ()=>{ if(_recDetailRec) _recSaveShow(_recDetailRec, {later:true}); });   // v462
   $('rdm-delete').addEventListener('click', ()=>{ $('rdm-del-confirm').style.display = 'block'; });
   $('rdm-del-cancel').addEventListener('click', ()=>{ $('rdm-del-confirm').style.display = 'none'; });
   $('rdm-del-go').addEventListener('click', _recDetailDelete);
@@ -7936,11 +7948,15 @@ function _recCalibAuto(rec){
 let _recSaveCtx = null;       // {rec, auto} while the save modal is open
 let _recSavePending = null;   // finalised rec waiting for the save modal until gap decisions land
 
-function _recSaveShow(rec){
+function _recSaveShow(rec, opts){
   const modal = document.getElementById('rec-save-modal');
   if(!modal || !rec) return;
   const auto = _recCalibAuto(rec);
-  _recSaveCtx = {rec, auto};
+  const later = !!(opts && opts.later);   // v462 — opened from Recorded Rides, not at ride end
+  _recSaveCtx = {rec, auto, later, prevName: rec.name};
+  const head = document.getElementById('rsm-head');
+  const existing = (UI.calibRides || []).find(s => s.recId === rec.id);
+  if(head) head.textContent = later ? (existing ? 'Update sample ride' : 'Add to sample rides') : 'Ride saved';
   const movH = _recMovingH(rec);
   // Figures in DM Mono, words in DM Sans — the whole line used to be mono, which made
   // the prose read like a typewriter (Peter's screenshot).
@@ -7988,6 +8004,11 @@ function _recSaveShow(rec){
     : null);
 
   document.getElementById('rsm-nonstop').checked = false;
+  // v462 — re-saving an existing sample starts from what was chosen last time.
+  if(existing){
+    if(existing.load) document.getElementById('rsm-load').value = existing.load;
+    document.getElementById('rsm-nonstop').checked = !!existing.nonstop;
+  }
   _recSaveCalibToggle();
   modal.style.display = 'flex';
 }
@@ -8042,9 +8063,14 @@ async function _recSaveConfirm(){
   await DB.putRecording(rec).catch(()=>{});
   const i = RECS.findIndex(x => x.id === rec.id);
   if(i >= 0) RECS[i] = rec;
-  if(name) stravaMarkRename(rec);   // keep Strava's title in step with ours
-  if(name) icuMarkRename(rec);
+  // v462 — only when the name really changed (re-saving from Recorded Rides keeps it as is).
+  if(name && name !== ctx.prevName) stravaMarkRename(rec);   // keep Strava's title in step with ours
+  if(name && name !== ctx.prevName) icuMarkRename(rec);
   _recSaveClose();
+  if(ctx.later){
+    const t = document.getElementById('rdm-title'); if(t) t.textContent = _recDisplayName(rec);
+    _recDetailSampleBtnSync(rec);
+  }
   render();
 }
 
@@ -8101,6 +8127,7 @@ function _recCalibAdd(entry){
   }
   UI.calibRides = UI.calibRides || [];
   const dup = UI.calibRides.findIndex(s => s.recId === entry.recId);
+  const updated = dup >= 0;   // v462 — re-saved from Recorded Rides
   if(dup >= 0) UI.calibRides.splice(dup, 1);
   let replaced = null;
   if(UI.calibRides.length >= CALIB_MAX_RIDES){
@@ -8143,9 +8170,11 @@ function _recCalibAdd(entry){
   if(UI.estModeAdv) for(const rt of ROUTES) rebuildPace(rt);
   saveAll();
   // One toast, not two — say if a ride was displaced, so an eviction is never silent.
-  _recToast(replaced ? 'Added to Speed Calibration — replaced a similar ride (' + replaced + ')'
-                     : UI.estModeAdv ? 'Added to Speed Calibration'
-                                     : 'Saved to Speed Calibration — used when Advanced Estimation is on');
+  // v462 — named after the screen it lands on: Sample Rides (was "Speed Calibration").
+  _recToast(updated ? 'Sample ride updated'
+          : replaced ? 'Added to Sample Rides — replaced a similar ride (' + replaced + ')'
+          : UI.estModeAdv ? 'Added to Sample Rides'
+                          : 'Added to Sample Rides — used when Advanced Estimation is on');
 }
 
 // ── v454 — SURFACES FOR A RIDE WITH NO ROUTE DATA ───────────────────────────────────────
