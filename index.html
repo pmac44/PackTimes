@@ -1802,7 +1802,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v455';
+window.APP_VERSION='v456';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -3662,6 +3662,7 @@ function etaAt(distKm,r){
 // sheet always offers "Planned …" (_rideModeSchedRow), which sets _rec.schedSet. Lives on the
 // recording, so it survives a reload or crash recovery.
 const SCHED_JOIN_OFF_KM=0.3;
+const SCHED_JOIN_SAME_KM=0.03;   // v456 — two route passes this close together are the same spot
 let _schedJoin={recId:null,rid:null,i:0,km:null,t:null};
 function _schedPlanned(r){
   if(!r.startDate||!r.startTime)return null;
@@ -3670,16 +3671,28 @@ function _schedPlanned(r){
 }
 // Where this recording first came onto the route: {t, km}, or null. Scans only points it hasn't
 // seen yet, and stops scanning once found.
+// v456 — THE LOWEST ROUTE-KM AT THAT SPOT, not the nearest vertex. Peter's training loop starts
+// and finishes in the same place, and a plain snapTo (no history, no live-rider rules) matched the
+// first fix to the FINISH: the clock then had him a whole ride behind (1h18 on that loop, both
+// days) and, riding at plan pace, the gap never moved. The live snap already has a start guard
+// for exactly this (v325 "ends meet"); this needed its own. Where the route passes one spot more
+// than once (a loop's start/finish, an out-and-back), the first pass is where a ride joins it.
 function _schedJoinPoint(r){
   if(!_rec)return null;
   const J=_schedJoin;
-  if(J.recId!==_rec.id||J.rid!==r.id){J.recId=_rec.id;J.rid=r.id;J.i=0;J.km=null;J.t=null;}
+  if(J.recId!==_rec.id||J.rid!==r.id){J.recId=_rec.id;J.rid=r.id;J.i=0;J.km=null;J.t=null;J.g=null;}
   if(J.km!==null)return J;
   const pts=_rec.points||[];
+  if(!J.g)J.g=_recAutoIndex(r);   // segment grid, built once per ride + route
   for(;J.i<pts.length;J.i++){
     const p=pts[J.i];if(p._synthetic||p.lat==null)continue;
-    const s=snapTo(r,p.lat,p.lon);
-    if(s&&s.off<=SCHED_JOIN_OFF_KM&&r.points[s.idx]){J.km=isFinite(s.dist)?s.dist:r.points[s.idx].dist;J.t=p.t;return J;}
+    const near=_recAutoNear(r,J.g,p.lat,p.lon).filter(c=>c.off<=SCHED_JOIN_OFF_KM);
+    if(near.length){
+      // Only passes through THIS spot: within SCHED_JOIN_SAME_KM of the closest one. Without it a
+      // switchback's lower leg 250 m away would count as the "first pass" of a hairpin.
+      const best=Math.min(...near.map(c=>c.off));
+      J.km=Math.min(...near.filter(c=>c.off<=best+SCHED_JOIN_SAME_KM).map(c=>c.dist));J.t=p.t;return J;
+    }
   }
   return null;
 }
@@ -19028,7 +19041,18 @@ function _fpillsSync(){
 const LIVE_ANCHOR_BASE=0.65, LIVE_ANCHOR_MAX=0.72, FPILL_ROW3_FLOOR=8;
 const FPILL_CORNER_IDS=['share-btn','rec-ctrl','live-map-ctrl','live-weather-bar'];
 let _liveAnchor=LIVE_ANCHOR_BASE;
-let _fpillRow3RO=null;
+let _fpillRow3RO=null, _fpillRow3At=0;
+// v456 — ALSO RE-CHECKED EVERY SECOND WHILE RIDING (from updateLive). Peter: after some turn boxes
+// the third row stayed hidden until "some later point". The grid is built hidden and only this
+// function shows it; the ResizeObserver only fires on a size change, so a rebuild of the Ride
+// screen that changed no size left row 3 hidden indefinitely. A 1 s re-check makes any wrong
+// answer — whatever caused it — correct itself. Cheap: a handful of getBoundingClientRect calls.
+function _fpillRow3Tick(){
+  const now=Date.now();
+  if(now-_fpillRow3At<1000)return;
+  _fpillRow3At=now;
+  _fpillRow3Sync();
+}
 function _fpillRow3Sync(){
   const sec=document.getElementById('live-map-section'), grid=document.getElementById('fpill-grid');
   if(!sec||!grid)return;
@@ -19038,6 +19062,16 @@ function _fpillRow3Sync(){
   let floor=s.bottom-80;   // no corner buttons drawn → keep clear of the zoom buttons
   for(const id of FPILL_CORNER_IDS){const b=document.getElementById(id);if(!b)continue;const r=b.getBoundingClientRect();if(r.height)floor=Math.min(floor,r.top);}
   const rowFits=rowsEnd<=floor-FPILL_ROW3_FLOOR;
+  // v456 — when row 3 goes from shown to hidden, keep a note of the numbers (last 8, on this
+  // phone only), so a field report can be read back over USB rather than guessed at.
+  if(!rowFits&&!grid.classList.contains('no-row3')){
+    try{
+      let why='map bottom';for(const id of FPILL_CORNER_IDS){const b=document.getElementById(id);if(b){const rr=b.getBoundingClientRect();if(rr.height&&Math.round(rr.top)===Math.round(floor))why=id;}}
+      const L=JSON.parse(localStorage.getItem('pt_row3log')||'[]');
+      L.push({t:new Date().toISOString(),why,rowsEnd:Math.round(rowsEnd),floor:Math.round(floor),mapH:Math.round(s.height),turn:sec.classList.contains('turn-active')});
+      localStorage.setItem('pt_row3log',JSON.stringify(L.slice(-8)));
+    }catch(e){}
+  }
   const need=(rowsEnd+FPILL_ROW3_CLEAR-s.top)/s.height;   // the anchor that just clears the middle cell
   const midFits=rowFits&&need<=LIVE_ANCHOR_MAX;
   const anchor=midFits?Math.max(LIVE_ANCHOR_BASE,need):LIVE_ANCHOR_BASE;
@@ -24197,6 +24231,7 @@ setInterval(()=>{
   if(UI.tab!=='live'||document.visibilityState!=='visible')return;
   if(!UI.gpsActive&&!UI.simRunning)return;
   _schedPatch();
+  _fpillRow3Tick();   // v456
 },1000);
 
 function updateLive(){
@@ -24294,6 +24329,7 @@ function updateLive(){
   _wkgPatch();   // v411
   _kjPatch();    // v435
   _schedPatch();   // v440 / v447
+  _fpillRow3Tick(); // v456 — row 3 can't stay wrongly hidden
   // ── v409 — the VAM pill, patched live.
   const vCurEl=document.getElementById('live-vam-cur');
   if(vCurEl){
