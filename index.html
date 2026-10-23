@@ -1847,7 +1847,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v467';
+window.APP_VERSION='v468';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2931,6 +2931,9 @@ function ebikeRouteEstimate(r,mode){
   let peak=r.points[0].ele;
   // v467 — battery % left at every route point (same index as r.points), for the map/profile colour.
   const pct=new Float32Array(r.points.length);pct[0]=100;
+  // v468 — Wh used from the start to every point, NO overnight resets: the live cell measures ahead
+  // from where you are (a recharge mid-ride is something the rider tells it).
+  const cum=new Float64Array(r.points.length);
   for(let i=1;i<r.points.length;i++){
     const a=r.points[i-1], b=r.points[i];
     while(sl<sleeps.length&&sleeps[sl]<=a.dist){maxLegWh=Math.max(maxLegWh,legWh);legWh=0;sl++;}
@@ -2948,13 +2951,14 @@ function ebikeRouteEstimate(r,mode){
     const wh=(dx*pr.flat*(EBIKE_SURF_MULT[k]||1)+dz*pr.climb)*mass*mf.f;
     legWh+=wh;totalWh+=wh;
     pct[i]=100-legWh/p.wh*100;
+    cum[i]=totalWh;
     if(reserveKm==null&&legWh>usable){reserveKm=b.dist;reserveLeg=sl;}
     // "Flat" only on the same leg as the reserve — after an overnight recharge it's a new battery.
     if(emptyKm==null&&reserveLeg===sl&&legWh>p.wh)emptyKm=b.dist;
   }
   maxLegWh=Math.max(maxLegWh,legWh);
   return{mode,mf,totalWh,maxLegWh,legs:sleeps.length+1,usedPct:maxLegWh/p.wh*100,
-    reserveKm,emptyKm,unknownKm,reservePct:p.reservePct,pct};
+    reserveKm,emptyKm,unknownKm,reservePct:p.reservePct,pct,cum};
 }
 // ── v467 — BATTERY ROUTE COLOUR (Peter: a route-line option coloured by battery left, with a
 // marker every 10% — or at each bar boundary when the display shows bars). Map + elevation strip,
@@ -2965,17 +2969,21 @@ function ebikeMapMode(){
   const want=(UI.ebike&&UI.ebike.mapMode)||p.lastMode;
   return names.includes(want)?want:names[0];
 }
-// One walk per route/mode/settings — redraws (pan, zoom) reuse it.
-let _ebikeTrackCache=null;
-function ebikeTrack(r){
+// One walk per route/mode/settings — redraws (pan, zoom) and the live cell's 1 s ticks reuse it.
+// v468 — a mode can be passed (the live cell uses the ride's mode, the map the Battery card's);
+// a few entries are kept so the two don't evict each other every tick.
+let _ebikeTrackCache=[];
+function ebikeTrack(r,mode){
   if(!_ebikeOn()||!r||!r.points||r.points.length<2)return null;
-  const mode=ebikeMapMode();
+  mode=mode||ebikeMapMode();
+  const p=ebikeProfile();
   const key=[r.id,mode,r.points.length,r.loadPreset,r.surfaceSegs?r.surfaceSegs.length:0,
     (r.stops||[]).filter(isSleepStop).map(s=>s.dist.toFixed(2)).join(','),
-    JSON.stringify(UI.ebike),JSON.stringify(UI.ebikeRides||[])].join('|');
-  if(_ebikeTrackCache&&_ebikeTrackCache.key===key)return _ebikeTrackCache.est;
+    p.wh,p.reservePct,JSON.stringify(p.modes),JSON.stringify(UI.ebikeRides||[])].join('|');
+  const hit=_ebikeTrackCache.find(c=>c.key===key);
+  if(hit)return hit.est;
   const est=ebikeRouteEstimate(r,mode);
-  _ebikeTrackCache={key,est};
+  _ebikeTrackCache=[{key,est}].concat(_ebikeTrackCache).slice(0,4);
   return est;
 }
 // Colour for battery left: stepped in 10% bands (so colour changes line up with the 10% markers),
@@ -2987,6 +2995,15 @@ function ebikeBattCol(pct,reserve){
   const band=Math.min(100,Math.ceil(pct/10)*10);
   const t=Math.max(0,Math.min(1,(band-reserve)/(100-reserve)));
   return _hslHex(20+t*110,75,48);
+}
+// v468 — text colour for a cell filled with battery colour hex: black on the light greens and
+// yellows, white on the darker bands (the grade cell's GRADE_LIGHT rule, worked out instead of listed).
+function ebikeInk(hex){
+  const n=parseInt(String(hex||'').replace('#',''),16);
+  if(!isFinite(n))return'#fff';
+  const c=v=>{v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+  const L=0.2126*c((n>>16)&255)+0.7152*c((n>>8)&255)+0.0722*c(n&255);
+  return L>0.3?'#000':'#fff';
 }
 function _hslHex(h,s,l){
   s/=100;l/=100;
@@ -3068,6 +3085,130 @@ function _ebikeFactorWords(f){
   return'matches your range guess';
 }
 function _ebikeEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+// ── v468 — E-BIKE BATTERY CELL (Ride screen, live). Peter: "a ride pill… live info to the rider
+// about battery life". No Bluetooth yet, so this is the plan's model running on what you've ACTUALLY
+// ridden: start from the reading typed at record start (or the last check-in), subtract the modelled
+// Wh for each bit ridden since (km × surface where the route knows it, plus climb from _vam.asc),
+// show % left, and below it the km until the reserve — measured along the route when following one,
+// else at this ride's own rate so far. HOLD the cell to type the bike's real reading: that re-anchors
+// it (drift goes), and it is also how a mid-ride recharge gets entered.
+// State lives on the recording (rec.battLive) so it survives a reload mid-ride.
+function _ebLive(){
+  if(!_rec)return null;
+  if(!_rec.battLive)_rec.battLive={mode:null,anchorPct:_rec.battStart!=null?_rec.battStart:null,usedWh:0,kmSince:0,lastKm:null,lastAsc:null,checks:[]};
+  return _rec.battLive;
+}
+function _ebRideMode(){
+  const p=ebikeProfile(), names=p.modes.map(m=>m.name);
+  const s=_rec&&_rec.battLive, want=(s&&s.mode)||p.lastMode;
+  return names.includes(want)?want:names[0];
+}
+// From updateLive (1 s): add the Wh for the distance and climb since the last tick.
+function _ebLiveTick(){
+  if(!_ebikeOn()||!_rec||_rec.status!=='active')return;
+  const s=_ebLive();
+  if(s.anchorPct==null&&_rec.battStart!=null)s.anchorPct=_rec.battStart;
+  const km=+_rec.totalDist||0, asc=+(_vam&&_vam.asc||0), now=Date.now();
+  if(s.lastKm==null){s.lastKm=km;s.lastAsc=asc;s.lastT=now;return;}
+  const dk=Math.max(0,km-s.lastKm), dz=Math.max(0,asc-s.lastAsc);
+  const dtH=Math.max(now-(s.lastT||now),1000)/3600000;
+  s.lastKm=km;s.lastAsc=asc;s.lastT=now;   // a reset counter (dz<0) just re-bases
+  // A position JUMP is not riding (first fix far from a stale last position, a GPS glitch): faster
+  // than 80 km/h since the last tick is skipped. Screen-off gaps are fine — the time grows with them.
+  // The sim runs at any speed, so there only a single-tick leap of over 5 km counts as a jump.
+  const sim=!!(UI.simRunning||UI.simPaused);
+  if(dk>0.2&&(sim?dk>5:dk/dtH>80))return;
+  if(!(dk>0||dz>0))return;
+  const mode=_ebRideMode(), pr=_ebikePrior(mode), mf=ebikeModeFactor(mode);
+  const r=cur(), onRoute=!!(r&&!_freeRiding()&&UI.gpsDistKm!=null);
+  let k='road';
+  if(onRoute){const c=surfaceCatAt(UI.gpsDistKm,r);if(c)k=CALIB_SURF_MAP[c]||'road';}
+  s.usedWh+=(dk*pr.flat*(EBIKE_SURF_MULT[k]||1)+dz*pr.climb)*_ebikeMass((r&&r.loadPreset)||'moderate')*mf.f;
+  s.kmSince+=dk;
+}
+function _ebLiveVals(){
+  const out={top:'—',lbl:'hold to enter %',bot:'—',unit:'',blbl:'to reserve',col:null};
+  if(!_ebikeOn()||!_rec)return out;
+  const p=ebikeProfile(), s=_rec.battLive;
+  const a=s&&s.anchorPct!=null?s.anchorPct:_rec.battStart;
+  if(a==null)return out;
+  const mode=_ebRideMode();
+  const pct=Math.max(0,a-(s?s.usedWh:0)/p.wh*100);
+  out.top=Math.round(pct)+'%';out.lbl=mode+' · est.';out.col=ebikeBattCol(pct,p.reservePct);
+  const usable=(pct-p.reservePct)/100*p.wh;
+  const fmtKm=v=>v<10?v.toFixed(1):String(Math.round(v));
+  if(usable<=0){out.bot='0';out.unit='km';out.blbl='in reserve';return out;}
+  const r=cur();
+  if(r&&!_freeRiding()&&UI.gpsDistKm!=null){
+    const est=ebikeTrack(r,mode);
+    if(est&&est.cum){
+      const P=r.points, d=UI.gpsDistKm;
+      let lo=0,hi=P.length-1;while(lo<hi){const m=(lo+hi)>>1;if(P[m].dist<d)lo=m+1;else hi=m;}
+      const base=est.cum[lo];
+      for(let j=lo+1;j<P.length;j++){
+        if(est.cum[j]-base>usable){out.bot=fmtKm(P[j].dist-d);out.unit='km';out.blbl='to '+p.reservePct+'% reserve';return out;}
+      }
+      // The reserve never comes before the finish: say what you'd arrive with instead.
+      out.bot=String(Math.round(pct-(est.cum[P.length-1]-base)/p.wh*100));out.unit='%';out.blbl='at the finish';return out;
+    }
+  }
+  // Off route / no route: this ride's own modelled rate once there's enough of it, else the guess.
+  const pr=_ebikePrior(mode), mf=ebikeModeFactor(mode);
+  const rate=s&&s.kmSince>=5&&s.usedWh>0?s.usedWh/s.kmSince
+    :(pr.flat+pr.climb*EBIKE_REF_CLIMB)*_ebikeMass((r&&r.loadPreset)||'moderate')*mf.f;
+  out.bot=fmtKm(usable/rate);out.unit='km';out.blbl='to '+p.reservePct+'% reserve';
+  return out;
+}
+function _ebPatch(){
+  const el=document.getElementById('live-fpill-ebatt');
+  if(!el)return;
+  const v=_ebLiveVals();
+  const set=(id,t)=>{const e=document.getElementById(id);if(e&&e.textContent!==t)e.textContent=t;};
+  set('live-ebatt-cur',v.top);set('live-ebatt-lbl',v.lbl);set('live-ebatt-bot',v.bot);set('live-ebatt-unit',v.unit);set('live-ebatt-blbl',v.blbl);
+  const top=document.getElementById('live-ebatt-top');
+  if(top){const bg=v.col||'';if(top.dataset.bg!==bg){top.dataset.bg=bg;top.style.background=bg;
+    top.querySelectorAll('[data-ink]').forEach(e=>{e.style.color=v.col?ebikeInk(v.col):(e.dataset.ink==='lbl'?'var(--cell-top-muted)':'var(--text)');});}}
+}
+// Hold the cell → type the bike's reading now (and the mode, if it changed). Never blocks the ride.
+function _ebCheckSheet(){
+  if(!_ebikeOn()||!_rec)return;
+  const p=ebikeProfile(), bars=p.unit==='bars', mode=_ebRideMode();
+  const old=document.getElementById('ebcheck-ov');if(old)old.remove();
+  const ov=document.createElement('div');
+  ov.id='ebcheck-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(5,8,5,.6);display:flex;align-items:center;justify-content:center;padding:var(--sp-4);';
+  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);max-width:340px;width:100%;">
+    <div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-2);">E-bike battery now</div>
+    <div style="font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-4);">What the bike's display shows. This replaces the estimate — use it after a recharge, too.</div>
+    <label class="lbl" for="ebcheck-val">${bars?'Bars, out of '+p.bars:'Battery %'}</label>
+    <input type="number" id="ebcheck-val" inputmode="numeric" min="0" max="${bars?p.bars:100}" style="width:100%;margin-bottom:var(--sp-3);">
+    <label class="lbl" for="ebcheck-mode">Assist mode</label>
+    <select id="ebcheck-mode" style="font-family:var(--sans);width:100%;margin-bottom:var(--sp-4);">${p.modes.map(m=>'<option'+(m.name===mode?' selected':'')+'>'+_ebikeEsc(m.name)+'</option>').join('')}</select>
+    <div style="display:flex;gap:var(--sp-2);">
+      <button class="btn" id="ebcheck-cancel" style="flex:1;height:52px;justify-content:center;">Cancel</button>
+      <button class="btn btn-p" id="ebcheck-save" style="flex:1;height:52px;justify-content:center;">Save</button>
+    </div>
+  </div>`;
+  ov.addEventListener('click',e=>{
+    if(e.target.closest('#ebcheck-cancel')){ov.remove();return;}
+    if(!e.target.closest('#ebcheck-save'))return;
+    const s=_ebLive(), raw=document.getElementById('ebcheck-val').value.trim(), n=+raw;
+    const m=document.getElementById('ebcheck-mode').value;
+    if(m!==s.mode){s.mode=m;UI.ebike=Object.assign(ebikeProfile(),{lastMode:m});saveAll();}
+    if(raw!==''&&isFinite(n)){
+      const v=Math.max(0,Math.min(100,bars?n/p.bars*100:n));
+      const est=_ebLiveVals();
+      s.checks.push({t:Date.now(),km:+(_rec.totalDist||0).toFixed(2),pct:v,est:parseFloat(est.top)||null,mode:m});
+      s.anchorPct=v;s.usedWh=0;s.kmSince=0;
+      if(_rec.battStart==null)_rec.battStart=v;
+    }
+    DB.putRecording(_rec).catch(()=>{});
+    ov.remove();
+    _ebPatch();
+  });
+  document.body.appendChild(ov);
+  setTimeout(()=>{const i=document.getElementById('ebcheck-val');if(i)i.focus();},50);
+}
 // Settings → E-bike battery. Inputs are wired by the eb-* listeners next to the crank-sel one.
 function _ebikeSettingsHTML(){
   const p=ebikeProfile();
@@ -8415,7 +8556,7 @@ function _recSaveBattShow(rec){
   document.getElementById('rsm-batt-end-lbl').textContent = bars ? 'End — bars of ' + p.bars : 'End %';
   st.value = toUnit(b.startPct != null ? b.startPct : rec.battStart != null ? rec.battStart : prev ? prev.startPct : null);
   en.value = toUnit(b.endPct != null ? b.endPct : prev ? prev.endPct : null);
-  const want = b.mode || (prev && prev.mode) || p.lastMode || p.modes[0].name;
+  const want = b.mode || (rec.battLive && rec.battLive.mode) || (prev && prev.mode) || p.lastMode || p.modes[0].name;
   const names = p.modes.map(m => m.name);
   if(!names.includes(want)) names.push(want);   // a mode since renamed or removed still shows
   document.getElementById('rsm-batt-mode').innerHTML = names.map(n => '<option' + (n === want ? ' selected' : '') + '>' + _ebikeEsc(n) + '</option>').join('');
@@ -9903,7 +10044,10 @@ function _battStartRow(){
   const v=_rec.battStart!=null?(bars?Math.round(_rec.battStart/100*p.bars):Math.round(_rec.battStart)):'';
   return`<div style="margin-bottom:var(--sp-4);">
       <label class="lbl" for="ridemode-batt">Battery now ${bars?'— bars, out of '+p.bars:'— %'}</label>
-      <input type="number" id="ridemode-batt" inputmode="numeric" min="0" max="${bars?p.bars:100}" value="${v}" style="width:100%;">
+      <div style="display:flex;gap:var(--sp-2);">
+        <input type="number" id="ridemode-batt" inputmode="numeric" min="0" max="${bars?p.bars:100}" value="${v}" style="flex:1;min-width:0;">
+        <select id="ridemode-batt-mode" aria-label="Assist mode" style="flex:1;min-width:0;font-family:var(--sans);">${p.modes.map(m=>'<option'+(m.name===_ebRideMode()?' selected':'')+'>'+_ebikeEsc(m.name)+'</option>').join('')}</select>
+      </div>
       <div style="font-size:var(--fs-xs);color:var(--text3);margin-top:4px;line-height:1.4;">For your battery estimates. You can also enter it when you save the ride.</div>
     </div>`;
 }
@@ -9916,6 +10060,15 @@ function _battStartWire(ov){
     if(e.target.id!=='ridemode-batt'||!_rec)return;
     const p=ebikeProfile(), raw=e.target.value.trim(), n=+raw;
     _rec.battStart=(raw===''||!isFinite(n))?null:Math.max(0,Math.min(100,p.unit==='bars'?n/p.bars*100:n));
+    const s=_ebLive();if(!s.checks.length)s.anchorPct=_rec.battStart;   // v468 — the live cell starts here
+    DB.putRecording(_rec).catch(()=>{});
+  });
+  // v468 — the ride's assist mode (the live cell and the save screen use it).
+  ov.addEventListener('change',e=>{
+    if(e.target.id!=='ridemode-batt-mode'||!_rec)return;
+    hold({target:{id:'ridemode-batt'}});
+    _ebLive().mode=e.target.value;
+    UI.ebike=Object.assign(ebikeProfile(),{lastMode:e.target.value});saveAll();
     DB.putRecording(_rec).catch(()=>{});
   });
 }
@@ -19601,7 +19754,8 @@ function sortedLayers(r){
 // v405 — 'batt' (phone battery % + hours left) goes last: it's about the phone, not the ride.
 // v409 — 'vam' after 'grade' (both climbing, no sensor). Since v409 this is the PICK LIST's
 // order, not a tap cycle — see _fpillPick.
-const PILL_CYCLE=['speed','pace','mspeed','stop','sched','grade','vam','power','wkg','cad','force','kj','hr','batt','off'];   // v411 + 'wkg', v435 + 'kj', v440 + 'sched'
+// v468 — 'ebatt' (e-bike battery) before the phone's 'batt'; only offered when the e-bike setting is on.
+const PILL_CYCLE=['speed','pace','mspeed','stop','sched','grade','vam','power','wkg','cad','force','kj','hr','ebatt','batt','off'];   // v411 + 'wkg', v435 + 'kj', v440 + 'sched'
 // ── PEDAL FORCE (v360) ───────────────────────────────────────────────────────
 // Peter's use for it: "grinding too big a gear or busting your knees, and as a trigger to
 // increase cadence if you want more power."
@@ -19841,7 +19995,8 @@ const PILL_INFO={
   force:['Pedal force','Newtons','pwr'],
   kj:['Kilojoules','Ride · per hour','pwr'],
   hr:['Heart rate','bpm · average','hr'],
-  batt:['Battery','% · hours left','oth'],
+  ebatt:['E-bike battery','% left · km to reserve · hold to update','oth'],   // v468
+  batt:['Phone battery','% · hours left','oth'],   // v468 — was "Battery"; renamed beside the e-bike one
   off:['Empty','Shows the map','oth'],
 };
 // v416 — tied to what the pills wear in use (Peter): speed/time = the pace pill's teal, climbing = lemon
@@ -19955,7 +20110,7 @@ function _fpillPick(slot,anchor){
   // v443 — EMPTY FIRST, INVERTED (Peter: "EMPTY should be the first one and should stand out a
   // lot"). It is the one choice that isn't a number — it gives the map back — so it leads the
   // list and wears reversed colours (`inv`) instead of a group stripe.
-  _pickSheet('Show in this cell',['off',...PILL_CYCLE.filter(k=>k!=='off')].map(k=>{
+  _pickSheet('Show in this cell',['off',...PILL_CYCLE.filter(k=>k!=='off'&&(k!=='ebatt'||_ebikeOn()))].map(k=>{
     const[n,d,g]=PILL_INFO[k]||[k,'','oth'];
     if(k==='off')return{k,name:n,desc:d,inv:true};
     return{k,name:n,desc:d,col:PILL_TONE[k]||PILL_GROUP_COL[g],note:needs(k)||(k==='wkg'&&!(UI.riderKg>0)?'set weight':'')};
@@ -20890,7 +21045,8 @@ function tLiveShell(r){
   // ── Floating ride pills (overlay on map) ──
   // Each of 3 slots cycles: speed → power → hr → off → speed...
   _renderFloatingPill=(slotIdx)=>{
-    const type=(UI.livePills||FPILL_DEFAULT)[slotIdx]||'off';
+    let type=(UI.livePills||FPILL_DEFAULT)[slotIdx]||'off';
+    if(type==='ebatt'&&!_ebikeOn())type='off';   // v468 — e-bike setting turned off: the cell gives the map back
     // v269 — the pills no longer position themselves and no longer size themselves either.
     // The GRID does both (see FPILL_DEFAULT). v260c's flex columns existed because pill
     // heights varied (28px "off" vs ~105px paired), so a fixed top for row 2 was impossible.
@@ -21156,7 +21312,7 @@ function tLiveShell(r){
       return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-batt">
         <div style="padding:5px 8px 3px;">
           <div style="line-height:1.0;"><span style="font-size:34px;font-weight:700;color:var(--text);font-family:var(--font);" id="live-batt-cur">${v.pct}</span></div>
-          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">battery</div>
+          <div style="font-size:11px;font-weight:500;color:var(--cell-top-muted);font-family:var(--sans);line-height:1.1;">${_ebikeOn()?'phone battery':'battery'}</div>
         </div>
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-batt-left">${v.left}</span></div>
@@ -21220,6 +21376,19 @@ function tLiveShell(r){
         <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
           <div style="line-height:1.0;"><span style="${Fb}color:var(--cell-bottom-text);" id="live-grade-totop">${gb.num}</span><span style="${U}color:var(--cell-bottom-text);" id="live-grade-tounit">${gb.unit}</span></div>
           <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-grade-botlbl">${gb.label}</div>
+        </div>
+      </div>`;
+    }
+    if(type==='ebatt'){   // v468 — e-bike battery, live estimate; see _ebLiveVals. Hold = enter the real reading.
+      const v=_ebLiveVals(), ink=v.col?ebikeInk(v.col):null;
+      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-ebatt">
+        <div id="live-ebatt-top" data-bg="${v.col||''}" style="padding:5px 8px 3px;${v.col?`background:${v.col};`:''}">
+          <div style="line-height:1.0;"><span data-ink="num" style="font-size:36px;font-weight:700;color:${ink||'var(--text)'};font-family:var(--font);" id="live-ebatt-cur">${v.top}</span></div>
+          <div data-ink="lbl" style="font-size:11px;font-weight:600;color:${ink||'var(--cell-top-muted)'};font-family:var(--sans);line-height:1.1;" id="live-ebatt-lbl">${_ebikeEsc(v.lbl)}</div>
+        </div>
+        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
+          <div style="line-height:1.0;"><span style="font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-ebatt-bot">${v.bot}</span><span style="font-size:18px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);margin-left:3px;" id="live-ebatt-unit">${v.unit}</span></div>
+          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;" id="live-ebatt-blbl">${v.blbl}</div>
         </div>
       </div>`;
     }
@@ -25065,6 +25234,7 @@ function updateLive(){
   _wkgPatch();   // v411
   _kjPatch();    // v435
   _schedPatch();   // v440 / v447
+  _ebLiveTick();_ebPatch();   // v468 — e-bike battery cell
   _fpillRow3Tick(); // v456 — row 3 can't stay wrongly hidden
   // ── v409 — the VAM pill, patched live.
   const vCurEl=document.getElementById('live-vam-cur');
@@ -27176,13 +27346,14 @@ function loadDemo(){
 const _fpillLP={timer:null,fired:false,x:0,y:0};
 const LP_SLOP_PX=12;
 document.addEventListener('pointerdown',e=>{
-  const fp=e.target.closest('.live-fpill[data-pair], #live-fpill-sched');
+  const fp=e.target.closest('.live-fpill[data-pair], #live-fpill-sched, #live-fpill-ebatt');
   if(!fp)return;
   _fpillLP.fired=false;_fpillLP.x=e.clientX;_fpillLP.y=e.clientY;
   _fpillLP.timer=setTimeout(()=>{
     _fpillLP.timer=null;
     _fpillLP.fired=true;
     if(fp.id==='live-fpill-sched'){_missionPopShow();return;}
+    if(fp.id==='live-fpill-ebatt'){_ebCheckSheet();return;}   // v468
     const t=fp.dataset.pair;
     if(t==='power')connectPowerMeter();
     else if(t==='hr')connectHRMonitor();
