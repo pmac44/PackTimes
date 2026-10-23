@@ -1544,6 +1544,26 @@ select option{background:var(--bg3);}
         <input type="text" id="rsm-name" autocomplete="off" style="width:100%;font-family:var(--sans);">
       </div>
 
+      <!-- ── v465 — E-bike battery (only when Settings → E-bike battery is on). Blank = skipped. ── -->
+      <div id="rsm-batt-card" style="display:none;background:var(--card2);border:1px solid var(--border);border-radius:var(--r-card);padding:12px 13px;margin-bottom:var(--sp-4);">
+        <div class="lbl" style="margin-bottom:8px;">E-bike battery</div>
+        <div style="display:flex;gap:var(--sp-2);">
+          <div class="field" style="flex:1;min-width:0;">
+            <label class="lbl" for="rsm-batt-start" id="rsm-batt-start-lbl">Start %</label>
+            <input type="number" id="rsm-batt-start" inputmode="numeric" min="0" max="100" style="width:100%;">
+          </div>
+          <div class="field" style="flex:1;min-width:0;">
+            <label class="lbl" for="rsm-batt-end" id="rsm-batt-end-lbl">End %</label>
+            <input type="number" id="rsm-batt-end" inputmode="numeric" min="0" max="100" style="width:100%;">
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="rsm-batt-mode">Assist mode you mostly used</label>
+          <select id="rsm-batt-mode" style="font-family:var(--sans);"></select>
+        </div>
+        <p style="font-size:13px;color:var(--text3);line-height:1.5;margin:0;">Leave the readings blank to skip. Rides mostly in one mode, using a good part of the battery, give the best estimates.</p>
+      </div>
+
       <!-- ── 3. Optional: feed the speed model ── -->
       <div id="rsm-calib-panel" style="background:var(--card2);border:1px dashed var(--border2);border-radius:var(--r-card);padding:12px 13px;">
         <!-- v463 — the "Optional / use this ride?" question only at ride end. Opened from Recorded
@@ -1827,7 +1847,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v464';
+window.APP_VERSION='v465';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1839,6 +1859,8 @@ const newRoute=name=>({
 const cur=()=>CUR>=0?ROUTES[CUR]:null;
 const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:null,gpsHeading:null,searchRadiusKm:0.4,placeRadiusKm:2,crossingNames:{},lastSleepH:10,stopsShowStarred:false,searchMode:null,turnStatus:null,dbxToken:null,dbxRefreshToken:null,dbxExpiresAt:null,dbxSavedAt:null,icuKey:null,icuAthleteId:null,icuAthleteName:null,icuAutoUpload:true,
   calibRides:[],   // Advanced Calibration sample rides — global (rider property, not route)
+  ebike:null,      // v465 — e-bike battery profile {on, wh, unit:'pct'|'bars', bars, reservePct, modes:[{name,rangeKm}], lastMode}; see EBIKE BATTERY
+  ebikeRides:[],   // v465 — battery sample rides {recId,name,ts,mode,startPct,endPct,wh,distKm,elevM,surface,mix?,load}
   estModeAdv:false, // Basic vs Advanced estimation — global (rider property, not route); syncs via plan.json
   fatigueMode:'off', // Optional fatigue model: off|mild|moderate|strong — global rider setting
   themeMode:'auto', // Colour theme: auto (paper by day / graphite after sunset) | paper | graphite
@@ -1856,7 +1878,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   gpsTravelledKm:0,
   _lastSnapIdx:null,                       // route point index of last snap (for directional bias)
   opStatus:'idle',opMsg:'',tsStatus:'idle',tsMsg:'',accomStatus:'idle',accomMsg:'',accomExpanded:false,tileDownloadStatus:'idle',tileDownloadMsg:'',tileDownloadIdx:null,alertedStops:new Set(),hiddenMapTypes:new Set(),planSleepOnly:false,planFoodOnly:false,planWaterOnly:false,planHidePassed:false,stopsMapExpanded:false,planEditCluster:null,turnAudio:true,keepScreenOn:false,gpsZoom:0.15,weatherSpacingKm:25,turnAlertM:50,turnMarkerOffsetM:30,
-  settingsExp:{averages:false,appearance:true,sharing:false,packride:false,strava:false,intervals:false,dropbox:true,alerts:false,ftp:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
+  settingsExp:{averages:false,appearance:true,sharing:false,packride:false,strava:false,intervals:false,dropbox:true,alerts:false,ftp:false,ebike:false,zoom:false,weather:false,osmDefaults:false,osmRadius:false,offline:false,offlineMaps:false,simulator:false,geoapify:false,danger:false},
   helloExpanded:null,helloDetailOpen:false,hikeExpanded:false,_highlightPaceIdx:null,surfaceStatus:'idle',surfaceMsg:'',
   powerWatts:null,powerCadence:null,powerBalance:null,powerConnected:false,powerDeviceName:null,simPaused:false,
   powerMaxForceN:null,powerMinForceN:null,powerMaxTorqueNm:null,powerHasPeak:false,powerCpsFlags:0,   // v360 — pedal force pill
@@ -2012,7 +2034,7 @@ async function saveAll(){
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false,scope:UI.stravaScope||null}).catch(()=>{});
   // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
   await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,riderKg:UI.riderKg||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,legStartKj:UI.legStartKj||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,riderKg:UI.riderKg||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,legStartKj:UI.legStartKj||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],ebike:UI.ebike||null,ebikeRides:UI.ebikeRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -2091,6 +2113,8 @@ async function loadAll(){
       if(prefs.recStopDetectMs)UI.recStopDetectMs=prefs.recStopDetectMs;
       if(prefs.avgIncStops!==undefined)UI.avgIncStops=prefs.avgIncStops!==false;
       if(Array.isArray(prefs.calibRides))UI.calibRides=prefs.calibRides;
+      if(prefs.ebike&&typeof prefs.ebike==='object')UI.ebike=prefs.ebike;
+      if(Array.isArray(prefs.ebikeRides))UI.ebikeRides=prefs.ebikeRides;
       if(prefs.estModeAdv!==undefined)UI.estModeAdv=prefs.estModeAdv;
       if(prefs.fatigueMode)UI.fatigueMode=prefs.fatigueMode;
       if(prefs.themeMode)UI.themeMode=prefs.themeMode;
@@ -2819,6 +2843,224 @@ function calibFactor(){
 function calibRiderMult(){
   const f=calibFactor();
   return f===null?null:{vam:1/f,spd:1/f};
+}
+
+// ─── v465 — EBIKE BATTERY (sample rides → battery estimate) ─────────────────────────────
+// An enquiry (Oct 2026): use sample rides to estimate e-bike battery range. FIRST STEP, all manual:
+// the rider types the battery reading at the start and end of a ride plus the assist mode they
+// mostly used; PackTimes turns that into watt-hours. Bluetooth (live battery / assist / rider
+// power) is a later step — plan in _planning/PackTimes-Ebike-Range_Plan_v1.md.
+//
+// THE MODEL is deliberately small:  Wh = (km × flat × surface + climb m × climb) × mass
+// Each mode starts from the rider's own "typical range on a full battery" guess, taken as sealed
+// road, light load, ~EBIKE_REF_CLIMB m of climb per km, with EBIKE_CLIMB_SHARE of the energy spent
+// climbing. A sample ride never sets those numbers — it gives a FACTOR, actual Wh ÷ predicted Wh,
+// the same idea as a speed sample's rider factor. A mode with no ride of its own borrows the
+// average factor of the others (range guesses tend to be wrong in the same direction). Fitting the
+// flat and climb terms separately would need many varied rides; one scale factor works from one.
+// ⚠ The bike's battery % is not perfectly linear, bar displays are coarse, cold cuts range. Every
+// screen that shows an estimate shows a band and says it's a guide.
+const EBIKE_REF_CLIMB=10;          // m per km behind the rider's "typical range" figure
+const EBIKE_CLIMB_SHARE=0.3;       // share of that energy spent climbing
+const EBIKE_SURF_MULT={road:1,grade2:1.3,single:1.5,grade4:1.6};
+const EBIKE_LOAD_KG={unloaded:0,light:3,moderate:10,heavy:20};
+const EBIKE_BASE_KG=100;           // rider + bike
+const EBIKE_MIN_USED=20;           // % — a smaller drop is kept but called rough
+const EBIKE_MAX_RIDES=40;
+const EBIKE_DEFAULT_MODES=[{name:'Eco',rangeKm:100},{name:'Tour',rangeKm:70},{name:'Sport',rangeKm:55},{name:'Turbo',rangeKm:40}];
+function ebikeProfile(){
+  const p=UI.ebike||{};
+  const modes=Array.isArray(p.modes)&&p.modes.length?p.modes:EBIKE_DEFAULT_MODES.map(m=>({...m}));
+  return{on:!!p.on,wh:+p.wh>0?+p.wh:500,unit:p.unit==='bars'?'bars':'pct',bars:Math.max(2,Math.min(10,+p.bars||5)),
+    reservePct:+p.reservePct>=0?+p.reservePct:15,modes,lastMode:p.lastMode||null};
+}
+function _ebikeOn(){return!!(UI.ebike&&UI.ebike.on);}
+// Wh per km on flat sealed road and Wh per metre climbed, from the rider's guess for this mode.
+function _ebikePrior(mode){
+  const p=ebikeProfile();
+  const m=p.modes.find(x=>x.name===mode)||p.modes[0];
+  const avg=p.wh/Math.max(+m.rangeKm||1,1);
+  return{flat:avg*(1-EBIKE_CLIMB_SHARE),climb:avg*EBIKE_CLIMB_SHARE/EBIKE_REF_CLIMB};
+}
+function _ebikeMass(load){
+  const kg=EBIKE_LOAD_KG[load]!=null?EBIKE_LOAD_KG[load]:EBIKE_LOAD_KG.moderate;
+  return(EBIKE_BASE_KG+kg)/(EBIKE_BASE_KG+EBIKE_LOAD_KG.light);
+}
+// Predicted Wh for a sample; its surface mix splits distance and climb, as in calibRideFactor.
+function _ebikePredictSample(s){
+  const pr=_ebikePrior(s.mode), d=+s.distKm||0, e=+s.elevM||0;
+  let wh=0;
+  for(const [k,f] of _calibMixParts(s))wh+=d*f*pr.flat*(EBIKE_SURF_MULT[k]||1)+e*f*pr.climb;
+  return wh*_ebikeMass(s.load||'moderate');
+}
+function ebikeSampleWh(s){return Math.max(0,(+s.startPct)-(+s.endPct))/100*(+s.wh||ebikeProfile().wh);}
+function ebikeSampleFactor(s){
+  const used=ebikeSampleWh(s), pred=_ebikePredictSample(s);
+  if(!(used>0)||!(pred>0)||!(+s.distKm>=1))return null;
+  return Math.min(2.5,Math.max(0.4,used/pred));
+}
+// {f, n, band, borrowed}: n = this mode's own rides; band = ± fraction shown around the estimate.
+// Weighted by % used — a 60% drop says more than a 15% one.
+function ebikeModeFactor(mode){
+  const fit=list=>{let w=0,t=0;const fs=[];
+    for(const s of list){const f=ebikeSampleFactor(s);if(f==null)continue;const wt=Math.max((+s.startPct)-(+s.endPct),1);w+=wt;t+=f*wt;fs.push(f);}
+    return w?{f:t/w,fs}:null;};
+  const all=UI.ebikeRides||[];
+  const own=fit(all.filter(s=>s.mode===mode));
+  if(own){
+    const n=own.fs.length;
+    const spread=n>1?(Math.max(...own.fs)-Math.min(...own.fs))/2/own.f:0;
+    return{f:own.f,n,band:n>1?Math.min(0.3,Math.max(0.1,spread)):0.2,borrowed:false};
+  }
+  const any=fit(all);
+  if(any)return{f:any.f,n:0,band:0.25,borrowed:true};
+  return{f:1,n:0,band:0.3,borrowed:false};
+}
+// Walk the route once for one mode. The battery starts full and is assumed recharged to full at
+// each overnight stop, so the figure that matters is the hungriest LEG (start→sleep, sleep→sleep…).
+// Climb uses elevGain's 10 m hysteresis, counted as it happens.
+function ebikeRouteEstimate(r,mode){
+  if(!r||!r.points||r.points.length<2)return null;
+  const p=ebikeProfile(), pr=_ebikePrior(mode), mf=ebikeModeFactor(mode);
+  const mass=_ebikeMass(r.loadPreset||'moderate');
+  const segs=(r.surfaceSegs||[]).slice().sort((a,b)=>a.fromDist-b.fromDist);
+  const sleeps=(r.stops||[]).filter(isSleepStop).map(s=>s.dist).sort((a,b)=>a-b);
+  const usable=p.wh*(1-p.reservePct/100);
+  let si=0,sl=0,legWh=0,maxLegWh=0,totalWh=0,reserveKm=null,reserveLeg=-1,emptyKm=null,unknownKm=0;
+  let peak=r.points[0].ele;
+  for(let i=1;i<r.points.length;i++){
+    const a=r.points[i-1], b=r.points[i];
+    while(sl<sleeps.length&&sleeps[sl]<=a.dist){maxLegWh=Math.max(maxLegWh,legWh);legWh=0;sl++;}
+    const dx=Math.max(0,b.dist-a.dist), mid=(a.dist+b.dist)/2;
+    while(si<segs.length&&segs[si].toDist<mid)si++;
+    const cat=si<segs.length&&segs[si].fromDist<=mid?segs[si].cat:null;
+    if(!cat)unknownKm+=dx;
+    const k=cat?(CALIB_SURF_MAP[cat]||'road'):'road';
+    let dz=0;
+    const e=b.ele;
+    if(e!=null){
+      if(peak==null||e>peak){dz=peak==null?0:e-peak;peak=e;}
+      else if(peak-e>10)peak=e;
+    }
+    const wh=(dx*pr.flat*(EBIKE_SURF_MULT[k]||1)+dz*pr.climb)*mass*mf.f;
+    legWh+=wh;totalWh+=wh;
+    if(reserveKm==null&&legWh>usable){reserveKm=b.dist;reserveLeg=sl;}
+    // "Flat" only on the same leg as the reserve — after an overnight recharge it's a new battery.
+    if(emptyKm==null&&reserveLeg===sl&&legWh>p.wh)emptyKm=b.dist;
+  }
+  maxLegWh=Math.max(maxLegWh,legWh);
+  return{mode,mf,totalWh,maxLegWh,legs:sleeps.length+1,usedPct:maxLegWh/p.wh*100,
+    reserveKm,emptyKm,unknownKm,reservePct:p.reservePct};
+}
+// "uses 18% more than your guess" — a sample's factor in words.
+function _ebikeFactorWords(f){
+  if(f>1.03)return'uses '+Math.round((f-1)*100)+'% more than your range guess';
+  if(f<0.97)return'uses '+Math.round((1-f)*100)+'% less than your range guess';
+  return'matches your range guess';
+}
+function _ebikeEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+// Settings → E-bike battery. Inputs are wired by the eb-* listeners next to the crank-sel one.
+function _ebikeSettingsHTML(){
+  const p=ebikeProfile();
+  const top=`<label style="display:flex;align-items:center;gap:8px;font-size:15px;margin-bottom:10px;cursor:pointer;">
+      <input type="checkbox" id="eb-on" ${p.on?'checked':''}> I ride an e-bike — estimate battery use
+    </label>
+    <p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:10px;">PackTimes estimates how much battery a route will use in each assist mode. It starts from your own range guess, then learns from rides where you note the battery at the start and end.</p>`;
+  if(!p.on)return top;
+  const bars=p.unit==='bars';
+  const modeRows=p.modes.map((m,i)=>{
+    const mf=ebikeModeFactor(m.name);
+    const how=mf.n?'From '+mf.n+' ride'+(mf.n!==1?'s':'')+': '+_ebikeFactorWords(mf.f)
+      :mf.borrowed?'No rides in this mode yet — corrected by your other rides'
+      :'No rides yet — using your guess';
+    return`<div style="border:1px solid var(--border);border-radius:var(--r-ctrl);padding:8px 10px;margin-bottom:6px;">
+      <div style="display:flex;gap:var(--sp-2);align-items:center;">
+        <input type="text" data-ebmode-name="${i}" value="${_ebikeEsc(m.name)}" aria-label="Mode name" style="flex:1;min-width:0;font-family:var(--sans);">
+        <input type="number" data-ebmode-range="${i}" value="${Math.round(+m.rangeKm||0)}" min="5" max="500" inputmode="numeric" aria-label="Typical range in km" style="width:80px;">
+        <span style="font-size:14px;color:var(--text3);">km</span>
+        ${p.modes.length>1?`<button type="button" class="btn btn-sm btn-r" data-ebmode-del="${i}" title="Remove mode">✕</button>`:''}
+      </div>
+      <div style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.4;">${how}</div>
+    </div>`;}).join('');
+  const rides=(UI.ebikeRides||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+  const rideRows=rides.length?rides.map(s=>{
+    const f=ebikeSampleFactor(s), used=Math.round((+s.startPct)-(+s.endPct));
+    const when=s.ts?new Date(s.ts).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'';
+    return`<div style="display:flex;gap:8px;align-items:flex-start;border:1px solid var(--border);border-radius:var(--r-ctrl);padding:8px 10px;margin-bottom:6px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:15px;font-weight:600;line-height:1.3;">${_ebikeEsc(s.name||'Ride')}</div>
+        <div style="font-size:13px;color:var(--text2);font-family:var(--font);line-height:1.4;margin-top:2px;">${when} · ${_ebikeEsc(s.mode)} · ${Math.round(s.startPct)}→${Math.round(s.endPct)}% · ${(+s.distKm).toFixed(0)} km · ${Math.round(+s.elevM||0)} m</div>
+        <div style="font-size:13px;color:var(--text3);line-height:1.4;margin-top:2px;">${f!=null?_ebikeFactorWords(f):'Not usable'}${used<EBIKE_MIN_USED?' · rough, only '+used+'% used':''}</div>
+      </div>
+      <button type="button" class="btn btn-sm btn-r" data-ebride-del="${_ebikeEsc(s.recId)}" title="Remove this battery sample">✕</button>
+    </div>`;}).join('')
+    :`<p style="font-size:14px;color:var(--text3);margin-bottom:8px;">None yet. Note the battery when you start recording and again on the save screen at the end.</p>`;
+  return top+`
+    <div class="field">
+      <label class="lbl" for="eb-wh">Battery size (Wh)</label>
+      <input type="number" id="eb-wh" value="${p.wh}" min="100" max="3000" inputmode="numeric" style="width:120px;">
+      <div style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.4;">On the battery label, for example 500, 625 or 750.</div>
+    </div>
+    <div class="field">
+      <label class="lbl" for="eb-unit">Your display shows</label>
+      <div style="display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;">
+        <select id="eb-unit" style="font-family:var(--sans);width:auto;">
+          <option value="pct" ${bars?'':'selected'}>Percent</option>
+          <option value="bars" ${bars?'selected':''}>Bars</option>
+        </select>
+        ${bars?`<input type="number" id="eb-bars" value="${p.bars}" min="2" max="10" inputmode="numeric" aria-label="Number of bars" style="width:70px;"><span style="font-size:14px;color:var(--text3);">bars when full</span>`:''}
+      </div>
+      ${bars?`<div style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.4;">Bars are coarse — one bar of five is 20% — so bar readings give rougher estimates.</div>`:''}
+    </div>
+    <div class="field">
+      <label class="lbl" for="eb-reserve">Keep in reserve (%)</label>
+      <input type="number" id="eb-reserve" value="${p.reservePct}" min="0" max="50" inputmode="numeric" style="width:90px;">
+    </div>
+    <div class="lbl" style="margin:14px 0 4px;">Assist modes</div>
+    <p style="font-size:13px;color:var(--text3);line-height:1.5;margin:0 0 8px;">Use your bike's own mode names. The km is your best guess at range on a full battery — sealed roads, some hills, a light load. Your rides correct it.</p>
+    ${modeRows}
+    <button type="button" class="btn btn-sm" id="eb-mode-add" style="margin-bottom:14px;">+ Add mode</button>
+    <div class="lbl" style="margin:6px 0 6px;">Battery sample rides</div>
+    ${rideRows}
+    <p style="font-size:13px;color:var(--text3);line-height:1.5;margin-top:8px;">Estimates are a planning guide, not a promise. Battery readings aren't perfectly even, and cold weather, headwinds and stop-start riding all cut range. Carry a margin.</p>`;
+}
+// Routes tab — the Battery card, under Speed Estimation. Only when the e-bike setting is on.
+function _ebikeCardHTML(r){
+  if(!_ebikeOn()||!r||!r.points||r.points.length<2)return'';
+  const p=ebikeProfile();
+  const rows=p.modes.map(m=>{
+    const est=ebikeRouteEstimate(r,m.name);
+    if(!est)return'';
+    const lo=Math.round(est.usedPct*(1-est.mf.band)), hi=Math.round(est.usedPct*(1+est.mf.band));
+    // Figures in DM Mono, words in DM Sans (as on the ride save screen).
+    const mono=s=>'<span style="font-family:var(--font);">'+s+'</span>';
+    let main, col;
+    if(est.reserveKm==null){
+      main=mono(Math.round(est.usedPct)+'%')+' used'+(est.legs>1?' on the longest day':'')+' <span style="color:var(--text3);font-weight:400;white-space:nowrap;">('+mono(lo+'–'+hi+'%')+')</span>';
+      col=hi>100-p.reservePct?'#f97316':'var(--accent)';
+    } else {
+      main='Down to '+mono(p.reservePct+'%')+' at '+mono(est.reserveKm.toFixed(0)+' km')+(est.emptyKm!=null?' · flat by about '+mono(est.emptyKm.toFixed(0)+' km'):'');
+      col='var(--red)';
+    }
+    return`<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--border);">
+      <div style="width:72px;flex-shrink:0;font-size:15px;font-weight:600;overflow-wrap:anywhere;">${_ebikeEsc(m.name)}</div>
+      <div style="flex:1;min-width:0;font-size:15px;font-weight:600;color:${col};font-family:var(--sans);line-height:1.4;">${main}</div>
+    </div>`;}).join('');
+  const est0=ebikeRouteEstimate(r,p.modes[0].name);
+  const nRides=(UI.ebikeRides||[]).filter(s=>ebikeSampleFactor(s)!=null).length;
+  const notes=[
+    'Starting from a full '+p.wh+' Wh battery'+(est0&&est0.legs>1?', recharged at each overnight stop':'')+'.',
+    nRides?'Corrected by '+nRides+' battery sample ride'+(nRides!==1?'s':'')+'.':'From your range guesses only — add battery readings when you save rides to sharpen this.',
+  ];
+  if(est0&&est0.unknownKm>r.totalDist*0.2)notes.push('No surface data for '+est0.unknownKm.toFixed(0)+' km — counted as sealed road, so off-road use may be higher.');
+  return`<div class="card">
+    <div class="secrow">
+      <div class="ctitle">Battery</div>
+      <button type="button" onclick="UI.tab='settings';_setGo('ebike')" title="E-bike battery settings" style="background:var(--overlay-bg);border:1px solid var(--hair-light);border-radius:6px;cursor:pointer;padding:4px 6px;color:var(--on-dark);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">${ICON_EDIT}</button>
+    </div>
+    ${rows}
+    <p style="font-size:13px;color:var(--text3);line-height:1.5;margin-top:8px;">${notes.join(' ')} A planning guide — cold, wind and stop-start riding all cut range.</p>
+  </div>`;
 }
 function riderSimplePreset(r){
   // Legacy plans stored Advanced mode per-route as riderPreset='custom'; the mode
@@ -8038,7 +8280,60 @@ function _recSaveShow(rec, opts){
     document.getElementById('rsm-nonstop').checked = !!existing.nonstop;
   }
   _recSaveCalibToggle();
+  _recSaveBattShow(rec);
   modal.style.display = 'flex';
+}
+// v465 — fill the e-bike battery card: this ride's readings if it has them (start may have been
+// typed at record start), else what an earlier save of this ride stored.
+function _recSaveBattShow(rec){
+  const card = document.getElementById('rsm-batt-card');
+  if(!card) return;
+  const on = _ebikeOn();
+  card.style.display = on ? '' : 'none';
+  if(!on) return;
+  const p = ebikeProfile(), bars = p.unit === 'bars';
+  const prev = (UI.ebikeRides || []).find(s => s.recId === rec.id);
+  const b = rec.batt || {};
+  const toUnit = v => v == null ? '' : (bars ? Math.round(v / 100 * p.bars) : Math.round(v));
+  const st = document.getElementById('rsm-batt-start'), en = document.getElementById('rsm-batt-end');
+  st.max = en.max = bars ? p.bars : 100;
+  document.getElementById('rsm-batt-start-lbl').textContent = bars ? 'Start — bars of ' + p.bars : 'Start %';
+  document.getElementById('rsm-batt-end-lbl').textContent = bars ? 'End — bars of ' + p.bars : 'End %';
+  st.value = toUnit(b.startPct != null ? b.startPct : rec.battStart != null ? rec.battStart : prev ? prev.startPct : null);
+  en.value = toUnit(b.endPct != null ? b.endPct : prev ? prev.endPct : null);
+  const want = b.mode || (prev && prev.mode) || p.lastMode || p.modes[0].name;
+  const names = p.modes.map(m => m.name);
+  if(!names.includes(want)) names.push(want);   // a mode since renamed or removed still shows
+  document.getElementById('rsm-batt-mode').innerHTML = names.map(n => '<option' + (n === want ? ' selected' : '') + '>' + _ebikeEsc(n) + '</option>').join('');
+}
+// Read the battery card on Done. Blank readings = skipped. Surface, climb and load come from the
+// same controls (and route match) as the speed sample, so both samples describe the same ride.
+function _recSaveBattery(rec, auto){
+  const p = ebikeProfile(), bars = p.unit === 'bars';
+  const rd = id => { const raw = document.getElementById(id).value.trim(), n = +raw;
+    if(raw === '' || !isFinite(n)) return null;
+    return Math.max(0, Math.min(100, bars ? n / p.bars * 100 : n)); };
+  const s0 = rd('rsm-batt-start'), s1 = rd('rsm-batt-end');
+  const mode = document.getElementById('rsm-batt-mode').value;
+  if(s0 == null || s1 == null) return;
+  rec.batt = {startPct: s0, endPct: s1, mode, unit: p.unit};
+  UI.ebike = Object.assign(p, {lastMode: mode});
+  if(!(s0 > s1)){ _recToast('Battery: the end reading isn\'t lower than the start — not used for estimates'); saveAll(); return; }
+  const surface = document.getElementById('rsm-surface').value;
+  const elevM = auto ? Math.round(auto.elevM)
+                     : elevGain((rec.points || []).filter(q => !q._synthetic && q.ele != null));
+  const e = {recId: rec.id, name: rec.name, ts: rec.startTS || Date.now(), mode,
+             startPct: Math.round(s0 * 10) / 10, endPct: Math.round(s1 * 10) / 10, wh: p.wh,
+             distKm: +(rec.totalDist || 0).toFixed(1), elevM, surface,
+             load: document.getElementById('rsm-load').value};
+  if(auto && auto.mix && surface === auto.surface) e.mix = auto.mix;
+  if(ebikeSampleFactor(e) == null){ _recToast('Battery: ride too short to use for estimates'); saveAll(); return; }
+  let list = (UI.ebikeRides || []).filter(x => x.recId !== rec.id).concat([e]);
+  if(list.length > EBIKE_MAX_RIDES) list = list.sort((a, b) => (a.ts || 0) - (b.ts || 0)).slice(-EBIKE_MAX_RIDES);
+  UI.ebikeRides = list;
+  saveAll();
+  const used = Math.round(s0 - s1);
+  _recToast(used < EBIKE_MIN_USED ? 'Battery sample saved — only ' + used + '% used, so it\'s rough' : 'Battery sample saved');
 }
 
 // v457 — "Wrong? Change it": swap the read-only surface for the dropdown (pre-set to the route's).
@@ -8088,6 +8383,7 @@ async function _recSaveConfirm(){
     _recCalibAdd(entry);
     if(entry.surfPending) setTimeout(() => _calibSurfFetch(rec.id), 1500);
   }
+  if(_ebikeOn()) _recSaveBattery(rec, auto);   // v465
   await DB.putRecording(rec).catch(()=>{});
   const i = RECS.findIndex(x => x.id === rec.id);
   if(i >= 0) RECS[i] = rec;
@@ -9459,7 +9755,7 @@ function _rideModeClose(){
 // autoMs>0 = the app raised this itself (record start), so it must get out of the way.
 // 0 = the rider tapped the distance bar to open it; they asked, so it waits.
 function _rideModeShow(r,autoMs){
-  if(!r||!r.totalDist)return;   // no route loaded → nothing to ask; freestyle is the only option
+  if(!r||!r.totalDist){if(autoMs>0)_battStartSheet(autoMs);return;}   // no route loaded → nothing to ask; freestyle is the only option (v465: but an e-bike still gets the battery question)
   _rideModeClose();
   const free=_offRouteMode==='abandoned';
   const ov=document.createElement('div');
@@ -9472,6 +9768,7 @@ function _rideModeShow(r,autoMs){
       ${(r.label||r.name||'The loaded route').replace(/</g,'&lt;')}<br>
       Your ride is recording either way.
     </div>
+    ${_battStartRow()}
     <button class="btn ${free?'':'btn-p'}" id="ridemode-follow" style="width:100%;height:52px;margin-bottom:var(--sp-2);">Follow the route</button>
     <button class="btn ${free?'btn-p':''}" id="ridemode-free" style="width:100%;height:52px;">Just ride — no route</button>
     ${_rideModeSchedRow(r,autoMs)}
@@ -9479,6 +9776,51 @@ function _rideModeShow(r,autoMs){
   // Direct listener: this hangs off document.body, where the content-wrap delegator
   // cannot hear it (the v257 standing gotcha).
   ov.addEventListener('click',_rideModeOnClick);
+  _battStartWire(ov);
+  document.body.appendChild(ov);
+  if(autoMs>0)_rideModeTimer=setTimeout(_rideModeClose,autoMs);
+}
+// v465 — E-BIKE: BATTERY AT THE START. Optional and never blocking (v257's law): the ride is
+// already recording, and the same reading can be typed on the save screen at the end. Touching
+// the field stops the auto-close timer so the sheet can't vanish mid-typing.
+function _battStartRow(){
+  if(!_ebikeOn()||!_rec)return'';
+  const p=ebikeProfile(), bars=p.unit==='bars';
+  const v=_rec.battStart!=null?(bars?Math.round(_rec.battStart/100*p.bars):Math.round(_rec.battStart)):'';
+  return`<div style="margin-bottom:var(--sp-4);">
+      <label class="lbl" for="ridemode-batt">Battery now ${bars?'— bars, out of '+p.bars:'— %'}</label>
+      <input type="number" id="ridemode-batt" inputmode="numeric" min="0" max="${bars?p.bars:100}" value="${v}" style="width:100%;">
+      <div style="font-size:var(--fs-xs);color:var(--text3);margin-top:4px;line-height:1.4;">For your battery estimates. You can also enter it when you save the ride.</div>
+    </div>`;
+}
+function _battStartWire(ov){
+  const hold=e=>{if(e.target.id==='ridemode-batt'&&_rideModeTimer){clearTimeout(_rideModeTimer);_rideModeTimer=null;}};
+  ov.addEventListener('focusin',hold);
+  ov.addEventListener('pointerdown',hold);
+  ov.addEventListener('input',e=>{
+    hold(e);
+    if(e.target.id!=='ridemode-batt'||!_rec)return;
+    const p=ebikeProfile(), raw=e.target.value.trim(), n=+raw;
+    _rec.battStart=(raw===''||!isFinite(n))?null:Math.max(0,Math.min(100,p.unit==='bars'?n/p.bars*100:n));
+    DB.putRecording(_rec).catch(()=>{});
+  });
+}
+// No route loaded: the battery question on its own.
+function _battStartSheet(autoMs){
+  if(!_ebikeOn()||!_rec)return;
+  _rideModeClose();
+  const ov=document.createElement('div');
+  ov.id='ridemode-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(5,8,5,.6);'
+    +'display:flex;align-items:center;justify-content:center;padding:var(--sp-4);';
+  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);max-width:340px;width:100%;">
+    <div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-2);">Battery at the start?</div>
+    <div style="font-size:var(--fs-sm);color:var(--text2);line-height:1.45;margin-bottom:var(--sp-4);">Your ride is recording.</div>
+    ${_battStartRow()}
+    <button class="btn btn-p" id="ridemode-batt-done" style="width:100%;height:52px;">Done</button>
+  </div>`;
+  ov.addEventListener('click',e=>{if(e.target.closest('#ridemode-batt-done'))_rideModeClose();});
+  _battStartWire(ov);
   document.body.appendChild(ov);
   if(autoMs>0)_rideModeTimer=setTimeout(_rideModeClose,autoMs);
 }
@@ -16553,6 +16895,49 @@ document.addEventListener('change',e=>{
     if(UI.tab==='settings')renderKeepScroll();
   });
 });
+// v465 — Settings → E-bike battery. Every change writes UI.ebike whole (ebikeProfile fills the
+// defaults) and re-renders, so the per-mode "From N rides…" lines follow at once.
+document.addEventListener('change',e=>{
+  const t=e.target;
+  const nameI=t.dataset?t.dataset.ebmodeName:undefined, rangeI=t.dataset?t.dataset.ebmodeRange:undefined;
+  if(!(t.id&&t.id.startsWith('eb-'))&&nameI==null&&rangeI==null)return;
+  const p=ebikeProfile();
+  p.modes=p.modes.map(m=>({...m}));
+  const num=(lo,hi)=>{const v=+t.value;return t.value.trim()!==''&&isFinite(v)&&v>=lo&&v<=hi?v:null;};
+  if(t.id==='eb-on')p.on=t.checked;
+  else if(t.id==='eb-wh'){const v=num(100,3000);if(v!=null)p.wh=Math.round(v);}
+  else if(t.id==='eb-unit')p.unit=t.value==='bars'?'bars':'pct';
+  else if(t.id==='eb-bars'){const v=num(2,10);if(v!=null)p.bars=Math.round(v);}
+  else if(t.id==='eb-reserve'){const v=num(0,50);if(v!=null)p.reservePct=Math.round(v);}
+  else if(nameI!=null){
+    const i=+nameI, v=t.value.trim(), old=p.modes[i]&&p.modes[i].name;
+    // A rename carries the mode's sample rides with it; a blank or duplicate name is refused.
+    if(old&&v&&v!==old&&!p.modes.some(m=>m.name===v)){
+      p.modes[i].name=v;
+      for(const s of (UI.ebikeRides||[]))if(s.mode===old)s.mode=v;
+      if(p.lastMode===old)p.lastMode=v;
+    }
+  }
+  else if(rangeI!=null){const v=num(5,500),i=+rangeI;if(v!=null&&p.modes[i])p.modes[i].rangeKm=Math.round(v);}
+  UI.ebike=p;
+  saveAll();
+  renderKeepScroll();
+});
+document.addEventListener('click',e=>{
+  const add=e.target.closest('#eb-mode-add'), del=e.target.closest('[data-ebmode-del]'), rdel=e.target.closest('[data-ebride-del]');
+  if(!add&&!del&&!rdel)return;
+  const p=ebikeProfile();
+  p.modes=p.modes.map(m=>({...m}));
+  if(add){let n=p.modes.length+1;while(p.modes.some(m=>m.name==='Mode '+n))n++;p.modes.push({name:'Mode '+n,rangeKm:60});}
+  if(del&&p.modes.length>1)p.modes.splice(+del.dataset.ebmodeDel,1);   // its sample rides stay, and still inform the other modes
+  if(rdel){
+    if(!confirm('Remove this battery sample? The ride itself stays.'))return;
+    UI.ebikeRides=(UI.ebikeRides||[]).filter(s=>String(s.recId)!==rdel.dataset.ebrideDel);
+  }
+  UI.ebike=p;
+  saveAll();
+  renderKeepScroll();
+});
 document.addEventListener('input',e=>{
   // v260 fake sensors (desktop sim). Bound here with the other desktop-map controls,
   // which live outside #content-wrap and so can't use the main delegator.
@@ -21699,6 +22084,7 @@ function tRoutes(r){
     ${!r.surfaceSegs?`<div style="display:flex;align-items:center;justify-content:space-between;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.3);border-radius:7px;padding:7px 10px;margin-bottom:10px;"><span style="font-size:13px;color:#f97316;">⛰ Surface data not loaded — fetch it for more accurate off-road estimates</span><button class="btn btn-sm" onclick="fetchSurfaceData()" style="font-size:12px;padding:3px 8px;flex-shrink:0;">Fetch</button></div>`:''}
     <div id="speed-summary">${_speedSummaryHTML(r)}</div>
   </div>
+  ${_ebikeCardHTML(r)}
   ${_ridesCardHTML()}
   `}
 
@@ -22191,6 +22577,7 @@ function tSettings(r){
   ${section('dropbox','Dropbox Sync',dropboxBody)}
   ${section('alerts','Proximity Alerts',alertsBody,!!r)}
   ${section('ftp','⚡❤️ Sensors & Zones',ftpBody)}
+  ${section('ebike','E-bike battery',_ebikeSettingsHTML())}
   ${section('averages','Averages',`
     <label style="display:flex;align-items:center;gap:8px;font-size:15px;margin-bottom:10px;cursor:pointer;">
       <input type="checkbox" id="avg-inc-stops-toggle" ${avgIncStops()?'checked':''}> Averages include stops
@@ -22236,6 +22623,7 @@ function tSettings(r){
 // open page key, or null for the menu; the Settings tab button resets it to the menu.
 const SET_PAGES=[
   {k:'sensors',t:'Sensors & zones',d:'Power, heart rate, crank length, weight',s:['ftp'],c:'var(--cat-vending)'},
+  {k:'ebike',t:'E-bike battery',d:'Battery size, assist modes, range',s:['ebike'],c:'var(--cat-bike)'},
   {k:'ride',t:'Ride screen',d:'Averages, alerts, map zoom, weather',s:['averages','alerts','zoom','weather'],c:'var(--cat-water)'},
   {k:'uploads',t:'Uploads & sync',d:'Strava, intervals.icu, Dropbox',s:['strava','intervals','dropbox'],c:'var(--cat-fuel)'},
   {k:'sharing',t:'Sharing & group rides',d:'Live location, PackRide',s:['sharing','packride'],c:'var(--cat-school)'},
