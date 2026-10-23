@@ -1817,7 +1817,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v458';
+window.APP_VERSION='v459';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4718,6 +4718,41 @@ function surfBuildSegs(samples,arr){
 // surface segments are already-classified (no raw tags kept), so a route fetched under older
 // rules can only be corrected by fetching again — Refresh never RESUMES one, it starts over.
 const SURF_RULES_VER=2;
+// v459 — ONE server list for every Overpass query (surface fetch and stop search). See the note
+// in fetchSurfaceData for why this order.
+const OVERPASS_MIRRORS=['https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter'];
+// A server that answers 429 (too many requests) is rested this long. The main server now bans
+// clients that keep getting 429s without backing off (OSM forum, Apr 2026) — never hammer it.
+const OVERPASS_REST_MS=60000;
+const _overpassRestUntil={};
+// v459 — POST one Overpass query → {status, json}. IN THE APP, AS "PACKTIMES", NOT AS A BROWSER.
+// Measured 23 Oct 2026: the same corridor query got 748 ways from overpass-api.de when sent by a
+// script, and an EMPTY element list (HTTP 200, no remark) when sent from the browser — the
+// operators restrict stock-browser traffic (OSM forum, Apr 2026). The phone app can send it through
+// Capacitor's native HTTP with its own User-Agent; a browser can't set one, so it falls back to fetch.
+// Native readTimeout stands in for the AbortController; any native error falls back to fetch too.
+const OVERPASS_UA='PackTimes/'+(window.APP_VERSION||'')+' (+https://pmac44.github.io/PackTimes)';
+async function _overpassPost(url,q,timeoutMs){
+  const H=_nativePlugin('CapacitorHttp');
+  if(H){
+    try{
+      const res=await H.request({url,method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':OVERPASS_UA},
+        data:'data='+encodeURIComponent(q),connectTimeout:15000,readTimeout:timeoutMs,responseType:'json'});
+      const j=typeof res.data==='string'?JSON.parse(res.data):res.data;
+      return{status:res.status,json:j};
+    }catch(e){
+      if(/time.?out/i.test(String(e&&e.message)))throw Object.assign(new Error('timeout'),{name:'AbortError'});
+      console.log('[overpass] native request failed, using fetch:',e&&e.message);
+    }
+  }
+  const abort=new AbortController(), tm=setTimeout(()=>abort.abort(),timeoutMs);
+  try{
+    // POST — the corridor polyline makes the query too long for a GET URL
+    const res=await fetch(url,{method:'POST',mode:'cors',signal:abort.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
+    return{status:res.status,json:res.ok?await res.json():null};
+  }finally{clearTimeout(tm);}
+}
 async function fetchSurfaceData(force,target){
   const r=target||cur(), quiet=!!target;
   if(!r||r.points.length<2)return;
@@ -4772,6 +4807,7 @@ async function fetchSurfaceData(force,target){
   // that is the whole thing and this behaves exactly as v369 did; on a resume it
   // goes straight to the gaps and skips everything already stored.
   const CHUNK_KM=50,OVERLAP_KM=1;
+  const SURF_POLY_M=120, SURF_AROUND_M=60, SURF_WAIT_MS=45000;   // v459 — see the corridor note
   const chunks=[];
   let i0=0;
   while(i0<samples.length){
@@ -4790,8 +4826,11 @@ async function fetchSurfaceData(force,target){
     i0=runEnd;
   }
   let lastErr='';
-  // kumi first — empirically fast from Australia (Jul 2026); overpass-api.de often queues.
-  const SURF_MIRRORS=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  // v459 — SERVER ORDER FROM A MEASUREMENT (23 Oct 2026, one 8 km Canberra corridor, from
+  // Australia): maps.mail.ru answered in 14.5 s, overpass-api.de (officially "overloaded" — OSM
+  // wiki) in 35.5 s, and overpass.private.coffee (renamed from overpass.kumi.systems, which the
+  // app still called) not at all within 60 s. Re-measure before re-ordering.
+  const SURF_MIRRORS=OVERPASS_MIRRORS;
   let goodMirror=null; // sticky: once a mirror answers, use it first for the remaining chunks
   // v370 — CHECKPOINT. Inference runs on a COPY so the raw guess flags survive to
   // the next checkpoint, and so surfGuess records what was GUESSED rather than
@@ -4843,36 +4882,50 @@ async function fetchSurfaceData(force,target){
       const msgEl=document.getElementById('surface-status-msg');
       if(msgEl)msgEl.textContent=UI.surfaceMsg;
     }
-    // Corridor query — only ways within ~80 m of the route line. Vastly less
-    // data than the old bounding-box query, which pulled every road/footpath
-    // in the whole rectangular region (huge near towns, and very slow).
-    // Thin the corridor polyline — Overpass around-query cost scales with vertex
-    // count. ~600 m spacing with a 250 m radius still hugs the route (a road can
-    // bow at most ~190 m from a 600 m chord) but is ~3× cheaper server-side.
+    // v459 — A TIGHT CORRIDOR. The ride's own samples (every 200 m) snap to a way within
+    // MAX_OFF_M (30 m), so asking for everything within 250 m was pulling in every side street,
+    // driveway and footpath nearby: 1.3 MB / 2,162 ways for 8 km of Canberra, measured. The
+    // corridor polyline is now thinned to SURF_POLY_M (120 m) with a SURF_AROUND_M (60 m) radius —
+    // a 120 m chord bows at most ~35 m on a 50 m-radius hairpin, inside 60 m — and driveways,
+    // car-park aisles and drive-throughs are left out (nobody routes along them).
     const thin=[];let lastThinD=-9;
-    for(const p of chunk){if(p.dist-lastThinD>=0.6){thin.push(p);lastThinD=p.dist;}}
+    for(const p of chunk){if(p.dist-lastThinD>=SURF_POLY_M/1000){thin.push(p);lastThinD=p.dist;}}
     if(thin[thin.length-1]!==chunk[chunk.length-1])thin.push(chunk[chunk.length-1]);
     const poly=thin.map(p=>p.lat.toFixed(5)+','+p.lon.toFixed(5)).join(',');
     const q=`[out:json][timeout:25][maxsize:16000000];`+
       `way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|track|path|footway|bridleway|cycleway)$"]`+
-      `(around:250,${poly});out geom qt tags;`;
-    let fetched=false;
-    const mirrorOrder=goodMirror?[goodMirror,...SURF_MIRRORS.filter(m=>m!==goodMirror)]:SURF_MIRRORS;
+      `["service"!~"^(driveway|parking_aisle|drive-through)$"]`+
+      `(around:${SURF_AROUND_M},${poly});out geom qt tags;`;
+    let fetched=false, heavy=false;
+    // Rested servers (429) go to the back; if every one is resting, wait for the first to wake.
+    const now0=Date.now();
+    let mirrorOrder=goodMirror?[goodMirror,...SURF_MIRRORS.filter(m=>m!==goodMirror)]:SURF_MIRRORS.slice();
+    const awake=mirrorOrder.filter(m=>!(_overpassRestUntil[m]>now0));
+    if(!awake.length){const wake=Math.min(...mirrorOrder.map(m=>_overpassRestUntil[m]));await new Promise(res=>setTimeout(res,Math.max(0,wake-now0)));}
+    else mirrorOrder=awake.concat(mirrorOrder.filter(m=>!awake.includes(m)));
     for(const mirror of mirrorOrder){
-      const abort=new AbortController();
-      // Hard client-side cap — a healthy mirror answers the thin corridor query in
-      // 2-5 s, so anything past 12 s is queueing; fail over rather than wait
-      const abortTimer=setTimeout(()=>abort.abort(),12000);
+      if(_overpassRestUntil[mirror]>Date.now())continue;
+      // v459 — 45 s, not 12. A BUSY server is slow, not dead: measured 14.5 s and 35.5 s for one
+      // city section, so the old 12 s cap abandoned answers that were on their way, then split the
+      // section and asked again — 30 km became "7 of 9" and minutes of waiting.
       const t0=Date.now();
       try{
-        // POST — the corridor polyline makes the query too long for a GET URL
-        const res=await fetch(mirror,{method:'POST',mode:'cors',signal:abort.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
-        if(!res.ok)throw new Error('HTTP '+res.status);
-        const json=await res.json();
+        const res=await _overpassPost(mirror,q,SURF_WAIT_MS);
+        if(res.status===429){_overpassRestUntil[mirror]=Date.now()+OVERPASS_REST_MS;throw new Error('HTTP 429 — resting this server');}
+        if(res.status<200||res.status>=300||!res.json)throw new Error('HTTP '+res.status);
+        const json=res.json;
         // Overpass can return HTTP 200 with PARTIAL data and a "remark" noting
         // it timed out or ran out of memory server-side. Taking that at face
         // value leaves whole stretches permanently "unknown" — treat as failure.
-        if(json.remark&&/tim(ed)?\s*out|out of memory|exceeded|runtime error/i.test(json.remark))throw new Error('overpass: '+String(json.remark).slice(0,80));
+        // v459 — and THAT is the one failure that means "this section is too heavy": the server
+        // ran it and gave up. Only it triggers a split.
+        if(json.remark&&/tim(ed)?\s*out|out of memory|exceeded|runtime error/i.test(json.remark)){heavy=true;throw new Error('overpass: '+String(json.remark).slice(0,80));}
+        // v459 — ANY OTHER REMARK, OR AN EMPTY ANSWER, IS NOT DATA. Seen on a Canberra test: a 200
+        // with nothing in it, which the old code accepted — every sample marked "queried, nothing
+        // there", so the stretch was stored as Unknown and Refresh would never ask again. A route
+        // runs along mapped ways, so a corridor with none in it means the server didn't really answer.
+        if(json.remark){throw new Error('overpass remark: '+String(json.remark).slice(0,80));}
+        if(!json.elements||!json.elements.length){throw new Error('empty answer');}
         const ways=json.elements.filter(el=>el.type==='way'&&el.geometry&&el.geometry.length>1).map(el=>{
           const cat=surfaceCategory(el.tags);
           // guess = minor road with no surface tag — "sealed" is only an assumption,
@@ -4898,7 +4951,6 @@ async function fetchSurfaceData(force,target){
         console.log(`[surface] chunk ${processed+1} FAILED on ${mirror.split('/')[2]} after ${Date.now()-t0}ms: ${lastErr}`);
         if(mirror===goodMirror)goodMirror=null; // it stopped answering — re-shop next chunk
       }
-      finally{clearTimeout(abortTimer);}
     }
     if(!fetched){
       const stalledMs=Date.now()-lastOkAt;
@@ -4906,10 +4958,22 @@ async function fetchSurfaceData(force,target){
         console.log(`[surface] no mirror has answered for ${consecFail} attempts / ${Math.round(stalledMs/1000)}s — stopping, the ${Math.round(surfFetchedKm(r))} km already stored is kept`);
         brokeOff=true;break;
       }
-      // Every mirror choked on this stretch — usually a dense track network.
+      // v459 — BUSY ≠ HEAVY. Every server timing out or answering 5xx means they're overloaded,
+      // and halving the section only doubles the requests. Send it once more at the back of the
+      // queue (after a pause) instead; only a server-side "too heavy" remark splits it.
+      if(!heavy){
+        chunk._tries=(chunk._tries||0)+1;
+        if(chunk._tries<2){
+          console.log(`[surface] every server busy on ${chunk[0].dist.toFixed(1)}-${chunk[chunk.length-1].dist.toFixed(1)}km — retrying it last`);
+          chunkQueue.push(chunk);
+          await new Promise(res=>setTimeout(res,5000));
+          continue;
+        }
+      }
+      // A server ran this stretch and gave up — usually a dense track network.
       // Split it and try the halves; only give up when even a small piece fails.
       const spanKm=chunk[chunk.length-1].dist-chunk[0].dist;
-      if(chunk.length>=8&&spanKm>3){
+      if(heavy&&chunk.length>=8&&spanKm>3){
         const mid=chunk.length>>1;
         chunkQueue.unshift(chunk.slice(0,mid),chunk.slice(mid));
         console.log(`[surface] splitting heavy ${spanKm.toFixed(0)}km chunk and retrying`);
@@ -4920,11 +4984,11 @@ async function fetchSurfaceData(force,target){
       // data. It stays out of surfDone, so the next Refresh comes back for it.
       console.log(`[surface] giving up on ${chunk[0].dist.toFixed(1)}-${chunk[chunk.length-1].dist.toFixed(1)}km (${lastErr}) — left as a gap`);
       processed++;
-      if(++sinceSave>=10){sinceSave=0;await commit();}
+      await commit();   // v459 — every section, so closing the app mid-fetch loses nothing
       continue;
     }
     okChunks++;processed++;
-    if(++sinceSave>=10){sinceSave=0;await commit();}
+    await commit();     // v459 — every section (was every 10)
     await new Promise(res=>setTimeout(res,300));
   }
   await commit();
@@ -5064,7 +5128,7 @@ function _attachShowers(r,showers){
     else if(hot&&!/hot shower/i.test(cur))best.info=cur.replace(/\bShowers?\b/,'Hot showers');
   });
 }
-const MIRRORS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+const MIRRORS=OVERPASS_MIRRORS;   // v459 — the same measured order as the surface fetch
 
 // ─── v371 — CHUNKED POI SEARCH ───────────────────────────────────────────────
 // ⚠ THE BUG THIS FIXES LOOKED LIKE AN EMPTY RESULT, NOT A FAILURE, and that is the
@@ -5256,14 +5320,15 @@ async function fetchOverpass(){
     const order=goodMirror?[goodMirror,...MIRRORS.filter(m=>m!==goodMirror)]:MIRRORS;
     let ok=false;
     for(const mirror of order){
-      const abort=new AbortController();
-      const abortTimer=setTimeout(()=>abort.abort(),75000);
+      if(_overpassRestUntil[mirror]>Date.now())continue;   // v459 — resting after a 429
       try{
         // POST — a 60 s timeout hint plus every ticked category makes the query
-        // too long to sit safely in a GET URL.
-        const res=await fetch(mirror,{method:'POST',mode:'cors',signal:abort.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
-        if(!res.ok)throw new Error('HTTP '+res.status);
-        const json=await res.json();
+        // too long to sit safely in a GET URL. v459 — sent by _overpassPost: in the app as
+        // "PackTimes" (native HTTP), not as a browser, which overpass-api.de answers empty.
+        const res=await _overpassPost(mirror,q,75000);
+        if(res.status===429){_overpassRestUntil[mirror]=Date.now()+OVERPASS_REST_MS;throw new Error('HTTP 429 — resting this server');}
+        if(res.status<200||res.status>=300||!res.json)throw new Error('HTTP '+res.status);
+        const json=res.json;
         // ⚠ THE ORIGINAL BUG. Overpass answers 200 with an empty (or partial)
         // element list and a remark when it runs out of time or memory. Taking
         // that at face value is what turned "this box is far too big" into a
@@ -5274,7 +5339,7 @@ async function fetchOverpass(){
         break;
       }catch(e){
         lastErr=e.name==='AbortError'?'timeout':e.message;
-      }finally{clearTimeout(abortTimer);}
+      }
     }
     if(ok){await saveAll();renderKeepScroll();continue;}
     failStreak++;
@@ -5376,10 +5441,13 @@ async function fetchTownSearch(query){
   const q=`[out:json][timeout:30];(${parts.join(';')};);out center tags;`;
   let lastErr='';
   for(const mirror of MIRRORS){
+    if(_overpassRestUntil[mirror]>Date.now())continue;   // v459 — resting after a 429
     try{
-      const res=await fetch(mirror+'?data='+encodeURIComponent(q),{mode:'cors'});
-      if(!res.ok)throw new Error('HTTP '+res.status);
-      const json=await res.json();
+      // v459 — via _overpassPost (POST; in the app as "PackTimes", not as a browser)
+      const res=await _overpassPost(mirror,q,45000);
+      if(res.status===429){_overpassRestUntil[mirror]=Date.now()+OVERPASS_REST_MS;throw new Error('HTTP 429 — resting this server');}
+      if(res.status<200||res.status>=300||!res.json)throw new Error('HTTP '+res.status);
+      const json=res.json;
       const existing=r.stops.filter(s=>s.auto);
       let added=0;
       const waterwayBuckets={}; // v362 — see the waterway branch below
