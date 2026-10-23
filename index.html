@@ -1817,7 +1817,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v459';
+window.APP_VERSION='v461';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2757,6 +2757,41 @@ function _calibMixText(s){
   const parts=_calibMixParts(s).filter(([,f])=>f>=0.05).sort((a,b)=>b[1]-a[1]);
   if(parts.length<2)return null;
   return parts.map(([k,f])=>Math.round(f*100)+'% '+CALIB_SURF_WORD[k]).join(' · ');
+}
+// ── v460 — SHOWN AS SPEED, STORED AS TIME. Peter: "if you're a faster rider, you'd think you'd see
+// a bigger number." Every factor in the maths is a TIME multiplier (rider factor = your time ÷ the
+// average rider's; timeFactor multiplies ride time) and stays that way — routes, samples, Dropbox
+// and share files all store it. Only what's SHOWN is inverted: speed = 1 ÷ time factor, so 0.64
+// reads 1.56 ×, and the words follow the same number ("56% faster", not the old time-saved "36%").
+function _spdX(f){return f>0?1/f:1;}
+function _fmtSpdX(f){return _spdX(f).toFixed(2)+' ×';}
+// "56% faster" / "12% slower" / null when within ±2 %
+function _spdPctWords(f){
+  const v=_spdX(f);
+  if(v>1.02)return Math.round((v-1)*100)+'% faster';
+  if(v<0.98)return Math.round((1-v)*100)+'% slower';
+  return null;
+}
+// ── v461 — THE FINE-TUNE IS SHOWN AS KM/H (Peter: "+0.5 km/h… very easy to understand for a
+// rider, and there's no real confusion" with the × rider factor). Still STORED as timeFactor (a
+// time multiplier — see v460's Settled note); the km/h is read off it: the route's average with
+// the fine-tune minus its average at 1.00. It can move a little when Load, surfaces or the rider
+// factor change the base average — the multiplier is what's kept, by design.
+function _ftKmh(r){
+  if(!r||!r.estDuration||!r.totalDist)return null;
+  const base=r.totalDist/r.estDuration, now=r.totalDist/(r.estDuration*(r.timeFactor||1));
+  return{base,now,off:now-base};
+}
+function _ftLabel(r){
+  const k=_ftKmh(r);
+  if(!k)return _fmtSpdX(r&&r.timeFactor||1);
+  if(Math.abs(k.off)<0.05)return'No change';
+  return(k.off>0?'+':'−')+Math.abs(k.off).toFixed(1)+' km/h';
+}
+function _ftAvgLine(r){
+  const k=_ftKmh(r);if(!k)return'';
+  return Math.abs(k.off)<0.05?k.now.toFixed(1)+' km/h average'
+    :k.now.toFixed(1)+' km/h average ('+k.base.toFixed(1)+' before fine-tune)';
 }
 function calibFactor(){
   // Distance-weighted mean across valid samples; null if none entered yet.
@@ -6379,7 +6414,8 @@ function runAdaptiveCalibration(){
 
   // Warn if drifting significantly from base
   const drift=Math.abs(rounded-base)/base;
-  const pct=Math.round((rounded-oldFactor)/oldFactor*100);
+  // v460 — the % is the change in SPEED (old ÷ new − 1), matching the speed-shown factors.
+  const pct=Math.round((oldFactor/rounded-1)*100);
   const dir=rounded>oldFactor?'slower':'faster';
   // v366 — the banner is a STRUCTURED payload now, not a sentence. Peter, riding:
   // "the text is hard to read … the number should be much bigger". A big % can't be
@@ -15952,7 +15988,7 @@ function _calibUpdateFactors(){
   _calibDraft.forEach((d,i)=>{
     const f=calibRideFactor(_calibDraftToRide(d));
     const el=document.getElementById('calib-rf-'+i);
-    if(el)el.textContent=f===null?'':f.toFixed(2)+' ×';
+    if(el)el.textContent=f===null?'':_fmtSpdX(f);   // v460 — speed
     if(f!==null){const dist=parseFloat(d.distKm);wsum+=f*dist;dsum+=dist;}
   });
   // Section label above the list, with the live count.
@@ -15968,15 +16004,14 @@ function _calibUpdateFactors(){
     return;
   }
   const f=Math.min(1.8,Math.max(0.55,wsum/dsum));
-  const pct=Math.round(Math.abs(1-f)*100);
   const n=_calibDraft.filter(d=>calibRideFactor(_calibDraftToRide(d))!==null).length;
-  // f < 1 = you take LESS time than predicted = faster.
-  const desc=f<0.98?`You ride about <b style="color:var(--text);">${pct}% faster</b> than an average rider`
-           :(f>1.02?`You ride about <b style="color:var(--text);">${pct}% slower</b> than an average rider`
-                   :`You ride at about <b style="color:var(--text);">average</b> pace`);
+  // v460 — words and number both in SPEED (see _spdX).
+  const pw=_spdPctWords(f);
+  const desc=pw?`You ride about <b style="color:var(--text);">${pw}</b> than an average rider`
+               :`You ride at about <b style="color:var(--text);">average</b> pace`;
   row.innerHTML=
     `<div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-family:var(--font);margin-bottom:4px;">Your rider factor</div>`+
-    `<div style="font-size:40px;font-weight:600;color:var(--accent);font-family:var(--font);line-height:1.1;">${f.toFixed(2)} ×</div>`+
+    `<div style="font-size:40px;font-weight:600;color:var(--accent);font-family:var(--font);line-height:1.1;">${_fmtSpdX(f)}</div>`+
     `<div style="font-size:14px;color:var(--text2);margin-top:6px;line-height:1.45;">${desc}</div>`+
     `<div style="font-size:12px;color:var(--text3);margin-top:6px;">From ${n} sample ride${n===1?'':'s'} · every plan's times are scaled by this</div>`;
 }
@@ -16039,8 +16074,8 @@ function _calibRenderModal(){
       const age=(d._x&&d._x.ts)?' · '+_calibAgeStr(d._x.ts):'';
       const chip=t=>`<span style="display:inline-block;font-size:14px;font-weight:600;color:var(--text);background:color-mix(in srgb,var(--text) 9%,var(--card2));border:1px solid var(--border2);border-radius:6px;padding:3px 8px;line-height:1.3;">${t}</span>`;
       const surfTxt=_calibMixText(ride)||(surfShort[d.surface]||d.surface);
-      const pct=complete?Math.round(Math.abs(1-f)*100):0;
-      const res=!complete?'':f<0.98?pct+'% faster than an average rider':f>1.02?pct+'% slower than an average rider':'About average pace';
+      const pw=complete?_spdPctWords(f):null;   // v460 — speed
+      const res=!complete?'':pw?pw+' than an average rider':'About average pace';
       const flags=[d.profile==='climb'?'Mostly climbing':'',d.nonstop?'+15% faff added':''].filter(Boolean).join(' · ');
       // v454 — a ride waiting for its surface lookup says which: busy now, or waiting for Wi-Fi
       // (with the mobile-data override). Hand-picked surface is in use meanwhile.
@@ -16194,7 +16229,7 @@ function _speedSummaryHTML(r){
   if(!r)return'';
   const f=calibFactor();
   const adv=UI.estModeAdv;
-  const riderLbl=adv?(f!==null?`Calibrated ${f.toFixed(2)} ×`:'Calibrated — no samples yet')
+  const riderLbl=adv?(f!==null?`Calibrated ${_fmtSpdX(f)}`:'Calibrated — no samples yet')
     :(({social:'Social',regular:'Regular',strong:'Strong'})[riderSimplePreset(r)]||'Regular')+' rider';
   const loadLbl=({heavy:'Heavy',moderate:'Moderate',light:'Light',unloaded:'Unloaded'})[r.loadPreset]||'Moderate';
   const avg=(r.estDuration&&r.totalDist)?(r.totalDist/(r.estDuration*r.timeFactor)).toFixed(1):null;
@@ -16202,7 +16237,7 @@ function _speedSummaryHTML(r){
     <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:14px;color:var(--text2);">
       <span>${riderLbl}</span><span style="color:var(--text3);">·</span>
       <span>${loadLbl} load</span><span style="color:var(--text3);">·</span>
-      <span>Fine-tune ${r.timeFactor.toFixed(2)} ×</span>
+      <span>Fine-tune ${_ftLabel(r)==='No change'?'off':_ftLabel(r)}</span>
       ${UI.fatigueMode&&UI.fatigueMode!=='off'?`<span style="color:var(--text3);">·</span><span>Fatigue on</span>`:''}
     </div>
     ${r.adaptiveSpeed?'<div style="font-size:12px;color:var(--text3);margin-top:4px;">Adaptive Speed on — self-corrects during the ride</div>':''}`;
@@ -16236,15 +16271,15 @@ function _speedControlsHTML(r){
     riderBody=`<p style="font-size:14px;color:var(--text3);line-height:1.5;margin-bottom:8px;">No sample rides yet. PackTimes works out your speed from rides you've actually done — <b style="color:var(--text2);">record a ride and save it as a sample</b>, or enter one by hand.</p>
       <button class="btn btn-sm btn-p" onclick="openCalibModal()" style="width:100%;justify-content:center;">Sample rides</button>`;
   } else {
-    const pct=Math.round(Math.abs(1-f)*100);
-    const desc=f<0.98?`about ${pct}% faster than the Regular baseline`:(f>1.02?`about ${pct}% slower than the Regular baseline`:'right on the Regular baseline');
+    const pw=_spdPctWords(f);   // v460 — speed
+    const desc=pw?`about ${pw} than the Regular baseline`:'right on the Regular baseline';
     // The full sample list used to be duplicated here. It doesn't belong on this screen:
     // this is the SUMMARY (what's my factor?), and the list lives on the screen whose job is
     // to edit it. Showing it twice made the popup long and made "Edit sample rides" look like
     // it opened the same thing again. Just the number, what it means, and where it came from.
     const n=(UI.calibRides||[]).filter(s=>calibRideFactor(s)!==null).length;
     riderBody=`<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap;">
-        <span style="font-size:24px;font-weight:700;color:var(--accent);font-family:var(--font);white-space:nowrap;flex-shrink:0;">${f.toFixed(2)} ×</span>
+        <span style="font-size:24px;font-weight:700;color:var(--accent);font-family:var(--font);white-space:nowrap;flex-shrink:0;">${_fmtSpdX(f)}</span>
         <span style="font-size:13px;color:var(--text3);">${desc}</span>
       </div>
       <div style="font-size:13px;color:var(--text3);margin-top:2px;">Based on ${n} sample ride${n===1?'':'s'} you've done.</div>
@@ -16286,16 +16321,17 @@ function _speedControlsHTML(r){
       <div style="font-size:12px;font-weight:600;color:var(--text3);font-family:var(--font);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Manual Fine-Tune</div>
       <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;">
         <button class="btn btn-sm" onclick="speedNudge(false)" style="padding:6px 14px;font-size:14px;white-space:nowrap;">⬅ Slower</button>
-        <div class="sval" id="tf-val" style="min-width:64px;text-align:center;">${r.timeFactor.toFixed(2)} ×</div>
+        <div class="sval" id="tf-val" style="min-width:96px;text-align:center;font-size:20px;line-height:1.2;">${_ftLabel(r)}</div>
         <button class="btn btn-sm" onclick="speedNudge(true)" style="padding:6px 14px;font-size:14px;white-space:nowrap;">Faster ➡</button>
       </div>
-      <p style="font-size:13px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Applied on top of Rider and Load. Use it for what they can't capture — rough conditions, weather, or how you're actually tracking against the plan.</p>
+      <div id="tf-avg" style="font-size:14px;color:var(--text2);text-align:center;margin-bottom:6px;">${_ftAvgLine(r)}</div>
+      <p style="font-size:13px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Each tap moves the route's average by 0.5 km/h, on top of Rider and Load. Sections change in proportion — a fast flat gains a little more, a slow climb much less. Use it for what they can't capture: rough conditions, weather, or how you're actually tracking against the plan.</p>
     </div>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:15px;color:var(--text2);">
       <input type="checkbox" ${r.adaptiveSpeed?'checked':''} onchange="speedToggleAdaptive(this.checked)" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
       <span>Adaptive Speed</span>
     </label>
-    <p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">While you ride, compares your actual pace to the estimate and gradually corrects the plan — capped at ±30% from your baseline of ${r.baseTimeFactor.toFixed(2)} ×. Adjusts every ~10 min on shorter rides, ~30 min on longer ones. On: ETAs self-adjust mid-ride. Off: the factor stays locked.</p>`;
+    <p style="font-size:13px;color:var(--text3);margin-top:4px;line-height:1.5;">While you ride, compares your actual pace to the estimate and gradually corrects the plan — capped at about 30% either way from where you set the fine-tune. Adjusts every ~10 min on shorter rides, ~30 min on longer ones. On: ETAs self-adjust mid-ride. Off: the factor stays locked.</p>`;
 }
 function openSpeedModal(){
   const r=cur();if(!r)return;
@@ -16404,8 +16440,11 @@ function speedNudge(faster){
   // floored at 2 km/h. Factor kept to 4 decimals so the average lands on the step
   // (2 decimals drifted it by up to ±0.15 km/h). Older steps were time-based and jumped
   // 0.16 a tap on a 1.5 h route.
-  const avg=r.totalDist/(r.estDuration*r.timeFactor);
-  const target=Math.max(2,avg+(faster?0.5:-0.5));
+  // v461 — steps land on whole 0.5 km/h offsets from the un-tuned average, so the label reads
+  // +0.5, +1.0 … even after Adaptive Speed has left it at an odd value.
+  const base=r.totalDist/r.estDuration, avg=r.totalDist/(r.estDuration*r.timeFactor);
+  const k=Math.round((avg-base)/0.5)+(faster?1:-1);
+  const target=Math.max(2,base+k*0.5);
   r.timeFactor=Math.max(0.25,Math.min(4.0,r.totalDist/(r.estDuration*target)));
   r.timeFactor=Math.round(r.timeFactor*10000)/10000;
   // Manual adjust also updates baseline so adaptive cap moves with it
@@ -23941,7 +23980,8 @@ function printMission(){
 
 function patchSpeedFactor(r){
   const v=document.getElementById('tf-val'); // lives in the Speed Estimation modal when open
-  if(v)v.innerHTML=r.timeFactor.toFixed(2)+' ×';
+  if(v)v.innerHTML=_ftLabel(r);   // v461 — km/h
+  const va=document.getElementById('tf-avg');if(va)va.textContent=_ftAvgLine(r);
   // Keep the collapsed summary row on the Routes tab current (also updated
   // by adaptive calibration during a ride)
   const sum=document.getElementById('speed-summary');
