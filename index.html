@@ -1695,8 +1695,8 @@ select option{background:var(--bg3);}
       average rider. That's the number above.
     </p>
     <p style="font-size:14px;color:var(--text2);line-height:1.55;margin:0 0 12px;">
-      It keeps up to 20 rides, covering different distances, surfaces and loads. As newer rides come in, it drops older ones
-      that are very similar — so you end up with a spread of the different kinds of riding you do, rather than twenty versions
+      It keeps up to 40 rides, covering different distances, surfaces and loads. As newer rides come in, it drops older ones
+      that are very similar — and never the only ride covering a surface and load — so you end up with a spread of the different kinds of riding you do, rather than forty versions
       of the same one.
     </p>
 
@@ -1802,7 +1802,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v454';
+window.APP_VERSION='v455';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2648,7 +2648,8 @@ function maxAwakeRidingH(r){
 //   {surface:'road'|'grade2'|'grade4', distKm, hours, elevM, load:'light'|'moderate'|'heavy'}
 // Each sample is corrected for the load carried that day, so the aggregate is a
 // pure rider-ability factor. The route's own Load preset still applies on top.
-// 20 samples (was 10). Storage is trivial — a sample is ~8 numbers, so 20 is a couple of KB —
+// v455 — 40 samples (was 20, was 10). Peter: 16 grid cells, so room for repeats in each. Storage is
+// still trivial — a sample is ~10 numbers plus a name; the GPS track stays with the recording —
 // and with redundancy-based eviction (see _calibRedundancy) a longer list means MORE variety
 // survives, not just more clutter. The list is collapsed behind "Edit sample rides" so a long
 // list costs nothing visually.
@@ -2663,7 +2664,7 @@ function maxAwakeRidingH(r){
 // entirely. Do not add age-weighting here.
 // (Redundancy eviction already protects the rare rides: a one-off ultra has no near neighbour,
 //  so its redundancy score is high and it is never the one dropped. Commutes evict commutes.)
-const CALIB_MAX_RIDES=20;
+const CALIB_MAX_RIDES=40;
 function calibPredictH(distKm,elevM,surface,load,profile){
   // Predict the sample ride with the SAME segment model the planner uses.
   // profile 'rolling' (default): synthetic loop — one climb + matching descent
@@ -7904,7 +7905,10 @@ function _calibDiff(a, b){
   const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
   const da = num(a.distKm), db = num(b.distKm);
   // Different surface = genuinely different evidence; never treat as redundant.
-  const surf  = (a.surface || 'road')     === (b.surface || 'road')     ? 0 : 1;
+  // v455 — by MIX: 1 − the share of distance the two rides have on the same surfaces. Two
+  // single-surface rides score 0 (same) or 1 (different) exactly as before; 60/40 vs 50/50 ≈ 0.1.
+  const ma = Object.fromEntries(_calibMixParts(a)), mb = Object.fromEntries(_calibMixParts(b));
+  const surf  = 1 - CALIB_SURF_ORDER.reduce((t, k) => t + Math.min(ma[k] || 0, mb[k] || 0), 0);
   const load  = (a.load    || 'moderate') === (b.load    || 'moderate') ? 0 : 1;
   const dist  = Math.abs(da - db) / Math.max(da, db, 1);            // relative length
   const ca = num(a.elevM) / Math.max(da, 1);                        // climb rate, m/km
@@ -7941,14 +7945,22 @@ function _recCalibAdd(entry){
   if(UI.calibRides.length >= CALIB_MAX_RIDES){
     // Candidates are the EXISTING recorded rides — never the one being added, so a new
     // ride can't evict itself, and of two twins it's the older that goes.
-    const cands = UI.calibRides.filter(s => s.src === 'rec');
-    if(!cands.length){
+    const all = UI.calibRides.filter(s => s.src === 'rec');
+    if(!all.length){
       _recToast('Sample list is full (' + CALIB_MAX_RIDES + ' rides) — remove one under Sample Rides first');
       return;
     }
     // Score against the list as it WILL be (including the incoming ride), so a new commute
     // correctly marks the old commute as redundant.
     const future = UI.calibRides.concat([entry]);
+    // v455 — NEVER THE LAST RIDE IN A GRID CELL (Peter). A ride that is the only one covering some
+    // surface × load cell is the rarest evidence in the list; only rides whose every cell is also
+    // covered by another ride may go. (If every recorded ride is a sole holder — a list mostly of
+    // hand-entered rides — fall back to all of them: something has to make room.)
+    const covers = x => new Set(_calibMixParts(x).filter(([, f]) => f >= CALIB_GRID_MIN).map(([k]) => (x.load || 'moderate') + '|' + k));
+    const spare = all.filter(s => { const mine = covers(s);
+      return [...mine].every(c => future.some(o => o !== s && covers(o).has(c))); });
+    const cands = spare.length ? spare : all;
     const scored = cands.map(s => ({s, red: _calibRedundancy(s, future)}));
     const minRed = Math.min(...scored.map(x => x.red));
     // Everything in a tight band around the most-redundant score is, for our purposes, equally
