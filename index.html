@@ -1848,7 +1848,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v474';
+window.APP_VERSION='v475';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -7580,7 +7580,7 @@ function _kmAtTime(r, when){
   for(let i = 0; i < 30; i++){ const mid = (lo + hi) / 2, e = etaAt(mid, r); if(e && e < when) lo = mid; else hi = mid; }
   return lo;
 }
-// The Plan tab's "Phone battery" card. Assumes the phone starts full and isn't charged before
+// The Route tab's "Phone battery" card (v475 — was on the Mission tab). Assumes the phone starts full and isn't charged before
 // the first bivi (or the finish), and keeps draining at the ride rate through café stops —
 // the GPS stays on while you eat.
 function _battPlanHTML(r){
@@ -22607,6 +22607,7 @@ function tRoutes(r){
     <div id="speed-summary">${_speedSummaryHTML(r)}</div>
   </div>
   ${_ebikeCardHTML(r)}
+  ${_battPlanHTML(r)}
   ${_ridesCardHTML()}
   `}
 
@@ -24598,7 +24599,8 @@ function tPlan(r){
     })():'')
     +'</div>'
     +'</div>'
-    +_battPlanHTML(r)   // v405
+    // v475 — the Phone battery card moved to the Route tab (Peter: mid-ride, scrolling down for an ETA
+    // meant a screenful of phone battery).
     +(r.stops.some(s=>s.meals&&s.meals.length)?'<div class="card" style="cursor:pointer;border-color:rgba(251,191,36,0.4);" id="btn-go-food"><div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-flex;align-items:center;color:#fbbf24;font-size:20px;">'+ICON_FOOD+'</span><div><div style="font-size:15px;font-weight:600;color:#fbbf24;">Food plan</div><div style="font-size:13px;color:var(--text3);">'+r.stops.filter(s=>s.meals&&s.meals.length).length+' stops with food assigned — tap to view</div></div></div></div>':'');
 }
 
