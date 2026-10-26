@@ -164,7 +164,8 @@
      Light, so the figure and label on them are dark. Same in both themes, like the pace cell's teal. */
   --tone-spd:#2dd4bf;--tone-speed:#a78bfa;--tone-vam:#87ceeb;--tone-kj:#f9a8d4;--tone-ink:#000;--tone-ink-muted:rgba(0,0,0,.72);
   /* v440 — the Schedule cell's top half. NOT constant tones: ahead/behind IS the reading (the zone rule). */
-  --tone-ahead:#86efac;--tone-behind:#fca5a5;
+  /* v474 — two steps each side (Peter): light from 1 s, strong from SCHED_STRONG_MIN. Black ink on all four. */
+  --tone-ahead-lt:#bbf7d0;--tone-ahead-dk:#22c55e;--tone-behind-lt:#fecaca;--tone-behind-dk:#ef4444;
 }
 
 [data-theme="paper"]{
@@ -1847,7 +1848,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v473';
+window.APP_VERSION='v474';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -4447,7 +4448,14 @@ function _schedAt(r,distKm,base){
   if(base==null)return null;
   const estTotal=r.estDuration||naismith(r.points,r.totalDist,r);
   if(!estTotal||!r.totalDist)return null;
-  const tf=r.adaptiveSpeed?(r.baseTimeFactor||r.timeFactor||1):(r.timeFactor||1);
+  // v474 — THE SPEED IS THE ONE SHOWN AT THE RIDE'S START (_rec.schedTf, set by
+  // _adaptiveRideStart once the ride joins the route), nothing later.
+  // Peter: "whatever that speed shows, that's what I want … the adaptive speed doesn't change it".
+  // baseTimeFactor was NOT that: adaptive drift is never reset between rides, so the Speed card
+  // opened today's ride on last ride's drifted factor while this used the old baseline. Older
+  // recordings (no schedTf) keep the v440 rule.
+  const tf=(_rec&&_rec.schedTf&&_rec.routeId===r.id)?_rec.schedTf
+    :r.adaptiveSpeed?(r.baseTimeFactor||r.timeFactor||1):(r.timeFactor||1);
   const targetTotal=estTotal*tf;
   const crTot=r.cumRiding?r.cumRiding[r.cumRiding.length-1]:null;
   const rideH=d=>{const c=cumRidingAt(d,r);return(c!==null&&crTot>0)?c*(targetTotal/crTot):targetTotal*(d/r.totalDist);};
@@ -6996,6 +7004,26 @@ const ADAPTIVE_BLEND=0.4;                 // weight of new signal vs existing fa
 const ADAPTIVE_MAX_DRIFT=0.30;            // hard cap: ±30% from baseTimeFactor
 const ADAPTIVE_WARN_DRIFT=0.25;           // warn if drift exceeds ±25%
 const ADAPTIVE_MSG_MS=30*1000;            // v366 — how long the adaptive banner stays up; the countdown bar animates over exactly this
+const ADAPTIVE_STEP_MAX_MS=60*1000;       // v474 — a fix-to-fix stretch longer than this may hide a stop: not counted
+
+// v474 — EVERY RIDE STARTS ON YOUR OWN SPEED, UNLESS IT CONTINUES A TRIP. Peter: "if you come up
+// with a good estimate, which is based on your sample rides, that's what you want to stick to" —
+// but on a multi-day route, day 2 should keep what day 1 learnt. Decided once per recording, from
+// where it starts: past a sleep stop (a new leg of the same route) → adaptive carries on;
+// anywhere else → back to baseTimeFactor. Then the mission's speed is frozen (_rec.schedTf), so
+// the Mission cell and the Speed card start the ride on the same figure.
+function _adaptiveRideStart(r,km){
+  if(!_rec||_rec.adaptStart||!r||_rec.routeId!==r.id||km==null)return;
+  const leg=(r.stops||[]).some(s=>isSleepStop(s)&&s.dist>0&&s.dist<=km+SLEEP_NEAR_KM);
+  if(r.adaptiveSpeed&&!leg&&r.baseTimeFactor&&r.timeFactor!==r.baseTimeFactor){
+    r.timeFactor=r.baseTimeFactor;
+    patchSpeedFactor(r);saveAll();
+  }
+  UI._adaptiveWindow=[];UI._adaptPrev=null;UI._lastAdaptiveCal=0;
+  _rec.adaptStart=leg?'carry':'reset';
+  _rec.schedTf=r.timeFactor||null;
+  DB.putRecording(_rec).catch(()=>{});
+}
 
 function adaptiveTimings(r){
   // Scale window and cooldown to estimated ride duration so short rides get
@@ -7011,6 +7039,9 @@ function adaptiveTimings(r){
 
 function runAdaptiveCalibration(){
   const r=cur();
+  // v474 — once per recording, where it joined the route (the loop-safe join point, not the
+  // live snap, which can match a loop's start to its finish).
+  if(r&&_rec&&!_rec.adaptStart&&!_freeRiding()){const j=_schedJoinPoint(r);if(j)_adaptiveRideStart(r,j.km);}
   // v365 — never calibrate a plan from a ride that isn't on it. This rewrites r.timeFactor and
   // pops a "speed adjusted N% slower" banner; fed by a suburb loop it would silently re-time a
   // whole tour from data that has nothing to do with it.
@@ -7022,8 +7053,13 @@ function runAdaptiveCalibration(){
   const dist=UI.gpsDistKm;
   const pts=r.points;
 
-  // Detect GPS gap — reset window if too long since last sample
-  const last=UI._adaptiveWindow[UI._adaptiveWindow.length-1];
+  // v474 — THE WINDOW HOLDS STRETCHES, NOT POINTS. Each entry is one fix-to-fix stretch:
+  // {ts, dt (ms ridden), planH (the plan's riding hours for that stretch, before timeFactor)}.
+  // Peter: "it should compare the average of what you've done to the average of what you should
+  // have done on the route up to that point." It used to compare km/h over the window with the
+  // WHOLE ROUTE's average, so two hours up a climb read as "slow" and slowed every ETA; and the
+  // window's time ran first-to-last sample, so a stop in the middle counted as riding.
+  const last=UI._adaptPrev;
   if(last&&(now-last.ts)>ADAPTIVE_GAP_MS){
     UI._adaptiveWindow=[];
   }
@@ -7046,36 +7082,34 @@ function runAdaptiveCalibration(){
   }
   const isStopped=speedKmh!==null&&speedKmh<ADAPTIVE_MIN_SPEED_KMH;
 
-  // Add sample if clean
-  if(!isSteep&&!isStopped){
-    UI._adaptiveWindow.push({ts:now,dist});
-    // Trim window to last 60 min
-    const cutoff=now-60*60*1000;
-    UI._adaptiveWindow=UI._adaptiveWindow.filter(s=>s.ts>=cutoff);
+  // Add the stretch since the last fix if it was clean riding: moving, not steep, forward along
+  // the route, and short enough (ADAPTIVE_STEP_MAX_MS) that no stop can hide inside it.
+  UI._adaptPrev={ts:now,dist};
+  if(last&&!isSteep&&!isStopped&&now-last.ts>0&&now-last.ts<=ADAPTIVE_STEP_MAX_MS&&dist>last.dist){
+    const c0=cumRidingAt(last.dist,r),c1=cumRidingAt(dist,r);
+    const segH=(c0!=null&&c1!=null)?c1-c0:null;
+    if(segH>0)UI._adaptiveWindow.push({ts:now,dt:now-last.ts,planH:segH});
   }
+  // Trim window to last 60 min
+  const cutoff=now-60*60*1000;
+  UI._adaptiveWindow=UI._adaptiveWindow.filter(s=>s.ts>=cutoff);
 
   // Only calibrate if cooldown has passed
   const lastCal=UI._lastAdaptiveCal||0;
   if((now-lastCal)<ADAPTIVE_COOLDOWN_MS)return;
 
-  // Need minimum window duration
+  // Need enough riding in the window (moving time, not clock time)
   const win=UI._adaptiveWindow;
-  if(win.length<2)return;
-  const winDuration=win[win.length-1].ts-win[0].ts;
-  if(winDuration<ADAPTIVE_WINDOW_MIN_MS)return;
+  let ridMs=0,planH=0;for(const s of win){ridMs+=s.dt;planH+=s.planH;}
+  if(ridMs<ADAPTIVE_WINDOW_MIN_MS)return;
 
-  // Compute actual km/h over clean window
-  const actualKmh=(win[win.length-1].dist-win[0].dist)/(winDuration/3600000);
-  if(actualKmh<1)return; // sanity check
-
-  // Compute expected km/h at current timeFactor
-  const estTotal=r.estDuration||naismith(r.points,r.totalDist,r);
-  if(!estTotal)return;
-  const expectedKmh=r.totalDist/(estTotal*r.timeFactor);
-  if(expectedKmh<0.5)return;
+  // What the plan, at the current factor, gave those same stretches — climbs at climbing speed
+  const plannedH=planH*r.timeFactor;
+  if(!(plannedH>0))return;
 
   // Ratio: if actual is slower, factor needs to increase (takes longer)
-  const ratio=expectedKmh/actualKmh;
+  const ratio=(ridMs/3600000)/plannedH;
+  if(ratio<0.25||ratio>4)return; // sanity check
   const newFactor=r.timeFactor*ADAPTIVE_BLEND*ratio+r.timeFactor*(1-ADAPTIVE_BLEND);
 
   // Apply hard cap relative to baseTimeFactor
@@ -19218,7 +19252,7 @@ function _vamVals(){
 // Top: the gap now, its background green ahead / coral behind — colour IS the reading here,
 // the v260 zone rule, so it is allowed to move. Bottom: how much of it changed over the last
 // hour, same sign — "+6" is six minutes clawed back. Peter named it Schedule: "pace" is taken.
-const SCHED_ON_TIME_MIN=0.5;      // v447: within ±30 s the colour stays neutral (was ±2 min)
+const SCHED_STRONG_MIN=1;         // v474: light tone under 1 min, strong from 1 min (replaces v447's ±30 s neutral band)
 const SCHED_SEC_MIN=10;           // v447: under 10 min the top figure is m:ss, e.g. "4:32"
 const SCHED_TREND_MS=3600000;     // the bottom half's window
 const SCHED_TREND_MIN_MS=15*60000;// no trend until this much history — a 2-minute trend is noise
@@ -19283,7 +19317,10 @@ function _schedVals(){
     out.top=_fmtSchedMin(dMin);
     out.lbl=(a<60?'min ':'')+(dMin>0?'ahead':'behind');
   }
-  out.tone=a<SCHED_ON_TIME_MIN?null:dMin>0?'var(--tone-ahead)':'var(--tone-behind)';
+  // v474 — no dead band any more (Peter: "the black in the middle doesn't really work"): light
+  // green / red from 1 s, strong from SCHED_STRONG_MIN. Only a dead-on 0:00 stays neutral.
+  out.tone=secs===0?null:dMin>0?(a>=SCHED_STRONG_MIN?'var(--tone-ahead-dk)':'var(--tone-ahead-lt)')
+    :(a>=SCHED_STRONG_MIN?'var(--tone-behind-dk)':'var(--tone-behind-lt)');
   // Trend history: per route AND per recording (v446 — stop, save and start again on the same
   // route used to carry the last ride's samples over, so the new ride's "last hour" compared
   // against a different base), cleared if the clock runs backwards (a sim restart or scrub).
@@ -20092,6 +20129,22 @@ let _fpillRow3RO=null, _fpillRow3At=0;
 // function shows it; the ResizeObserver only fires on a size change, so a rebuild of the Ride
 // screen that changed no size left row 3 hidden indefinitely. A 1 s re-check makes any wrong
 // answer — whatever caused it — correct itself. Cheap: a handful of getBoundingClientRect calls.
+// v474 — the pt_row3log notes, readable in Settings → Ride screen (Peter: no USB needed). Newest
+// first. "Short by" = how far row 3 overran the 8 px clearance above the named corner button.
+const ROW3_WHY={'share-btn':'Share button','rec-ctrl':'Record button','live-map-ctrl':'Map buttons','live-weather-bar':'Weather button','map bottom':'Bottom of the map'};
+function _row3LogHTML(){
+  let L=[];try{L=JSON.parse(localStorage.getItem('pt_row3log')||'[]');}catch(e){}
+  const intro=`<p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:8px;">The third row of Ride cells only shows when it ends at least ${FPILL_ROW3_FLOOR} px above the buttons at the bottom corners of the map. The elevation profile, the next-stops list and the turn box all make the map shorter. Each time the row hid, this phone noted why (last 8).</p>`;
+  if(!L.length)return intro+`<div style="font-size:14px;color:var(--text3);">No notes yet. Screen height now ${Math.round(window.innerHeight)} px.</div>`;
+  const rows=L.slice().reverse().map(e=>{
+    const d=new Date(e.t), short=e.rowsEnd-(e.floor-FPILL_ROW3_FLOOR);
+    const extra=[e.elev?'profile open':e.elev===false?'profile closed':'',e.nextH?'next stops '+e.nextH+' px':'',e.turn?'turn box':'',e.vh?'screen '+e.vh+' px':''].filter(Boolean).join(' · ');
+    return `<div style="padding:8px 0;border-top:1px solid var(--border2);font-size:14px;line-height:1.45;">
+      <div><strong>${d.toLocaleString([],{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</strong> — short by ${short} px at the ${(ROW3_WHY[e.why]||e.why).toLowerCase()}</div>
+      <div style="color:var(--text3);font-size:13px;">${extra||'map '+e.mapH+' px'}</div></div>`;
+  }).join('');
+  return intro+rows;
+}
 function _fpillRow3Tick(){
   const now=Date.now();
   if(now-_fpillRow3At<1000)return;
@@ -20113,7 +20166,9 @@ function _fpillRow3Sync(){
     try{
       let why='map bottom';for(const id of FPILL_CORNER_IDS){const b=document.getElementById(id);if(b){const rr=b.getBoundingClientRect();if(rr.height&&Math.round(rr.top)===Math.round(floor))why=id;}}
       const L=JSON.parse(localStorage.getItem('pt_row3log')||'[]');
-      L.push({t:new Date().toISOString(),why,rowsEnd:Math.round(rowsEnd),floor:Math.round(floor),mapH:Math.round(s.height),turn:sec.classList.contains('turn-active')});
+      const ns=document.getElementById('live-next-strip');   // v474 — and what else was taking the height
+      L.push({t:new Date().toISOString(),why,rowsEnd:Math.round(rowsEnd),floor:Math.round(floor),mapH:Math.round(s.height),turn:sec.classList.contains('turn-active'),
+        elev:!!UI.elevExpanded,vh:Math.round(window.innerHeight),gridTop:Math.round(g.top),nextH:ns?Math.round(ns.getBoundingClientRect().height):0});
       localStorage.setItem('pt_row3log',JSON.stringify(L.slice(-8)));
     }catch(e){}
   }
@@ -23053,6 +23108,7 @@ function tSettings(r){
       ?'<strong>On:</strong> time spent stopped counts. Average speed is distance over the whole ride time, and the ride file carries 0 W through each stop, so Strava and intervals.icu show average power on the same basis. This is how a head unit records.'
       :'<strong>Off:</strong> only riding time counts. Average speed leaves out the stops PackTimes detects while recording, and average power on Strava and intervals.icu covers riding time only.'}</p>
     <p style="font-size:13px;color:var(--text3);line-height:1.5;">Every average on the Ride screen says which kind it is. The moving-average pill always leaves stops out. Normalised power barely moves either way. Applies to rides uploaded or exported from now on.</p>`)}
+  ${section('row3log','Bottom row of cells',_row3LogHTML())}
   ${section('zoom','GPS Map Zoom',zoomBody,!!r)}
   ${section('weather','Weather Map Spacing',weatherBody,!!r)}
   ${section('offline','Offline Storage',offlineBody)}
@@ -23090,7 +23146,7 @@ function tSettings(r){
 // open page key, or null for the menu; the Settings tab button resets it to the menu.
 const SET_PAGES=[
   {k:'sensors',t:'Sensors & zones',d:'Power, heart rate, crank length, weight',s:['ftp'],c:'var(--cat-vending)'},
-  {k:'ride',t:'Ride screen',d:'Averages, alerts, map zoom, weather',s:['averages','alerts','zoom','weather'],c:'var(--cat-water)'},
+  {k:'ride',t:'Ride screen',d:'Averages, alerts, map zoom, weather',s:['averages','alerts','row3log','zoom','weather'],c:'var(--cat-water)'},
   {k:'uploads',t:'Uploads & sync',d:'Strava, intervals.icu, Dropbox',s:['strava','intervals','dropbox'],c:'var(--cat-fuel)'},
   {k:'sharing',t:'Sharing & group rides',d:'Live location, PackRide',s:['sharing','packride'],c:'var(--cat-school)'},
   {k:'maps',t:'Offline maps',d:'Map downloads, storage',s:['offlineMaps','offline'],c:'var(--cat-camp)'},
