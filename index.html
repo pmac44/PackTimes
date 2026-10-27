@@ -1848,7 +1848,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v475';
+window.APP_VERSION='v476';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -6856,6 +6856,7 @@ function _doStartGPS(){
     // _appendPoint guards on _rec internally — safe to call when no recording is active.
     _appendPoint(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude, pos.timestamp, pos.coords.accuracy);
     _vamSample(pos.coords.altitude);   // v409 — every fix, so the VAM pill is ready when picked
+    _bleRetryKick();   // v476 — sensor reconnects while the screen is off (timers are frozen then)
     // Only capture "actual" times when we're actually riding this plan — i.e. its
     // start date is today or past. A future-dated plan means we're testing/planning
     // near the route, so a stray GPS fix must not stamp (and permanently anchor) it.
@@ -27951,7 +27952,7 @@ function _bt(){ return navigator.bluetooth || _nativeBluetooth || null; }
 // (connect + subscribe): a drop schedules re-attach attempts on the same pedals until the rider
 // disconnects them on purpose (_powerWant=false). Weighted power survives a dropout; only a
 // deliberate disconnect resets it. Listeners are bound once per characteristic object.
-let _powerWant=false,_powerRetryTimer=null,_powerRetryN=0;
+let _powerWant=false,_powerRetryTimer=null,_powerRetryN=0,_powerRetryDue=0;
 const BLE_RETRY_MS=[3000,5000,10000,15000];   // then every 15 s for as long as it takes
 
 async function connectPowerMeter(){
@@ -27987,16 +27988,23 @@ function _powerOnDisconnect(){
   if(_powerWant)_powerScheduleRetry();
 }
 
+// v476 — the timer alone is not enough. Peter, 28 Oct: power gone for the whole pocket section of a
+// ride. About a minute after the screen goes off the app view stops firing timers, so a retry booked
+// while hidden never ran until the screen came back on. GPS fixes still arrive every second, so
+// _bleRetryKick() (called from the GPS callback) runs any retry that is due. The timer still covers
+// a ride with no GPS.
 function _powerScheduleRetry(){
   if(_powerRetryTimer||!_powerWant||!_powerDevice)return;
   const ms=BLE_RETRY_MS[Math.min(_powerRetryN++,BLE_RETRY_MS.length-1)];
-  _powerRetryTimer=setTimeout(async()=>{
-    _powerRetryTimer=null;
-    if(!_powerWant||UI.powerConnected)return;
-    const first=!_powerDevice._everConnected;
-    try{ await _bleReattach(_powerDevice,CYCLING_POWER_SERVICE,_powerAttach); _recToast(first?'Power meter connected':'Power meter reconnected'); }
-    catch(e){ _powerScheduleRetry(); }
-  },ms);
+  _powerRetryDue=Date.now()+ms;
+  _powerRetryTimer=setTimeout(_powerRetryNow,ms);
+}
+async function _powerRetryNow(){
+  if(_powerRetryTimer){clearTimeout(_powerRetryTimer);_powerRetryTimer=null;}
+  if(!_powerWant||UI.powerConnected)return;
+  const first=!_powerDevice._everConnected;
+  try{ await _bleReattach(_powerDevice,CYCLING_POWER_SERVICE,_powerAttach); _recToast(first?'Power meter connected':'Power meter reconnected'); }
+  catch(e){ _powerScheduleRetry(); }
 }
 
 // Connect + subscribe to an already-picked power meter. Throws if the pedals don't answer.
@@ -28136,7 +28144,7 @@ const HR_MEASUREMENT= 0x2A37;
 let _hrDevice=null,_hrChar=null;
 
 // v398 — same auto-reconnect as the power meter (see _powerWant). Average HR survives a dropout.
-let _hrWant=false,_hrRetryTimer=null,_hrRetryN=0;
+let _hrWant=false,_hrRetryTimer=null,_hrRetryN=0,_hrRetryDue=0;
 async function connectHRMonitor(){
   if(!_bt()){alert(bleUnsupportedMsg('Heart rate strap'));return;}
   try{
@@ -28157,16 +28165,24 @@ function _hrOnDisconnect(){
   if(UI.tab==='live')renderKeepScroll();
   if(_hrWant)_hrScheduleRetry();
 }
-function _hrScheduleRetry(){
+function _hrScheduleRetry(){   // v476 — see _powerScheduleRetry
   if(_hrRetryTimer||!_hrWant||!_hrDevice)return;
   const ms=BLE_RETRY_MS[Math.min(_hrRetryN++,BLE_RETRY_MS.length-1)];
-  _hrRetryTimer=setTimeout(async()=>{
-    _hrRetryTimer=null;
-    if(!_hrWant||UI.hrConnected)return;
-    const first=!_hrDevice._everConnected;
-    try{ await _bleReattach(_hrDevice,HR_SERVICE,_hrAttach); _recToast(first?'Heart rate strap connected':'Heart rate strap reconnected'); }
-    catch(e){ _hrScheduleRetry(); }
-  },ms);
+  _hrRetryDue=Date.now()+ms;
+  _hrRetryTimer=setTimeout(_hrRetryNow,ms);
+}
+async function _hrRetryNow(){
+  if(_hrRetryTimer){clearTimeout(_hrRetryTimer);_hrRetryTimer=null;}
+  if(!_hrWant||UI.hrConnected)return;
+  const first=!_hrDevice._everConnected;
+  try{ await _bleReattach(_hrDevice,HR_SERVICE,_hrAttach); _recToast(first?'Heart rate strap connected':'Heart rate strap reconnected'); }
+  catch(e){ _hrScheduleRetry(); }
+}
+// v476 — called on every GPS fix: runs a sensor retry whose timer is due but frozen (screen off).
+function _bleRetryKick(){
+  const now=Date.now();
+  if(_powerRetryTimer&&now>=_powerRetryDue)_powerRetryNow();
+  if(_hrRetryTimer&&now>=_hrRetryDue)_hrRetryNow();
 }
 async function _hrAttach(dev){
     const server=await dev.gatt.connect();
