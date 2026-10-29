@@ -108,7 +108,7 @@ over content whose colour we don't control is an invisible label, not a subtle o
 - **No emoji in UI chrome.** Tab bar, header logo, and transport controls use
   inline SVG line icons (stroke `currentColor`, `stroke-width:1.5`, 18×18 viewBox).
 - Tab icons are built from the shared `_ti` SVG-open string in the `TABS` array.
-- **Phone navigation (v478).** No tab row under 900 px. One page pill (`#navpill`) — one Ride data cell wide, half a cell tall, at 10/10 on every page — opens the six-row page menu. Row one of every page is the pill plus that page's own thing: the ruler band on Ride, the map on Stops, help / Print on the list pages (opaque header band). The pill always carries its text label; never icon-only. From v479 it glows in its page's colour (`--page-*` tokens, one per page, never a reading).
+- **Phone navigation.** The six-tab row, on every device. A cell-sized page pill with a pop-up menu was built (v478, colour-per-page glow v479) and rolled back in v480: two taps per switch and the ruler lost its full-width prominence. Design and photographs in `_planning/PackTimes-Nav-Pill_Mockup_v1.html`; code in git at `32c79c4`.
 - Disclosure triangles (▼ / ▶) are intentional typography — keep those.
 - **Still emoji (not yet converted — safe follow-ups if wanted):** stop-category
   pins drawn on the canvas map + in list rows (🍴💧😴📍 …), and a few inline tip

@@ -163,11 +163,6 @@
      "only one needs to not be black. Clocks are black and white, but so are speedometers"): a constant colour on a cell's top half that names the cell (never a zone).
      Light, so the figure and label on them are dark. Same in both themes, like the pace cell's teal. */
   --tone-spd:#2dd4bf;--tone-speed:#a78bfa;--tone-vam:#87ceeb;--tone-kj:#f9a8d4;--tone-ink:#000;--tone-ink-muted:rgba(0,0,0,.72);
-  /* v479 — ONE COLOUR PER PAGE for the phone's page pill and menu (Peter, 30 Oct: "a different colour for
-     every page… glowing"). The pill is a dark cell in BOTH themes, so one set serves both, like the tones
-     above. Ride = the product accent; Supplies = the amber its Food sub-tab wears; Mission = the speed
-     cell's violet; Route blue, Stops orange; Settings a neutral — the one page with no colour of its own. */
-  --page-routes:#60a5fa;--page-stops:#fb923c;--page-food:#fbbf24;--page-plan:#a78bfa;--page-live:#4ade80;--page-settings:#cbd5e1;
   /* v440 — the Schedule cell's top half. NOT constant tones: ahead/behind IS the reading (the zone rule). */
   /* v474 — two steps each side (Peter): light from 1 s, strong from SCHED_STRONG_MIN. Black ink on all four. */
   --tone-ahead-lt:#bbf7d0;--tone-ahead-dk:#22c55e;--tone-behind-lt:#fecaca;--tone-behind-dk:#ef4444;
@@ -528,69 +523,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .pack-peeking .live-fpill,.pack-peeking #live-dist-bar,.pack-peeking .map-ctrl,
 .pack-peeking #live-weather-bar-wrap,.pack-peeking #turn-cue,.pack-peeking .turn-cue,
 .pack-peeking #pack-btn,.pack-peeking #share-btn,.pack-peeking #rec-stop-confirm,
-.pack-peeking #rec-ctrl,.pack-peeking #navpill{visibility:hidden;}   /* v478 — the page pill is a top-band overlay too */
+.pack-peeking #rec-ctrl{visibility:hidden;}
 .tabs{display:flex;justify-content:space-around;background:var(--surface);flex-shrink:0;overflow:hidden;padding:0;padding-top:env(safe-area-inset-top,0px);}
 .tabs::-webkit-scrollbar{display:none;}
 /* v414 — side padding 6→4 px and type min(15px,4.1vw): the six labels needed 356 of 360 px and clipped "Settings" whenever a scrollbar took width; this keeps ~25 px spare down to a 320 px phone. Never ellipsise a tab label. */
 .tab{flex:0 1 auto;min-width:0;padding:8px 4px;background:none;border:none;color:var(--text3);font-family:var(--sans);font-size:min(15px,4.1vw);font-weight:500;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;border-bottom:2px solid transparent;transition:all .15s;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
 .tab.active{color:var(--tab-active);border-bottom-color:var(--tab-active);}
 .tab-icon{display:flex;align-items:center;justify-content:center;font-size:18px;height:20px;margin-bottom:1px;}
-/* ── v478 — THE PHONE'S PAGE PILL. The six-tab row is gone on the phone (Peter, 29 Oct): its tabs had
-   shrunk to 39–68 px wide — under the 48 px a gloved or moving thumb needs — and the row cost 59 px of
-   every screen, on a Stops list that only had 346. One pill, top-left on EVERY page, names the screen;
-   a tap opens a menu of six 62 px rows (_navMenuOpen). Peter's rule: the page picker is the same
-   control in the same place on every page — "it is inconsistent to have a series of buttons on all
-   tabs except one". So row one of every page is the pill, then that page's own thing beside it: the
-   ruler band on Ride, map on Stops, the help / Print buttons on the list pages (their "PackTimes"
-   wordmark row is retired — the pill now says where you are, so the wordmark had no job left).
-   SIZED TO THE RIDE GRID: one data cell wide, half a cell tall (51 px), 10 px in from the edges, so on
-   Ride it is the first cell of a row and the ruler is the other two cells plus the gap. The text label
-   stays (Peter floated icon-only and accepted the case against it: an icon-only pill is "a mystery",
-   v452's rule). Desktop keeps the tab row — everything here is inside max-width:899px.
-   Mockups and the photographed alternatives: _planning/nav-pill/, _planning/PackTimes-Nav-Pill_Mockup_v1.html */
-@media(max-width:899px){
-  :root{--nav-top:calc(10px + env(safe-area-inset-top,0px));--nav-h:51px;--nav-cell-w:calc((100vw - 36px)/3);--nav-band-l:calc(18px + (100vw - 36px)/3);--nav-row-end:calc(69px + env(safe-area-inset-top,0px));}
-  .tabs{display:none;}
-  #content-wrap>.content{padding-top:var(--nav-row-end);}   /* list pages start one grid gap under the pill */
-  .mob-hide{display:none!important;}
-  /* row one on a LIST page (_mobRow1): an opaque header band the list scrolls under, with the page's
-     buttons right-aligned beside the pill. Opaque, unlike Ride and Stops where the pill floats on the
-     map: scrolled text showing through the gap between pill and buttons read as clutter. The pill
-     itself (z 900) sits on top of this band (899). Padding puts the buttons on the pill's own row. */
-  .mob-row1{position:fixed;top:0;left:0;right:0;height:var(--nav-row-end);box-sizing:border-box;padding:var(--nav-top) 10px 8px var(--nav-band-l);background:var(--bg);display:flex;justify-content:flex-end;align-items:center;gap:8px;z-index:899;}
-}
-#navpill{position:fixed;left:10px;top:var(--nav-top);width:var(--nav-cell-w);height:var(--nav-h);z-index:900;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 6px;box-sizing:border-box;border-radius:var(--r-card);border:var(--border-w) solid var(--border-strong);background:var(--cell-top);color:var(--cell-top-text);font-family:var(--sans);font-size:min(17px,4.5vw);font-weight:600;line-height:1;white-space:nowrap;box-shadow:var(--shadow-float);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;}   /* min(): "Settings" must fit a 320 px phone's cell — never clip a label (v414) */
-#navpill svg{width:20px;height:20px;flex-shrink:0;}
-@media(min-width:900px){#navpill,#navmenu,#navmenu-scrim{display:none!important;}}
-#navmenu-scrim{position:fixed;inset:0;z-index:899;background:var(--scrim);}
-#navmenu{position:fixed;left:10px;top:calc(var(--nav-top) + var(--nav-h) + 6px);z-index:901;width:256px;max-width:calc(100vw - 20px);background:var(--card);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:0 8px 28px rgba(0,0,0,.5);overflow:hidden;}
-.navmenu-row{display:flex;align-items:center;gap:14px;width:100%;min-height:62px;padding:0 18px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:20px;font-weight:600;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.navmenu-row:last-child{border-bottom:none;}
-.navmenu-row svg{width:22px;height:22px;color:var(--text2);flex-shrink:0;}
-.navmenu-row.on{background:color-mix(in srgb,var(--accent) 16%,var(--card));color:var(--accent);}
-.navmenu-row.on svg{color:var(--accent);}
-/* ── v479 — THE PILL GLOWS IN ITS PAGE'S COLOUR (treatment A of three mocked; B, a filled cell, was "maybe
-   too much colour", C, a coloured edge, too quiet). Icon, label and hairline take the colour; a soft halo
-   of the same colour says "you are here" at a glance without changing the pill's weight — the cell stays
-   dark, so on Ride it is still the first cell of the grid. The menu follows: every row's icon wears its
-   page colour and the current page's row glows in it. --npc is set per page from the --page-* tokens;
-   _navPillSync writes data-np. Photographed on all six pages: _planning/nav-pill/colour-a-*.png */
-#navpill[data-np="routes"],.navmenu-row[data-navtab="routes"]{--npc:var(--page-routes);}
-#navpill[data-np="stops"],.navmenu-row[data-navtab="stops"]{--npc:var(--page-stops);}
-#navpill[data-np="food"],.navmenu-row[data-navtab="food"]{--npc:var(--page-food);}
-#navpill[data-np="plan"],.navmenu-row[data-navtab="plan"]{--npc:var(--page-plan);}
-#navpill[data-np="live"],.navmenu-row[data-navtab="live"]{--npc:var(--page-live);}
-#navpill[data-np="settings"],.navmenu-row[data-navtab="settings"]{--npc:var(--page-settings);}
-#navpill[data-np]{color:var(--npc);border-color:var(--npc);box-shadow:0 0 0 1px color-mix(in srgb,var(--npc) 30%,transparent),0 0 16px color-mix(in srgb,var(--npc) 55%,transparent),var(--shadow-float);}
-#navpill:focus{outline:none;}   /* the halo is the ring; the browser's own focus ring over it read as a second, wrong colour */
-.navmenu-row svg{color:var(--npc,var(--text2));}
-.navmenu-row.on{background:color-mix(in srgb,var(--npc) 18%,var(--card));color:var(--npc);box-shadow:inset 0 0 18px color-mix(in srgb,var(--npc) 25%,transparent);}
-.navmenu-row.on svg{color:var(--npc);}
-/* Paper's menu is a LIGHT card, and the page colours are tuned for the dark pill — the mint and the
-   Settings grey all but vanished on white. Ink them down for the rows only; the pill is dark in both. */
-[data-theme="paper"] .navmenu-row{--npc-ink:color-mix(in srgb,var(--npc) 62%,#000);}
-[data-theme="paper"] .navmenu-row[data-navtab="settings"]{--npc-ink:var(--text2);}
-[data-theme="paper"] .navmenu-row svg,[data-theme="paper"] .navmenu-row.on,[data-theme="paper"] .navmenu-row.on svg{color:var(--npc-ink);}
 /* Normal scrolling content (most tabs) */
 .content{flex:1;overflow-y:auto;padding:13px 13px 80px;padding-bottom:calc(80px + env(safe-area-inset-bottom, 0px));display:block;-webkit-overflow-scrolling:touch;min-height:0;}
 .content > *{margin-bottom:13px;}
@@ -897,35 +836,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    to compare it to — and the left figure has become the odometer itself, so showing it twice
    would be daft. Same value, two homes: centre when there's a route, left when there isn't. */
 .live-dist-bar.no-route .live-dist-actual{display:none;}
-/* v478 — THE PHONE'S RULER BAND. Sits AFTER every .live-dist-* rule above on purpose: same specificity,
-   so order decides, and these must win on the phone. See the #navpill note for the design. */
-@media(max-width:899px){
-  /* Ride: the ruler is a BAND in the two cells beside the pill, wearing a cell's chrome. The chevron
-     texture tiles to any width with the mark size unchanged (v349), so only the count drops — 234 px
-     holds ~11 full-size marks. The stage figures go to 24 px; the km-ridden centre figure no longer
-     fits and moves to its own data cell ('dist' in _renderFloatingPill). */
-  .live-dist-bar,.live-dist-bar.no-route{top:var(--nav-top);left:var(--nav-band-l);right:10px;height:var(--nav-h);border:var(--border-w) solid var(--border-strong);border-radius:var(--r-card);overflow:hidden;background:var(--cell-top);box-shadow:var(--shadow-float);}
-  .live-dist-actual{display:none;}
-  .live-dist-nums{top:20px;height:28px;padding:0 7px;}
-  .live-dist-done,.live-dist-left{font-size:24px;}
-  .live-dist-unit{font-size:12px;margin-left:3px;}
-  .live-dist-unit .stage-tag{font-size:9px;}
-  /* no route: no chevrons, so the numbers row has the whole band — odometer and ride time. The average
-     speed stack (v276) is dropped HERE ONLY: "km/h avg. incl. stops" is ~100px and three figures collided
-     in 234px, and the speed cell's lower half already carries that same average one row down. */
-  .live-dist-bar.no-route .live-dist-nums{top:0;height:48px;}
-  .live-dist-bar.no-route .live-dist-done{font-size:28px;}
-  .live-dist-bar.no-route .live-dist-speed{display:none;}
-  .live-dist-sub .v{font-size:18px;}
-  .live-dist-sub .c{font-size:10px;}
-  /* The band is a DARK cell in both themes now, so its plain figures take the cell's light text — not
-     --text, which is dark ink on Paper and vanished. Paper's chevron tokens were tuned for its light
-     full-width bar (--chev-on IS the panel ink, i.e. this band's own background), so the band rebinds
-     them: the same lifted green the Paper stop card uses on its dark panel (see [data-theme="paper"] .si). */
-  .live-dist-left,.live-dist-sub .v,.live-dist-sub .c{color:var(--cell-top-text);}
-  [data-theme="paper"] .live-dist-bar{--chev-off:rgba(255,255,255,0.24);--chev-on:#a6e05f;}
-  [data-theme="paper"] .live-dist-done,[data-theme="paper"] .live-dist-unit .stage-tag{color:#a6e05f;}
-}
 .live-elev-strip{position:absolute;bottom:0;left:0;right:0;z-index:10;background:transparent;cursor:pointer;user-select:none;border-radius:0;}
 .live-elev-bar{background:var(--elev-bg);
   /* dark strip → rebind text light so the asl/grade/totals read (Peter) */
@@ -1938,7 +1848,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v479';
+window.APP_VERSION='v480';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -2033,7 +1943,7 @@ const UI={tab:'routes',gpsActive:false,gpsWatchId:null,gpsPos:null,gpsDistKm:nul
   sharePendingRide:null,shareRideSent:null,shareRideEvent:null,shareRides:[],
   // PackRide events (§3.7). eventCode = the event this rider is currently riding in.
   eventCode:null,eventRouteKey:null,events:[],
-  livePills:['speed','dist','off','off','off','off','off','off','off']};   // v269: 6 slots, a 3x2 grid (see FPILL_DEFAULT); v443 nine; v478 + dist
+  livePills:['speed','off','off','off','off','off']};   // v269: 6 slots, a 3x2 grid (see FPILL_DEFAULT)
 function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════
@@ -2137,7 +2047,7 @@ async function saveAll(){
   await DB.setKV('stravaAuth',{token:UI.stravaToken||null,refresh:UI.stravaRefreshToken||null,expiresAt:UI.stravaExpiresAt||null,athlete:UI.stravaAthlete||null,autoUpload:UI.stravaAutoUpload!==false,scope:UI.stravaScope||null}).catch(()=>{});
   // v377 — intervals.icu API key. Own KV row like stravaAuth: a secret, never in uiPrefs.
   await DB.setKV('intervalsAuth',{key:UI.icuKey||null,athleteId:UI.icuAthleteId||null,athleteName:UI.icuAthleteName||null,autoUpload:UI.icuAutoUpload!==false}).catch(()=>{});
-  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,riderKg:UI.riderKg||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,distCellSeeded:true,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,legStartKj:UI.legStartKj||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],ebike:UI.ebike||null,ebikeRides:UI.ebikeRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
+  await DB.setKV('uiPrefs',{turnAudio:UI.turnAudio,keepScreenOn:UI.keepScreenOn,alertKm:UI.alertKm,turnAlertM:UI.turnAlertM,turnMarkerOffsetM:UI.turnMarkerOffsetM,offRouteM:UI.offRouteM,offRouteSecs:UI.offRouteSecs,searchRadiusKm:UI.searchRadiusKm,placeRadiusKm:UI.placeRadiusKm,gpsZoom:UI.gpsZoom,weatherSpacingKm:UI.weatherSpacingKm,ftp:UI.ftp||null,maxHr:UI.maxHr||null,riderKg:UI.riderKg||null,hiddenMapTypes:[...UI.hiddenMapTypes],osmOpts:UI.osmOpts||null,sensorType:UI.sensorType,geoapifyKey:UI.geoapifyKey||null,mapboxToken:UI.mapboxToken||null,tab:UI.tab,foodSubTab:UI.foodSubTab,elevExpanded:UI.elevExpanded,routeOverlay:UI.routeOverlay,elevZoomKm:UI.elevZoomKm,livePills:UI.livePills,recId:UI.recId||null,rideNowId:UI.rideNowId||null,rideNowTs:UI.rideNowTs||null,legStartTS:UI.legStartTS||null,legStartKm:UI.legStartKm,legStartRouteKm:UI.legStartRouteKm,legStoppedMs:UI.legStoppedMs||0,legStartKj:UI.legStartKj||0,recMinMoveM:UI.recMinMoveM||null,recStopDetectMs:UI.recStopDetectMs||null,avgIncStops:UI.avgIncStops!==false,calibRides:UI.calibRides||[],ebike:UI.ebike||null,ebikeRides:UI.ebikeRides||[],estModeAdv:UI.estModeAdv,fatigueMode:UI.fatigueMode,themeMode:UI.themeMode,paperPalette:UI.paperPalette||'',
     // v274b — the last crank reading, persisted as a RECORD. ⚠ NOT crankLengthMm: that is a
     // live reading of the hardware and must die with the connection. These three are history
     // and are only ever shown with their timestamp. See the note in STATE.
@@ -2202,13 +2112,11 @@ async function loadAll(){
       // strict check would silently discard every pill choice Peter has ever made the first
       // time the new version opens. Old layouts keep their slots; the new one starts empty.
       if(Array.isArray(prefs.livePills)&&prefs.livePills.length>=3){
-        // v478 — NINE slots, not six: v443 added row 3 but this line still read six, so every row-3 pick
-        // was thrown away on the next launch. Same pad-never-truncate rule as above.
-        UI.livePills=[0,1,2,3,4,5,6,7,8].map(i=>prefs.livePills[i]||'off');
-        // v478 — seed the km-ridden cell ONCE for layouts saved before it existed: the figure used to
-        // sit in the ruler and would otherwise just vanish. First empty slot; never again once saved,
-        // so switching it off sticks.
-        if(!prefs.distCellSeeded&&!UI.livePills.includes('dist')){const i=UI.livePills.indexOf('off');if(i>=0)UI.livePills[i]='dist';}
+        // v480 — NINE slots, not six: v443 added row 3 but this line still read six, so every row-3 pick
+        // was thrown away on the next launch (found during v478). Same pad-never-truncate rule as above.
+        // 'dist' was v478/v479's km-ridden cell; those builds are rolled back (v480), so it becomes an
+        // empty slot rather than an unknown type — the ruler's centre figure carries km ridden again.
+        UI.livePills=[0,1,2,3,4,5,6,7,8].map(i=>{const k=prefs.livePills[i]||'off';return k==='dist'?'off':k;});
       }
       if(prefs.recId)UI.recId=prefs.recId;
       if(prefs.rideNowId)UI.rideNowId=prefs.rideNowId;
@@ -4864,10 +4772,7 @@ function _distBarSync(){
   // BUTTS UP against it, which is the whole point (Peter: "you've still got a blank gap
   // between the distance bar and the pills"). These must equal the band's real height:
   // 58 = 20px chevrons + 38px numbers row; 38 = the numbers row alone when there's no route.
-  // v478 — ON THE PHONE THE BAND IS A FIXED 51px CELL in row one (top 10px + safe area) in BOTH modes,
-  // so the grid's anchor is constant: 59px + safe area, and the grid's own +10 puts the first row 8px
-  // under the band's bottom edge (61px) — one grid gap. Desktop keeps the full-width 58/38 band.
-  document.documentElement.style.setProperty('--fpill-top',IS_DESKTOP()?(following?'58px':'38px'):'calc(59px + env(safe-area-inset-top,0px))');
+  document.documentElement.style.setProperty('--fpill-top',following?'58px':'38px');
   if(!following){
     // ONE NUMBER, ONE MEANING: the slot shows route distance while you're following a
     // route and RIDDEN distance when you aren't. Never both — Peter's v258 ruling stands
@@ -4888,7 +4793,7 @@ function _distBarSync(){
     // was. A distance that needs saying what it is, says it.
     // Free: in no-route mode the left figure is the only thing in the band (the to-go and the
     // centre stack are both display:none), so there is a whole bar of room for the word.
-    set(document.getElementById('live-dist-done'),fmtDistKm(_riddenKm()),IS_DESKTOP()?DIST_NOROUTE_UNIT:DIST_NOROUTE_UNIT_NARROW);   // v478 — stacked in the phone's 234px band
+    set(document.getElementById('live-dist-done'),fmtDistKm(_riddenKm()),DIST_NOROUTE_UNIT);
     // ── v276 — RIDE TIME + AVERAGE SPEED fill the band's two spare slots (Peter's own idea,
     // 17 July): "basic measurements that might save a dedicated pill… they are just a basic
     // rider, and as a default they get the basic numbers — distance, time, maybe speed."
@@ -4927,10 +4832,7 @@ function _distBarSync(){
   // chevrons at once. Measure with rect maths, never rounded box metrics — v255, v258,
   // v260, now four occurrences. (v258's whole-pixel SNAP of the bar's box is gone with the
   // side hairlines it existed to fix: the bar is now edge to edge and has none.)
-  // v478 — the CHEVRON WRAP's width, not the bar's: on the phone the bar has a 1.5px border all round
-  // and the wrap is its padding box, so the cap would otherwise be placed 3px past the right edge and
-  // clipped. On desktop the bar has no side borders and the two are the same number.
-  const barW=(wrap||bar).getBoundingClientRect().width;
+  const barW=bar.getBoundingClientRect().width;
   if(wrap&&barW>40){
     // Rebuild only when the width actually CHANGES — a resize moves every chevron, a live
     // tick moves none of them. So the per-tick cost below is one class toggle, no layout.
@@ -5113,9 +5015,6 @@ const DIST_STAGE_UNIT='<span class="stage-tag">stage</span>km';
 // above. See the note in _distBarSync's !following branch. Kept beside DIST_DONE_UNIT so the
 // two are visibly a pair and nobody "tidies" them back into one.
 const DIST_NOROUTE_UNIT='km ridden';
-// v478 — the same label stacked ("ridden" over "km", the stage-tag treatment) for the phone's 234px
-// band, where "123.4 km ridden" inline plus ride time and speed would not fit at any readable size.
-const DIST_NOROUTE_UNIT_NARROW='<span class="stage-tag">ridden</span>km';
 // ── v268: "RIDDEN" IS THE RECORDING'S DISTANCE, NOT THE ODOMETER'S ───────────────────
 // Peter asked me to double-check this figure and he was right to. It IS ridden distance
 // rather than route distance — but it was the WRONG ridden distance.
@@ -5132,14 +5031,6 @@ const DIST_NOROUTE_UNIT_NARROW='<span class="stage-tag">ridden</span>km';
 // Not recording = you haven't ridden anything yet, and 0.0 says exactly that.
 // ONE authority: two places show this (the centre figure and the no-route left figure).
 function _riddenKm(){ return _rec ? _rec.totalDist : 0; }
-// v478 — the 'dist' data cell's two figures: km ridden (the odometer) over km to the FINISH of the
-// whole route. The band's to-go is stage-scoped (v270); this one is the other question — "how much of
-// the whole thing is left" — and on a single-day route the two agree. No route: nothing to finish.
-function _distCellVals(){
-  const r=_liveRoute();
-  const liveDist=UI.gpsDistKm!==null?UI.gpsDistKm:0;
-  return{top:fmtDistKm(_riddenKm()),bot:_distFollowing(r)?fmtDistKm(Math.max(0,r.totalDist-liveDist)):'—'};
-}
 // ADAPTIVE PRECISION — the same rule as v260's fmtStopPct, and it exists for Peter's own
 // counter-example. I had measured the three figures against a 1024.7 km route, found they
 // fit, and declared no rule was needed. Wrong: on a route of 2000 km or more BOTH ends can
@@ -18806,15 +18697,6 @@ const TABS=[
   {id:'settings',icon:_ti+'<line x1="3" y1="5.5" x2="15" y2="5.5"/><line x1="3" y1="12.5" x2="15" y2="12.5"/><circle cx="11.5" cy="5.5" r="1.8"/><circle cx="6.5" cy="12.5" r="1.8"/></svg>',label:'Settings'},
 ];
 
-// v478 — ROW ONE of a list page on the phone: the page's own buttons, right-aligned beside the nav pill
-// (_navPillSync draws the pill itself, fixed top-left, outside the page). This replaces the "PackTimes"
-// wordmark row Route, Mission and Settings used to spend 40px on — the pill now says where you are, so
-// the wordmark had no job left. Keeps class mobile-only-logo so the desktop rule (display:none) holds.
-const _HELP_SVG='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
-function _mobRow1(extra){
-  return `<div class="mobile-only-logo mob-row1">${extra||''}<button type="button" class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="min-height:44px;min-width:48px;padding:0 12px;">${_HELP_SVG}</button></div>`;
-}
-
 let _rf=false,_afterRender=null;
 
 // Scroll a tile to the top of its scroll container
@@ -20088,7 +19970,7 @@ function sortedLayers(r){
 // v409 — 'vam' after 'grade' (both climbing, no sensor). Since v409 this is the PICK LIST's
 // order, not a tap cycle — see _fpillPick.
 // v468 — 'ebatt' (e-bike battery) before the phone's 'batt'; only offered when the e-bike setting is on.
-const PILL_CYCLE=['speed','pace','mspeed','dist','stop','sched','grade','vam','power','wkg','cad','force','kj','hr','ebatt','batt','off'];   // v411 + 'wkg', v435 + 'kj', v440 + 'sched'
+const PILL_CYCLE=['speed','pace','mspeed','stop','sched','grade','vam','power','wkg','cad','force','kj','hr','ebatt','batt','off'];   // v411 + 'wkg', v435 + 'kj', v440 + 'sched'
 // ── PEDAL FORCE (v360) ───────────────────────────────────────────────────────
 // Peter's use for it: "grinding too big a gear or busting your knees, and as a trigger to
 // increase cadence if you want more power."
@@ -20175,7 +20057,7 @@ function _paceCells(v){
 // FPILL_ROW3_CLEAR px above the arrow — see _fpillRow3Sync. Hidden cells keep their setting
 // and come back when the room does. Measured at 412×923 (Pixel 10) with 4 next stops: row 3
 // ends at 473, the arrow is at ~520.
-const FPILL_DEFAULT=['speed','dist','off','off','off','off','off','off','off'];   // v478 — km ridden left the ruler, so it is on by default
+const FPILL_DEFAULT=['speed','off','off','off','off','off','off','off','off'];
 const FPILL_N=9;
 const FPILL_ROW3_CLEAR=40;
 // v270b — 95 → 110. My 95 came from the MOCKUP, where I drew the halves myself; the real
@@ -20336,7 +20218,6 @@ const PILL_INFO={
   speed:['Speed','Now · average','spd'],
   pace:['Pace','min/km','spd'],
   mspeed:['Moving speed','Leaves out stops','spd'],
-  dist:['Distance','km ridden · to the finish','spd'],   // v478 — was the ruler's centre figure
   stop:['Elapsed time','Time · % stopped','spd'],
   sched:['Mission','Ahead · behind your mission','spd'],   // v450 — was Schedule
   grade:['Grade','% · to the top','clb'],
@@ -20498,7 +20379,6 @@ function _renderInner(){
     const activeTab=document.querySelector('.tab.active');
     if(activeTab)activeTab.scrollIntoView({block:'nearest',inline:'center'});
   });
-  _navPillSync();   // v478 — the phone's page pill follows UI.tab
   const r=cur();
   document.getElementById('hroute').textContent=r?(r.label||r.name):'';
   updateGPSPill();
@@ -20564,7 +20444,7 @@ function tStopsShell(r){
         <canvas id="stops-map"></canvas>
         ${mapCtrlHTML('stops-map',true)}
         ${!IS_DESKTOP()?`
-        <div id="mobile-map-legend" style="position:absolute;top:var(--nav-row-end,8px);left:6px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;z-index:20;max-height:calc(100% - var(--nav-row-end,8px) - 8px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-right:3px;scrollbar-width:none;">
+        <div id="mobile-map-legend" style="position:absolute;top:8px;left:6px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;z-index:20;max-height:calc(100% - 16px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-right:3px;scrollbar-width:none;">
           ${(()=>{
             const filtered=sortedLayers(r);
             const allHidden=filtered.every(t=>UI.hiddenMapTypes.has(t.type));
@@ -21577,24 +21457,6 @@ function tLiveShell(r){
         </div>
       </div>`;
     }
-    if(type==='dist'){
-      // v478 — KM RIDDEN GETS A CELL. It was the centre figure of the full-width ruler (v261e); the ruler
-      // is now a two-cell band beside the nav pill with room for the stage figures only, so the odometer
-      // moves here, with the whole-route to-go under it. Monochrome on purpose: distance has no zone and
-      // no tone of its own, and the band's accent already says "distance" one row up. With no route the
-      // band IS the odometer, so the lower half shows a dash and the rider can switch the cell off.
-      const D=_distCellVals();
-      return`<div class="live-fpill" data-slot="${slotIdx}" style="${base}background:${pillBg};text-align:center;" id="live-fpill-dist">
-        <div style="padding:5px 8px 3px;background:var(--cell-top);">
-          <div style="line-height:1.0;"><span style="display:inline-block;font-size:34px;font-weight:700;color:var(--cell-top-text);font-family:var(--font);" id="live-dist-cell-top">${D.top}</span></div>
-          <div style="font-size:11px;font-weight:600;color:var(--cell-top-text);font-family:var(--sans);line-height:1.1;">km ridden</div>
-        </div>
-        <div style="background:var(--cell-bottom);padding:3px 8px 4px;">
-          <div style="line-height:1.0;"><span style="display:inline-block;font-size:30px;font-weight:600;color:var(--cell-bottom-text);font-family:var(--font);" id="live-dist-cell-bot">${D.bot}</span></div>
-          <div style="font-size:10px;font-weight:500;color:var(--cell-bottom-muted);font-family:var(--sans);line-height:1.1;">km to finish</div>
-        </div>
-      </div>`;
-    }
     if(type==='pace'){
       // PACEOMETER (Peter, v319) — the speed pill reframed as PACE (min/km), like runners use.
       // Monochrome, exactly like the speed pill (pace has no zones, so no colour). Same two
@@ -22527,7 +22389,13 @@ function tRoutes(r){
     </div>
     ${helloOpen?_helloContentHTML():''}
   </div>`;
-  const headerBits=`${_mobRow1()}${helloBox}`;   // v478 — the nav pill's row, not a wordmark row
+  const headerBits=`
+  <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
+    <span style="color:var(--wordmark);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;">PackTimes</span>
+    <span style="flex:1;"></span>
+    <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
+  </div>
+  ${helloBox}`;
   // Route picker body — shared by the inline card (no route loaded) and the popup
   const pickerBody=`
     <div style="font-size:13px;color:var(--text3);line-height:1.4;margin-bottom:8px;">Upload a route file to plan stops along it, or create a blank plan to search an area.</div>
@@ -23222,7 +23090,12 @@ function tSettings(r){
     ${palRow}
     <p style="font-size:13px;color:var(--text3);margin-top:10px;line-height:1.5;">Now showing: <strong>${(UI._theme||'graphite')==='paper'?'Paper (light)':'Graphite (dark)'}</strong>.</p>`;
 
-  const _shell=`${_mobRow1()}<!--SETBODY-->
+  const _shell=`
+  <div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
+    <span style="color:var(--wordmark);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;">PackTimes</span>
+    <span style="flex:1;"></span>
+    <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
+  </div><!--SETBODY-->
   ${section('appearance','🎨 Appearance',appearanceBody)}
   ${section('sharing','📍 Location Sharing',sharingBody)}
   ${section('packride','👥 Group Rides (PackRide)',packrideBody)}
@@ -24284,7 +24157,11 @@ function dayNightLabel(dt,sun){
 
 function tPlan(r){
   const sdt=startDT(r);
-  const header=_mobRow1('<button type="button" class="btn btn-sm btn-print-mission" style="min-height:44px;padding:0 14px;font-family:var(--font);letter-spacing:.3px;">Print</button>');   // v478 — Print sits in the nav pill's row on the phone
+  const header=`<div style="padding:10px 16px 2px;display:flex;align-items:center;gap:6px;" class="mobile-only-logo">
+    <span style="color:var(--wordmark);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="56" r="30" stroke="currentColor" stroke-width="7"/><line x1="50" y1="56" x2="50" y2="38" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="50" y1="56" x2="64" y2="63" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="38" y="16" width="24" height="9" rx="4" fill="currentColor"/></svg></span><span style="font-size:22px;font-weight:600;color:var(--wordmark);letter-spacing:-.5px;">PackTimes</span>
+    <span style="flex:1;"></span>
+    <button class="btn btn-sm" onclick="openHelpModal()" title="How PackTimes works" style="padding:4px 9px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
+  </div>`;
   // v473 — A ROUTE WITH NO STOPS STILL GETS ITS MISSION (Peter: it should "at least show the start
   // and finish points… we want to see an ETA somewhere"). This used to return the hint alone; now
   // the hint sits above the ordinary Start → Finish list, which carries the finish ETA.
@@ -24672,8 +24549,8 @@ function tPlan(r){
     }
   }
 
-  const printBtn='<button class="btn btn-sm mob-hide" id="btn-print-mission" style="font-size:12px;padding:3px 8px;font-family:var(--font);letter-spacing:.3px;">Print</button>';
-  return header+noStopsHint+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;"><div style="display:flex;align-items:center;gap:6px;"><span style="background:var(--stop-card-bg);border:1px solid rgba(251,191,36,0.7);border-radius:6px;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span>Starred stops appear here</span></div>${printBtn}</div>`:`<div class="mob-hide" style="padding:2px 4px 8px;display:flex;justify-content:flex-end;">${printBtn}</div>`)
+  const printBtn='<button class="btn btn-sm" id="btn-print-mission" style="font-size:12px;padding:3px 8px;font-family:var(--font);letter-spacing:.3px;">Print</button>';
+  return header+noStopsHint+(unstarredCount>0?`<div style="font-size:14px;color:var(--text3);padding:2px 4px 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;"><div style="display:flex;align-items:center;gap:6px;"><span style="background:var(--stop-card-bg);border:1px solid rgba(251,191,36,0.7);border-radius:6px;padding:3px 5px;display:inline-flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span>Starred stops appear here</span></div>${printBtn}</div>`:`<div style="padding:2px 4px 8px;display:flex;justify-content:flex-end;">${printBtn}</div>`)
   +(sdt?'':'<div class="banner warn"><span>⚠️</span><span>Set start date &amp; time on the Route tab to see times.</span></div>')
     +'<div class="card mission-card">'
       +'<div class="mission-hdr">'
@@ -25538,7 +25415,6 @@ function updateLive(){
     if(avgEl.textContent!==av)avgEl.textContent=av;
   }
   for(const id of ['live-speed-avg-lbl','live-pace-avg-lbl']){const l=document.getElementById(id);if(l&&l.textContent!==_avgLbl(RA.incl))l.textContent=_avgLbl(RA.incl);}
-  if(document.getElementById('live-dist-cell-top')){const D=_distCellVals();setText('live-dist-cell-top',D.top);setText('live-dist-cell-bot',D.bot);}   // v478 — the km-ridden cell
   // v334 — the wind arrow is bike-relative, so it must turn WITH the bike between the
   // weather bar's 30 s rebuilds. Patch rotation + word in place every fix; the ids are part
   // of weatherBarHTML's template, so a _wxBarRender rebuild can never orphan this. Only
@@ -26008,79 +25884,49 @@ function patchGPSInfo(){
 //  EVENT DELEGATION
 // ═══════════════════════════════════════════
 let _liveResizeHandler=null;
-// v478 — ONE WAY TO CHANGE PAGE. The desktop tab row and the phone's page menu both land here, so the
-// leave-page housekeeping (live resize listener, Stops scroll position, Settings back to its menu) is
-// written once. Was the body of the #tabs click handler.
-function goTab(id){
-  // Desktop: the pack peek only covers the ride column, so the tab bar stays
-  // reachable — don't leave an orphaned overlay behind (v257).
-  _packOvClose();
-  // Clean up live map resize listener when leaving live tab
-  if(_liveResizeHandler){
-    if(window.visualViewport)window.visualViewport.removeEventListener('resize',_liveResizeHandler);
-    else window.removeEventListener('resize',_liveResizeHandler);
-    _liveResizeHandler=null;
-  }
-  // Save stops scroll position when leaving stops tab
-  if(UI.tab==='stops'){
-    const sc=document.querySelector('.stops-scroll');
-    if(sc)UI._stopsScrollSaved=sc.scrollTop;
-  }
-  if(id==='settings')UI.settingsPage=null;   // v412 — the Settings tab always opens on its menu
-  UI.tab=id;render();
-  // Auto-scroll mission list to current GPS position when opening plan tab
-  if(id==='plan'&&UI.gpsDistKm!==null){
-    setTimeout(()=>{
-      const r=cur();if(!r)return;
-      const content=document.querySelector('.content');if(!content)return;
-      // Find the last mission node the rider has passed
-      const nodes=[...document.querySelectorAll('.mission-node')];
-      if(!nodes.length)return;
-      let lastPassed=null;
-      nodes.forEach(n=>{
-        const dist=parseFloat(n.dataset.dist);
-        if(!isNaN(dist)&&dist<=UI.gpsDistKm)lastPassed=n;
-      });
-      const target=lastPassed||nodes[0];
-      if(target){
-        // Scroll within content div, not the whole page — keeps header and tabs visible
-        const contentRect=content.getBoundingClientRect();
-        const targetRect=target.getBoundingClientRect();
-        content.scrollTop+=(targetRect.top-contentRect.top)/(parseFloat(getComputedStyle(content).zoom)||1)-16;   // v434 — ÷zoom (desktop .875)
-      }
-    },120);
-  }
-}
 document.getElementById('tabs').addEventListener('click',e=>{
   const b=e.target.closest('[data-tab]');
-  if(b)goTab(b.dataset.tab);
-});
-// ── v478 — THE PHONE'S PAGE PILL AND MENU (see the CSS note at #navpill) ──────────────────────────
-// The pill lives on <body>, outside content-wrap, so a page render never rebuilds it — render only
-// re-labels it. Hidden on desktop by CSS, so it is built once and left alone.
-function _navPillSync(){
-  let p=document.getElementById('navpill');
-  if(!p){
-    p=document.createElement('button');p.id='navpill';p.type='button';p.setAttribute('aria-haspopup','menu');
-    p.addEventListener('click',()=>{document.getElementById('navmenu')?_navMenuClose():_navMenuOpen();});
-    document.body.appendChild(p);
+  if(b){
+    // Desktop: the pack peek only covers the ride column, so the tab bar stays
+    // reachable — don't leave an orphaned overlay behind (v257).
+    _packOvClose();
+    // Clean up live map resize listener when leaving live tab
+    if(_liveResizeHandler){
+      if(window.visualViewport)window.visualViewport.removeEventListener('resize',_liveResizeHandler);
+      else window.removeEventListener('resize',_liveResizeHandler);
+      _liveResizeHandler=null;
+    }
+    // Save stops scroll position when leaving stops tab
+    if(UI.tab==='stops'){
+      const sc=document.querySelector('.stops-scroll');
+      if(sc)UI._stopsScrollSaved=sc.scrollTop;
+    }
+    if(b.dataset.tab==='settings')UI.settingsPage=null;   // v412 — the Settings tab always opens on its menu
+    UI.tab=b.dataset.tab;render();
+    // Auto-scroll mission list to current GPS position when opening plan tab
+    if(b.dataset.tab==='plan'&&UI.gpsDistKm!==null){
+      setTimeout(()=>{
+        const r=cur();if(!r)return;
+        const content=document.querySelector('.content');if(!content)return;
+        // Find the last mission node the rider has passed
+        const nodes=[...document.querySelectorAll('.mission-node')];
+        if(!nodes.length)return;
+        let lastPassed=null;
+        nodes.forEach(n=>{
+          const dist=parseFloat(n.dataset.dist);
+          if(!isNaN(dist)&&dist<=UI.gpsDistKm)lastPassed=n;
+        });
+        const target=lastPassed||nodes[0];
+        if(target){
+          // Scroll within content div, not the whole page — keeps header and tabs visible
+          const contentRect=content.getBoundingClientRect();
+          const targetRect=target.getBoundingClientRect();
+          content.scrollTop+=(targetRect.top-contentRect.top)/(parseFloat(getComputedStyle(content).zoom)||1)-16;   // v434 — ÷zoom (desktop .875)
+        }
+      },120);
+    }
   }
-  const t=TABS.find(x=>x.id===UI.tab)||TABS[0];
-  const html=t.icon.replace('width="18" height="18"','width="20" height="20"')+'<span>'+t.label+'</span>';
-  if(p._lv!==html){p._lv=html;p.innerHTML=html;}
-  if(p.dataset.np!==t.id)p.dataset.np=t.id;   // v479 — picks the page colour (CSS at #navpill[data-np])
-  p.setAttribute('aria-label',t.label+' — open the page menu');
-}
-function _navMenuOpen(){
-  _navMenuClose();
-  const sc=document.createElement('div');sc.id='navmenu-scrim';sc.addEventListener('click',_navMenuClose);
-  const m=document.createElement('div');m.id='navmenu';m.setAttribute('role','menu');
-  m.innerHTML=TABS.map(t=>`<button type="button" role="menuitem" class="navmenu-row${UI.tab===t.id?' on':''}" data-navtab="${t.id}">${t.icon}<span>${t.label}</span></button>`).join('');
-  m.addEventListener('click',e=>{const b=e.target.closest('[data-navtab]');if(!b)return;_navMenuClose();goTab(b.dataset.navtab);});
-  document.body.appendChild(sc);document.body.appendChild(m);
-}
-function _navMenuClose(){for(const id of ['navmenu-scrim','navmenu']){const e=document.getElementById(id);if(e)e.remove();}}
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('navmenu'))_navMenuClose();});
+});
 
 document.getElementById('content-wrap').addEventListener('click',e=>{
   const r=cur();
@@ -27115,7 +26961,7 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     }
     return;
   }
-  if(e.target.closest('#btn-print-mission,.btn-print-mission')){printMission();return;}   // v478 — the phone's copy is in the nav row
+  if(e.target.closest('#btn-print-mission')){printMission();return;}
   if(e.target.closest('#btn-go-food')){UI.tab='food';UI.foodSubTab='food';render();return;}
 
   // ─── Gear checklist click handlers ───
