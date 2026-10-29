@@ -556,7 +556,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
    crystallises. `turn-active` is toggled on #live-map-section by renderTurnCue. (Peter) */
 .live-map-section .live-fpill{transition:opacity .22s ease;}
 #live-map-section.turn-active .live-fpill{opacity:0!important;pointer-events:none!important;}   /* fade out, not display:none, so it can transition */
-#fpill-grid.no-row3 .live-fpill[data-slot="6"],#fpill-grid.no-row3 .live-fpill[data-slot="7"],#fpill-grid.no-row3 .live-fpill[data-slot="8"]{display:none!important;}  /* v449 — whole row 3 off only when the map is too short for it; see _fpillRow3Sync */
+/* v481 — row 3 no longer hides itself (the v449 .no-row3 rule is gone): nine slots always render and the
+   rider decides what fills them. Only the middle cell's GPS-marker rule below remains. */
 #fpill-grid.no-row3mid .live-fpill[data-slot="7"]{visibility:hidden!important;pointer-events:none!important;}  /* v449 — middle cell off when it would cover the GPS marker. visibility, not display: the grid places by order, so display:none would slide slot 8 into the middle */
 #live-map-section.turn-active #tc-box{top:calc(var(--fpill-top,58px) + 10px)!important;bottom:auto!important;height:110px!important;animation:tcIn .22s ease;}  /* top gap + height match the data-cell grid (FPILL_CELL_H=110) */
 @keyframes tcIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
@@ -1848,7 +1849,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v480';
+window.APP_VERSION='v481';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -20053,10 +20054,15 @@ function _paceCells(v){
 // for another row, even with the elevation profile showing. However that might be affected by
 // how many 'next stops' are at the bottom." It is: the map shrinks as the next-stops strip grows
 // (up to 4 rows), and on a smaller phone a third row would sit on the rider's own arrow (drawn
-// at 65% of the map's height). So row 3 (slots 6–8) is shown only while it ends at least
-// FPILL_ROW3_CLEAR px above the arrow — see _fpillRow3Sync. Hidden cells keep their setting
-// and come back when the room does. Measured at 412×923 (Pixel 10) with 4 next stops: row 3
-// ends at 473, the arrow is at ~520.
+// at 65% of the map's height).
+// v481 — ROW 3 ALWAYS RENDERS. v443/v449 hid it whenever it couldn't clear the map's corner
+// buttons, so it came and went with the elevation profile and the next-stops list. Peter, 30 Oct,
+// after a start-up with two rows: "you should either have three rows or you don't. Having them
+// hidden is more a choice for the user… if they get hidden behind the share button, the play
+// button, or the map buttons, it's just a user choice." An empty cell is a transparent "+" chip,
+// so "no third row" is three empty cells — no setting needed. What remains of the v449 rule is
+// the part about the MAP, not the buttons: the middle cell steps aside when it would sit on the
+// rider's own marker, and the marker drops (to LIVE_ANCHOR_MAX) to clear it when it can.
 const FPILL_DEFAULT=['speed','off','off','off','off','off','off','off','off'];
 const FPILL_N=9;
 const FPILL_ROW3_CLEAR=40;
@@ -20124,45 +20130,23 @@ function _fpillsSync(){
     if(fresh)el.replaceWith(fresh); else el.remove();
   }
 }
-// v443 — show row 3 only while it clears the rider's arrow (see FPILL_ROW3_CLEAR). Measured,
-// not guessed: the grid's own top plus three rows against the map section's height. A
-// ResizeObserver on the map section re-runs it whenever the map changes height — the next-stops
-// strip growing or shrinking, the elevation profile opening, rotation — so no caller has to.
-// v449 — SPLIT BY COLUMN (Peter's idea). On his Pixel 10 the whole row missed by ~3 px and he
-// lost all three cells, though only the MIDDLE one can ever sit over the GPS marker (drawn at
-// the map's horizontal centre). So:
-//   · outer cells (slots 6, 8): shown whenever the row ends FPILL_ROW3_FLOOR px above the
-//     map's bottom-corner buttons (share / record on the left, map controls and weather on the
-//     right — measured, they ride up and down with the map). They hide as a row, all three;
-//   · middle cell (slot 7): needs FPILL_ROW3_CLEAR px above the marker. The marker's height
-//     (_liveAnchor, normally 0.65 of the map) may drop as far as LIVE_ANCHOR_MAX to make room;
-//     past that the middle hides (visibility, so slot 8 keeps its square).
-const LIVE_ANCHOR_BASE=0.65, LIVE_ANCHOR_MAX=0.72, FPILL_ROW3_FLOOR=8;
-const FPILL_CORNER_IDS=['share-btn','rec-ctrl','live-map-ctrl','live-weather-bar'];
+// v443/v449 — THE MIDDLE CELL AND THE RIDER'S MARKER. Only the middle cell (slot 7) can ever sit
+// over the GPS marker (drawn at the map's horizontal centre). It needs FPILL_ROW3_CLEAR px above
+// the marker; the marker's height (_liveAnchor, normally 0.65 of the map) may drop as far as
+// LIVE_ANCHOR_MAX to make room, and past that the middle cell hides (visibility, so slot 8 keeps
+// its square). Measured, not guessed: the grid's top plus three rows against the map section. A
+// ResizeObserver on the map section re-runs it whenever the map changes height.
+// v481 — the whole-row hide that used to live here (row 3 off when it couldn't clear the corner
+// buttons, with FPILL_ROW3_FLOOR, FPILL_CORNER_IDS and a Settings log of every hide) is gone;
+// see the note at FPILL_DEFAULT.
+const LIVE_ANCHOR_BASE=0.65, LIVE_ANCHOR_MAX=0.72;
 let _liveAnchor=LIVE_ANCHOR_BASE;
 let _fpillRow3RO=null, _fpillRow3At=0;
-// v456 — ALSO RE-CHECKED EVERY SECOND WHILE RIDING (from updateLive). Peter: after some turn boxes
-// the third row stayed hidden until "some later point". The grid is built hidden and only this
-// function shows it; the ResizeObserver only fires on a size change, so a rebuild of the Ride
-// screen that changed no size left row 3 hidden indefinitely. A 1 s re-check makes any wrong
-// answer — whatever caused it — correct itself. Cheap: a handful of getBoundingClientRect calls.
-// v474 — the pt_row3log notes, readable in Settings → Ride screen (Peter: no USB needed). Newest
-// first. "Short by" = how far row 3 overran the 8 px clearance above the named corner button.
-const ROW3_WHY={'share-btn':'Share button','rec-ctrl':'Record button','live-map-ctrl':'Map buttons','live-weather-bar':'Weather button','map bottom':'Bottom of the map'};
-function _row3LogHTML(){
-  let L=[];try{L=JSON.parse(localStorage.getItem('pt_row3log')||'[]');}catch(e){}
-  const intro=`<p style="font-size:15px;color:var(--text2);line-height:1.6;margin-bottom:8px;">The third row of Ride cells only shows when it ends at least ${FPILL_ROW3_FLOOR} px above the buttons at the bottom corners of the map. The elevation profile, the next-stops list and the turn box all make the map shorter. Each time the row hid, this phone noted why (last 8).</p>`;
-  if(!L.length)return intro+`<div style="font-size:14px;color:var(--text3);">No notes yet. Screen height now ${Math.round(window.innerHeight)} px.</div>`;
-  const rows=L.slice().reverse().map(e=>{
-    const d=new Date(e.t), short=e.rowsEnd-(e.floor-FPILL_ROW3_FLOOR);
-    const extra=[e.elev?'profile open':e.elev===false?'profile closed':'',e.nextH?'next stops '+e.nextH+' px':'',e.turn?'turn box':'',e.vh?'screen '+e.vh+' px':''].filter(Boolean).join(' · ');
-    return `<div style="padding:8px 0;border-top:1px solid var(--border2);font-size:14px;line-height:1.45;">
-      <div><strong>${d.toLocaleString([],{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</strong> — short by ${short} px at the ${(ROW3_WHY[e.why]||e.why).toLowerCase()}</div>
-      <div style="color:var(--text3);font-size:13px;">${extra||'map '+e.mapH+' px'}</div></div>`;
-  }).join('');
-  return intro+rows;
-}
+// v456 — ALSO RE-CHECKED EVERY SECOND WHILE RIDING (from updateLive): the ResizeObserver only fires
+// on a size change, so a rebuild of the Ride screen that changed no size could leave a stale answer.
+// A 1 s re-check makes any wrong answer correct itself. Cheap: a handful of getBoundingClientRect calls.
 function _fpillRow3Tick(){
+  if(!_fpillRow3At){try{localStorage.removeItem('pt_row3log');}catch(e){}}   // v481 — first call only: the v456 hide log is retired, clear the leftover notes
   const now=Date.now();
   if(now-_fpillRow3At<1000)return;
   _fpillRow3At=now;
@@ -20174,25 +20158,9 @@ function _fpillRow3Sync(){
   const s=sec.getBoundingClientRect(), g=grid.getBoundingClientRect();
   if(!s.height)return;
   const rowsEnd=g.top+3*FPILL_CELL_H+2*8;   // 8 = the grid's gap
-  let floor=s.bottom-80;   // no corner buttons drawn → keep clear of the zoom buttons
-  for(const id of FPILL_CORNER_IDS){const b=document.getElementById(id);if(!b)continue;const r=b.getBoundingClientRect();if(r.height)floor=Math.min(floor,r.top);}
-  const rowFits=rowsEnd<=floor-FPILL_ROW3_FLOOR;
-  // v456 — when row 3 goes from shown to hidden, keep a note of the numbers (last 8, on this
-  // phone only), so a field report can be read back over USB rather than guessed at.
-  if(!rowFits&&!grid.classList.contains('no-row3')){
-    try{
-      let why='map bottom';for(const id of FPILL_CORNER_IDS){const b=document.getElementById(id);if(b){const rr=b.getBoundingClientRect();if(rr.height&&Math.round(rr.top)===Math.round(floor))why=id;}}
-      const L=JSON.parse(localStorage.getItem('pt_row3log')||'[]');
-      const ns=document.getElementById('live-next-strip');   // v474 — and what else was taking the height
-      L.push({t:new Date().toISOString(),why,rowsEnd:Math.round(rowsEnd),floor:Math.round(floor),mapH:Math.round(s.height),turn:sec.classList.contains('turn-active'),
-        elev:!!UI.elevExpanded,vh:Math.round(window.innerHeight),gridTop:Math.round(g.top),nextH:ns?Math.round(ns.getBoundingClientRect().height):0});
-      localStorage.setItem('pt_row3log',JSON.stringify(L.slice(-8)));
-    }catch(e){}
-  }
   const need=(rowsEnd+FPILL_ROW3_CLEAR-s.top)/s.height;   // the anchor that just clears the middle cell
-  const midFits=rowFits&&need<=LIVE_ANCHOR_MAX;
+  const midFits=need<=LIVE_ANCHOR_MAX;
   const anchor=midFits?Math.max(LIVE_ANCHOR_BASE,need):LIVE_ANCHOR_BASE;
-  grid.classList.toggle('no-row3',!rowFits);
   grid.classList.toggle('no-row3mid',!midFits);
   if(Math.abs(anchor-_liveAnchor)>0.001){
     _liveAnchor=anchor;
@@ -22068,8 +22036,8 @@ function tLiveShell(r){
   const gridStyle='position:absolute;top:calc(var(--fpill-top,58px) + 10px);left:0;right:0;z-index:12;'
                  +'pointer-events:none;box-sizing:border-box;padding:0 10px;'
                  +'display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:'+FPILL_CELL_H+'px;gap:8px;';
-  // v443 — nine cells; row 3 starts hidden and _fpillRow3Sync shows it once the map is measured.
-  const floatingPills=`<div id="fpill-grid" class="no-row3" style="${gridStyle}">`
+  // v443 — nine cells. v481 — all nine render from the start; _fpillRow3Sync only governs the middle cell of row 3.
+  const floatingPills=`<div id="fpill-grid" style="${gridStyle}">`
     +Array.from({length:FPILL_N},(_,i)=>_renderFloatingPill(i)).join('')+`</div>`;
 
   return`
@@ -23129,7 +23097,6 @@ function tSettings(r){
       ?'<strong>On:</strong> time spent stopped counts. Average speed is distance over the whole ride time, and the ride file carries 0 W through each stop, so Strava and intervals.icu show average power on the same basis. This is how a head unit records.'
       :'<strong>Off:</strong> only riding time counts. Average speed leaves out the stops PackTimes detects while recording, and average power on Strava and intervals.icu covers riding time only.'}</p>
     <p style="font-size:13px;color:var(--text3);line-height:1.5;">Every average on the Ride screen says which kind it is. The moving-average pill always leaves stops out. Normalised power barely moves either way. Applies to rides uploaded or exported from now on.</p>`)}
-  ${section('row3log','Bottom row of cells',_row3LogHTML())}
   ${section('zoom','GPS Map Zoom',zoomBody,!!r)}
   ${section('weather','Weather Map Spacing',weatherBody,!!r)}
   ${section('offline','Offline Storage',offlineBody)}
@@ -23167,7 +23134,7 @@ function tSettings(r){
 // open page key, or null for the menu; the Settings tab button resets it to the menu.
 const SET_PAGES=[
   {k:'sensors',t:'Sensors & zones',d:'Power, heart rate, crank length, weight',s:['ftp'],c:'var(--cat-vending)'},
-  {k:'ride',t:'Ride screen',d:'Averages, alerts, map zoom, weather',s:['averages','alerts','row3log','zoom','weather'],c:'var(--cat-water)'},
+  {k:'ride',t:'Ride screen',d:'Averages, alerts, map zoom, weather',s:['averages','alerts','zoom','weather'],c:'var(--cat-water)'},
   {k:'uploads',t:'Uploads & sync',d:'Strava, intervals.icu, Dropbox',s:['strava','intervals','dropbox'],c:'var(--cat-fuel)'},
   {k:'sharing',t:'Sharing & group rides',d:'Live location, PackRide',s:['sharing','packride'],c:'var(--cat-school)'},
   {k:'maps',t:'Offline maps',d:'Map downloads, storage',s:['offlineMaps','offline'],c:'var(--cat-camp)'},
