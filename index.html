@@ -163,6 +163,11 @@
      "only one needs to not be black. Clocks are black and white, but so are speedometers"): a constant colour on a cell's top half that names the cell (never a zone).
      Light, so the figure and label on them are dark. Same in both themes, like the pace cell's teal. */
   --tone-spd:#2dd4bf;--tone-speed:#a78bfa;--tone-vam:#87ceeb;--tone-kj:#f9a8d4;--tone-ink:#000;--tone-ink-muted:rgba(0,0,0,.72);
+  /* v479 — ONE COLOUR PER PAGE for the phone's page pill and menu (Peter, 30 Oct: "a different colour for
+     every page… glowing"). The pill is a dark cell in BOTH themes, so one set serves both, like the tones
+     above. Ride = the product accent; Supplies = the amber its Food sub-tab wears; Mission = the speed
+     cell's violet; Route blue, Stops orange; Settings a neutral — the one page with no colour of its own. */
+  --page-routes:#60a5fa;--page-stops:#fb923c;--page-food:#fbbf24;--page-plan:#a78bfa;--page-live:#4ade80;--page-settings:#cbd5e1;
   /* v440 — the Schedule cell's top half. NOT constant tones: ahead/behind IS the reading (the zone rule). */
   /* v474 — two steps each side (Peter): light from 1 s, strong from SCHED_STRONG_MIN. Black ink on all four. */
   --tone-ahead-lt:#bbf7d0;--tone-ahead-dk:#22c55e;--tone-behind-lt:#fecaca;--tone-behind-dk:#ef4444;
@@ -564,6 +569,28 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .navmenu-row svg{width:22px;height:22px;color:var(--text2);flex-shrink:0;}
 .navmenu-row.on{background:color-mix(in srgb,var(--accent) 16%,var(--card));color:var(--accent);}
 .navmenu-row.on svg{color:var(--accent);}
+/* ── v479 — THE PILL GLOWS IN ITS PAGE'S COLOUR (treatment A of three mocked; B, a filled cell, was "maybe
+   too much colour", C, a coloured edge, too quiet). Icon, label and hairline take the colour; a soft halo
+   of the same colour says "you are here" at a glance without changing the pill's weight — the cell stays
+   dark, so on Ride it is still the first cell of the grid. The menu follows: every row's icon wears its
+   page colour and the current page's row glows in it. --npc is set per page from the --page-* tokens;
+   _navPillSync writes data-np. Photographed on all six pages: _planning/nav-pill/colour-a-*.png */
+#navpill[data-np="routes"],.navmenu-row[data-navtab="routes"]{--npc:var(--page-routes);}
+#navpill[data-np="stops"],.navmenu-row[data-navtab="stops"]{--npc:var(--page-stops);}
+#navpill[data-np="food"],.navmenu-row[data-navtab="food"]{--npc:var(--page-food);}
+#navpill[data-np="plan"],.navmenu-row[data-navtab="plan"]{--npc:var(--page-plan);}
+#navpill[data-np="live"],.navmenu-row[data-navtab="live"]{--npc:var(--page-live);}
+#navpill[data-np="settings"],.navmenu-row[data-navtab="settings"]{--npc:var(--page-settings);}
+#navpill[data-np]{color:var(--npc);border-color:var(--npc);box-shadow:0 0 0 1px color-mix(in srgb,var(--npc) 30%,transparent),0 0 16px color-mix(in srgb,var(--npc) 55%,transparent),var(--shadow-float);}
+#navpill:focus{outline:none;}   /* the halo is the ring; the browser's own focus ring over it read as a second, wrong colour */
+.navmenu-row svg{color:var(--npc,var(--text2));}
+.navmenu-row.on{background:color-mix(in srgb,var(--npc) 18%,var(--card));color:var(--npc);box-shadow:inset 0 0 18px color-mix(in srgb,var(--npc) 25%,transparent);}
+.navmenu-row.on svg{color:var(--npc);}
+/* Paper's menu is a LIGHT card, and the page colours are tuned for the dark pill — the mint and the
+   Settings grey all but vanished on white. Ink them down for the rows only; the pill is dark in both. */
+[data-theme="paper"] .navmenu-row{--npc-ink:color-mix(in srgb,var(--npc) 62%,#000);}
+[data-theme="paper"] .navmenu-row[data-navtab="settings"]{--npc-ink:var(--text2);}
+[data-theme="paper"] .navmenu-row svg,[data-theme="paper"] .navmenu-row.on,[data-theme="paper"] .navmenu-row.on svg{color:var(--npc-ink);}
 /* Normal scrolling content (most tabs) */
 .content{flex:1;overflow-y:auto;padding:13px 13px 80px;padding-bottom:calc(80px + env(safe-area-inset-bottom, 0px));display:block;-webkit-overflow-scrolling:touch;min-height:0;}
 .content > *{margin-bottom:13px;}
@@ -1911,7 +1938,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v478';
+window.APP_VERSION='v479';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -26041,6 +26068,7 @@ function _navPillSync(){
   const t=TABS.find(x=>x.id===UI.tab)||TABS[0];
   const html=t.icon.replace('width="18" height="18"','width="20" height="20"')+'<span>'+t.label+'</span>';
   if(p._lv!==html){p._lv=html;p.innerHTML=html;}
+  if(p.dataset.np!==t.id)p.dataset.np=t.id;   // v479 — picks the page colour (CSS at #navpill[data-np])
   p.setAttribute('aria-label',t.label+' — open the page menu');
 }
 function _navMenuOpen(){
