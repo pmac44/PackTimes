@@ -1849,7 +1849,7 @@ const DB=(()=>{
 // Single source of truth for the app version — the service worker's CACHE_NAME
 // derives from this (second script block), and Settings displays it. Bump HERE
 // when shipping a release; nothing else needs touching.
-window.APP_VERSION='v481';
+window.APP_VERSION='v483';
 const APP_VERSION=window.APP_VERSION;
 let ROUTES=[],CUR=-1,_sid=1;
 const newRoute=name=>({
@@ -1966,7 +1966,7 @@ function todayStr(){return new Date().toISOString().slice(0,10);}
 // Two rules from here on, both cheap: they never get saved, and any code that assigns
 // r.points calls clearRouteCaches(). Rebuilding them is O(n) and happens on next read.
 function clearRouteCaches(r){ if(!r)return r; delete r._gradeSegs; delete r._smEle; delete r._climbs; delete r._hasEle; delete r._kmLen; return r; }
-function packRoute(r){const{_moffM,_moffDiag,_gradeSegs,_smEle,_climbs,_hasEle,_kmLen,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session; _gradeSegs/_smEle/_climbs are derived from points and MUST NOT be persisted (v350)
+function packRoute(r){const{_moffM,_moffDiag,_gradeSegs,_smEle,_climbs,_hasEle,_kmLen,_oabSug,_oabSugKey,...rest}=r;return{...rest,   // _moffM (auto-detected turn offset) is transient — re-scan each session; _gradeSegs/_smEle/_climbs are derived from points and MUST NOT be persisted (v350)
   points:r.points.map(p=>[
     Math.round(p.lat*1e5)/1e5,Math.round(p.lon*1e5)/1e5,
     Math.round(p.ele),Math.round(p.dist*1000)/1000,p.time?p.time.getTime():0]),   // v399 — to the metre (was *10/10 = 100 m steps)
@@ -5115,9 +5115,135 @@ function addStop(r,dist,type,name,opts){
     bookingUrl:opts.bookingUrl||null,
     info:opts.info||null,   // v383 — "what's here" line from OSM tags (_stopInfo), shown on the stop tile
     population:opts.population||null});
+  // v482 — inside a declared out-and-back section a NEW stop goes on the OUT pass (the snap can't
+  // tell the passes apart; the Stops tile's BACK chip moves it in one tap).
+  const _ns=r.stops[r.stops.length-1];if(oabPassAt(r,_ns.dist)==='back'){const tw=oabTwinKm(r,_ns.dist);if(tw!==null){_ns.dist=tw;if(_ns.snapIdx!==null)_ns.snapIdx=cidx(r,tw);}}
   r.stops.sort((a,b)=>a.dist-b.dist);
 }
-function delStop(r,id){r.stops=r.stops.filter(s=>String(s.id)!==String(id));}
+function delStop(r,id){r.stops=r.stops.filter(s=>String(s.id)!==String(id)&&String(s.twinOf)!==String(id));}   // v483 — a BOTH place's twin goes with its primary
+// ─── v482 — Out-and-back sections (stage 1 of _planning/PackTimes-Out-and-Back-Stops_Plan_v2.md) ───
+// A route that rides the same road out and back gets a DECLARED section {from, turn, to} (km): the
+// stretch from `from` out to the turnaround and back over itself to `to`. A stop inside it is on
+// the OUT pass (km < turn) or the BACK pass (km > turn), and its Stops tile offers the other pass
+// in one tap. Switching MOVES the stop to the twin km (2·turn − km) — same place, same lat/lon,
+// just the other visit — so every reader of s.dist (Mission, ETAs, Ride strip, arrival stamping)
+// works unchanged. Before this, which pass a stop landed on was the snap's coin toss (Canberra:
+// John Knight Bubbler went out at 80.7, Stromlo Toilets back at 221.8) and the ±5 km edit slider
+// couldn't reach the other pass. Stage 1 has no BOTH (a stop visited twice): that needs a visits
+// layer under those ~120 readers (plan §3) and is stage 2. Stored on the route as r.oabSecs
+// (array — a lollipop's stick is not modelled yet; see oabDetect). r.oabDismissed: Peter said
+// "Not now" to the detector's offer on this route, so it isn't offered again.
+const OAB_NEAR_KM=2;       // plan §5 — within this of the turnaround the passes are minutes apart: no choice offered
+const OAB_MATCH_KM=0.15;   // twin points closer than this are "the same road" (a true out-and-back is 2–3 m off; a divided road ~30 m)
+const OAB_STEP_KM=0.5;
+function oabSecAt(r,km){return(r&&r.oabSecs||[]).find(x=>km>=x.from-0.01&&km<=x.to+0.01)||null;}
+// 'out' | 'back' | null (not in a section, or at the turnaround)
+function oabPassAt(r,km){const x=oabSecAt(r,km);if(!x||Math.abs(km-x.turn)<OAB_NEAR_KM)return null;return km<x.turn?'out':'back';}
+function oabTwinKm(r,km){const x=oabSecAt(r,km);if(!x)return null;const tw=2*x.turn-km;return(tw>=x.from-0.01&&tw<=x.to+0.01)?Math.round(tw*10)/10:null;}
+// Move a stop to the other pass: same place, the twin km. snapIdx follows — the maps draw the pin from it.
+function oabSetPass(r,s,pass){
+  const have=oabPassAt(r,s.dist);if(!have||have===pass)return false;
+  const tw=oabTwinKm(r,s.dist);if(tw===null)return false;
+  s.dist=tw;s.snapIdx=cidx(r,tw);
+  r.stops.sort((a,b)=>a.dist-b.dist);
+  return true;
+}
+// The detector. A candidate turnaround is a point T whose neighbours ½, 1 or 2 km either side sit
+// on the same road; from each candidate walk x outwards while T−x and T+x still coincide (two
+// misses in a row allowed, so a block ridden round in a town doesn't end the span) and the longest
+// span wins — ties to the candidate whose neighbours sit closest. A span must be at least 5 km and
+// a tenth of the route. Ends within 1 km of the route's ends snap to them. Finds a plain
+// out-and-back and a lollipop ridden out-and-back in the middle of a loop; NOT a lollipop whose
+// doubled stick is the start and the finish (that's two passes with a loop between — later).
+function oabDetect(r){
+  const P=r&&r.points;if(!P||P.length<10||!r.totalDist)return null;
+  const total=r.totalDist,pt=d=>_ptAtDist(r,d);
+  const cands=[];let lastT=-1;
+  for(let i=0;i<P.length;i++){const T=P[i].dist;if(T-lastT<0.05||T<1||T>total-1)continue;lastT=T;
+    const d=Math.min(hav(pt(T-0.5),pt(T+0.5)),hav(pt(T-1),pt(T+1)),hav(pt(T-2),pt(T+2)));
+    if(d<=OAB_MATCH_KM)cands.push({T,d});}
+  let best=null;
+  for(const c of cands){
+    let x=OAB_STEP_KM,miss=0,span=0;const lim=Math.min(c.T,total-c.T);
+    while(x<=lim){if(hav(pt(c.T-x),pt(c.T+x))<=OAB_MATCH_KM){span=x;miss=0;}else if(++miss>2)break;x+=OAB_STEP_KM;}
+    if(!best||span>best.span+0.01||(Math.abs(span-best.span)<=0.01&&c.d<best.d))best={turn:c.T,span,d:c.d};
+  }
+  if(!best||best.span<Math.max(5,total*0.1))return null;
+  const turn=Math.round(best.turn*10)/10;
+  let from=Math.max(0,turn-best.span),to=Math.min(total,turn+best.span);
+  if(from<1)from=0;if(to>total-1)to=total;
+  return{from:Math.round(from*10)/10,turn,to:Math.round(to*10)/10};
+}
+// The Route tab's offer, cached per route until the points change (reimport). Not saved (packRoute strips it).
+function oabSuggest(r){
+  if(!r||!r.points.length||(r.oabSecs&&r.oabSecs.length)||r.oabDismissed)return null;
+  const key=r.points.length+':'+Math.round(r.totalDist*10);
+  if(r._oabSug===undefined||r._oabSugKey!==key){r._oabSugKey=key;r._oabSug=oabDetect(r);}
+  return r._oabSug;
+}
+// OUT / BACK tag for a Mission row (nothing outside a section or at the turnaround). BACK is the route-line orange.
+function _oabTag(r,km,col){const p=oabPassAt(r,km);if(!p)return'';return' <span style="display:inline-block;font-size:10px;font-weight:700;letter-spacing:1px;padding:1px 5px;border-radius:4px;border:1px solid currentColor;vertical-align:2px;font-family:var(--font);line-height:1.3;color:'+(p==='back'?'#fb923c':(col||'inherit'))+';">'+p.toUpperCase()+'</span>';}
+// ─── v483 — BOTH (stage 2): a place visited on both passes is TWO stop records, the primary and
+// its twin (twin.twinOf = primary.id) at the twin km. Everything downstream — Mission, ETAs, Ride
+// strip, arrival stamping, chimes, meals, sleep — simply sees two stops, so meals, sleep and dwell
+// are per visit by construction and no reader changed. What describes the PLACE is shared and
+// copied primary → twin at every render (_oabSyncTwins): name, type, hours, info, position, water.
+// Starred is per visit (Mission's "remove from the mission list" on one visit keeps the other);
+// the Stops tab's star sets both. The Stops list shows the place once — the twin's tile is skipped
+// and the primary's tile carries the BOTH chip and both arrival times. If the section goes, or the
+// primary leaves it, the twin is unlinked and lives on as a plain stop.
+const OAB_SHARED=['name','type','icon','ohRaw','ohRules','info','lat','lon','offRouteM','bookingUrl','population','auto','waterHere','stockwater','crossing','noCluster'];
+function oabTwinOf(r,s){return s&&r.stops.find(x=>String(x.twinOf)===String(s.id))||null;}
+function oabPrimaryOf(r,s){return s&&s.twinOf?r.stops.find(x=>String(x.id)===String(s.twinOf))||null:null;}
+function _oabSyncTwins(r){
+  if(!r||!r.stops||!r.stops.some(s=>s.twinOf))return;
+  let moved=false;
+  for(const tw of r.stops.filter(s=>s.twinOf)){
+    const p=oabPrimaryOf(r,tw),k=p?oabTwinKm(r,p.dist):null;
+    if(!p||k===null||oabPassAt(r,p.dist)===null){delete tw.twinOf;continue;}
+    if(Math.abs(tw.dist-k)>0.001){tw.dist=k;tw.snapIdx=cidx(r,k);moved=true;}
+    for(const f of OAB_SHARED){if(p[f]===undefined){if(tw[f]!==undefined)delete tw[f];}else tw[f]=p[f];}
+  }
+  if(moved)r.stops.sort((a,b)=>a.dist-b.dist);
+}
+// The tile's chips: 'out' | 'back' move the (single) stop; 'both' adds the twin; out/back on a BOTH place drops the twin and moves if needed.
+function oabSetMode(r,s,mode){
+  const tw=oabTwinOf(r,s);
+  if(mode==='both'){
+    if(tw)return false;const k=oabTwinKm(r,s.dist);if(k===null)return false;
+    const n={...s,id:makeStopId(),dist:k,snapIdx:cidx(r,k),meals:[],sleepAt:false,sleepH:s.type==='sleep'?(s.sleepH||10):null,departTime:null,twinOf:s.id};
+    r.stops.push(n);r.stops.sort((a,b)=>a.dist-b.dist);return true;
+  }
+  if(tw)r.stops=r.stops.filter(x=>x!==tw);
+  return oabSetPass(r,s,mode)||!!tw;
+}
+// The Route tab card: the detector's offer, the declared sections, an inline editor (from / turn / to km).
+function _oabCardHTML(r){
+  if(!r||!r.points.length)return'';
+  const secs=r.oabSecs||[],sug=oabSuggest(r),ed=UI.oabEdit;
+  const num=(id,v,lbl)=>`<label style="flex:1;min-width:0;font-size:12px;color:var(--text3);font-family:var(--font);">${lbl}<input type="number" step="0.1" min="0" max="${r.totalDist.toFixed(1)}" id="${id}" value="${v}" style="margin-top:2px;padding:6px 8px;font-size:15px;"></label>`;
+  const editRow=e=>`<div style="background:var(--bg3);border:1px solid var(--accent);border-radius:7px;padding:8px 10px;margin-bottom:5px;">
+      <div style="display:flex;gap:6px;">${num('oab-from',e.from,'From km')}${num('oab-turn',e.turn,'Turn km')}${num('oab-to',e.to,'To km')}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;"><button class="btn btn-sm btn-p" id="oab-save">Save</button><button class="btn btn-sm" id="oab-cancel">Cancel</button></div></div>`;
+  const row=(x,i)=>{
+    const inside=r.stops.filter(s=>oabSecAt(r,s.dist)===x),n=p=>inside.filter(s=>oabPassAt(r,s.dist)===p).length,nb=inside.filter(s=>oabTwinOf(r,s)).length;
+    return`<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:5px;">
+      <div><div style="font-size:16px;font-weight:600;color:var(--text);font-family:var(--font);">${x.from.toFixed(1)}<span style="color:var(--text3);padding:0 3px;">→</span><span style="color:var(--accent);">${x.turn.toFixed(1)}</span><span style="color:var(--text3);padding:0 3px;">→</span>${x.to.toFixed(1)} km</div>
+        <div style="font-size:14px;color:var(--text3);font-family:var(--font);">Turn at ${x.turn.toFixed(1)} km</div>
+        <div style="font-size:14px;color:var(--text3);font-family:var(--font);">${n('out')} out · ${n('back')} back${nb?' · '+nb+' both':''}</div></div>
+      <div style="display:flex;gap:5px;"><button class="btn btn-sm oab-edit" data-idx="${i}" title="Edit" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);">${ICON_EDIT}</button><button class="btn btn-r btn-sm oab-del" data-idx="${i}">✕</button></div></div>`;
+  };
+  return`<div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:8px;"><span class="ctitle" style="margin-bottom:0;">Out-and-back</span>${secs.length?`<span style="font-size:13px;color:var(--text3);">(${secs.length})</span>`:''}</div>
+      ${ed?'':'<button class="btn btn-sm btn-p" id="btn-add-oab" title="Declare a stretch ridden out and back over the same road">+ Add</button>'}
+    </div>
+    ${sug&&!ed?`<div style="display:flex;flex-direction:column;gap:8px;background:var(--overlay-soft);border:1px solid var(--border);border-radius:8px;padding:9px 10px;margin-top:8px;">
+      <p style="font-size:15px;color:var(--text);line-height:1.4;margin:0;">This route looks like an out-and-back, turning at <b style="color:var(--accent);font-family:var(--font);">${sug.turn.toFixed(1)} km</b>. Use it?</p>
+      <div style="display:flex;gap:6px;"><button class="btn btn-sm btn-p" id="oab-use">Use it</button><button class="btn btn-sm" id="oab-no">Not now</button></div></div>`:''}
+    ${secs.length||ed?'<div style="margin-top:10px;">'+secs.map((x,i)=>ed&&ed.idx===i?editRow(ed):row(x,i)).join('')+(ed&&ed.idx===-1?editRow(ed):'')+'</div>':''}
+  </div>`;
+}
 // v384 — ONE rule for "does the map legend hide this stop?", used by the planning maps (drawMap)
 // AND the Stops list, so turning Water off in the legend hides it in both. Lifted unchanged from
 // drawMap: a hidden type is still shown if it's a sleep stop while "All sleep" is on, has a planned
@@ -14223,6 +14349,8 @@ function _handleTrvEvent(e){
   if(e.target.id==='trv-next'){goToTurnReviewIdx((UI.turnReviewIdx||0)+1);return;}
   if(e.target.id==='trv-prev'){goToTurnReviewIdx((UI.turnReviewIdx||0)-1);return;}
 }
+// v482 — the out-and-back editor's three inputs keep what was typed across a re-render
+document.addEventListener('input',e=>{const m=e.target&&e.target.id&&/^oab-(from|turn|to)$/.exec(e.target.id);if(m&&UI.oabEdit)UI.oabEdit[m[1]]=parseFloat(e.target.value);});
 document.addEventListener('click',e=>{
   _handleTrvEvent(e);
 });
@@ -18468,7 +18596,7 @@ function exportPlan(r){
       id:s.id,dist:s.dist,type:s.type,name:s.name,
       sleepH:s.sleepH,ohRaw:s.ohRaw,auto:s.auto,
       lat:s.lat,lon:s.lon,offRouteM:s.offRouteM,snapIdx:s.snapIdx,
-      population:s.population||null,info:s.info||null
+      population:s.population||null,info:s.info||null,twinOf:s.twinOf||undefined
     }))
   });
 }
@@ -18618,7 +18746,7 @@ function exportRideFileObj(r){
       id:s.id,dist:s.dist,type:s.type,name:s.name,
       sleepH:s.sleepH,sleepAt:s.sleepAt,ohRaw:s.ohRaw,auto:s.auto,starred:s.starred,
       lat:s.lat,lon:s.lon,offRouteM:s.offRouteM,snapIdx:s.snapIdx,
-      population:s.population||null,info:s.info||null
+      population:s.population||null,info:s.info||null,twinOf:s.twinOf||undefined
     })),
   };
 }
@@ -20325,6 +20453,7 @@ function _fpillPick(slot,anchor){
 }
 
 function _render(){
+  _oabSyncTwins(cur());   // v483 — a BOTH place's twin follows its primary
   // v372 — one plan-offset table for the whole render (see _planOffTable). The
   // mission list and stop cards ask for an ETA per node, and the maps they trigger
   // ask for thousands more; all of them now share one table.
@@ -20448,7 +20577,7 @@ function tStopsShell(r){
            the way by itself. Nothing to toggle, nothing to hide.
            Mobile only — desktop pins the map at 250px and has no drag, so there is no peek
            for it to label, and it would just be a second title above "All Stops (n)". -->
-      <div class="ctitle" id="stops-peek-title" style="margin:0;">Stops (${r.stops.length})</div>`:''}
+      <div class="ctitle" id="stops-peek-title" style="margin:0;">Stops (${r.stops.filter(s=>!s.twinOf).length})</div>`:''}
       <div style="padding:6px 4px 2px;display:flex;flex-direction:column;gap:6px;color:var(--text3);font-size:16px;">
         <div style="display:flex;align-items:center;gap:6px;"><span>👆</span><span>Tap on the map to add a stop</span></div>
         <div style="display:flex;align-items:center;gap:6px;"><span>👇</span><span>Or search for stops below</span></div>
@@ -20462,7 +20591,7 @@ function tStopsShell(r){
       </div>
       ${r.stops.length?`<div class="card">
         <div class="secrow">
-          <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))).length:r.stops.length})</div>
+          <div class="ctitle" id="stops-list-title">${UI.stopsShowStarred?'Starred Stops':'All Stops'} (${UI.stopsShowStarred?r.stops.filter(s=>!s.twinOf&&(s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH)))).length:r.stops.filter(s=>!s.twinOf).length})</div>
           <span style="display:flex;gap:6px;align-items:center;">${auto.length?`<button class="btn btn-sm btn-r" id="btn-clearauto" title="Remove every stop the searches added">Clear auto (${auto.length})</button>`:''}<button class="btn btn-sm" id="btn-toggle-starred" title="${UI.stopsShowStarred?'Showing starred only':'Showing all stops'}" style="background:var(--stop-card-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;${UI.stopsShowStarred?'border-color:rgba(251,191,36,0.7);color:#fbbf24;':'border-color:var(--hair-light);color:var(--on-dark);'}">${UI.stopsShowStarred?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button></span>
         </div>
         ${auto.length?`<div id="clearauto-confirm" style="display:none;gap:8px;align-items:center;margin-bottom:8px;">
@@ -22585,6 +22714,7 @@ function tRoutes(r){
         </div>`;
       }).join('')}
     `:''}  </div>
+  ${_oabCardHTML(r)}
   <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);"></div>
   <div class="card">
     <div class="secrow">
@@ -23192,7 +23322,8 @@ function _setGo(k){
 // Render stops list grouped by cluster for the Stops tab
 function clusteredStopRows(r,sdt){
   if(!r.stops.length)return'';
-  const base=UI.stopsShowStarred?r.stops.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))||String(s.id)===String(UI._tempRevealId)):r.stops;
+  const _vis=r.stops.filter(s=>!s.twinOf);   // v483 — a BOTH place lists once, on its primary
+  const base=UI.stopsShowStarred?_vis.filter(s=>s.starred!==false||s.type==='sleep'||s.sleepAt||(s.type==='stop'&&(s.sleepAt||s.sleepH))||String(s.id)===String(UI._tempRevealId)):_vis;
   // v384 — the list follows the map legend (a temp-revealed stop always shows).
   const stops=base.filter(s=>!stopHiddenByLegend(s)||String(s.id)===String(UI._tempRevealId));
   const nHid=base.length-stops.length;
@@ -23247,10 +23378,20 @@ function stopRow(s,r,sdt,inCluster){
           <div class="si-st">${(s.type==='food'||s.type==='shop'||s.type==='accom'||s.type==='bike')&&s.ohRules?stEl:''}</div>
         </div>
         <div style="text-align:right;flex-shrink:0;">
-          <div class="si-time">${day?day.trim()+' ':''}${fmtT(eta)}</div>
+          ${(()=>{const _tw=oabTwinOf(r,s);if(!_tw)return`<div class="si-time">${day?day.trim()+' ':''}${fmtT(eta)}</div>`;   // v483 — a BOTH place: both arrivals
+            const e2=etaAt(_tw.dist,r),d2=dayOff(e2,sdt);const a={km:s.dist,e:eta,d:day},b={km:_tw.dist,e:e2,d:d2};const[o,bk]=a.km<b.km?[a,b]:[b,a];
+            const lbl=(x,c)=>`<span style="font-size:10px;font-weight:700;letter-spacing:1px;font-family:var(--font);color:${c};">${x}</span> `;
+            return`<div class="si-time">${lbl('OUT','var(--accent)')}${o.d?o.d.trim()+' ':''}${fmtT(o.e)}<br>${lbl('BACK','#fb923c')}${bk.d?bk.d.trim()+' ':''}${fmtT(bk.e)}</div>`;})()}
           ${depart?`<div style="font-size:14px;color:var(--text3);font-family:var(--font);margin-top:1px;">▶ ${departDay?departDay.trim()+' ':''}${fmtT(depart)}</div>`:''}
         </div>
       </div>
+      ${(()=>{   // v482 — OUT / BACK: which pass of a declared out-and-back this stop is on; the other chip carries the km it would move to
+        const p=oabPassAt(r,s.dist);if(!p||s.twinOf)return'';const tw=oabTwinKm(r,s.dist);if(tw===null)return'';
+        const both=!!oabTwinOf(r,s);   // v483 — BOTH: this place has a twin on the other pass
+        const chip=(k,sub,on,title)=>`<button class="btn btn-sm oab-pass${on?' seg-on':''}" data-sid="${s.id}" data-pass="${k}" title="${title}" style="flex:0 0 auto;min-width:64px;flex-direction:column;gap:0;padding:4px 8px;line-height:1.15;"><b style="font-size:11px;font-weight:700;letter-spacing:.8px;font-family:var(--font);">${k.toUpperCase()}</b><small style="font-size:12px;font-family:var(--font);color:${on?'var(--accent)':'var(--text3)'};">${sub}</small></button>`;
+        const outKm=p==='out'?s.dist:tw,backKm=p==='back'?s.dist:tw;
+        const one=(k,km)=>both?'Keep only the '+k+' visit, '+km.toFixed(1)+' km':p===k?'This stop is on the '+k+' pass':'Move this stop to the '+k+' pass, '+km.toFixed(1)+' km';
+        return`<div style="display:flex;gap:4px;margin-top:7px;">${chip('out',outKm.toFixed(1)+' km',!both&&p==='out',one('out',outKm))}${chip('back',backKm.toFixed(1)+' km',!both&&p==='back',one('back',backKm))}${chip('both','2 visits',both,both?'Visited on the way out and on the way back':'Visit this place on the way out and again on the way back')}</div>`;})()}
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
         <button class="btn btn-sm star-stop" data-sid="${s.id}" title="Star for plan" style="${s.starred!==false?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}">${s.starred!==false?'<svg width="18" height="18" viewBox="0 0 24 24" fill="#fbbf24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
         ${s.type!=='sleep'?`<button class="btn btn-sm sleep-at-stop" data-sid="${s.id}" title="Sleep here" style="${s.sleepAt?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);'}">${s.sleepAt?'<svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'}</button>`:''}
@@ -24335,7 +24476,7 @@ function tPlan(r){
       +'<div class="mission-node sleep-dur-anchor" data-sid="'+(isSleep&&node.sleepStop?node.sleepStop.id:(node.cluster&&node.cluster.stops[0]?node.cluster.stops[0].id:''))+'" data-dist="'+node.dist.toFixed(2)+'" style="flex:1;background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:8px 10px;margin-bottom:4px;box-shadow:var(--shadow-float);cursor:'+(IS_DESKTOP()?'pointer':'default')+';">'
         +(isSleep?(node.sleepStop&&node.sleepStop.type==='stop'?'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.72);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">📍 Stop</span>'+'<div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+(ICON_EDIT)+'</button>':'')+'</div></div>':'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;"><span style="font-size:13px;color:rgba(246,244,239,0.9);font-family:var(--font);text-transform:uppercase;letter-spacing:.5px;">😴 Bivi stop</span><div style="display:flex;gap:4px;">'+(node.sleepStop?'<button class="sleep-at-stop" data-sid="'+node.sleepStop.id+'" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.7);color:#fbbf24;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fbbf24" stroke="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>':'')+(node.sleepStop?'<button class="food-at-stop" data-sid="'+node.sleepStop.id+'" style="'+(node.sleepStop.meals&&node.sleepStop.meals.length?'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(251,191,36,0.6);color:#fbbf24;':'background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--hair-light);color:var(--on-dark);')+'" title="Add food"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="2" x2="8" y2="22"/><path d="M5 2v6a3 3 0 0 0 6 0V2"/><line x1="19" y1="2" x2="19" y2="22"/></svg></button>':'')+(node.sleepStop?(()=>{const clW=(node.clusterAll?node.clusterAll.stops:[node.sleepStop]).some(waterAssigned);return '<button class="water-at-stop" data-node="1" data-sid="'+node.sleepStop.id+'" title="Water in this town? Tap to toggle" style="background:var(--overlay-bg);border-radius:6px;cursor:pointer;padding:4px 6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid '+(clW?'rgba(96,165,250,0.7)':'rgba(255,255,255,0.22)')+';color:'+(clW?'#60a5fa':'rgba(255,255,255,0.85)')+';"><svg width="16" height="16" viewBox="0 1.5 24 24" fill="'+(clW?'#60a5fa':'none')+'" stroke="'+(clW?'none':'rgba(255,255,255,0.85)')+'" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6 10 4 14 4 17a8 8 0 0 0 16 0c0-3-2-7-8-15z"/></svg></button>';})():'')+(node.sleepStop?'<button class="cluster-edit-btn" data-sid="'+node.sleepStop.id+'" style="background:'+(UI.planEditCluster===node.sleepStop.id?'rgba(74,222,128,0.2)':'rgba(10,15,10,0.75)')+';border:1px solid '+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.25)')+';border-radius:6px;cursor:pointer;padding:3px 5px;display:flex;align-items:center;justify-content:center;color:'+(UI.planEditCluster===node.sleepStop.id?'var(--accent)':'rgba(255,255,255,0.85)')+';">'+ICON_EDIT+'</button>':'')+'</div></div>'):'')        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;">'
           +'<div style="flex:1;min-width:0;">'
-            +'<div style="font-size:18px;font-weight:500;color:'+textCol+';line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+((node.clusterAll||node.cluster)?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.clusterAll||node.cluster)):'')+'</div>'
+            +'<div style="font-size:18px;font-weight:500;color:'+textCol+';line-height:1.35;">'+(dnIcon?dnIcon+' ':'')+node.name+(node.isStart||node.isFinish?'':_oabTag(r,node.dist,textCol))+((node.clusterAll||node.cluster)?((cp)=>cp?' <span style="font-size:13px;color:#8bc34a;font-weight:500;">'+(cp>=10000?(Math.round(cp/1000)+'k'):cp.toLocaleString())+' pop</span>':'')(clusterPop(node.clusterAll||node.cluster)):'')+'</div>'
             +'<div style="font-size:18px;font-weight:500;color:'+text3Col+';font-family:var(--font);margin-top:1px;">'+node.dist.toFixed(1)+' km'+((e)=>e?' <span style="font-size:13px;opacity:0.8;white-space:nowrap;">· '+e+'</span>':'')(eleAtStr(r,node.dist))+'</div>' // v375 — the town's height rides the km line, SUBORDINATE to it (Peter: same 18px read as equal rank and wrapped on narrow tiles): 13px = the pop badge's size, faded, nowrap so "1009 m asl" never breaks mid-phrase. Empty on a route with no elevation data.
             +(node.isStart?
               '<div style="display:flex;align-items:center;gap:8px;margin-top:7px;">'
@@ -26394,12 +26535,16 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
     return;
   }
   // Star toggle
+  // v482 — OUT / BACK chip: move the stop to the other pass of its out-and-back section
+  const _op=e.target.closest('.oab-pass');
+  if(_op&&r){const s=r.stops.find(x=>String(x.id)===String(_op.dataset.sid));if(s&&oabSetMode(r,s,_op.dataset.pass)){saveAll();render();}return;}
   const ss=e.target.closest('.star-stop');
   if(ss&&r){
     const sid=ss.dataset.sid;
     const s=r.stops.find(x=>String(x.id)===String(sid));
     if(s){
       s.starred=s.starred===false?true:false;
+      {const _tw=oabTwinOf(r,s);if(_tw)_tw.starred=s.starred;}   // v483 — the place's star, both visits
       const isStarred=s.starred!==false;
       // If this was a temp-revealed stop and user starred it, cancel the timer
       if(isStarred&&String(sid)===String(UI._tempRevealId)){
@@ -27008,6 +27153,19 @@ document.getElementById('content-wrap').addEventListener('click',e=>{
   }
   if(e.target.closest('#btn-open-search')){openSearchSheet();return;}
   if(e.target.closest('#btn-add-pace')&&r){openPaceModal(-1);return;}
+  // v482 — out-and-back card
+  if(e.target.closest('#oab-use')&&r){const s=oabSuggest(r);if(s){r.oabSecs=[...(r.oabSecs||[]),s];delete r._oabSug;saveAll();render();}return;}
+  if(e.target.closest('#oab-no')&&r){r.oabDismissed=true;saveAll();render();return;}
+  if(e.target.closest('#btn-add-oab')&&r){const s=oabSuggest(r)||oabDetect(r);UI.oabEdit=s?{idx:-1,...s}:{idx:-1,from:0,turn:Math.round(r.totalDist*5)/10,to:Math.round(r.totalDist*10)/10};render();return;}
+  if(e.target.closest('.oab-edit')&&r){const i=+e.target.closest('.oab-edit').dataset.idx;UI.oabEdit={idx:i,...r.oabSecs[i]};render();return;}
+  if(e.target.closest('.oab-del')&&r){const i=+e.target.closest('.oab-del').dataset.idx;r.oabSecs.splice(i,1);saveAll();render();return;}
+  if(e.target.closest('#oab-cancel')){UI.oabEdit=null;render();return;}
+  if(e.target.closest('#oab-save')&&r&&UI.oabEdit){
+    const v=id=>parseFloat(document.getElementById(id).value),from=v('oab-from'),turn=v('oab-turn'),to=v('oab-to');
+    if(!(from>=0&&turn>from&&to>turn&&to<=r.totalDist+0.05)){['oab-from','oab-turn','oab-to'].forEach(id=>{document.getElementById(id).style.borderColor='var(--red)';});return;}   // needs from < turn < to, inside the route
+    const sec={from:Math.round(from*10)/10,turn:Math.round(turn*10)/10,to:Math.round(to*10)/10};
+    r.oabSecs=r.oabSecs||[];if(UI.oabEdit.idx>=0)r.oabSecs[UI.oabEdit.idx]=sec;else r.oabSecs.push(sec);
+    UI.oabEdit=null;saveAll();render();return;}
   if(e.target.closest('.edit-pace')&&r){
     const idx=+e.target.closest('.edit-pace').dataset.idx;
     openPaceModal(idx);return;}
